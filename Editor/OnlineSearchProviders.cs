@@ -2,11 +2,6 @@ using JetBrains.Annotations;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
-using System.Reflection;
-using UnityEditor;
-using UnityEditor.ShortcutManagement;
-using UnityEngine;
 
 namespace Unity.QuickSearch
 {
@@ -29,9 +24,6 @@ namespace Unity.QuickSearch
                 }
 
                 var uri = new Uri(url);
-
-                UnityEngine.Debug.Log(uri.AbsoluteUri);
-
                 Process.Start(uri.AbsoluteUri);
             }
 
@@ -86,10 +78,10 @@ namespace Unity.QuickSearch
         }
 
         [UsedImplicitly]
-        static class DocProvider
+        static class DocManualProvider
         {
-            internal static string type = "doc";
-            internal static string displayName = "Documentation";
+            internal static string type = "manual";
+            internal static string displayName = "Manual";
             internal static string urlTitle = "docs.unity3d.com/Manual";
             internal static string searchUrl = "https://docs.unity3d.com/Manual/30_search.html";
 
@@ -99,7 +91,7 @@ namespace Unity.QuickSearch
                 return new SearchProvider(type, displayName)
                 {
                     priority = 9999,
-                    filterId = "ud:",
+                    filterId = "um:",
                     fetchItems = (context, items, provider) =>
                     {
                         items.Add(SearchUtility.GetSearchItem(provider, urlTitle, context));
@@ -127,6 +119,47 @@ namespace Unity.QuickSearch
         }
 
         [UsedImplicitly]
+        static class DocScriptingProvider
+        {
+            internal static string type = "scripting";
+            internal static string displayName = "Scripting API";
+            internal static string urlTitle = "docs.unity3d.com/ScriptReference";
+            internal static string searchUrl = "https://docs.unity3d.com/ScriptReference/30_search.html";
+
+            [UsedImplicitly, SearchItemProvider]
+            internal static SearchProvider CreateProvider()
+            {
+                return new SearchProvider(type, displayName)
+                {
+                    priority = 9999,
+                    filterId = "us:",
+                    fetchItems = (context, items, provider) =>
+                    {
+                        items.Add(SearchUtility.GetSearchItem(provider, urlTitle, context));
+                    },
+                    fetchThumbnail = (item, context) => Icons.search
+                };
+            }
+
+            [UsedImplicitly, SearchActionsProvider]
+            internal static IEnumerable<SearchAction> ActionHandlers()
+            {
+                return new SearchAction[]
+                {
+                    new SearchAction(type, "search", null, "Search") {
+                        handler = (item, context) =>
+                        {
+                            // ex: https://docs.unity3d.com/ScriptReference/30_search.html?q=Visual+Scripting
+                            var query = new List<Tuple<string, string>>();
+                            query.Add(Tuple.Create("q", string.Join("+", context.tokenizedSearchQuery)));
+                            SearchUtility.Goto(searchUrl, query);
+                        }
+                    }
+                };
+            }
+        }
+
+        [UsedImplicitly]
         static class AssetStoreProvider
         {
             internal static string type = "store";
@@ -140,7 +173,7 @@ namespace Unity.QuickSearch
                 return new SearchProvider(type, displayName)
                 {
                     priority = 10000,
-                    filterId = "us:",
+                    filterId = "as:",
                     fetchItems = (context, items, provider) => items.Add(SearchUtility.GetSearchItem(provider, urlTitle, context)),
                     fetchThumbnail = (item, context) => Icons.store
                 };
