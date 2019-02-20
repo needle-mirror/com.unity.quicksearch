@@ -76,9 +76,6 @@ namespace Unity.QuickSearch
 
                         var areas = context.categories.GetRange(0, areaFilter.Length);
 
-                        if (areas.All(c => !c.isEnabled))
-                            return;
-
                         if (areas.Any(c => !c.isEnabled))
                         {
                             // Not all categories are enabled, so create a proper filter:
@@ -87,26 +84,33 @@ namespace Unity.QuickSearch
 
                         var nonTypeFilterCount = areaFilter.Length + extraFilter.Length;
                         var types = context.categories.GetRange(nonTypeFilterCount, context.categories.Count - nonTypeFilterCount);
-                        if (types.All(c => !c.isEnabled))
-                            return;
-
-                        if (types.Any(c => !c.isEnabled))
+                        if (types.Any(c => c.isEnabled))
                         {
-                            // Not all categories are enabled, so create a proper filter:
-                            filter = string.Join(" ", types.Where(c => c.isEnabled).Select(c => c.name.id)) + " " + filter;
+                            if (types.Any(c => !c.isEnabled))
+                            {
+                                // Not all categories are enabled, so create a proper filter:
+                                filter = string.Join(" ", types.Where(c => c.isEnabled).Select(c => c.name.id)) + " " + filter;
+                            }
+
+                            items.AddRange(AssetDatabase.FindAssets(filter)
+                                                        .Select(AssetDatabase.GUIDToAssetPath)
+                                                        .Where(path => !AssetDatabase.IsValidFolder(path))
+                                                        .Take(1001)
+                                                        .Select(path => _provider.CreateItem(path, Path.GetFileName(path))));
                         }
-
-                        items.AddRange(AssetDatabase.FindAssets(filter)
-                                                    .Select(AssetDatabase.GUIDToAssetPath)
-                                                    .Where(path => findFolders || !AssetDatabase.IsValidFolder(path))
-                                                    .Take(1001)
-                                                    .Select(path => _provider.CreateItem(path, Path.GetFileName(path))));
-
+                        
+                        var safeFilter = string.Join("_", context.searchQuery.Split(k_InvalidSearchFileChars));
                         if (context.searchQuery.Contains('*') || items.Count == 0)
                         {
-                            var safeFilter = string.Join("_", context.searchQuery.Split(k_InvalidSearchFileChars));
                             items.AddRange(Directory.GetFiles(Application.dataPath, safeFilter, SearchOption.AllDirectories)
                                 .Select(path => _provider.CreateItem(path.Replace(Application.dataPath, "Assets").Replace("\\", "/"), Path.GetFileName(path))));
+                        }
+
+                        if (findFolders)
+                        {
+                            items.AddRange(Directory.GetDirectories(Application.dataPath, safeFilter + "*", SearchOption.AllDirectories)
+                                                    .Select(path => _provider.CreateItem(path.Replace(Application.dataPath, "Assets").Replace("\\", "/"), Path.GetFileName(path))));
+                            
                         }
                     },
 
@@ -138,6 +142,17 @@ namespace Unity.QuickSearch
 
                         item.thumbnail = UnityEditorInternal.InternalEditorUtility.FindIconForFile(item.id);
                         return item.thumbnail;
+                    },
+
+                    startDrag = (item, context) =>
+                    {
+                        var obj = AssetDatabase.LoadAssetAtPath<Object>(item.id);
+                        if (obj != null)
+                        {
+                            DragAndDrop.PrepareStartDrag();
+                            DragAndDrop.objectReferences = new[] { obj };
+                            DragAndDrop.StartDrag("Drag asset");
+                        }
                     },
 
                     subCategories = new List<NameId>()

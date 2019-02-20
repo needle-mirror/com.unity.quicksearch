@@ -12,6 +12,7 @@ namespace Unity.QuickSearch
     public delegate Texture2D PreviewHandler(SearchItem item, SearchContext context);
     public delegate string DescriptionHandler(SearchItem item, SearchContext context);
     public delegate void ActionHandler(SearchItem item, SearchContext context);
+    public delegate void StartDragHandler(SearchItem item, SearchContext context);
     public delegate bool EnabledHandler(SearchItem item, SearchContext context);
     public delegate void GetItemsHandler(SearchContext context, List<SearchItem> items, SearchProvider provider);
     public delegate bool IsItemValidHandler(SearchItem item);
@@ -48,6 +49,8 @@ namespace Unity.QuickSearch
         public Texture2D thumbnail;
         // Backpointer to the provider.
         public SearchProvider provider;
+        // Search provider defined content
+        public object data;
     }
 
     public class SearchFilter
@@ -233,15 +236,16 @@ namespace Unity.QuickSearch
             priority = 100;
         }
 
-        public SearchItem CreateItem(string id, string label = null, string description = null, Texture2D thumbnail = null)
+        public SearchItem CreateItem(string id, string label = null, string description = null, Texture2D thumbnail = null, object data = null)
         {
-            return new SearchItem()
+            return new SearchItem
             {
                 id = id,
                 label = label ?? id,
                 description = description,
                 thumbnail = thumbnail,
-                provider = this
+                provider = this,
+                data = data
             };
         }
 
@@ -289,6 +293,7 @@ namespace Unity.QuickSearch
         public string filterId;
         public DescriptionHandler fetchDescription;
         public PreviewHandler fetchThumbnail;
+        public StartDragHandler startDrag;
         public GetItemsHandler fetchItems;
         public List<SearchAction> actions;
         public List<NameId> subCategories;
