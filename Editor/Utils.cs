@@ -27,12 +27,12 @@ namespace Unity.QuickSearch
             return result.ToArray();
         }
 
-        public static Type GetProjectBrowserWindowType()
+        internal static Type GetProjectBrowserWindowType()
         {
             return GetAllEditorWindowTypes().FirstOrDefault(t => t.Name == "ProjectBrowser");
         }
 
-        public static string GetNameFromPath(string path)
+        internal static string GetNameFromPath(string path)
         {
             var lastSep = path.LastIndexOf('/');
             if (lastSep == -1)
@@ -41,7 +41,7 @@ namespace Unity.QuickSearch
             return path.Substring(lastSep + 1);
         }
 
-        public static Type[] GetAllDerivedTypes(this AppDomain aAppDomain, Type aType)
+        internal static Type[] GetAllDerivedTypes(this AppDomain aAppDomain, Type aType)
         {
             var result = new List<Type>();
             var assemblies = aAppDomain.GetAssemblies();
@@ -57,7 +57,7 @@ namespace Unity.QuickSearch
             return result.ToArray();
         }
 
-        public static Rect GetEditorMainWindowPos()
+        internal static Rect GetEditorMainWindowPos()
         {
             var containerWinType = AppDomain.CurrentDomain.GetAllDerivedTypes(typeof(ScriptableObject)).FirstOrDefault(t => t.Name == "ContainerWindow");
             if (containerWinType == null)
@@ -93,6 +93,14 @@ namespace Unity.QuickSearch
             pos.y = parentWindowPosition.y + h;
             return pos;
         }
+        internal static IEnumerable<MethodInfo> GetAllMethodsWithAttribute<T>(BindingFlags bindingFlags = BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic)
+        {
+            Assembly assembly = typeof(Selection).Assembly;
+            var managerType = assembly.GetTypes().First(t => t.Name == "EditorAssemblies");
+            var method = managerType.GetMethod("Internal_GetAllMethodsWithAttribute", BindingFlags.NonPublic | BindingFlags.Static);
+            var arguments = new object[] { typeof(T), bindingFlags };
+            return ((method.Invoke(null, arguments) as object[]) ?? throw new InvalidOperationException()).Cast<MethodInfo>();
+        }
 
         internal static Rect GetMainWindowCenteredPosition(Vector2 size)
         {
@@ -126,6 +134,34 @@ namespace Unity.QuickSearch
             dontSaveToLayoutField.SetValue(parentContainerWindowValue, true);
             Debug.Assert((bool) dontSaveToLayoutField.GetValue(parentContainerWindowValue));
         }
+
+        internal static string JsonSerialize(object obj)
+        {
+            var assembly = typeof(Selection).Assembly;
+            var managerType = assembly.GetTypes().First(t => t.Name == "Json");
+            var method = managerType.GetMethod("Serialize", BindingFlags.Public | BindingFlags.Static);
+            var jsonString = "";
+            if (UnityVersion.IsVersionGreaterOrEqual(2019, 1, UnityVersion.ParseBuild("0a10")))
+            {
+                var arguments = new object[] { obj, false, "  " };
+                jsonString = method.Invoke(null, arguments) as string;
+            }
+            else
+            {
+                var arguments = new object[] { obj };
+                jsonString = method.Invoke(null, arguments) as string;
+            }
+            return jsonString;
+        }
+
+        internal static object JsonDeserialize(object obj)
+        {
+            Assembly assembly = typeof(Selection).Assembly;
+            var managerType = assembly.GetTypes().First(t => t.Name == "Json");
+            var method = managerType.GetMethod("Deserialize", BindingFlags.Public | BindingFlags.Static);
+            var arguments = new object[] { obj };
+            return method.Invoke(null, arguments);
+        }
     }
 
     #if QUICKSEARCH_DEBUG
@@ -157,7 +193,7 @@ namespace Unity.QuickSearch
     #if UNITY_EDITOR
     [InitializeOnLoad]
     #endif
-    public static class UnityVersion
+    internal static class UnityVersion
     {
         enum Candidate
         {
