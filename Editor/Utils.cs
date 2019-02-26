@@ -3,8 +3,10 @@ using System;
 using System.Linq;
 using System.Collections.Generic;
 using System.Reflection;
+using System.Diagnostics;
 using UnityEditor;
 using UnityEngine;
+using Debug = UnityEngine.Debug;
 
 namespace Unity.QuickSearch
 {
@@ -17,7 +19,7 @@ namespace Unity.QuickSearch
             var editorWindow = typeof(EditorWindow);
             foreach (var A in AS)
             {
-                var types = A.GetTypes();
+                var types = A.GetLoadableTypes();
                 foreach (var T in types)
                 {
                     if (T.IsSubclassOf(editorWindow))
@@ -41,13 +43,25 @@ namespace Unity.QuickSearch
             return path.Substring(lastSep + 1);
         }
 
+        public static IEnumerable<Type> GetLoadableTypes(this Assembly assembly)
+        {
+            try
+            {
+                return assembly.GetTypes();
+            }
+            catch (ReflectionTypeLoadException e)
+            {
+                return e.Types.Where(t => t != null);
+            }
+        }
+
         internal static Type[] GetAllDerivedTypes(this AppDomain aAppDomain, Type aType)
         {
             var result = new List<Type>();
             var assemblies = aAppDomain.GetAssemblies();
             foreach (var assembly in assemblies)
             {
-                var types = assembly.GetTypes();
+                var types = assembly.GetLoadableTypes();
                 foreach (var type in types)
                 {
                     if (type.IsSubclassOf(aType))
@@ -164,7 +178,6 @@ namespace Unity.QuickSearch
         }
     }
 
-    #if QUICKSEARCH_DEBUG
     internal struct DebugTimer : IDisposable
     {
         private bool m_Disposed;
@@ -188,7 +201,6 @@ namespace Unity.QuickSearch
             Debug.Log($"{m_Name} took {timespan.TotalMilliseconds} ms");
         }
     }
-    #endif
 
     #if UNITY_EDITOR
     [InitializeOnLoad]
