@@ -1,6 +1,7 @@
 {
     "name": "Unity.QuickSearch.Package.EditorTests",
     "references": [
+        "com.unity.quicksearch"
     ],
     "optionalUnityReferences": [
         "TestAssemblies"

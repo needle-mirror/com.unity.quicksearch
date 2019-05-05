@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -18,6 +19,7 @@ namespace Unity.QuickSearch
 
             internal static string[] itemNamesLower;
             internal static List<string> itemNames = new List<string>();
+            internal static string[] shortcutIds;
 
             [UsedImplicitly, SearchItemProvider]
             internal static SearchProvider CreateProvider()
@@ -30,6 +32,21 @@ namespace Unity.QuickSearch
                 {
                     priority = 80,
                     filterId = "me:",
+
+                    onEnable = () =>
+                    {
+                        #if UNITY_2019_1_OR_NEWER
+                        shortcutIds = ShortcutManager.instance.GetAvailableShortcutIds().ToArray();
+                        #else
+                        shortcutIds = new string[0];
+                        #endif
+                    },
+
+                    onDisable = () => 
+                    {
+                        shortcutIds = new string[0];
+                    },
+
                     fetchItems = (context, items, provider) =>
                     {
                         for (int i = 0; i < itemNames.Count; ++i)
@@ -37,12 +54,44 @@ namespace Unity.QuickSearch
                             var menuName = itemNames[i];
                             if (!SearchProvider.MatchSearchGroups(context, itemNamesLower[i], true))
                                 continue;
-                            items.Add(provider.CreateItem(menuName, Utils.GetNameFromPath(menuName), menuName));
+                            
+                            items.Add(provider.CreateItem(menuName, Utils.GetNameFromPath(menuName)));
                         }
+                    },
+
+                    fetchDescription = (item, context) =>
+                    {
+                        if (String.IsNullOrEmpty(item.description))
+                            item.description = GetMenuDescription(item.id);
+                        return item.description;
                     },
 
                     fetchThumbnail = (item, context) => Icons.shortcut
                 };
+            }
+
+            private static string GetMenuDescription(string menuName)
+            {
+                #if UNITY_2019_1_OR_NEWER
+                var sm = ShortcutManager.instance;
+                if (sm == null)
+                    return menuName;
+
+                var shortcutId = menuName;
+                if (!shortcutIds.Contains(shortcutId))
+                {
+                    shortcutId = "Main Menu/" + menuName;
+                    if (!shortcutIds.Contains(shortcutId))
+                        return menuName;
+                }
+                var shortcutBinding = ShortcutManager.instance.GetShortcutBinding(shortcutId);
+                if (!shortcutBinding.keyCombinationSequence.Any())
+                    return menuName;
+
+                return $"{menuName} ({shortcutBinding.ToString()})";
+                #else
+                return menuName;
+                #endif
             }
 
             [UsedImplicitly, SearchActionsProvider]

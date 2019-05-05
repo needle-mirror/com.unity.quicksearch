@@ -102,8 +102,6 @@ namespace Unity.QuickSearch
                             DragAndDrop.StartDrag("Drag scene object");
                         }
                     };
-
-                    isItemValid = item => ObjectFromItem(item) != null;
                 }
             }
 
@@ -150,7 +148,7 @@ namespace Unity.QuickSearch
             }
 
             #if UNITY_2019_1_OR_NEWER
-            [UsedImplicitly, Shortcut("Help/Quick Search/Scene", KeyCode.S, ShortcutModifiers.Alt | ShortcutModifiers.Shift)]
+            [UsedImplicitly, Shortcut("Help/Quick Search/Scene")]
             public static void PopQuickSearch()
             {
                 SearchService.Filter.ResetFilter(false);

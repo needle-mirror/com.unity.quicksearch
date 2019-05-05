@@ -1,3 +1,18 @@
+## [1.0.9-preview.2] - 2019-05-06
+- Add editor analytics
+- Add fast indexing of the project assets file system.
+- Add option to open the quick search in a dockable window.
+- Add search service tests
+- Add shortcut key bindings to the menu item descriptor.
+- Add typing debouncing (to prevent searching for nothing while typing fast)
+- Add yamato-CI
+- Format the search item description to highlight the search terms.
+- Improve documentation
+- Improve the performance of searches when folder filter is selected.
+- Record average fetch time of search provider and display those times in the Filter Window.
+- Remove assets and scene search provider default shortcuts. They were conflicting with other core shortcuts.
+- Remove duplicate items from search result.
+
 ## [1.0.1-preview.1] - 2019-02-27
 - Fix ReflectionTypeLoadException exception for certain user with invalid project assemblies
 - Optimize fetching results from menu, asset and scene search providers (~50x boost).
@@ -43,7 +58,7 @@
 - Fixed a layout scoping issue when scrolling.
 
 ## [0.9.5-preview.1] - 2019-02-19
-### First Version
+- First Version
 - Search menu items
 - Search project assets
 - Search current scene game objects

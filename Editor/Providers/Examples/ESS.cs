@@ -131,7 +131,11 @@ namespace Unity.QuickSearch
                         handler = (item, context) =>
                         {
                             var essmi = (ESSMatchInfo)item.data;
+                            #if UNITY_2019_2_OR_NEWER
+                            CodeEditor.CodeEditor.CurrentEditor.OpenProject(essmi.path, essmi.lineNumber);
+                            #else
                             UnityEditorInternal.InternalEditorUtility.OpenFileAtLineExternal(essmi.path, essmi.lineNumber);
+                            #endif
                         }
                     }
                 };
@@ -228,7 +232,7 @@ namespace Unity.QuickSearch
                         return;
                     }
 
-                    UnityEngine.Debug.Log("ESS index ready");
+                    //UnityEngine.Debug.Log("ESS index ready");
                     s_BuildingIndex = false;
                 });
                 thread.Start();

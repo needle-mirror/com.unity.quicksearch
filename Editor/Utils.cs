@@ -2,6 +2,7 @@
 using System;
 using System.Linq;
 using System.Collections.Generic;
+using System.IO;
 using System.Reflection;
 using System.Diagnostics;
 using UnityEditor;
@@ -176,6 +177,31 @@ namespace Unity.QuickSearch
             var arguments = new object[] { obj };
             return method.Invoke(null, arguments);
         }
+
+        internal static string GetQuickSearchVersion()
+        {
+            string version = null;
+            try
+            {
+                var filePath = File.ReadAllText("Packages/com.unity.quicksearch/package.json");
+                if (JsonDeserialize(filePath) is Dictionary<string, object> manifest && manifest.ContainsKey("version"))
+                {
+                    version = manifest["version"] as string;
+                }
+            }
+            catch (Exception)
+            {
+                
+            }
+
+            return version ?? "unknown";
+        }
+
+        [MenuItem("Tools/packageMe")]
+        internal static void TestMe()
+        {
+            
+        }
     }
 
     internal struct DebugTimer : IDisposable
@@ -183,6 +209,8 @@ namespace Unity.QuickSearch
         private bool m_Disposed;
         private string m_Name;
         private Stopwatch m_Timer;
+
+        public double timeMs => m_Timer.Elapsed.TotalMilliseconds;
 
         public DebugTimer(string name)
         {
@@ -197,8 +225,13 @@ namespace Unity.QuickSearch
                 return;
             m_Disposed = true;
             m_Timer.Stop();
-            TimeSpan timespan = m_Timer.Elapsed;
-            Debug.Log($"{m_Name} took {timespan.TotalMilliseconds} ms");
+            #if UNITY_2019_1_OR_NEWER
+            if (!String.IsNullOrEmpty(m_Name))
+                Debug.LogFormat(LogType.Log, LogOption.NoStacktrace, null, $"{m_Name} took {timeMs} ms");
+            #else
+            if (!String.IsNullOrEmpty(m_Name))
+                Debug.Log($"{m_Name} took {timeMs} ms");
+            #endif
         }
     }
 
@@ -221,18 +254,18 @@ namespace Unity.QuickSearch
 
             if (version.Length < 2)
             {
-                Debug.LogError("Could not parse current Unity version '" + Application.unityVersion + "'; not enough version elements.");
+                Console.WriteLine("Could not parse current Unity version '" + Application.unityVersion + "'; not enough version elements.");
                 return;
             }
 
             if (int.TryParse(version[0], out Major) == false)
             {
-                Debug.LogError("Could not parse major part '" + version[0] + "' of Unity version '" + Application.unityVersion + "'.");
+                Console.WriteLine("Could not parse major part '" + version[0] + "' of Unity version '" + Application.unityVersion + "'.");
             }
 
             if (int.TryParse(version[1], out Minor) == false)
             {
-                Debug.LogError("Could not parse minor part '" + version[1] + "' of Unity version '" + Application.unityVersion + "'.");
+                Console.WriteLine("Could not parse minor part '" + version[1] + "' of Unity version '" + Application.unityVersion + "'.");
             }
 
             if (version.Length >= 3)
@@ -243,7 +276,7 @@ namespace Unity.QuickSearch
                 }
                 catch
                 {
-                    Debug.LogError("Could not parse minor part '" + version[1] + "' of Unity version '" + Application.unityVersion + "'.");
+                    Console.WriteLine("Could not parse minor part '" + version[1] + "' of Unity version '" + Application.unityVersion + "'.");
                 }
             }
 

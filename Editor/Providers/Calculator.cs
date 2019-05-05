@@ -1,6 +1,6 @@
-// #define QUICKSEARCH_EXAMPLES
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using JetBrains.Annotations;
 using UnityEditor;
 
@@ -14,9 +14,7 @@ namespace Unity.QuickSearch
             internal static string type = "calculator";
             internal static string displayName = "Calculator";
 
-            #if QUICKSEARCH_EXAMPLES
             [UsedImplicitly, SearchItemProvider]
-            #endif
             internal static SearchProvider CreateProvider()
             {
                 return new SearchProvider(type, displayName)
@@ -24,16 +22,21 @@ namespace Unity.QuickSearch
                     filterId = "=",
                     fetchItems = (context, items, provider) =>
                     {
-                        items.Add(provider.CreateItem(type, "compute", context.searchQuery));
+                        if (!context.searchText.StartsWith(provider.filterId))
+                            return;
+
+                        var item = context.searchQuery;
+                        if (Evaluate(context.searchQuery, out var result))
+                            item += " = " + result;
+
+                        items.Add(provider.CreateItem(type, "compute", item));
                     },
 
                     fetchThumbnail = (item, context) => Icons.settings
                 };
             }
 
-            #if QUICKSEARCH_EXAMPLES
             [UsedImplicitly, SearchActionsProvider]
-            #endif
             internal static IEnumerable<SearchAction> ActionHandlers()
             {
                 return new[]
@@ -41,19 +44,28 @@ namespace Unity.QuickSearch
                     new SearchAction(type, "compute", null, "Compute...") {
                         handler = (item, context) =>
                         {
-                            try
+                            if (Evaluate(context.searchQuery, out var result))
                             {
-                                ExpressionEvaluator.Evaluate<double>(context.searchQuery, out var result);
                                 UnityEngine.Debug.Log(result);
-                                EditorGUIUtility.systemCopyBuffer = result.ToString();
-                            }
-                            catch (Exception)
-                            {
-                                UnityEngine.Debug.LogError("Error while parsing: " + context.searchQuery);
+                                EditorGUIUtility.systemCopyBuffer = result.ToString(CultureInfo.InvariantCulture);
                             }
                         }
                     }
                 };
+            }
+
+            internal static bool Evaluate(string expression, out double result)
+            {
+                try
+                {
+                    return ExpressionEvaluator.Evaluate(expression, out result);
+                }
+                catch (Exception)
+                {
+                    result = 0.0;
+                    UnityEngine.Debug.LogError("Error while parsing: " + expression);
+                    return false;
+                }
             }
         }
     }

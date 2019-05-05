@@ -28,7 +28,7 @@ namespace Unity.QuickSearch
                     filterId = "$",
                     fetchItems = (context, items, provider) =>
                     {
-                        if (!context.searchBoxText.StartsWith(provider.filterId))
+                        if (!context.searchText.StartsWith(provider.filterId))
                             return;
 
                         items.Add(provider.CreateItem(GUID.Generate().ToString(), "Evaluate C# expression", context.searchQuery.Trim()));

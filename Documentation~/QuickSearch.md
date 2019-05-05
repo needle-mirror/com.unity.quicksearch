@@ -157,6 +157,10 @@ public class SearchProvider
     public IsItemValidHandler isItemValid;
     // Sub filter specific to this provider
     public List<NameId> subCategories;
+    // Called when QuickSearchWindow is opened allowing a provider to initialize search data.
+    public Action onEnable;
+    // Called when QuickSearchWindow is closed.
+    public Action onDisable;
 }
 ```
 
@@ -224,6 +228,40 @@ public struct SearchItem
 Only the `id` is necessary to be filled.
 
 When doing filtering according to  `SearchContext.searchText` we recommend using the static function `SearchProvider.MatchSearchGroup` which makes partial search (and eventually fuzzy search) easy (see example above).
+
+### Asynchronous Search Results
+
+If your search providers can take a long time to compute its results or rely on asynchronous search engine (ex: WebRequests) you can use the `context.sendAsyncItems` callback to populate search results asynchronously.
+
+The `SearchContext` also contains a `searchId` that needs to be provided with the call to `sendAsyncItems`. This allows QuickSearch to know for which search those results are provided.
+
+An example of using asynchronous search result would be:
+
+```CSharp
+new SearchProvider(type, displayName)
+{
+    filterId = "store:",
+    fetchItems = (context, items, provider) =>
+    {
+        var currentSearchRequest = UnityWebRequest.Get(url + context.searchQuery);
+        currentSearchRequest.SetRequestHeader("X-Unity-Session", InternalEditorUtility.GetAuthToken());
+        var currentSearchRequestOp = currentSearchRequest.SendWebRequest();
+        currentSearchRequestOp.completed += op => {
+ 
+            var items = // GetItems from websearch
+ 
+            // Notify the search about async items:
+            // ensure to set the searchId you are providing result for!
+            context.sendAsyncItems(context.searchId, items);
+        };
+    }
+};
+```
+
+The QuickSearch package contains 2 examples with async results:
+
+- `com.unity.quicksearch/Editor/Providers/Examples/AssetStoreProvider.cs` : which provide a way to query the asset store using WebRequest.
+- `com.unity.quicksearch/Editor/Providers/Examples/ESS.cs`: which creates a thread to start the EntrianSource search indexer to provide full text search for assets in your project.
 
 ### Registering an Action Handler
 

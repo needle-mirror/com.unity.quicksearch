@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -27,6 +28,7 @@ namespace Unity.QuickSearch
 
             internal static string[] typeFilter = new[]
             {
+                "Folder",
                 "DefaultAsset",
                 "AnimationClip",
                 "AudioClip",
@@ -45,6 +47,7 @@ namespace Unity.QuickSearch
                 "Sprite",
                 "Texture",
                 "VideoClip"
+                // TODO: Add in the settings a way to append to that list with user types.
             };
 
             internal static string[] areaFilter = new[]
@@ -53,64 +56,67 @@ namespace Unity.QuickSearch
                 "packages"
             };
 
-            internal static string[] extraFilter = new[]
-            {
-                "folders"
-            };
+            internal static string[] extraFilter = new string[] {};
 
+            private static readonly char[] k_InvalidIndexedChars = new char[] { '*', ':' };
             private static readonly char[] k_InvalidSearchFileChars = Path.GetInvalidFileNameChars().Where(c => c != '*').ToArray();
 
             [UsedImplicitly, SearchItemProvider]
             internal static SearchProvider CreateProvider()
             {
-                var provider = new SearchProvider(type, displayName)
+                FileEntryIndexer fileIndexer = SearchSettings.useFilePathIndexer ? new FileEntryIndexer(Application.dataPath) : null;
+
+                var provider = new SearchProvider(type, displayName + (SearchSettings.useFilePathIndexer ? " (Indexed)" : String.Empty))
                 {
                     priority = 25,
                     filterId = "p:",
+                    
                     fetchItems = (context, items, _provider) =>
                     {
                         var filter = context.searchQuery;
 
-                        // Check if folder should be filtered or not then remove the a: find tag
-                        bool findFolders = !context.categories.Any(c => c.name.displayName == "folders" && c.isEnabled == false);
-
-                        var areas = context.categories.GetRange(0, areaFilter.Length);
-
-                        if (areas.Any(c => !c.isEnabled))
+                        if (SearchSettings.useFilePathIndexer && fileIndexer != null && fileIndexer.IsReady())
                         {
-                            // Not all categories are enabled, so create a proper filter:
-                            filter = string.Join(" ", areas.Where(c => c.isEnabled).Select(c => c.name.id)) + " " + filter;
+                            if (filter.IndexOfAny(k_InvalidIndexedChars) == -1)
+                            {
+                                items.AddRange(fileIndexer.EnumerateFileIndexes(filter).Take(201).Select(fileIndexPath =>
+                                                    _provider.CreateItem("Assets/" + fileIndexPath, Path.GetFileName(fileIndexPath))));
+                                if (items.Count > 0)
+                                    return;
+                            }
                         }
 
-                        var nonTypeFilterCount = areaFilter.Length + extraFilter.Length;
-                        var types = context.categories.GetRange(nonTypeFilterCount, context.categories.Count - nonTypeFilterCount);
-                        if (types.Any(c => c.isEnabled))
+                        if (context.categories.Count > 0)
                         {
-                            if (types.Any(c => !c.isEnabled))
+                            var areas = context.categories.GetRange(0, areaFilter.Length);
+                            if (areas.Any(c => !c.isEnabled))
                             {
                                 // Not all categories are enabled, so create a proper filter:
-                                filter = string.Join(" ", types.Where(c => c.isEnabled).Select(c => c.name.id)) + " " + filter;
+                                filter = string.Join(" ", areas.Where(c => c.isEnabled).Select(c => c.name.id)) + " " + filter;
                             }
 
-                            items.AddRange(AssetDatabase.FindAssets(filter)
-                                                        .Select(AssetDatabase.GUIDToAssetPath)
-                                                        .Where(path => !AssetDatabase.IsValidFolder(path))
-                                                        .Take(1001)
-                                                        .Select(path => _provider.CreateItem(path, Path.GetFileName(path))));
+                            var nonTypeFilterCount = areaFilter.Length + extraFilter.Length;
+                            var types = context.categories.GetRange(nonTypeFilterCount, context.categories.Count - nonTypeFilterCount);
+                            if (types.Count == 0 || types.Any(c => c.isEnabled))
+                            {
+                                if (types.Any(c => !c.isEnabled))
+                                {
+                                    // Not all categories are enabled, so create a proper filter:
+                                    filter = string.Join(" ", types.Where(c => c.isEnabled).Select(c => c.name.id)) + " " + filter;
+                                }
+                            }
                         }
-                        
+
+                        items.AddRange(AssetDatabase.FindAssets(filter)
+                                                    .Select(AssetDatabase.GUIDToAssetPath)
+                                                    .Take(1001)
+                                                    .Select(path => _provider.CreateItem(path, Path.GetFileName(path))));
+
                         var safeFilter = string.Join("_", context.searchQuery.Split(k_InvalidSearchFileChars));
                         if (context.searchQuery.Contains('*'))
                         {
-                            items.AddRange(Directory.GetFiles(Application.dataPath, safeFilter, SearchOption.AllDirectories)
+                            items.AddRange(Directory.EnumerateFiles(Application.dataPath, safeFilter, SearchOption.AllDirectories)
                                 .Select(path => _provider.CreateItem(path.Replace(Application.dataPath, "Assets").Replace("\\", "/"), Path.GetFileName(path))));
-                        }
-
-                        if (findFolders)
-                        {
-                            items.AddRange(Directory.GetDirectories(Application.dataPath, safeFilter + "*", SearchOption.AllDirectories)
-                                                    .Select(path => _provider.CreateItem(path.Replace(Application.dataPath, "Assets").Replace("\\", "/"), Path.GetFileName(path))));
-                            
                         }
                     },
 
@@ -120,6 +126,7 @@ namespace Unity.QuickSearch
                             return item.id;
                         long fileSize = new FileInfo(item.id).Length;
                         item.description = $"{item.id} ({EditorUtility.FormatBytes(fileSize)})";
+
                         return item.description;
                     },
 
@@ -158,15 +165,18 @@ namespace Unity.QuickSearch
                     subCategories = new List<NameId>()
                 };
 
-                foreach (var subCat in areaFilter)
-                    provider.subCategories.Add(new NameId("a:" + subCat, subCat));
+                if (!SearchSettings.useFilePathIndexer)
+                {
+                    foreach (var subCat in areaFilter)
+                        provider.subCategories.Add(new NameId("a:" + subCat, subCat));
 
-                foreach (var subCat in extraFilter)
-                    provider.subCategories.Add(new NameId("special:" + subCat, subCat));
+                    foreach (var subCat in extraFilter)
+                        provider.subCategories.Add(new NameId("special:" + subCat, subCat));
 
-                // Type filter always need to be added last to the category list
-                foreach (var subCat in typeFilter)
-                    provider.subCategories.Add(new NameId("t:" + subCat, subCat));
+                    // Type filter always need to be added last to the category list
+                    foreach (var subCat in typeFilter)
+                        provider.subCategories.Add(new NameId("t:" + subCat, subCat));
+                }
 
                 return provider;
             }
@@ -193,7 +203,7 @@ namespace Unity.QuickSearch
                                 EditorApplication.delayCall += () =>
                                 {
                                     EditorWindow.FocusWindowIfItsOpen(Utils.GetProjectBrowserWindowType());
-                                    EditorGUIUtility.PingObject(asset);
+                                    EditorApplication.delayCall += () => EditorGUIUtility.PingObject(asset);
                                 };
                             }
                             else
@@ -218,7 +228,7 @@ namespace Unity.QuickSearch
             }
 
             #if UNITY_2019_1_OR_NEWER
-            [UsedImplicitly, Shortcut("Help/Quick Search/Assets", KeyCode.A, ShortcutModifiers.Alt | ShortcutModifiers.Shift)]
+            [UsedImplicitly, Shortcut("Help/Quick Search/Assets")]
             public static void PopQuickSearch()
             {
                 SearchService.Filter.ResetFilter(false);
