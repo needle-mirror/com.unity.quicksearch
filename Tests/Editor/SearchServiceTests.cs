@@ -22,7 +22,7 @@ internal class SearchServiceTests
     [Test]
     public void AssetProvider_FetchItems()
     {
-        var ctx = new SearchContext { searchText = "test" };
+        var ctx = new SearchContext { searchText = "test", wantsMore = true };
         Assert.AreEqual(0, ctx.searchId);
 
         var fetchedItems = SearchService.GetItems(ctx);

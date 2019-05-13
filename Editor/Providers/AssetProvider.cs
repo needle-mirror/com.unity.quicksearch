@@ -81,7 +81,7 @@ namespace Unity.QuickSearch
                             {
                                 items.AddRange(fileIndexer.EnumerateFileIndexes(filter).Take(201).Select(fileIndexPath =>
                                                     _provider.CreateItem("Assets/" + fileIndexPath, Path.GetFileName(fileIndexPath))));
-                                if (items.Count > 0)
+                                if (items.Count > 0 && !context.wantsMore)
                                     return;
                             }
                         }
@@ -225,6 +225,31 @@ namespace Unity.QuickSearch
                         handler = (item, context) => EditorUtility.RevealInFinder(item.id)
                     }
                 };
+            }
+
+            [UsedImplicitly]
+            class AssetRefreshWatcher : AssetPostprocessor
+            {
+                private static bool s_Enabled;
+                static AssetRefreshWatcher()
+                {
+                    EditorApplication.update += Enable;
+                }
+
+                private static void Enable()
+                {
+                    EditorApplication.update -= Enable;
+                    s_Enabled = true;
+                }
+
+                [UsedImplicitly]
+                static void OnPostprocessAllAssets(string[] importedAssets, string[] deletedAssets, string[] movedAssets, string[] movedFromAssetPaths)
+                {
+                    if (!s_Enabled)
+                        return;
+
+                    SearchService.RaiseContentRefreshed(importedAssets, deletedAssets.Concat(movedFromAssetPaths).Distinct().ToArray(), movedAssets);
+                }
             }
 
             #if UNITY_2019_1_OR_NEWER

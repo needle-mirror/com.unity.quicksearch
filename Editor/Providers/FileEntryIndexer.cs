@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
@@ -11,6 +12,7 @@ using JetBrains.Annotations;
 
 #if QUICKSEARCH_DEBUG
 using UnityEngine;
+using Debug = UnityEngine.Debug;
 #endif
 
 namespace Unity.QuickSearch
@@ -20,6 +22,7 @@ namespace Unity.QuickSearch
         class FileEntryIndexer
         {
             [Serializable]
+            [DebuggerDisplay("{key} - {length} - {fileIndex}")]
             struct WordIndexEntry
             {
                 public readonly int key;
@@ -62,6 +65,8 @@ namespace Unity.QuickSearch
             {
                 this.rootPath = rootPath.Replace('\\', '/');
                 CreateFileIndexerThread();
+
+                SearchService.contentRefreshed += UpdateIndexWithNewContent;
             }
 
             public bool IsReady()
@@ -114,7 +119,7 @@ namespace Unity.QuickSearch
                 using (new DebugTimer($"Load Index (<a>{indexFilePath}</a>)"))
                 #endif
                 {
-                    var indexStream = new FileStream(indexFilePath, FileMode.Open);
+                    var indexStream = new FileStream(indexFilePath, FileMode.Open, FileAccess.Read, FileShare.Read);
                     try
                     {
                         var indexReader = new BinaryReader(indexStream);
@@ -158,14 +163,14 @@ namespace Unity.QuickSearch
                 return entry.EndsWith(".meta");
             }
 
-            string[] SplitCamelCase(string source)
+            static string[] SplitCamelCase(string source)
             {
                 return Regex.Split(source, @"(?<!^)(?=[A-Z])");
             }
 
             private static string GetIndexFilePath(string basePath, bool temp = false)
             {
-                string indexFileName = "qs.index";
+                string indexFileName = "quicksearch.index";
                 if (temp)
                     indexFileName = "~" + indexFileName;
 
@@ -190,7 +195,7 @@ namespace Unity.QuickSearch
                         #endif
                         {
                             var tempIndexFilePath = GetIndexFilePath(saveIndexBasePath, true);
-                            var indexStream = new FileStream(tempIndexFilePath, FileMode.Create);
+                            var indexStream = new FileStream(tempIndexFilePath, FileMode.CreateNew, FileAccess.Write, FileShare.None);
                             BinaryWriter indexWriter = new BinaryWriter(indexStream);
                             indexWriter.Write(k_IndexFileVersion);
                             indexWriter.Write(saveIndexBasePath);
@@ -230,10 +235,7 @@ namespace Unity.QuickSearch
                 #endif
                 
                 #if QUICKSEARCH_DEBUG
-                int validItemCount = 0;
-                int totalComponentCount = 0, minComponentCount = int.MaxValue, maxComponentCount = 0;
-                int totalComponentLengthCount = 0, minComponentLengthCount = int.MaxValue, maxComponentLengthCount = 0;
-                using (new DebugTimer("Indexing file paths at " + basePath))
+                using (new DebugTimer($"Indexing file paths at <a>{basePath}</a>"))
                 #endif
                 {
                     string[] filePathEntries;
@@ -246,14 +248,34 @@ namespace Unity.QuickSearch
                         filePathEntries = Directory.GetFiles(basePath, "*.*", SearchOption.AllDirectories);
                     }
 
-                    var wordIndexes = new List<WordIndexEntry>(filePathEntries.Length * 3);
-                    for (int i = 0; i != filePathEntries.Length; ++i)
+                    var wordIndexes = BuildPartialIndex(basePathWithSlash, filePathEntries, ShouldSkipEntry);
+
+                    #if QUICKSEARCH_DEBUG
+                    using (new DebugTimer("Updating Index"))
+                    #endif
+                    {
+                        UpdateIndexes(filePathEntries, wordIndexes, basePath);
+                    }
+                }
+            }
+
+            private static List<WordIndexEntry> BuildPartialIndex(string basis, string[] entries, Func<string, bool> skipEntryHandler)
+            {
+                #if QUICKSEARCH_DEBUG
+                int validItemCount = 0;
+                int totalComponentCount = 0, minComponentCount = int.MaxValue, maxComponentCount = 0;
+                int totalComponentLengthCount = 0, minComponentLengthCount = int.MaxValue, maxComponentLengthCount = 0;
+                using (new DebugTimer($"Building index from {basis} with {entries.Length} entries"))
+                #endif
+                {
+                    var wordIndexes = new List<WordIndexEntry>(entries.Length * 3);
+                    for (int i = 0; i != entries.Length; ++i)
                     {
                         // Reformat entry to have them all uniformized.
-                        filePathEntries[i] = filePathEntries[i].Replace('\\', '/').Replace(basePathWithSlash, "");
+                        entries[i] = entries[i].Replace('\\', '/').Replace(basis, "");
 
-                        var path = filePathEntries[i];
-                        if (ShouldSkipEntry(path))
+                        var path = entries[i];
+                        if (skipEntryHandler(path))
                             continue;
 
                         var name = Path.GetFileNameWithoutExtension(path);
@@ -289,6 +311,7 @@ namespace Unity.QuickSearch
                     }
 
                     #if QUICKSEARCH_DEBUG
+                    var countBeforeUniqueness = wordIndexes.Count;
                     using (new DebugTimer("Index Sorting"))
                     #endif
                     {
@@ -296,22 +319,19 @@ namespace Unity.QuickSearch
                         wordIndexes.Sort(SortWordEntryComparer);
                     }
 
-                    #if QUICKSEARCH_DEBUG
-                    using (new DebugTimer("Ready Index"))
-                    #endif
-                    {
-                        UpdateIndexes(filePathEntries, wordIndexes.Distinct(), basePath);
-                    }
+
+                    wordIndexes = wordIndexes.Distinct().ToList();
 
                     #if QUICKSEARCH_DEBUG
-                    var countBeforeUniqueness = wordIndexes.Count;
-                    int wordCount = m_WordIndexEntries.Length;
+                    int wordCount = wordIndexes.Count;
                     int wordIndexesMemSize = System.Runtime.InteropServices.Marshal.SizeOf<WordIndexEntry>() * wordCount;
                     Debug.LogFormat(LogType.Log, LogOption.NoStacktrace, null, $"Word Indexes/File Count: {wordCount}(\u25B3{countBeforeUniqueness-wordCount})/{validItemCount}");
                     Debug.LogFormat(LogType.Log, LogOption.NoStacktrace, null, $"Word Indexes Mem. Size: {(wordIndexesMemSize / 1024.0 / 1024.0):N1} mb");
                     Debug.LogFormat(LogType.Log, LogOption.NoStacktrace, null, $"Word Indexes Avg/Min/Max Component Count: {(totalComponentCount/(double)validItemCount):N3}/{minComponentCount}/{maxComponentCount}");
                     Debug.LogFormat(LogType.Log, LogOption.NoStacktrace, null, $"Word Indexes Avg/Min/Max Length Count: {(totalComponentLengthCount/(double)totalComponentCount):N3}/{minComponentLengthCount}/{maxComponentLengthCount}(capped at {k_MaxIndexCharVariation})");
                     #endif
+
+                    return wordIndexes;
                 }
             }
 
@@ -354,6 +374,87 @@ namespace Unity.QuickSearch
                 } while (foundIndex < m_WordIndexEntries.Length && m_WordIndexEntries[foundIndex].key == key && m_WordIndexEntries[foundIndex].length == length);
 
                 return fileIndexes.ToArray();
+            }
+
+            private void UpdateIndexWithNewContent(string[] updated, string[] removed, string[] moved)
+            {
+                if (!m_IndexReady)
+                    return;
+
+                const string k_RootFolder = "Assets/";
+
+                #if QUICKSEARCH_DEBUG
+                using( new DebugTimer("Refreshing index" +
+                                      $"\r\nUpdated:\t {String.Join("\r\n\t", updated)}" +
+                                      $"\r\nRemoved: {String.Join("\r\n\t", removed)}" +
+                                      $"\r\nMoved: {String.Join("\r\n\t", moved)}\r\n"))
+                #endif
+                {
+                    var basePath = rootPath;
+                    var basePathWithSlash = basePath + "/";
+
+                    lock (this)
+                    {
+                        List<string> entries = null;
+                        List<WordIndexEntry> words = null;
+
+                        // Filter already know entries.
+                        updated = updated.Where(u => u.StartsWith(k_RootFolder))
+                                         .Select(u => u.Replace(k_RootFolder, ""))
+                                         .Where(u => Array.FindIndex(m_FilePathEntries, e => e == u) == -1).ToArray();
+
+                        bool updateIndex = false;
+                        if (updated.Length > 0)
+                        {
+                            entries = new List<string>(m_FilePathEntries);
+                            words = new List<WordIndexEntry>(m_WordIndexEntries);
+
+                            var wiec = new WordIndexEntryComparer();
+                            var partialIndex = BuildPartialIndex(basePathWithSlash, updated.ToArray(), ShouldSkipEntry);
+
+                            // Update entry file indexes
+                            for (int i = 0; i < partialIndex.Count; ++i)
+                            {
+                                var pk = partialIndex[i];
+                                var updatedEntry = updated[pk.fileIndex];
+                                var matchedFileIndex = entries.FindIndex(e => e == updatedEntry);
+                                if (matchedFileIndex == -1)
+                                {
+                                    entries.Add(updatedEntry);
+                                    matchedFileIndex = entries.Count - 1;
+                                }
+
+                                var newWordIndex = new WordIndexEntry(pk.key, pk.length, matchedFileIndex);
+                                var insertIndex = words.BinarySearch(newWordIndex, wiec);
+                                if (insertIndex > -1)
+                                    words.Insert(insertIndex, newWordIndex);
+                                else
+                                    words.Insert(~insertIndex, newWordIndex);
+                            }
+
+                            updateIndex = true;
+                        }
+
+                        // Remove items
+                        removed = removed.Where(u => u.StartsWith(k_RootFolder)).Select(u => u.Replace(k_RootFolder, "")).ToArray();
+                        if (removed.Length > 0)
+                        {
+                            entries = entries ?? new List<string>(m_FilePathEntries);
+                            words = words ?? new List<WordIndexEntry>(m_WordIndexEntries);
+
+                            for (int i = 0; i < removed.Length; ++i)
+                            {
+                                var entryToBeRemoved = removed[i];
+                                var entryIndex = entries.FindIndex(e => e == entryToBeRemoved);
+                                if (entryIndex > -1)
+                                    updateIndex |= words.RemoveAll(w => w.fileIndex == entryIndex) > 0;
+                            }
+                        }
+
+                        if (updateIndex)
+                            UpdateIndexes(entries.ToArray(), words);
+                    }
+                }
             }
         }
     }

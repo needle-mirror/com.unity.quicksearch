@@ -47,6 +47,9 @@ namespace Unity.QuickSearch
 
                     fetchItems = (context, items, provider) =>
                     {
+                        if (gods == null)
+                            return;
+
                         var sq = context.searchQuery.ToLowerInvariant();
 
                         int addedCount = 0;
@@ -57,6 +60,8 @@ namespace Unity.QuickSearch
                                 continue;
 
                             var go = gods[i].gameObject;
+                            if (!go)
+                                continue;
                             var gameObjectId = go.GetInstanceID().ToString();
                         
                             items.Add(provider.CreateItem(gameObjectId, $"{go.name} ({gameObjectId})", null));
@@ -102,7 +107,19 @@ namespace Unity.QuickSearch
                             DragAndDrop.StartDrag("Drag scene object");
                         }
                     };
+
+                    trackSelection = (item, context) => PingItem(item);
                 }
+            }
+
+            private static bool PingItem(SearchItem item)
+            {
+                var obj = ObjectFromItem(item);
+                if (obj == null)
+                    return false;
+                Selection.activeGameObject = obj;
+                EditorGUIUtility.PingObject(obj);
+                return true;
             }
 
             internal static string type = "scene";
@@ -118,16 +135,12 @@ namespace Unity.QuickSearch
             {
                 return new SearchAction[]
                 {
-                    new SearchAction(type, "select", null, "Select object in scene...") {
+                    new SearchAction(type, "select", null, "Select object in scene...")
+                    {
                         handler = (item, context) =>
                         {
-                            var obj = ObjectFromItem(item);
-                            if (obj != null)
-                            {
-                                Selection.activeGameObject = obj;
-                                EditorGUIUtility.PingObject(obj);
+                            if (PingItem(item))
                                 SceneView.lastActiveSceneView.FrameSelected();
-                            }
                         }
                     }
                 };

@@ -196,12 +196,6 @@ namespace Unity.QuickSearch
 
             return version ?? "unknown";
         }
-
-        [MenuItem("Tools/packageMe")]
-        internal static void TestMe()
-        {
-            
-        }
     }
 
     internal struct DebugTimer : IDisposable

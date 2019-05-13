@@ -131,8 +131,10 @@ namespace Unity.QuickSearch
                         handler = (item, context) =>
                         {
                             var essmi = (ESSMatchInfo)item.data;
-                            #if UNITY_2019_2_OR_NEWER
+                            #if UNITY_2019_3_OR_NEWER
                             CodeEditor.CodeEditor.CurrentEditor.OpenProject(essmi.path, essmi.lineNumber);
+                            #elif UNITY_2019_2_OR_NEWER
+                            UnityEditorInternal.InternalEditorUtility.OpenFileAtLineExternal(essmi.path, essmi.lineNumber, -1);
                             #else
                             UnityEditorInternal.InternalEditorUtility.OpenFileAtLineExternal(essmi.path, essmi.lineNumber);
                             #endif

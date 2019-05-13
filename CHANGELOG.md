@@ -1,3 +1,13 @@
+## [1.1.0-preview.1] - 2019-05-14
+- Add a switch to let search provider fetch more results if requested (e.g. `SearchContext.wantsMore`)
+- Add selection tracking to the `SearchProvider` API.
+- Fix search item caching.
+- Improve quick search debouncing when typing.
+- Ping scene objects when the selection changes to a scene provider search item in the Quick Search window.
+- Track project changes so search provider can refresh themselve.
+- Update file indexes when the project content changes.
+- Update UI for Northstar retheming.
+  
 ## [1.0.9-preview.2] - 2019-05-06
 - Add editor analytics
 - Add fast indexing of the project assets file system.

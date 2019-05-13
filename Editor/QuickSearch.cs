@@ -1,4 +1,4 @@
-// #define QUICKSEARCH_DEBUG
+//#define QUICKSEARCH_DEBUG
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -8,308 +8,17 @@ using UnityEditor;
 using UnityEditor.ShortcutManagement;
 using UnityEngine;
 
-#if QUICKSEARCH_DEBUG
-using UnityEditorInternal;
-#endif
-
 namespace Unity.QuickSearch
 {
-    internal class FilterWindow : EditorWindow
-    {
-        private static class Styles
-        {
-            public static Vector2 windowSize = new Vector2(250, 250);
-            public static readonly GUIStyle filterHeader = new GUIStyle(EditorStyles.boldLabel)
-            {
-                name = "quick-search-filter-header",
-                margin = new RectOffset(4, 4, 3, 2)
-            };
-
-            public static readonly GUIStyle filterTimeLabel = new GUIStyle(EditorStyles.miniLabel)
-            {
-                name = "quick-search-filter-time-label",
-                fixedWidth = 50,
-                alignment = TextAnchor.MiddleRight,
-                #if UNITY_2019_1_OR_NEWER
-                margin = new RectOffset(0, 0, 1, 1),
-                #else
-                margin = new RectOffset(0, 0, 2, 1),
-                #endif
-                fontSize = Math.Max(filterHeader.fontSize - 2, 9),
-                fontStyle = FontStyle.Italic,
-                normal = new GUIStyleState { textColor = EditorStyles.helpBox.normal.textColor }
-            };
-
-            public static readonly GUIStyle filterTimeLongLabel = new GUIStyle(filterTimeLabel)
-            {
-                name = "quick-search-filter-time-long-label",
-                normal = new GUIStyleState() { textColor = Color.red }
-            };
-
-            public static readonly GUIStyle filterToggle = new GUIStyle("Toggle")
-            {
-                name = "quick-search-filter-toggle",
-                margin = new RectOffset(4, 4, 2, 1)
-            };
-
-            public static readonly GUIStyle filterEntry = new GUIStyle(EditorStyles.label) { name = "quick-search-filter-entry" };
-            public static readonly GUIStyle panelBorder = new GUIStyle("grey_border") { name = "quick-search-filter-panel-border" };
-            public static readonly GUIStyle filterExpanded = new GUIStyle("IN Foldout")
-            {
-                name = "quick-search-filter-expanded",
-                margin = new RectOffset(1, 1, 2, 0)
-            };
-            public static readonly GUIStyle separator = new GUIStyle("sv_iconselector_sep")
-            {
-                margin = new RectOffset(1, 1, 0, 0)
-            };
-
-            public static float foldoutIndent = filterExpanded.fixedWidth + 6;
-        }
-
-        public QuickSearchTool quickSearchTool;
-
-        private Vector2 m_ScrollPos;
-        private int m_ToggleFilterFocusIndex = 1;
-        private int m_ToggleFilterNextIndex = 0;
-        private int m_ToggleFilterCount = 0;
-        private int m_ExpandToggleIndex = -1;
-
-        internal static double s_CloseTime;
-        internal static bool canShow
-        {
-            get
-            {
-                if (EditorApplication.timeSinceStartup - s_CloseTime < 0.250)
-                    return false;
-                return true;
-            }
-        }
-
-        public static bool ShowAtPosition(QuickSearchTool quickSearchTool, Rect rect)
-        {
-            var screenPos = GUIUtility.GUIToScreenPoint(new Vector2(rect.x, rect.y));
-            var screenRect = new Rect(screenPos, rect.size);
-            var filterWindow = ScriptableObject.CreateInstance<FilterWindow>();
-            filterWindow.quickSearchTool = quickSearchTool;
-            filterWindow.ShowAsDropDown(screenRect, Styles.windowSize);
-            return true;
-        }
-
-        [UsedImplicitly]
-        internal void OnDestroy()
-        {
-            s_CloseTime = EditorApplication.timeSinceStartup;
-            if (SearchService.Filter.providerFilters.All(desc => !desc.entry.isEnabled))
-            {
-                Debug.LogWarning("All filters are disabled. Loading last used filters.");
-                SearchService.LoadSettings();
-            }
-        }
-
-        [UsedImplicitly]
-        internal void OnGUI()
-        {
-            if (Event.current.type == EventType.KeyDown && Event.current.keyCode == KeyCode.Escape)
-            {
-                Close();
-                if (quickSearchTool)
-                    quickSearchTool.Focus();
-                return;
-            }
-
-            HandleKeyboardNavigation();
-
-            m_ToggleFilterNextIndex = 0;
-
-            GUI.Box(new Rect(0, 0, position.width, position.height), GUIContent.none, Styles.panelBorder);
-            DrawHeader();
-            GUILayout.Label(GUIContent.none, Styles.separator);
-
-            m_ScrollPos = GUILayout.BeginScrollView(m_ScrollPos);
-             
-            foreach (var providerDesc in SearchService.Filter.providerFilters.OrderBy(f => f.priority))
-            {
-                DrawSectionHeader(providerDesc);
-                if (providerDesc.isExpanded)
-                    DrawSubCategories(providerDesc);
-            }
-
-            m_ToggleFilterCount = m_ToggleFilterNextIndex;
-
-            GUILayout.EndScrollView();
-        }
-
-        private void HandleKeyboardNavigation()
-        {
-            if (Event.current.type == EventType.KeyDown && Event.current.keyCode == KeyCode.UpArrow)
-            {
-
-                m_ToggleFilterFocusIndex = Math.Max(0, m_ToggleFilterFocusIndex-1);
-                Event.current.Use();
-            }
-            else if (Event.current.type == EventType.KeyDown && Event.current.keyCode == KeyCode.DownArrow)
-            {
-                m_ToggleFilterFocusIndex = Math.Min(m_ToggleFilterFocusIndex+1, m_ToggleFilterCount-1);
-                Event.current.Use();
-            }
-            else if (Event.current.type == EventType.KeyDown && (Event.current.keyCode == KeyCode.LeftArrow || Event.current.keyCode == KeyCode.RightArrow))
-            {
-                m_ExpandToggleIndex = m_ToggleFilterFocusIndex;
-                Event.current.Use();
-            }
-
-            GUI.FocusControl($"Box_{m_ToggleFilterFocusIndex}");
-        }
-
-        private void DrawHeader()
-        {
-            GUILayout.BeginHorizontal();
-            GUILayout.Label("Search Providers", Styles.filterHeader);
-            GUILayout.FlexibleSpace();
-            EditorGUI.BeginChangeCheck();
-            GUI.SetNextControlName($"Box_{m_ToggleFilterNextIndex++}");
-            bool isEnabled = GUILayout.Toggle(SearchService.Filter.providerFilters.All(p => p.entry.isEnabled), "", Styles.filterToggle, GUILayout.ExpandWidth(false));
-            if (EditorGUI.EndChangeCheck())
-            {
-                foreach (var provider in SearchService.Filter.providerFilters)
-                {
-                    SearchService.Filter.SetFilter(isEnabled, provider.entry.name.id);
-                }
-                quickSearchTool.Refresh();
-            }
-
-            GUILayout.EndHorizontal();
-        }
-
-        private void DrawSectionHeader(SearchFilter.ProviderDesc desc)
-        {
-            GUILayout.BeginHorizontal();
-
-            if (desc.categories.Count > 0)
-            {
-                EditorGUI.BeginChangeCheck();
-                if (m_ExpandToggleIndex == m_ToggleFilterNextIndex && 
-                    (Event.current.type == EventType.Repaint || Event.current.type == EventType.Layout))
-                {
-                    desc.isExpanded = !desc.isExpanded;
-                    GUI.changed = true;
-                    m_ExpandToggleIndex = -1;
-                }
-                bool isExpanded = GUILayout.Toggle(desc.isExpanded, "", Styles.filterExpanded);
-                if (EditorGUI.EndChangeCheck())
-                {
-                    SearchService.Filter.SetExpanded(isExpanded, desc.entry.name.id);
-                }
-            }
-            else
-            {
-                GUILayout.Space(Styles.foldoutIndent);
-            }
-
-            GUILayout.Label(desc.entry.name.displayName, Styles.filterHeader);
-            GUILayout.FlexibleSpace();
-            if (desc.provider != null)
-            {
-                var avgTime = desc.provider.avgTime;
-                if (avgTime > 0.99)
-                    GUILayout.Label(avgTime.ToString("0.#") + " ms", avgTime < 25.0 ? Styles.filterTimeLabel : Styles.filterTimeLongLabel);
-            }
-
-            EditorGUI.BeginChangeCheck();
-            GUI.SetNextControlName($"Box_{m_ToggleFilterNextIndex++}");
-            bool isEnabled = GUILayout.Toggle(desc.entry.isEnabled, "", Styles.filterToggle, GUILayout.ExpandWidth(false));
-            if (EditorGUI.EndChangeCheck())
-            {
-                SearchService.Filter.SetFilter(isEnabled, desc.entry.name.id);
-                quickSearchTool.Refresh();
-            }
-
-            GUILayout.EndHorizontal();
-        }
-
-        private void DrawSubCategories(SearchFilter.ProviderDesc desc)
-        {
-            foreach (var cat in desc.categories)
-            {
-                GUILayout.BeginHorizontal();
-                GUILayout.Space(Styles.foldoutIndent + 5);
-                GUILayout.Label(cat.name.displayName, Styles.filterEntry);
-                GUILayout.FlexibleSpace();
-
-                EditorGUI.BeginChangeCheck();
-                GUI.SetNextControlName($"Box_{m_ToggleFilterNextIndex++}");
-                bool isEnabled = GUILayout.Toggle(cat.isEnabled, "", Styles.filterToggle);
-                if (EditorGUI.EndChangeCheck())
-                {
-                    SearchService.Filter.SetFilter(isEnabled, desc.entry.name.id, cat.name.id);
-                    quickSearchTool.Refresh();
-                }
-
-                GUILayout.EndHorizontal();
-            }
-        }
-    }
-
-    public static class Icons
-    {
-        public static string iconFolder = "Packages/com.unity.quicksearch/Editor/Icons";
-        public static Texture2D shortcut = (Texture2D)EditorGUIUtility.Load($"{iconFolder}/shortcut.png");
-        public static Texture2D quicksearch = (Texture2D)EditorGUIUtility.Load($"{iconFolder}/quicksearch.png");
-        public static Texture2D filter = (Texture2D)EditorGUIUtility.Load($"{iconFolder}/filter.png");
-        public static Texture2D settings = (Texture2D)EditorGUIUtility.Load($"{iconFolder}/settings.png");
-        public static Texture2D search = (Texture2D)EditorGUIUtility.Load($"{iconFolder}/search.png");
-        public static Texture2D clear = (Texture2D)EditorGUIUtility.Load($"{iconFolder}/clear.png");
-        public static Texture2D more = (Texture2D)EditorGUIUtility.Load($"{iconFolder}/more.png");
-        public static Texture2D store = (Texture2D)EditorGUIUtility.Load($"{iconFolder}/store.png");
-
-        static Icons()
-        {
-            if (EditorGUIUtility.isProSkin)
-            {
-                shortcut = LightenTexture(shortcut);
-                quicksearch = LightenTexture(quicksearch);
-                filter = LightenTexture(filter);
-                settings = LightenTexture(settings);
-                search = LightenTexture(search);
-                clear = LightenTexture(clear);
-                more = LightenTexture(more);
-                store = LightenTexture(store);
-            }
-        }
-
-        private static Texture2D LightenTexture(Texture2D texture)
-        {
-            Texture2D outTexture = new Texture2D(texture.width, texture.height);
-            var outColorArray = outTexture.GetPixels();
-
-            var colorArray = texture.GetPixels();
-            for (var i = 0; i < colorArray.Length; ++i)
-                outColorArray[i] = LightenColor(colorArray[i]);
-
-            outTexture.hideFlags = HideFlags.HideAndDontSave;
-            outTexture.SetPixels(outColorArray);
-            outTexture.Apply();
-
-            return outTexture;
-        }
-
-        public static Color LightenColor(Color color)
-        {
-            Color.RGBToHSV(color, out var h, out _, out _);
-            var outColor = Color.HSVToRGB((h + 0.5f) % 1, 0f, 0.8f);
-            outColor.a = color.a;
-            return outColor;
-        }
-    }
-
     internal class QuickSearchTool : EditorWindow
     {
         public static EditorWindow s_FocusedWindow;
 
+        private const int k_ResetSelectionIndex = -1;
+
         [SerializeField] private Vector2 m_ScrollPosition;
         [SerializeField] public EditorWindow lastFocusedWindow;
-        [SerializeField] private int m_SelectedIndex = -1;
+        [SerializeField] private int m_SelectedIndex = k_ResetSelectionIndex;
         [SerializeField] private bool m_SaveStateOnExit = true;
 
         private bool m_SendAnalyticsEvent;
@@ -328,6 +37,8 @@ namespace Unity.QuickSearch
         private bool m_ShowFilterWindow = false;
         private SearchAnalytics.SearchEvent m_CurrentSearchEvent;
         private double m_DebounceTime = 0.0;
+
+        private float m_Height = 0;
 
         private const string k_QuickSearchBoxName = "QuickSearchBox";
 
@@ -371,28 +82,29 @@ namespace Unity.QuickSearch
             private static readonly Color lightColor6 = new Color(214 / 255f, 214 / 255f, 214 / 255f);
             private static readonly Color lightColor7 = new Color(230 / 255f, 230 / 255f, 230 / 255f);
 
+
+            #if !UNITY_2019_3_OR_NEWER
             private static readonly Color darkSelectedRowColor = new Color(61 / 255f, 96 / 255f, 145 / 255f);
             private static readonly Color lightSelectedRowColor = new Color(61 / 255f, 128 / 255f, 223 / 255f);
-
             private static readonly Texture2D alternateRowBackgroundImage = GenerateSolidColorTexture(hasPro ? darkColor1 : lightColor1);
             private static readonly Texture2D selectedRowBackgroundImage = GenerateSolidColorTexture(hasPro ? darkSelectedRowColor : lightSelectedRowColor);
             private static readonly Texture2D selectedHoveredRowBackgroundImage = GenerateSolidColorTexture(hasPro ? darkColor2 : lightColor2);
             private static readonly Texture2D hoveredRowBackgroundImage = GenerateSolidColorTexture(hasPro ? darkColor3 : lightColor3);
+            #endif
+
             private static readonly Texture2D buttonPressedBackgroundImage = GenerateSolidColorTexture(hasPro ? darkColor4 : lightColor4);
             private static readonly Texture2D buttonHoveredBackgroundImage = GenerateSolidColorTexture(hasPro ? darkColor5 : lightColor5);
 
             private static readonly Texture2D searchFieldBg = GenerateSolidColorTexture(hasPro ? darkColor6 : lightColor6);
             private static readonly Texture2D searchFieldFocusBg = GenerateSolidColorTexture(hasPro ? darkColor7 : lightColor7);
 
-            public static string s_Helpme = @"Search anything!
-
-- Alt + Up/Down Arrow: Search history
-- Alt + Left: Filter
-- Alt + Right: Actions menu
-- Enter: Default action
-- Alt + Enter: Secondary action
-- Drag items around
-";
+            public const string s_Helpme = "Search anything!\r\n\r\n" +
+                                           "- Alt + Up/Down Arrow: Search history\r\n" +
+                                           "- Alt + Left: Filter\r\n" +
+                                           "- Alt + Right: Actions menu\r\n" +
+                                           "- Enter: Default action\r\n" +
+                                           "- Alt + Enter: Secondary action\r\n" +
+                                           "- Drag items around\r\n";
 
             public static readonly GUIStyle panelBorder = new GUIStyle("grey_border")
             {
@@ -410,20 +122,28 @@ namespace Unity.QuickSearch
                 margin = marginNone,
                 padding = defaultPadding,
 
+                #if !UNITY_2019_3_OR_NEWER
                 hover = new GUIStyleState { background = hoveredRowBackgroundImage, scaledBackgrounds = new[] { hoveredRowBackgroundImage } }
+                #endif
             };
 
             public static readonly GUIStyle itemBackground2 = new GUIStyle(itemBackground1)
             {
                 name = "quick-search-item-background2",
+
+                #if !UNITY_2019_3_OR_NEWER
                 normal = new GUIStyleState { background = alternateRowBackgroundImage, scaledBackgrounds = new[] { alternateRowBackgroundImage } }
+                #endif
             };
 
             public static readonly GUIStyle selectedItemBackground = new GUIStyle(itemBackground1)
             {
                 name = "quick-search-item-selected-background",
+
+                #if !UNITY_2019_3_OR_NEWER
                 normal = new GUIStyleState { background = selectedRowBackgroundImage, scaledBackgrounds = new[] { selectedRowBackgroundImage } },
                 hover = new GUIStyleState { background = selectedHoveredRowBackgroundImage, scaledBackgrounds = new[] { selectedHoveredRowBackgroundImage } }
+                #endif
             };
 
             public static readonly GUIStyle preview = new GUIStyle
@@ -592,11 +312,10 @@ namespace Unity.QuickSearch
             lastFocusedWindow = s_FocusedWindow;
             UpdateWindowTitle();
 
-            m_SelectedIndex = -1;
-            m_FilteredItems = null;
-            m_ScrollPosition.y = 0;
+            Refresh();
 
             SearchService.asyncItemReceived += OnAsyncItemsReceived;
+            //SearchService.contentRefreshed += (a, b, c) => Refresh();
         }
 
         private void OnAsyncItemsReceived(IEnumerable<SearchItem> items)
@@ -642,6 +361,9 @@ namespace Unity.QuickSearch
         [UsedImplicitly]
         internal void OnGUI()
         {
+            if (m_Height != position.height)
+                OnResize();
+
             HandleKeyboardNavigation(m_Context);
 
             if (!SearchSettings.useDockableWindow)
@@ -664,13 +386,50 @@ namespace Unity.QuickSearch
                 m_SearchBoxFocus = true;
         }
 
+        internal void OnResize()
+        {
+            if (m_Height > 0 && m_ScrollPosition.y > 0)
+                m_ScrollPosition.y -= position.height - m_Height;
+            m_Height = position.height;
+        }
+
         public void Refresh()
         {
             m_FilteredItems = SearchService.GetItems(m_Context);
-            m_SelectedIndex = -1;
-            m_ScrollPosition.y = 0;
+            SetSelection(k_ResetSelectionIndex);
             UpdateWindowTitle();
             Repaint();
+        }
+
+        private int SetSelection(int selection)
+        {
+            var previousSelection = m_SelectedIndex;
+            m_SelectedIndex = Math.Max(-1, Math.Min(selection, m_FilteredItems.Count - 1));
+            if (m_SelectedIndex == k_ResetSelectionIndex)
+                m_ScrollPosition.y = 0;
+            if (previousSelection != m_SelectedIndex)
+                RaiseSelectionChanged(previousSelection, m_SelectedIndex);
+            return m_SelectedIndex;
+        }
+
+        private void RaiseSelectionChanged(int previousSelection, int currentSelection)
+        {
+            if (currentSelection == -1)
+                return;
+            
+            EditorApplication.delayCall += () => TrackSelection(currentSelection);
+        }
+
+        private void TrackSelection(int currentSelection)
+        {
+            if (m_FilteredItems == null || m_FilteredItems.Count == 0)
+                return;
+
+            var selectedItem = m_FilteredItems[currentSelection];
+            if (selectedItem.provider == null || selectedItem.provider.trackSelection == null)
+                return;
+
+            selectedItem.provider.trackSelection(selectedItem, m_Context);
         }
 
         private void UpdateFocusControlState()
@@ -712,7 +471,7 @@ namespace Unity.QuickSearch
                     }
                     else
                     {
-                        m_SelectedIndex = Math.Min(m_SelectedIndex + 1, m_FilteredItems.Count - 1);
+                        SetSelection(m_SelectedIndex + 1);
                         Event.current.Use();
                     }
                 }
@@ -720,8 +479,7 @@ namespace Unity.QuickSearch
                 {
                     if (m_SelectedIndex >= 0)
                     {
-                        m_SelectedIndex = Math.Max(-1, m_SelectedIndex - 1);
-                        if (m_SelectedIndex == -1)
+                        if (SetSelection(m_SelectedIndex - 1) == k_ResetSelectionIndex)
                             m_SearchBoxFocus = true;
                         Event.current.Use();
                     }
@@ -734,12 +492,12 @@ namespace Unity.QuickSearch
                 }
                 else if (evt.keyCode == KeyCode.PageDown)
                 {
-                    m_SelectedIndex = Math.Min(m_SelectedIndex + GetDisplayItemCount() - 1, m_FilteredItems.Count - 1);
+                    SetSelection(m_SelectedIndex + GetDisplayItemCount() - 1);
                     Event.current.Use();
                 }
                 else if (evt.keyCode == KeyCode.PageUp)
                 {
-                    m_SelectedIndex = Math.Max(0, m_SelectedIndex - GetDisplayItemCount());
+                    SetSelection(m_SelectedIndex - GetDisplayItemCount());
                     Event.current.Use();
                 }
                 else if (evt.keyCode == KeyCode.RightArrow && evt.modifiers.HasFlag(EventModifiers.Alt))
@@ -824,7 +582,7 @@ namespace Unity.QuickSearch
                 var clickedItemIndex = (int)(Event.current.mousePosition.y / Styles.itemRowHeight);
                 if (clickedItemIndex >= 0 && clickedItemIndex < itemTotalCount)
                 {
-                    m_SelectedIndex = clickedItemIndex;
+                    SetSelection(clickedItemIndex);
                     if ((EditorApplication.timeSinceStartup - m_ClickTime) < 0.2)
                     {
                         var item = m_FilteredItems.ElementAt(m_SelectedIndex);
@@ -885,7 +643,14 @@ namespace Unity.QuickSearch
                         #if QUICKSEARCH_DEBUG
                         catch (Exception ex)
                         {
-                            Debug.LogError($"m_FilteredItems.Count={m_FilteredItems.Count}, itemSkipCount={itemSkipCount}, limitCount={limitCount}, m_SelectedIndex={m_SelectedIndex}");
+                            Debug.LogError($"itemCount={itemCount}, " +
+                                           $"itemSkipCount={itemSkipCount}, " +
+                                           $"limitCount={limitCount}, " +
+                                           $"availableHeight={availableHeight}, " +
+                                           $"itemDisplayCount={itemDisplayCount}, " +
+                                           $"m_SelectedIndex={m_SelectedIndex}, " +
+                                           $"m_ScrollViewOffset.yMax={m_ScrollViewOffset.yMax}, " +
+                                           $"rowIndex={rowIndex-1}");
                             Debug.LogException(ex);
                         }
                         #else
@@ -1046,9 +811,7 @@ namespace Unity.QuickSearch
 
                 if (EditorGUI.EndChangeCheck() || m_FilteredItems == null)
                 {
-                    m_SelectedIndex = -1;
-                    m_ScrollPosition.y = 0;
-
+                    SetSelection(k_ResetSelectionIndex);
                     DebouncedRefresh();
                 }
 
@@ -1062,13 +825,16 @@ namespace Unity.QuickSearch
         private void DebouncedRefresh()
         {
             var currentTime = EditorApplication.timeSinceStartup;
-            if (currentTime - m_DebounceTime > 0.100)
+            if (m_DebounceTime != 0 && currentTime - m_DebounceTime > 0.100)
             {
                 Refresh();
-                m_DebounceTime = currentTime;
+                m_DebounceTime = 0;
             }
             else
             {
+                if (m_DebounceTime == 0)
+                    m_DebounceTime = currentTime;
+
                 #if QUICKSEARCH_DEBUG
                 Debug.LogFormat(LogType.Log, LogOption.NoStacktrace, null, "Debouncing {0}", m_Context.searchText);
                 #endif

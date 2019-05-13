@@ -1,15 +1,15 @@
 // #define QUICKSEARCH_DEBUG
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using JetBrains.Annotations;
 using UnityEditor;
 using UnityEngine;
 
 #if QUICKSEARCH_DEBUG
 using System.Reflection;
-using Debug = System.Diagnostics.Debug;
+using Debug = UnityEngine.Debug;
 #endif
 
 namespace Unity.QuickSearch
@@ -18,6 +18,7 @@ namespace Unity.QuickSearch
     public delegate string DescriptionHandler(SearchItem item, SearchContext context);
     public delegate void ActionHandler(SearchItem item, SearchContext context);
     public delegate void StartDragHandler(SearchItem item, SearchContext context);
+    public delegate void TrackSelectionHandler(SearchItem item, SearchContext context);
     public delegate bool EnabledHandler(SearchItem item, SearchContext context);
     public delegate void GetItemsHandler(SearchContext context, List<SearchItem> items, SearchProvider provider);
     public delegate bool IsItemValidHandler(SearchItem item);
@@ -45,7 +46,7 @@ namespace Unity.QuickSearch
         public EnabledHandler isEnabled;
     }
 
-    public struct SearchItem : IEqualityComparer<SearchItem>
+    public class SearchItem : IEqualityComparer<SearchItem>
     {
         // Unique id of this item among this provider items.
         public string id;
@@ -352,6 +353,8 @@ namespace Unity.QuickSearch
         public PreviewHandler fetchThumbnail;
         // If implemented, it means the item supports drag. It is up to the SearchProvider to properly setup the DragAndDrop manager.
         public StartDragHandler startDrag;
+        // Called when the selection changed and can be tracked.
+        public TrackSelectionHandler trackSelection;
         // MANDATORY: Handler to get items for a given search context. 
         public GetItemsHandler fetchItems;
         // List of subfilters that will be visible in the FilterWindow for a given SearchProvider (see AssetProvider for an example).
@@ -384,8 +387,12 @@ namespace Unity.QuickSearch
         public string[] textFilters;
         // All sub categories related to this provider and their enabled state.
         public List<SearchFilter.Entry> categories;
+        // Mark the number of item found after running the search.
         public int totalItemCount;
+        // Editor window that initiated the search
         public EditorWindow focusedWindow;
+        // Indicates if the search should return results as many as possible.
+        public bool wantsMore;
 
         // Async search information
         // Unique id of this search.
@@ -453,6 +460,7 @@ namespace Unity.QuickSearch
 
         public static SearchFilter Filter { get; private set; }
         public static event Action<IEnumerable<SearchItem>> asyncItemReceived;
+        public static event Action<string[], string[], string[]> contentRefreshed;
 
         static SearchService()
         {
@@ -748,5 +756,40 @@ namespace Unity.QuickSearch
             var filter = FilterToString();
             EditorPrefs.SetString(k_FilterPrefKey, filter);
         }
+
+        #region Refresh search content event
+        private static double s_BatchElapsedTime;
+        private static string[] s_UpdatedItems = new string[0];
+        private static string[] s_RemovedItems = new string[0];
+        private static string[] s_MovedItems = new string[0];
+        internal static void RaiseContentRefreshed(IEnumerable<string> updated, IEnumerable<string> removed, IEnumerable<string> moved)
+        {
+            s_UpdatedItems = s_UpdatedItems.Concat(updated).Distinct().ToArray();
+            s_RemovedItems = s_RemovedItems.Concat(removed).Distinct().ToArray();
+            s_MovedItems = s_MovedItems.Concat(moved).Distinct().ToArray();
+
+            RaiseContentRefreshed();
+        }
+
+        private static void RaiseContentRefreshed()
+        {
+            var currentTime = EditorApplication.timeSinceStartup;
+            if (s_BatchElapsedTime != 0 && currentTime - s_BatchElapsedTime > 0.5)
+            {
+                if (s_UpdatedItems.Length != 0 || s_RemovedItems.Length != 0 || s_MovedItems.Length != 0)
+                    contentRefreshed?.Invoke(s_UpdatedItems, s_RemovedItems, s_MovedItems);
+                s_UpdatedItems = new string[0];
+                s_RemovedItems = new string[0];
+                s_MovedItems = new string[0];
+                s_BatchElapsedTime = 0;
+            }
+            else
+            {
+                if (s_BatchElapsedTime == 0)
+                    s_BatchElapsedTime = currentTime;
+                EditorApplication.delayCall += RaiseContentRefreshed;
+            }
+        }
+        #endregion
     }
 }
