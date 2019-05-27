@@ -1,18 +1,29 @@
-//#define QUICKSEARCH_DEBUG
+// #define QUICKSEARCH_DEBUG
 using System;
 using System.Linq;
 using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
 using System.Diagnostics;
+using System.Text.RegularExpressions;
 using UnityEditor;
 using UnityEngine;
 using Debug = UnityEngine.Debug;
+
+#if QUICKSEARCH_DEBUG
+using UnityEditorInternal;
+#endif
 
 namespace Unity.QuickSearch
 {
     internal static class Utils
     {
+        private static string[] _ignoredAssemblies =
+        {
+            "^UnityScript$", "^System$", "^mscorlib$", "^netstandard$",
+            "^System\\..*", "^nunit\\..*", "^Microsoft\\..*", "^Mono\\..*", "^SyntaxTree\\..*"
+        };
+
         private static Type[] GetAllEditorWindowTypes()
         {
             var result = new List<Type>();
@@ -68,6 +79,49 @@ namespace Unity.QuickSearch
                     if (type.IsSubclassOf(aType))
                         result.Add(type);
                 }
+            }
+            return result.ToArray();
+        }
+
+        private static bool IsIgnoredAssembly(AssemblyName assemblyName)
+        {
+            var name = assemblyName.Name;
+            return _ignoredAssemblies.Any(candidate => Regex.IsMatch(name, candidate));
+        }
+
+        internal static MethodInfo[] GetAllStaticMethods(this AppDomain aAppDomain, bool showInternalAPIs)
+        {
+            var result = new List<MethodInfo>();
+            var assemblies = aAppDomain.GetAssemblies();
+            foreach (var assembly in assemblies)
+            {
+                if (IsIgnoredAssembly(assembly.GetName()))
+                    continue;
+                #if QUICKSEARCH_DEBUG
+                var countBefore = result.Count;
+                #endif
+                var types = assembly.GetLoadableTypes();
+                foreach (var type in types)
+                {
+                    var methods = type.GetMethods(BindingFlags.Static | (showInternalAPIs ? BindingFlags.Public | BindingFlags.NonPublic : BindingFlags.Public) | BindingFlags.DeclaredOnly);
+                    foreach (var m in methods)
+                    {
+                        if (m.IsPrivate)
+                            continue;
+
+                        if (m.IsGenericMethod)
+                            continue;
+
+                        if (m.Name.Contains("Begin") || m.Name.Contains("End"))
+                            continue;
+
+                        if (m.GetParameters().Length == 0)
+                            result.Add(m);
+                    }
+                }
+                #if QUICKSEARCH_DEBUG
+                Debug.Log($"{result.Count - countBefore} - {assembly.GetName()}");
+                #endif
             }
             return result.ToArray();
         }
@@ -183,7 +237,7 @@ namespace Unity.QuickSearch
             string version = null;
             try
             {
-                var filePath = File.ReadAllText("Packages/com.unity.quicksearch/package.json");
+                var filePath = File.ReadAllText($"{QuickSearchTool.packageFolderName}/package.json");
                 if (JsonDeserialize(filePath) is Dictionary<string, object> manifest && manifest.ContainsKey("version"))
                 {
                     version = manifest["version"] as string;
@@ -191,10 +245,113 @@ namespace Unity.QuickSearch
             }
             catch (Exception)
             {
-                
+                // ignored
             }
 
             return version ?? "unknown";
+        }
+        internal static string GetNextWord(string src, ref int index)
+        {
+            // Skip potential white space BEFORE the actual word we are extracting
+            for (; index < src.Length; ++index)
+            {
+                if (!char.IsWhiteSpace(src[index]))
+                {
+                    break;
+                }
+            }
+
+            var startIndex = index;
+            for (; index < src.Length; ++index)
+            {
+                if (char.IsWhiteSpace(src[index]))
+                {
+                    break;
+                }
+            }
+
+            return src.Substring(startIndex, index - startIndex);
+        }
+
+        internal static bool IsDeveloperMode()
+        {
+            #if QUICKSEARCH_DEBUG
+            return true;
+            #else
+            return Directory.Exists($"{QuickSearchTool.packageFolderName}/.git");
+            #endif
+        }
+
+        public static int LevenshteinDistance<T>(IEnumerable<T> lhs, IEnumerable<T> rhs) where T : System.IEquatable<T>
+        {
+            // Validate parameters
+            if (lhs == null) throw new System.ArgumentNullException("lhs");
+            if (rhs == null) throw new System.ArgumentNullException("rhs");
+
+            // Convert the parameters into IList instances
+            // in order to obtain indexing capabilities
+            IList<T> first = lhs as IList<T> ?? new List<T>(lhs);
+            IList<T> second = rhs as IList<T> ?? new List<T>(rhs);
+
+            // Get the length of both.  If either is 0, return
+            // the length of the other, since that number of insertions
+            // would be required.
+            int n = first.Count, m = second.Count;
+            if (n == 0) return m;
+            if (m == 0) return n;
+
+            // Rather than maintain an entire matrix (which would require O(n*m) space),
+            // just store the current row and the next row, each of which has a length m+1,
+            // so just O(m) space. Initialize the current row.
+            int curRow = 0, nextRow = 1;
+
+            int[][] rows = new int[][] { new int[m + 1], new int[m + 1] };
+            for (int j = 0; j <= m; ++j)
+                rows[curRow][j] = j;
+
+            // For each virtual row (since we only have physical storage for two)
+            for (int i = 1; i <= n; ++i)
+            {
+                // Fill in the values in the row
+                rows[nextRow][0] = i;
+
+                for (int j = 1; j <= m; ++j)
+                {
+                    int dist1 = rows[curRow][j] + 1;
+                    int dist2 = rows[nextRow][j - 1] + 1;
+                    int dist3 = rows[curRow][j - 1] +
+                        (first[i - 1].Equals(second[j - 1]) ? 0 : 1);
+
+                    rows[nextRow][j] = System.Math.Min(dist1, System.Math.Min(dist2, dist3));
+                }
+
+                // Swap the current and next rows
+                if (curRow == 0)
+                {
+                    curRow = 1;
+                    nextRow = 0;
+                }
+                else
+                {
+                    curRow = 0;
+                    nextRow = 1;
+                }
+            }
+
+            // Return the computed edit distance
+            return rows[curRow][m];
+        }
+
+        public static int LevenshteinDistance(string lhs, string rhs, bool caseSensitive = true)
+        {
+            if (!caseSensitive)
+            {
+                lhs = lhs.ToLower();
+                rhs = rhs.ToLower();
+            }
+            char[] first = lhs.ToCharArray();
+            char[] second = rhs.ToCharArray();
+            return LevenshteinDistance(first, second);
         }
     }
 
@@ -221,7 +378,7 @@ namespace Unity.QuickSearch
             m_Timer.Stop();
             #if UNITY_2019_1_OR_NEWER
             if (!String.IsNullOrEmpty(m_Name))
-                Debug.LogFormat(LogType.Log, LogOption.NoStacktrace, null, $"{m_Name} took {timeMs} ms");
+                Debug.LogFormat(LogType.Log, LogOption.NoStacktrace, null, $"{m_Name} took {timeMs:F1} ms");
             #else
             if (!String.IsNullOrEmpty(m_Name))
                 Debug.Log($"{m_Name} took {timeMs} ms");
@@ -288,7 +445,7 @@ namespace Unity.QuickSearch
                 rev = (int)Candidate.Beta;
             if (build.Contains("f"))
                 rev = (int)Candidate.Final;
-            var tags = build.Split(new char[] { 'a', 'b', 'f', 'p', 'x' });
+            var tags = build.Split('a', 'b', 'f', 'p', 'x');
             if (tags.Length == 2)
             {
                 rev += Convert.ToInt32(tags[0], 10) << 4;

@@ -40,6 +40,8 @@ namespace Unity.QuickSearch
                         }
                     };
 
+                    isEnabledForContextualSearch = () => QuickSearchTool.IsFocusedWindowTypeName("SceneView") || QuickSearchTool.IsFocusedWindowTypeName("SceneHierarchyWindow");
+
                     onDisable = () => 
                     {
                         gods = new GOD[0];
@@ -112,14 +114,13 @@ namespace Unity.QuickSearch
                 }
             }
 
-            private static bool PingItem(SearchItem item)
+            private static UnityEngine.Object PingItem(SearchItem item)
             {
                 var obj = ObjectFromItem(item);
                 if (obj == null)
-                    return false;
-                Selection.activeGameObject = obj;
+                    return null;
                 EditorGUIUtility.PingObject(obj);
-                return true;
+                return obj;
             }
 
             internal static string type = "scene";
@@ -139,8 +140,12 @@ namespace Unity.QuickSearch
                     {
                         handler = (item, context) =>
                         {
-                            if (PingItem(item))
+                            var pingedObject = PingItem(item);
+                            if (pingedObject != null)
+                            {
+                                Selection.activeGameObject = pingedObject as GameObject ?? Selection.activeGameObject;
                                 SceneView.lastActiveSceneView.FrameSelected();
+                            }
                         }
                     }
                 };
@@ -162,11 +167,9 @@ namespace Unity.QuickSearch
 
             #if UNITY_2019_1_OR_NEWER
             [UsedImplicitly, Shortcut("Help/Quick Search/Scene")]
-            public static void PopQuickSearch()
+            public static void OpenQuickSearch()
             {
-                SearchService.Filter.ResetFilter(false);
-                SearchService.Filter.SetFilter(true, type);
-                QuickSearchTool.ShowWindow(false);
+                QuickSearchTool.OpenWithContextualProvider(type);
             }
 
             #endif

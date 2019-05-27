@@ -10,11 +10,23 @@ namespace Unity.QuickSearch
     {
         private static class Styles
         {
-            public static Vector2 windowSize = new Vector2(250, 250);
+            public static Vector2 windowSize = new Vector2(270, 250);
             public static readonly GUIStyle filterHeader = new GUIStyle(EditorStyles.boldLabel)
             {
                 name = "quick-search-filter-header",
                 margin = new RectOffset(4, 4, 3, 2)
+            };
+
+            public static readonly GUIContent prefButtonContent = new GUIContent(Icons.settings, "Open quick search preferences...");
+            public static readonly GUIStyle prefButton = new GUIStyle("IconButton")
+            {
+                #if UNITY_2019_3_OR_NEWER
+                fixedWidth = 16, fixedHeight = 16, 
+                margin = new RectOffset(2, 2, 2, 2)
+                #else
+                fixedWidth = 20, fixedHeight = 20, 
+                margin = new RectOffset(2, 2, 2, 0)
+                #endif
             };
 
             public static readonly GUIStyle filterTimeLabel = new GUIStyle(EditorStyles.miniLabel)
@@ -38,10 +50,8 @@ namespace Unity.QuickSearch
                 normal = new GUIStyleState() { textColor = Color.red }
             };
 
-            public static readonly GUIStyle filterToggle = new GUIStyle("Toggle")
-            {
-                margin = new RectOffset(4, 4, 2, 1)
-            };
+            public static readonly GUIStyle filterToggle = new GUIStyle("Toggle") { margin = new RectOffset(4, 4, 2, 1) };
+            public static readonly GUIStyle headerFilterToggle = new GUIStyle(filterToggle) { margin = new RectOffset(4, 4, 3, 1) };
 
             public static readonly GUIStyle filterEntry = new GUIStyle(EditorStyles.label) { name = "quick-search-filter-entry" };
             public static readonly GUIStyle panelBorder = new GUIStyle("grey_border") { name = "quick-search-filter-panel-border" };
@@ -125,14 +135,18 @@ namespace Unity.QuickSearch
              
             foreach (var providerDesc in SearchService.Filter.providerFilters.OrderBy(f => f.priority))
             {
-                DrawSectionHeader(providerDesc);
-                if (providerDesc.isExpanded)
-                    DrawSubCategories(providerDesc);
+                if (!quickSearchTool.PartialFilterMode || providerDesc.entry.isEnabled)
+                {
+                    DrawSectionHeader(providerDesc);
+                    if (providerDesc.isExpanded)
+                        DrawSubCategories(providerDesc);
+                }
             }
 
             m_ToggleFilterCount = m_ToggleFilterNextIndex;
 
             GUILayout.EndScrollView();
+            GUILayout.Space(1);
         }
 
         private void HandleKeyboardNavigation()
@@ -161,10 +175,12 @@ namespace Unity.QuickSearch
         {
             GUILayout.BeginHorizontal();
             GUILayout.Label("Search Providers", Styles.filterHeader);
+            if (GUILayout.Button(Styles.prefButtonContent, Styles.prefButton))
+                SettingsService.OpenUserPreferences(SearchSettings.settingsPreferencesKey);
             GUILayout.FlexibleSpace();
             EditorGUI.BeginChangeCheck();
             GUI.SetNextControlName($"Box_{m_ToggleFilterNextIndex++}");
-            bool isEnabled = GUILayout.Toggle(SearchService.Filter.providerFilters.All(p => p.entry.isEnabled), "", Styles.filterToggle, GUILayout.ExpandWidth(false));
+            bool isEnabled = GUILayout.Toggle(SearchService.Filter.providerFilters.All(p => p.entry.isEnabled), "", Styles.headerFilterToggle, GUILayout.ExpandWidth(false));
             if (EditorGUI.EndChangeCheck())
             {
                 foreach (var provider in SearchService.Filter.providerFilters)

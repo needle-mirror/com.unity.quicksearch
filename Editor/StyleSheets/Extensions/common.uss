@@ -1,10 +1,10 @@
 
 .quick-search-item-background1 {
-    --enable-style-hovering: true;
+    -unity-enable-hovering: --enable-style-hovering;
 }
 
 .quick-search-item-background2 {
-    --enable-style-hovering: true;
+    -unity-enable-hovering: --enable-style-hovering;
 
     background-color: --theme-background-color-alternate;
 }
@@ -15,7 +15,7 @@
 }
 
 .quick-search-item-selected-background {
-    --enable-style-hovering: true;
+    -unity-enable-hovering: --enable-style-hovering;
 
     background-color: --theme-line-selection-background-color-focus;
 }

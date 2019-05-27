@@ -1,10 +1,36 @@
+## [1.2.0-preview.1] - 2019-05-28
+- Add >COMMAND to execute a specific command on a specific item. (i.e. >reveal "Assets/My.asset", will reveal in the asset in the file explorer directly)
+- Add a search provider to quickly install packages.
+- Add a search provider to search and invoke any static method API.
+- Add Alt+Shift+C shortcut to open the quick search contextually to the selected editor window.
+- Add auto completion of asset type filter (i.e. start typing t:)
+- Add contextual action support to search item (i.e. opened by right clicking on an asset)
+- Add index acronym search result (i.e. WL will match Assets/WidgetLibrary.cs)
+- Add indexing item scoring to sort them (items with a better match are sorted first)
+- Add QuickSearchTool.OpenWithContextualProvider API to open the quick search for a specific type only.
+- Add selected search settings to analytics.
+- Add selection tracking fo the selected search item (can be turned off in the settings)
+- Add support for package indexing
+- Add support to sort search provider priorities in the user preferences
+- Commands using > are shown using the auto-complete drop down.
+- Do not show search provider in the filter window when opened for a specific type.
+- Give a higher score to recently used items so they get sorted first when searched.
+- Improve filter window styling
+- Improve item hovering when moving the mouse over items.
+- Improved fast typing debouncing
+- Improved item description highlighting of matching keywords
+- Launch Quick Search the first time it was installed from the an official 19.3 release.
+- Potential fix for ThreadAbortException
+- Remove type sub filters to the asset provider
+- Skip root items starting with a .
+
 ## [1.1.0-preview.1] - 2019-05-14
 - Add a switch to let search provider fetch more results if requested (e.g. `SearchContext.wantsMore`)
 - Add selection tracking to the `SearchProvider` API.
 - Fix search item caching.
 - Improve quick search debouncing when typing.
 - Ping scene objects when the selection changes to a scene provider search item in the Quick Search window.
-- Track project changes so search provider can refresh themselve.
+- Track project changes so search provider can refresh themselves.
 - Update file indexes when the project content changes.
 - Update UI for Northstar retheming.
   

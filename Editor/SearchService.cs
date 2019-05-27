@@ -3,7 +3,6 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
-using JetBrains.Annotations;
 using UnityEditor;
 using UnityEngine;
 
@@ -21,24 +20,29 @@ namespace Unity.QuickSearch
     public delegate void TrackSelectionHandler(SearchItem item, SearchContext context);
     public delegate bool EnabledHandler(SearchItem item, SearchContext context);
     public delegate void GetItemsHandler(SearchContext context, List<SearchItem> items, SearchProvider provider);
-    public delegate bool IsItemValidHandler(SearchItem item);
+    public delegate void GetKeywordsHandler(SearchContext context, string lastToken, List<string> keywords);
+    public delegate bool IsEnabledForContextualSearch();
 
     public class SearchAction
     {
+        public const string kContextualMenuAction = "context";
         public SearchAction(string type, GUIContent content)
         {
-            this.type = type;
+            providerId = type;
             this.content = content;
             isEnabled = (item, context) => true;
         }
 
         public SearchAction(string type, string name, Texture2D icon = null, string tooltip = null)
-            : this(type, new GUIContent(name, icon, tooltip))
+            : this(type, new GUIContent(name, icon, tooltip ?? name))
         {
         }
 
+        public string Id => content.text;
+        public string DisplayName => content.tooltip;
+
         // Unique (for a given provider) id of the action 
-        public string type;
+        public string providerId;
         public GUIContent content;
         // Called when an item is executed with this action
         public ActionHandler handler;
@@ -50,6 +54,8 @@ namespace Unity.QuickSearch
     {
         // Unique id of this item among this provider items.
         public string id;
+        // The item score can affect how the item gets sorted within the same provider.
+        public int score;
         // Display name of the item
         public string label;
         // If no description is provided, SearchProvider.fetchDescription will be called when the item is first displayed.
@@ -95,14 +101,14 @@ namespace Unity.QuickSearch
                 entry = new Entry(name);
                 categories = new List<Entry>();
                 isExpanded = false;
-                priority = 100;
                 this.provider = provider;
             }
+
+            public int priority => provider.priority;
 
             public Entry entry;
             public bool isExpanded;
             public List<Entry> categories;
-            public int priority;
             public SearchProvider provider;
         }
 
@@ -122,7 +128,7 @@ namespace Unity.QuickSearch
                 foreach (var provider in m_Providers)
                 {
                     var providerFilter = new ProviderDesc(new NameId(provider.name.id,
-                            string.IsNullOrEmpty(provider.filterId) ? provider.name.displayName : provider.name.displayName + " (" + provider.filterId + ")"), provider) {priority = provider.priority};
+                            string.IsNullOrEmpty(provider.filterId) ? provider.name.displayName : provider.name.displayName + " (" + provider.filterId + ")"), provider);
                     providerFilters.Add(providerFilter);
                     foreach (var subCategory in provider.subCategories)
                     {
@@ -245,6 +251,8 @@ namespace Unity.QuickSearch
     [DebuggerDisplay("{name}")]
     public class SearchProvider
     {
+        private const int k_RecentUserScore = -100;
+
         public SearchProvider(string id, string displayName = null)
         {
             name = new NameId(id, displayName);
@@ -258,17 +266,28 @@ namespace Unity.QuickSearch
             fetchTimeWriteIndex = 0;
         }
 
-        public SearchItem CreateItem(string id, string label = null, string description = null, Texture2D thumbnail = null, object data = null)
+        public SearchItem CreateItem(string id, int score, string label, string description, Texture2D thumbnail, object data)
         {
+            // If the user searched that item recently,
+            // let give it a good score so it gets sorted first.
+            if (SearchService.IsRecent(id))
+                score = k_RecentUserScore;
+
             return new SearchItem
             {
                 id = id,
+                score = score,
                 label = label ?? id,
                 description = description,
                 thumbnail = thumbnail,
                 provider = this,
                 data = data
             };
+        }
+
+        public SearchItem CreateItem(string id, string label = null, string description = null, Texture2D thumbnail = null, object data = null)
+        {
+            return CreateItem(id, 0, label, description, thumbnail, data);
         }
 
         public static bool MatchSearchGroups(SearchContext context, string content, bool useLowerTokens = false)
@@ -357,14 +376,18 @@ namespace Unity.QuickSearch
         public TrackSelectionHandler trackSelection;
         // MANDATORY: Handler to get items for a given search context. 
         public GetItemsHandler fetchItems;
+        // Provider can return a list of words that will help the user complete his search query
+        public GetKeywordsHandler fetchKeywords;
         // List of subfilters that will be visible in the FilterWindow for a given SearchProvider (see AssetProvider for an example).
         public List<NameId> subCategories;
         // Called when the QuickSearchWindow is opened. Allow the Provider to perform some caching.
         public Action onEnable;
         // Called when the QuickSearchWindow is closed. Allow the Provider to release cached resources.
         public Action onDisable;
-        // Hint to sort the Prover. Affect the order of search results and the order in which provider are shown in the FilterWindow.
+        // Hint to sort the Provider. Affect the order of search results and the order in which provider are shown in the FilterWindow.
         public int priority;
+        // Called when quicksearch is invoked in "contextual mode". If you return true it means the provider is enabled for this search context.
+        public IsEnabledForContextualSearch isEnabledForContextualSearch;
 
         // INTERNAL
         internal List<SearchAction> actions;
@@ -394,6 +417,9 @@ namespace Unity.QuickSearch
         // Indicates if the search should return results as many as possible.
         public bool wantsMore;
 
+        public string actionQueryId;
+        public bool isActionQuery;
+
         // Async search information
         // Unique id of this search.
         public int searchId;
@@ -401,6 +427,7 @@ namespace Unity.QuickSearch
         public Action<int, SearchItem[]> sendAsyncItems;
 
         static public readonly SearchContext Empty = new SearchContext {searchId = 0, searchText = String.Empty};
+
     }
 
     public class SearchItemProviderAttribute : Attribute
@@ -413,17 +440,23 @@ namespace Unity.QuickSearch
 
     public static class SearchService
     {
-        const string k_FilterPrefKey = "quicksearch.filters";
-        const string k_LastSearchPrefKey = "quicksearch.last_search";
-        
+        public const string prefKey = "quicksearch";
+        const string k_FilterPrefKey = prefKey + ".filters";
+        const string k_LastSearchPrefKey = prefKey + ".last_search";
+        const string k_RecentsPrefKey = prefKey + ".recents";
+        const string k_ActionQueryToken = ">";
+
         private static int s_CurrentSearchId = 0;
         private static string s_LastSearch;
         private static List<string> s_RecentSearches = new List<string>(10);
         private static int s_RecentSearchIndex = -1;
+        private static List<int> s_UserScores = new List<int>();
+        private static HashSet<int> s_SortedUserScores = new HashSet<int>();
 
         internal static List<SearchProvider> Providers { get; private set; }
-        internal static HashSet<string> ProviderTextFilters { get; private set; }
-        internal static SearchFilter TextFilter { get; private set; }
+        internal static Dictionary<string, string> TextFilterIds { get; private set; }
+        internal static Dictionary<string, List<string>> ActionIdToProviders { get; private set; }
+        internal static SearchFilter OverrideFilter { get; private set; }
 
         internal static string LastSearch
         {
@@ -467,11 +500,23 @@ namespace Unity.QuickSearch
             Refresh();
         }
 
+        public static void SetRecent(SearchItem item)
+        {
+            int itemKey = item.id.GetHashCode(); 
+            s_UserScores.Add(itemKey);
+            s_SortedUserScores.Add(itemKey);
+        }
+
+        public static bool IsRecent(string id)
+        {
+            return s_SortedUserScores.Contains(id.GetHashCode());
+        }
+
         internal static void Refresh()
         {
             Providers = new List<SearchProvider>();
             Filter = new SearchFilter();
-            TextFilter = new SearchFilter();
+            OverrideFilter = new SearchFilter();
             var settingsValid = FetchProviders();
             settingsValid = LoadSettings() || settingsValid;
             LastSearch = EditorPrefs.GetString(k_LastSearchPrefKey, "");
@@ -486,13 +531,14 @@ namespace Unity.QuickSearch
         internal static bool LoadSettings()
         {
             LastSearch = EditorPrefs.GetString(k_LastSearchPrefKey, "");
-            return LoadFilters();
+            return LoadFilters() && LoadRecents();
         }
 
         internal static void SaveSettings()
         {
             SaveFilters();
             SaveLastSearch();
+            SaveRecents();
         }
 
         internal static void Reset()
@@ -502,17 +548,47 @@ namespace Unity.QuickSearch
             Refresh();
         }
 
+        public static string[] GetKeywords(SearchContext context, string lastToken)
+        {
+            #if QUICKSEARCH_DEBUG
+            using (new DebugTimer("==> Get Keywords"))
+            #endif
+            {
+                var allItems = new List<string>();
+                if (context.isActionQuery && lastToken.StartsWith(k_ActionQueryToken))
+                {
+                    allItems.AddRange(ActionIdToProviders.Keys.Select(k => k_ActionQueryToken + k));
+                }
+                else
+                {
+                    List<SearchProvider> activeProviders = OverrideFilter.filteredProviders.Count > 0 ? OverrideFilter.filteredProviders : Filter.filteredProviders;
+                    foreach (var provider in activeProviders)
+                    {
+                        try
+                        {
+                            provider.fetchKeywords?.Invoke(context, lastToken, allItems);
+                        }
+                        catch (Exception ex)
+                        {
+                            UnityEngine.Debug.LogError($"Failed to get keywords with {provider.name.displayName}.\r\n{ex}");
+                        }
+                    }
+                }
+
+                return allItems.Distinct().OrderBy(s=>s).ToArray();
+            }
+        }
+
         public static List<SearchItem> GetItems(SearchContext context)
         {
-            UpdateContext(context);
+            PrepareSearch(context);
             if (string.IsNullOrEmpty(context.searchQuery))
                 return new List<SearchItem>(0);
 
-            if (TextFilter.filteredProviders.Count > 0)
-                return GetItems(context, TextFilter);
+            if (context.isActionQuery || OverrideFilter.filteredProviders.Count > 0)
+                return GetItems(context, OverrideFilter);
 
             return GetItems(context, Filter);
-
         }
 
         internal static void SaveLastSearch()
@@ -523,7 +599,7 @@ namespace Unity.QuickSearch
         public static void Enable(SearchContext context)
         {
             s_CurrentSearchId = 0;
-            UpdateContext(context);
+            PrepareSearch(context);
             foreach (var provider in Providers)
                 provider.onEnable?.Invoke();
         }
@@ -547,17 +623,37 @@ namespace Unity.QuickSearch
             asyncItemReceived = null;
         }
 
-        internal static void UpdateContext(SearchContext context)
+        internal static void PrepareSearch(SearchContext context)
         {
             context.searchQuery = context.searchText;
-            string providerFilterOverride = null;
-            foreach (var textFilter in ProviderTextFilters)
+            string[] overrideFilterId = null;
+            context.isActionQuery = context.searchQuery.StartsWith(">");
+            if (context.isActionQuery)
             {
-                if (context.searchQuery.StartsWith(textFilter))
+                var searchIndex = 1;
+                var potentialCommand = Utils.GetNextWord(context.searchQuery, ref searchIndex);
+                if (ActionIdToProviders.ContainsKey(potentialCommand))
                 {
-                    providerFilterOverride = textFilter;
-                    context.searchQuery = context.searchQuery.Remove(0, textFilter.Length).Trim();
-                    break;
+                    // We are in command mode:
+                    context.actionQueryId = potentialCommand;
+                    overrideFilterId = ActionIdToProviders[potentialCommand].ToArray();
+                    context.searchQuery = context.searchQuery.Remove(0, searchIndex).Trim();
+                }
+                else
+                {
+                    overrideFilterId = new string[0];
+                }
+            }
+            else
+            {
+                foreach (var kvp in TextFilterIds)
+                {
+                    if (context.searchQuery.StartsWith(kvp.Key))
+                    {
+                        overrideFilterId = new [] {kvp.Value};
+                        context.searchQuery = context.searchQuery.Remove(0, kvp.Key.Length).Trim();
+                        break;
+                    }
                 }
             }
 
@@ -569,20 +665,20 @@ namespace Unity.QuickSearch
             // Reformat search text so it only contains text filter that are specific to providers and ensure those filters are at the beginning of the search text.
             context.searchQuery = string.Join(" ", context.textFilters.Concat(context.tokenizedSearchQuery));
 
-            if (providerFilterOverride != null)
+            if (overrideFilterId != null)
             {
-                TextFilter.ResetFilter(false);
+                OverrideFilter.ResetFilter(false);
                 foreach (var provider in Providers)
                 {
-                    if (provider.filterId == providerFilterOverride)
+                    if (overrideFilterId.Contains(provider.name.id))
                     {
-                        TextFilter.SetFilter(true, provider.name.id);
+                        OverrideFilter.SetFilter(true, provider.name.id);
                     }
                 }
             }
-            else if (TextFilter.filteredProviders.Count > 0)
+            else if (OverrideFilter.filteredProviders.Count > 0)
             {
-                TextFilter.ResetFilter(false);
+                OverrideFilter.ResetFilter(false);
             }
         }
 
@@ -634,7 +730,11 @@ namespace Unity.QuickSearch
         private static int SortItemComparer(SearchItem item1, SearchItem item2)
         {
             var po = item1.provider.priority.CompareTo(item2.provider.priority);
-            if (po != 0) return po;
+            if (po != 0) 
+                return po;
+            po = item1.score.CompareTo(item2.score);
+            if (po != 0)
+                return po;
             return String.Compare(item1.id, item2.id, StringComparison.Ordinal);
         }
 
@@ -653,19 +753,30 @@ namespace Unity.QuickSearch
                     .Select(methodInfo => methodInfo.Invoke(null, null) as SearchProvider)
                     .Where(provider => provider != null).ToList();
 
+                ActionIdToProviders = new Dictionary<string, List<string>>();
                 foreach (var action in Utils.GetAllMethodsWithAttribute<SearchActionsProviderAttribute>()
-                         .SelectMany(methodInfo => methodInfo.Invoke(null, null) as object[]).Where(a => a != null).Cast<SearchAction>())
+                         .SelectMany(methodInfo => methodInfo.Invoke(null, null) as IEnumerable<object>).Where(a => a != null).Cast<SearchAction>())
                 {
-                    var provider = Providers.Find(p => p.name.id == action.type);
-                    provider?.actions.Add(action);
+                    var provider = Providers.Find(p => p.name.id == action.providerId);
+                    if (provider != null)
+                    {
+                        provider.actions.Add(action);
+                        if (!ActionIdToProviders.TryGetValue(action.Id, out var providerIds))
+                        {
+                            providerIds = new List<string>();
+                            ActionIdToProviders[action.Id] = providerIds;
+                        }
+                        providerIds.Add(provider.name.id);
+                    }
                 }
 
                 Filter.Providers = Providers;
-                TextFilter.Providers = Providers;
-
-                ProviderTextFilters = new HashSet<string>();
+                OverrideFilter.Providers = Providers;
+                TextFilterIds = new Dictionary<string, string>();
                 foreach (var provider in Providers)
                 {
+                    // Load per provider user settings
+                    provider.priority = EditorPrefs.GetInt($"{prefKey}.{provider.name.id}.priority", provider.priority);
                     if (string.IsNullOrEmpty(provider.filterId))
                         continue;
 
@@ -675,7 +786,7 @@ namespace Unity.QuickSearch
                         continue;
                     }
 
-                    ProviderTextFilters.Add(provider.filterId);
+                    TextFilterIds.Add(provider.filterId, provider.name.id);
                 }
             }
             catch (Exception)
@@ -724,6 +835,23 @@ namespace Unity.QuickSearch
             return true;
         }
 
+        private static bool LoadRecents()
+        {
+            try
+            {
+                if (!(Utils.JsonDeserialize(EditorPrefs.GetString(k_RecentsPrefKey, null)) is List<object> recents))
+                    return false;
+
+                s_UserScores = recents.Cast<int>().ToList();
+                s_SortedUserScores = new HashSet<int>(s_UserScores);
+                return true;
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+        }
+
         private static string FilterToString()
         {
             var filters = new List<object>();
@@ -755,6 +883,12 @@ namespace Unity.QuickSearch
         {
             var filter = FilterToString();
             EditorPrefs.SetString(k_FilterPrefKey, filter);
+        }
+
+        private static void SaveRecents()
+        {
+            // We only save the last 40 most recent items.
+            EditorPrefs.SetString(k_RecentsPrefKey, Utils.JsonSerialize(s_UserScores.Skip(s_UserScores.Count - 40).ToList()));
         }
 
         #region Refresh search content event

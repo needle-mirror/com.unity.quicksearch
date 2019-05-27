@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -15,7 +14,8 @@ namespace Unity.QuickSearch
         [UsedImplicitly]
         static class AssetProvider
         {
-            internal static string type = "asset";
+            internal const string k_ProjectAssetsType = "asset";
+
             internal static string displayName = "Asset";
             /* Filters:
                  t:<type>
@@ -45,79 +45,30 @@ namespace Unity.QuickSearch
                 "Script",
                 "Shader",
                 "Sprite",
+                "StyleSheet",
                 "Texture",
                 "VideoClip"
-                // TODO: Add in the settings a way to append to that list with user types.
             };
-
-            internal static string[] areaFilter = new[]
-            {
-                "assets",
-                "packages"
-            };
-
-            internal static string[] extraFilter = new string[] {};
 
             private static readonly char[] k_InvalidIndexedChars = new char[] { '*', ':' };
             private static readonly char[] k_InvalidSearchFileChars = Path.GetInvalidFileNameChars().Where(c => c != '*').ToArray();
 
-            [UsedImplicitly, SearchItemProvider]
-            internal static SearchProvider CreateProvider()
+            private static SearchProvider CreateProvider(string type, string label, string filterId, int priority, GetItemsHandler fetchItemsHandler)
             {
-                FileEntryIndexer fileIndexer = SearchSettings.useFilePathIndexer ? new FileEntryIndexer(Application.dataPath) : null;
-
-                var provider = new SearchProvider(type, displayName + (SearchSettings.useFilePathIndexer ? " (Indexed)" : String.Empty))
+                return new SearchProvider(type, label)
                 {
-                    priority = 25,
-                    filterId = "p:",
-                    
-                    fetchItems = (context, items, _provider) =>
+                    priority = priority,
+                    filterId = filterId,
+
+                    isEnabledForContextualSearch = () => QuickSearchTool.IsFocusedWindowTypeName("ProjectBrowser"),
+
+                    fetchItems = fetchItemsHandler,
+
+                    fetchKeywords = (context, lastToken, items) =>
                     {
-                        var filter = context.searchQuery;
-
-                        if (SearchSettings.useFilePathIndexer && fileIndexer != null && fileIndexer.IsReady())
-                        {
-                            if (filter.IndexOfAny(k_InvalidIndexedChars) == -1)
-                            {
-                                items.AddRange(fileIndexer.EnumerateFileIndexes(filter).Take(201).Select(fileIndexPath =>
-                                                    _provider.CreateItem("Assets/" + fileIndexPath, Path.GetFileName(fileIndexPath))));
-                                if (items.Count > 0 && !context.wantsMore)
-                                    return;
-                            }
-                        }
-
-                        if (context.categories.Count > 0)
-                        {
-                            var areas = context.categories.GetRange(0, areaFilter.Length);
-                            if (areas.Any(c => !c.isEnabled))
-                            {
-                                // Not all categories are enabled, so create a proper filter:
-                                filter = string.Join(" ", areas.Where(c => c.isEnabled).Select(c => c.name.id)) + " " + filter;
-                            }
-
-                            var nonTypeFilterCount = areaFilter.Length + extraFilter.Length;
-                            var types = context.categories.GetRange(nonTypeFilterCount, context.categories.Count - nonTypeFilterCount);
-                            if (types.Count == 0 || types.Any(c => c.isEnabled))
-                            {
-                                if (types.Any(c => !c.isEnabled))
-                                {
-                                    // Not all categories are enabled, so create a proper filter:
-                                    filter = string.Join(" ", types.Where(c => c.isEnabled).Select(c => c.name.id)) + " " + filter;
-                                }
-                            }
-                        }
-
-                        items.AddRange(AssetDatabase.FindAssets(filter)
-                                                    .Select(AssetDatabase.GUIDToAssetPath)
-                                                    .Take(1001)
-                                                    .Select(path => _provider.CreateItem(path, Path.GetFileName(path))));
-
-                        var safeFilter = string.Join("_", context.searchQuery.Split(k_InvalidSearchFileChars));
-                        if (context.searchQuery.Contains('*'))
-                        {
-                            items.AddRange(Directory.EnumerateFiles(Application.dataPath, safeFilter, SearchOption.AllDirectories)
-                                .Select(path => _provider.CreateItem(path.Replace(Application.dataPath, "Assets").Replace("\\", "/"), Path.GetFileName(path))));
-                        }
+                        if (!lastToken.StartsWith("t:"))
+                            return;
+                        items.AddRange(typeFilter.Select(t => "t:" + t));
                     },
 
                     fetchDescription = (item, context) =>
@@ -162,27 +113,87 @@ namespace Unity.QuickSearch
                         }
                     },
 
+                    trackSelection = (item, context) =>
+                    {
+                        var asset = AssetDatabase.LoadAssetAtPath<Object>(item.id);
+                        if (asset != null)
+                            EditorGUIUtility.PingObject(asset);
+                    },
+
                     subCategories = new List<NameId>()
                 };
+            }
 
-                if (!SearchSettings.useFilePathIndexer)
+            [UsedImplicitly, SearchItemProvider]
+            internal static SearchProvider CreateProjectAssetsProvider()
+            {
+                FileEntryIndexer fileIndexer = null;
+                if (SearchSettings.useFilePathIndexer)
                 {
-                    foreach (var subCat in areaFilter)
-                        provider.subCategories.Add(new NameId("a:" + subCat, subCat));
+                    var listPackageRequest = UnityEditor.PackageManager.Client.List();
+                    while (!listPackageRequest.IsCompleted)
+                        System.Threading.Thread.Yield();
 
-                    foreach (var subCat in extraFilter)
-                        provider.subCategories.Add(new NameId("special:" + subCat, subCat));
-
-                    // Type filter always need to be added last to the category list
-                    foreach (var subCat in typeFilter)
-                        provider.subCategories.Add(new NameId("t:" + subCat, subCat));
+                    fileIndexer = new FileEntryIndexer(new FileEntryIndexer.Root[] { new FileEntryIndexer.Root(Application.dataPath, "Assets") }
+                            .Concat(listPackageRequest.Result.Select(p => new FileEntryIndexer.Root(p.resolvedPath, p.assetPath))));
                 }
+
+                var provider = CreateProvider(k_ProjectAssetsType, displayName, "p:", 25, 
+                    (context, items, _provider) => SearchAssets(context, items, _provider, fileIndexer));
+
+                provider.subCategories.Add(new NameId("packages", "packages"));
+                if (SearchSettings.useFilePathIndexer)
+                    provider.subCategories.Add(new NameId("indexing", "use index (experimental)"));
 
                 return provider;
             }
 
+            private static void SearchAssets(SearchContext context, List<SearchItem> items, SearchProvider provider, FileEntryIndexer fileIndexer)
+            {
+                var filter = context.searchQuery;
+                var searchPackages = context.categories.Any(c => c.name.id == "packages" && c.isEnabled);
+                var searchIndex = context.categories.Any(c => c.name.id == "indexing" && c.isEnabled);
+
+                if (searchIndex && fileIndexer != null && fileIndexer.IsReady())
+                {
+                    if (filter.IndexOfAny(k_InvalidIndexedChars) == -1)
+                    {
+                        items.AddRange(fileIndexer.EnumerateFileIndexes(filter, searchPackages ? int.MaxValue : 100).Take(201)
+                                                  .Select(e => provider.CreateItem(e.path, e.score, Path.GetFileName(e.path),
+                                                                                    null,//$"{e.path} ({e.score})", 
+                                                                                    null, null)));
+                        if (!context.wantsMore)
+                            return;
+                    }
+                }
+
+                if (!searchPackages)
+                {
+                    if (!filter.Contains("a:assets"))
+                        filter = "a:assets " + filter;
+                }
+
+                items.AddRange(AssetDatabase.FindAssets(filter)
+                                            .Select(AssetDatabase.GUIDToAssetPath)
+                                            .Take(202)
+                                            .Select(path => provider.CreateItem(path, Path.GetFileName(path))));
+
+                var safeFilter = string.Join("_", context.searchQuery.Split(k_InvalidSearchFileChars));
+                if (context.searchQuery.Contains('*'))
+                {
+                    items.AddRange(Directory.EnumerateFiles(Application.dataPath, safeFilter, SearchOption.AllDirectories)
+                                            .Select(path => provider.CreateItem(path.Replace(Application.dataPath, "Assets").Replace("\\", "/"),
+                                                                                Path.GetFileName(path))));
+                }
+            }
+
             [UsedImplicitly, SearchActionsProvider]
             internal static IEnumerable<SearchAction> ActionHandlers()
+            {
+                return CreateActionHandlers(k_ProjectAssetsType);
+            }
+
+            internal static IEnumerable<SearchAction> CreateActionHandlers(string type)
             {
                 #if UNITY_EDITOR_OSX
                 const string k_RevealActionLabel = "Reveal in Finder...";
@@ -192,7 +203,7 @@ namespace Unity.QuickSearch
 
                 return new[]
                 {
-                    new SearchAction("asset", "select", null, "Select asset...")
+                    new SearchAction(type, "select", null, "Select asset...")
                     {
                         handler = (item, context) =>
                         {
@@ -212,7 +223,7 @@ namespace Unity.QuickSearch
                             }
                         }
                     },
-                    new SearchAction("asset", "open", null, "Open asset...")
+                    new SearchAction(type, "open", null, "Open asset...")
                     {
                         handler = (item, context) =>
                         {
@@ -220,9 +231,21 @@ namespace Unity.QuickSearch
                             if (asset != null) AssetDatabase.OpenAsset(asset);
                         }
                     },
-                    new SearchAction("asset", "reveal", null, k_RevealActionLabel)
+                    new SearchAction(type, "reveal", null, k_RevealActionLabel)
                     {
                         handler = (item, context) => EditorUtility.RevealInFinder(item.id)
+                    },
+                    new SearchAction(type, "context", null, "Context")
+                    {
+                        handler = (item, context) =>
+                        {
+                            var asset = AssetDatabase.LoadAssetAtPath<Object>(item.id);
+                            if (asset != null)
+                            {
+                                Selection.activeObject = asset;
+                                EditorUtility.DisplayPopupMenu(QuickSearchTool.ContextualActionPosition, "Assets/", null);
+                            }
+                        }
                     }
                 };
             }
@@ -257,8 +280,7 @@ namespace Unity.QuickSearch
             public static void PopQuickSearch()
             {
                 SearchService.Filter.ResetFilter(false);
-                SearchService.Filter.SetFilter(true, type);
-                SearchService.Filter.SetFilter(false, type, "a:" + areaFilter[1]);
+                SearchService.Filter.SetFilter(true, k_ProjectAssetsType);
                 QuickSearchTool.ShowWindow(false);
             }
             #endif

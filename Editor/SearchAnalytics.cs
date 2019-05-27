@@ -1,5 +1,5 @@
-﻿//#define QUICKSEARCH_DEBUG
-//#define QUICKSEARCH_ANALYTICS_LOGGING
+﻿// #define QUICKSEARCH_DEBUG
+// #define QUICKSEARCH_ANALYTICS_LOGGING
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -22,6 +22,15 @@ namespace Unity.QuickSearch
             public long avgTime;
             // Custom provider data
             public string custom;
+        }
+
+        [Serializable]
+        internal class PreferenceData
+        {
+            public bool useDockableWindow;
+            public bool closeWindowByDefault;
+            public bool useFilePathIndexer;
+            public bool trackSelection;
         }
 
         [Serializable]
@@ -76,6 +85,10 @@ namespace Unity.QuickSearch
             public bool useDragAndDrop;
             // Provider specific datas
             public ProviderData[] providerDatas;
+
+            public bool useOverrideFilter;
+            public bool isDeveloperMode;
+            public PreferenceData preferences;
         }
 
         [Serializable]
@@ -185,11 +198,24 @@ namespace Unity.QuickSearch
 
         public static void SendSearchEvent(SearchEvent evt)
         {
-            evt.providerDatas = SearchService.Providers.Select(provider => new ProviderData()
+            evt.useOverrideFilter = SearchService.OverrideFilter.filteredProviders.Count > 0;
+            evt.isDeveloperMode = Utils.IsDeveloperMode();
+            evt.preferences = new PreferenceData()
+            {
+                closeWindowByDefault = SearchSettings.closeWindowByDefault,
+                useDockableWindow = SearchSettings.useDockableWindow,
+                trackSelection = SearchSettings.trackSelection,
+                useFilePathIndexer = SearchSettings.useFilePathIndexer
+            };
+            
+            var providers = evt.useOverrideFilter ? SearchService.OverrideFilter.filteredProviders : SearchService.Providers;
+            var filter = evt.useOverrideFilter ? SearchService.OverrideFilter: SearchService.Filter;
+
+            evt.providerDatas = providers.Select(provider => new ProviderData()
             {
                 id = provider.name.id,
                 avgTime = (long)provider.avgTime,
-                isEnabled = SearchService.Filter.IsEnabled(provider.name.id),
+                isEnabled = filter.IsEnabled(provider.name.id),
                 custom = ""
             }).ToArray();
 
