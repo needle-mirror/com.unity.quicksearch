@@ -328,7 +328,7 @@ namespace Unity.QuickSearch
         internal void OnEnable()
         {
             m_CurrentSearchEvent = new SearchAnalytics.SearchEvent();
-            m_SaveStateOnExit = s_SaveStateOnExit;
+            m_SaveStateOnExit = s_SaveStateOnExit || SearchSettings.useDockableWindow;
             m_Context = new SearchContext { searchText = m_SaveStateOnExit ? SearchService.LastSearch : "", focusedWindow = lastFocusedWindow };
             SearchService.Enable(m_Context);
             m_SearchBoxFocus = true;
@@ -1081,10 +1081,17 @@ namespace Unity.QuickSearch
 
         public static void OpenWithContextualProvider(string providerId)
         {
+            if (SearchSettings.useDockableWindow)
+            {
+                Debug.LogWarning("Contextual Quick Search cannot be used when the dockable quick search is enabled");
+                ShowWindow();
+				return;
+            }
+
             var provider = SearchService.Providers.Find(p => p.name.id == providerId);
             if (provider == null)
             {
-                Debug.Log("Quick Search Cannot find search provider with id: " + providerId);
+                Debug.LogWarning("Quick Search Cannot find search provider with id: " + providerId);
                 ShowWindow();
                 return;
             }
@@ -1100,6 +1107,12 @@ namespace Unity.QuickSearch
         #endif
         public static void OpenContextual()
         {
+            if (SearchSettings.useDockableWindow)
+            {
+                Debug.LogWarning("Contextual Quick Search cannot be used when the dockable quick search is enabled");
+                return;
+            }
+
             var contextualProviders = SearchService.Providers.Where(searchProvider => searchProvider.isEnabledForContextualSearch != null && searchProvider.isEnabledForContextualSearch()).ToArray();
             if (contextualProviders.Length == 0)
             {

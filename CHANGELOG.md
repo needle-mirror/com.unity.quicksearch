@@ -1,3 +1,6 @@
+## [1.2.1-preview] - 2019-05-29
+- Various domain reload fixes
+
 ## [1.2.0-preview.1] - 2019-05-28
 - Add >COMMAND to execute a specific command on a specific item. (i.e. >reveal "Assets/My.asset", will reveal in the asset in the file explorer directly)
 - Add a search provider to quickly install packages.

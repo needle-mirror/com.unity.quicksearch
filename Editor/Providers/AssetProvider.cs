@@ -1,3 +1,4 @@
+//#define QUICKSEARCH_DEBUG
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -235,6 +236,15 @@ namespace Unity.QuickSearch
                     {
                         handler = (item, context) => EditorUtility.RevealInFinder(item.id)
                     },
+                    #if QUICKSEARCH_DEBUG
+                    new SearchAction(type, "debug", null, "Debug Print")
+                    {
+                        handler = (item, context) =>
+                        {
+                            Debug.Log($"{item.id} => {System.String.Join(" ", FileEntryIndexer.GetEntryComponents(item.id))}");
+                        }
+                    },
+                    #endif
                     new SearchAction(type, "context", null, "Context")
                     {
                         handler = (item, context) =>

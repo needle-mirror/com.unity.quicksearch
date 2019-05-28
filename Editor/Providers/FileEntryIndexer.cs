@@ -44,7 +44,7 @@ namespace Unity.QuickSearch
                 public override bool Equals(object y)
                 {
                     WordIndexEntry other = (WordIndexEntry)y;
-                    return key == other.key && length == other.length && fileIndex == other.fileIndex;
+                    return key == other.key && length == other.length && fileIndex == other.fileIndex && score == other.score;
                 }
             }
 
@@ -230,20 +230,30 @@ namespace Unity.QuickSearch
 
             }
 
+            private void AbortFileIndexing(object sender, EventArgs e)
+            {
+                Debug.LogWarning("Aborting file indexing...");
+                if (m_IndexReady)
+                    return;
+
+                m_ThreadAborted = true;
+            } 
+
             private void CreateFileIndexerThread()
             {
                 m_IndexerThread = new Thread(() =>
                 {
                     try
                     {
+                        AppDomain.CurrentDomain.DomainUnload += AbortFileIndexing;
                         BuildWordIndexes();
+                        AppDomain.CurrentDomain.DomainUnload -= AbortFileIndexing;
                     }
                     catch (ThreadAbortException)
                     {
                         m_IndexReady = false;
                         m_ThreadAborted = true;
                         Thread.ResetAbort();
-                        Debug.LogWarning("Quick Search file entry indexing was aborted (probably because of a domain reload).");
                     }
                     finally
                     {
@@ -257,7 +267,7 @@ namespace Unity.QuickSearch
                 return entry.Length == 0 || entry[0] == '.' || entry.EndsWith(".meta");
             }
 
-            static string[] SplitCamelCase(string source)
+            private static string[] SplitCamelCase(string source)
             {
                 return Regex.Split(source, @"(?<!^)(?=[A-Z])");
             }
@@ -390,7 +400,7 @@ namespace Unity.QuickSearch
                 }
             }
 
-            public static string[] FindShiftLeftVariations(string word)
+            private static string[] FindShiftLeftVariations(string word)
             {
                 var variations = new List<string>(word.Length) {word};
                 for (int i = 1, end = word.Length-1; i < end; ++i)
@@ -410,6 +420,23 @@ namespace Unity.QuickSearch
                 return wordIndexes;
             }
 
+            internal static string[] GetEntryComponents(string path)
+            {
+                var name = Path.GetFileNameWithoutExtension(path);
+                var nameTokens = name.Split(k_PathSeps).Distinct().ToArray();
+                var scc = nameTokens.SelectMany(SplitCamelCase).Where(s=>s.Length>0).ToArray();
+                var fcc = scc.Aggregate("", (current, s) => current + s[0]);
+                return Enumerable.Empty<string>()
+                    .Concat(scc)
+                    .Concat(new [] {Path.GetExtension(path).Replace(".", "")})
+                    .Concat(FindShiftLeftVariations(fcc))
+                    .Concat(nameTokens.Select(s=>s.ToLowerInvariant()))
+                    .Concat(path.Split(k_PathSeps).Reverse())
+                    .Where(s => s.Length >= k_MinIndexCharVariation)
+                    .Select(s => s.Substring(0, Math.Min(s.Length, k_MaxIndexCharVariation)).ToLowerInvariant())
+                    .Distinct().ToArray();
+            }
+
             private void BuildPartialIndex(List<WordIndexEntry> wordIndexes, string basis, 
                 int entryStartIndex, IList<string> entries, int baseScore, Func<string, bool> skipEntryHandler)
             {
@@ -426,20 +453,7 @@ namespace Unity.QuickSearch
                     if (skipEntryHandler(path))
                         continue;
 
-                    var name = Path.GetFileNameWithoutExtension(path);
-                    var nameTokens = name.Split(k_PathSeps).Distinct().ToArray();
-                    var scc = nameTokens.SelectMany(SplitCamelCase).Where(s=>s.Length>0).ToArray();
-                    var fcc = scc.Aggregate("", (current, s) => current + s[0]);
-                    var filePathComponents = Enumerable.Empty<string>()
-                                                .Concat(scc)
-                                                .Concat(new [] {Path.GetExtension(path).Replace(".", "")})
-                                                .Concat(FindShiftLeftVariations(fcc))
-                                                .Concat(nameTokens.Select(s=>s.ToLowerInvariant()))
-                                                .Concat(path.Split(k_PathSeps).Reverse())
-                                                .Where(s => s.Length >= k_MinIndexCharVariation)
-                                                .Select(s => s.Substring(0, Math.Min(s.Length, k_MaxIndexCharVariation)).ToLowerInvariant())
-                                                .Distinct().ToArray();
-
+                    var filePathComponents = GetEntryComponents(path);
                     //Debug.LogFormat(LogType.Log, LogOption.NoStacktrace, null, path + " => " + String.Join(", ", filePathComponents));
 
                     // Build word indexes
@@ -479,11 +493,11 @@ namespace Unity.QuickSearch
                 int foundIndex = Array.BinarySearch(m_WordIndexEntries, new WordIndexEntry(key, length), wiec);
                 
                 // Rewind to first element
-                while (foundIndex >= 0 && m_WordIndexEntries[foundIndex - 1].key == key && m_WordIndexEntries[foundIndex - 1].length == length)
+                while (foundIndex > 0 && m_WordIndexEntries[foundIndex - 1].key == key && m_WordIndexEntries[foundIndex - 1].length == length)
                     foundIndex--;
 
                 if (foundIndex < 0)
-                    return new PatternMatch[0];
+                    return Enumerable.Empty<PatternMatch>();
 
                 var matches = new List<PatternMatch>();
                 do
