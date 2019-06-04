@@ -26,7 +26,7 @@ namespace Unity.QuickSearch
                 {
                     priority = 85,
                     filterId = "#",
-
+                    isExplicitProvider = true,
                     fetchItems = (context, items, provider) =>
                     {
                         if (!context.searchText.StartsWith(provider.filterId))

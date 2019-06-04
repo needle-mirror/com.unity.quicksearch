@@ -29,7 +29,6 @@ namespace Unity.QuickSearch
         {
             public bool useDockableWindow;
             public bool closeWindowByDefault;
-            public bool useFilePathIndexer;
             public bool trackSelection;
         }
 
@@ -53,10 +52,10 @@ namespace Unity.QuickSearch
             public void Done()
             {
                 if (duration == 0)
-                {
-                    duration = (long)(DateTime.Now - startTime).TotalMilliseconds;
-                }
+                    duration = elapsedTimeMs;
             }
+
+            public long elapsedTimeMs => (long) (DateTime.Now - startTime).TotalMilliseconds;
 
             // Start time when the SearchWindow opened
             private DateTime startTime;
@@ -89,6 +88,15 @@ namespace Unity.QuickSearch
             public bool useOverrideFilter;
             public bool isDeveloperMode;
             public PreferenceData preferences;
+
+            // Future:
+            // useFilterId
+            // useActionQuery
+            // nbCharacterInSearch
+            // useActionMenu
+            // useFilterWindow
+            // useRightClickOnItem
+            // useRightClickContextAction
         }
 
         [Serializable]
@@ -204,8 +212,7 @@ namespace Unity.QuickSearch
             {
                 closeWindowByDefault = SearchSettings.closeWindowByDefault,
                 useDockableWindow = SearchSettings.useDockableWindow,
-                trackSelection = SearchSettings.trackSelection,
-                useFilePathIndexer = SearchSettings.useFilePathIndexer
+                trackSelection = SearchSettings.trackSelection
             };
             
             var providers = evt.useOverrideFilter ? SearchService.OverrideFilter.filteredProviders : SearchService.Providers;
@@ -320,7 +327,10 @@ namespace Unity.QuickSearch
                     Console.WriteLine($"[QS] Failed to send event {eventName}. Result: {result}");
                 }
             }
-            catch (Exception) { }
+            catch (Exception)
+            {
+                // ignored
+            }
         }
     }
 }

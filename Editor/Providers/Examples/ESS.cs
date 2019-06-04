@@ -7,7 +7,6 @@ using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading;
-using UnityEditor;
 using UnityEngine;
 
 namespace Unity.QuickSearch

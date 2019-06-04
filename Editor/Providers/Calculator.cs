@@ -20,11 +20,9 @@ namespace Unity.QuickSearch
                 return new SearchProvider(type, displayName)
                 {
                     filterId = "=",
+                    isExplicitProvider = true,
                     fetchItems = (context, items, provider) =>
                     {
-                        if (!context.searchText.StartsWith(provider.filterId))
-                            return;
-
                         var item = context.searchQuery;
                         if (Evaluate(context.searchQuery, out var result))
                             item += " = " + result;

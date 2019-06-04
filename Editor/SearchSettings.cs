@@ -12,15 +12,12 @@ namespace Unity.QuickSearch
         public const string settingsPreferencesKey = "Preferences/Quick Search";
         public static bool useDockableWindow { get; private set; }
         public static bool closeWindowByDefault { get; private set; }
-        public static bool useFilePathIndexer { get; private set; }
         public static bool trackSelection { get; private set; }
-        private static bool s_PriorityFoldout = true;
 
         static SearchSettings()
         {
             useDockableWindow = EditorPrefs.GetBool($"{k_KeyPrefix}.{nameof(useDockableWindow)}", false);
             closeWindowByDefault = EditorPrefs.GetBool($"{k_KeyPrefix}.{nameof(closeWindowByDefault)}", true);
-            useFilePathIndexer = EditorPrefs.GetBool($"{k_KeyPrefix}.{nameof(useFilePathIndexer)}", false);
             trackSelection = EditorPrefs.GetBool($"{k_KeyPrefix}.{nameof(trackSelection)}", true);
         }
 
@@ -28,14 +25,13 @@ namespace Unity.QuickSearch
         {
             EditorPrefs.SetBool($"{k_KeyPrefix}.{nameof(useDockableWindow)}", useDockableWindow);
             EditorPrefs.SetBool($"{k_KeyPrefix}.{nameof(closeWindowByDefault)}", closeWindowByDefault);
-            EditorPrefs.SetBool($"{k_KeyPrefix}.{nameof(useFilePathIndexer)}", useFilePathIndexer);
             EditorPrefs.SetBool($"{k_KeyPrefix}.{nameof(trackSelection)}", trackSelection);
         }
 
         [UsedImplicitly, SettingsProvider]
         private static SettingsProvider CreateSearchSettings()
         {
-            return new SettingsProvider(settingsPreferencesKey, SettingsScope.User)
+            var settings = new SettingsProvider(settingsPreferencesKey, SettingsScope.User)
             {
                 keywords = new[] { "quick", "omni", "search" },
                 guiHandler = searchContext =>
@@ -53,8 +49,8 @@ namespace Unity.QuickSearch
                                 if (useDockableWindow)
                                     closeWindowByDefault = EditorGUILayout.Toggle(Styles.closeWindowByDefaultContent, closeWindowByDefault);
                                 trackSelection = EditorGUILayout.Toggle(Styles.trackSelectionContent, trackSelection);
-                                useFilePathIndexer = EditorGUILayout.Toggle(Styles.useFilePathIndexerContent, useFilePathIndexer);
-                                DrawPriorities();
+                                GUILayout.Space(10);
+                                DrawProviderSettings();
                             }
                             if (EditorGUI.EndChangeCheck())
                             {
@@ -67,53 +63,71 @@ namespace Unity.QuickSearch
                     GUILayout.EndHorizontal();
                 }
             };
+            return settings;
         }
 
-        private static void DrawPriorities()
+        private static void DrawProviderSettings()
         {
-            #if UNITY_2019_1_OR_NEWER
-            s_PriorityFoldout = EditorGUILayout.BeginFoldoutHeaderGroup(s_PriorityFoldout, "Provider Priorities", EditorStyles.largeLabel);
-            #else
-            s_PriorityFoldout = EditorGUILayout.Foldout(s_PriorityFoldout, "Provider Priorities", EditorStyles.largeLabel);
-            #endif
-            if (s_PriorityFoldout)
+            EditorGUILayout.LabelField("Provider Settings", EditorStyles.largeLabel);
+            int upper = 0;
+            SearchProvider lowerProviderPriority = null;
+            SearchProvider upperProviderPriority = null;
+            foreach (var p in SearchService.Providers.OrderBy(p => p.priority + (p.isExplicitProvider ? 100000 : 0)))
             {
-                int upper = 0;
-                SearchProvider lowerProviderPriority = null;
-                SearchProvider upperProviderPriority = null;
-                foreach (var p in SearchService.Providers.OrderBy(p => p.priority))
+                int lower = upper;
+                if (upperProviderPriority != null)
                 {
-                    int lower = upper;
-                    if (upperProviderPriority != null)
-                    {
-                        upperProviderPriority.priority = p.priority + 1;
-                        EditorPrefs.SetInt($"{k_KeyPrefix}.{upperProviderPriority.name.id}.priority", upperProviderPriority.priority);
-                        upperProviderPriority = null;
-                        GUI.changed = true;
-                    }
-                    GUILayout.BeginHorizontal(GUILayout.MaxWidth(300));
-                    GUILayout.Space(20);
-                    GUILayout.Label(p.name.displayName);
-                    GUILayout.FlexibleSpace();
+                    upperProviderPriority.priority = p.priority + 1;
+                    EditorPrefs.SetInt($"{k_KeyPrefix}.{upperProviderPriority.name.id}.priority", upperProviderPriority.priority);
+                    upperProviderPriority = null;
+                    GUI.changed = true;
+                }
+                GUILayout.BeginHorizontal();
+                GUILayout.Space(20);
+                GUILayout.Label(p.name.displayName, GUILayout.Width(175));
+
+                if (!p.isExplicitProvider)
+                {
                     if (GUILayout.Button(Styles.increasePriorityContent, Styles.priorityButton))
                         lowerProviderPriority = p;
                     if (GUILayout.Button(Styles.decreasePriorityContent, Styles.priorityButton))
                         upperProviderPriority = p;
-                    GUILayout.EndHorizontal();
-                    upper = p.priority;
+                }
+                else
+                {
+                    GUILayoutUtility.GetRect(Styles.increasePriorityContent, Styles.priorityButton);
+                    GUILayoutUtility.GetRect(Styles.increasePriorityContent, Styles.priorityButton);
+                }
+                
+                GUILayout.Space(20);
 
-                    if (lowerProviderPriority != null)
+                using (new EditorGUI.DisabledScope(p.actions.Count < 2))
+                {
+                    EditorGUI.BeginChangeCheck();
+                    var items = p.actions.Select(a => new GUIContent(a.DisplayName, a.content.image, 
+                        p.actions.Count == 1 ?
+                        $"Default action for {p.name.displayName} (Enter)" : 
+                        $"Set default action for {p.name.displayName} (Enter)")).ToArray();
+                    var newDefaultAction = EditorGUILayout.Popup(0, items, GUILayout.ExpandWidth(true));
+                    if (EditorGUI.EndChangeCheck())
                     {
-                        lowerProviderPriority.priority = lower - 1;
-                        EditorPrefs.SetInt($"{k_KeyPrefix}.{lowerProviderPriority.name.id}.priority", lowerProviderPriority.priority);
-                        lowerProviderPriority = null;
+                        SearchService.SetDefaultAction(p.name.id, p.actions[newDefaultAction].Id);
                         GUI.changed = true;
                     }
+                    GUILayout.Space(10);
+                }
+
+                GUILayout.EndHorizontal();
+                upper = p.priority;
+
+                if (lowerProviderPriority != null)
+                {
+                    lowerProviderPriority.priority = lower - 1;
+                    EditorPrefs.SetInt($"{k_KeyPrefix}.{lowerProviderPriority.name.id}.priority", lowerProviderPriority.priority);
+                    lowerProviderPriority = null;
+                    GUI.changed = true;
                 }
             }
-            #if UNITY_2019_1_OR_NEWER
-            EditorGUILayout.EndFoldoutHeaderGroup();
-            #endif
         }
 
         static class Styles

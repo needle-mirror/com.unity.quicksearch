@@ -60,6 +60,8 @@ namespace Unity.QuickSearch
         public string label;
         // If no description is provided, SearchProvider.fetchDescription will be called when the item is first displayed.
         public string description;
+        // If true - description already has formatting / rich text
+        public bool customDescriptionFormatter;
         // If no thumbnail are provider, SearchProvider.fetchThumbnail will be called when the item is first displayed.
         public Texture2D thumbnail;
         // Back pointer to the provider.
@@ -127,8 +129,7 @@ namespace Unity.QuickSearch
                 filteredProviders.Clear();
                 foreach (var provider in m_Providers)
                 {
-                    var providerFilter = new ProviderDesc(new NameId(provider.name.id,
-                            string.IsNullOrEmpty(provider.filterId) ? provider.name.displayName : provider.name.displayName + " (" + provider.filterId + ")"), provider);
+                    var providerFilter = new ProviderDesc(new NameId(provider.name.id, GetProviderNameWithFilter(provider)), provider);
                     providerFilters.Add(providerFilter);
                     foreach (var subCategory in provider.subCategories)
                     {
@@ -189,6 +190,11 @@ namespace Unity.QuickSearch
             }
 
             return false;
+        }
+
+        public static string GetProviderNameWithFilter(SearchProvider provider)
+        {
+            return string.IsNullOrEmpty(provider.filterId) ? provider.name.displayName : provider.name.displayName + " (" + provider.filterId + ")";
         }
 
         public List<Entry> GetSubCategories(SearchProvider provider)
@@ -364,6 +370,8 @@ namespace Unity.QuickSearch
         public NameId name;
         // Text token use to "filter" a provider (ex:  "me:", "p:", "s:")
         public string filterId;
+        // This provider is only active when specified explicitly using his filterId
+        public bool isExplicitProvider;
         // Handler to provider an async description for an item. Will be called when the item is about to be displayed.
         // allow a plugin provider to only fetch long description when they are needed.
         public DescriptionHandler fetchDescription;
@@ -444,6 +452,8 @@ namespace Unity.QuickSearch
         const string k_FilterPrefKey = prefKey + ".filters";
         const string k_LastSearchPrefKey = prefKey + ".last_search";
         const string k_RecentsPrefKey = prefKey + ".recents";
+        const string k_DefaultActionPrefKey = prefKey + ".defaultactions.";
+
         const string k_ActionQueryToken = ">";
 
         private static int s_CurrentSearchId = 0;
@@ -502,7 +512,7 @@ namespace Unity.QuickSearch
 
         public static void SetRecent(SearchItem item)
         {
-            int itemKey = item.id.GetHashCode(); 
+            int itemKey = item.id.GetHashCode();
             s_UserScores.Add(itemKey);
             s_SortedUserScores.Add(itemKey);
         }
@@ -518,6 +528,7 @@ namespace Unity.QuickSearch
             Filter = new SearchFilter();
             OverrideFilter = new SearchFilter();
             var settingsValid = FetchProviders();
+            SortActionsPriority();
             settingsValid = LoadSettings() || settingsValid;
             LastSearch = EditorPrefs.GetString(k_LastSearchPrefKey, "");
 
@@ -621,6 +632,46 @@ namespace Unity.QuickSearch
                 provider.onDisable?.Invoke();
 
             asyncItemReceived = null;
+        }
+
+        internal static void SetDefaultAction(string providerId, string actionId)
+        {
+            if (string.IsNullOrEmpty(providerId) || string.IsNullOrEmpty(actionId))
+                return;
+
+            EditorPrefs.SetString(k_DefaultActionPrefKey + providerId, actionId);
+            SortActionsPriority();
+        }
+
+        internal static void SortActionsPriority(SearchProvider searchProvider)
+        {
+            if (searchProvider.actions.Count == 1)
+                return;
+
+            var defaultActionId = EditorPrefs.GetString(k_DefaultActionPrefKey + searchProvider.name.id);
+            if (string.IsNullOrEmpty(defaultActionId))
+                return;
+            if (searchProvider.actions.Count == 0 || defaultActionId == searchProvider.actions[0].Id)
+                return;
+
+            searchProvider.actions.Sort((action1, action2) =>
+            {
+                if (action1.Id == defaultActionId)
+                    return -1;
+
+                if (action2.Id == defaultActionId)
+                    return 1;
+
+                return 0;
+            });
+        }
+
+        internal static void SortActionsPriority()
+        {
+            foreach (var searchProvider in Providers)
+            {
+                SortActionsPriority(searchProvider);
+            }
         }
 
         internal static void PrepareSearch(SearchContext context)
@@ -770,7 +821,7 @@ namespace Unity.QuickSearch
                     }
                 }
 
-                Filter.Providers = Providers;
+                Filter.Providers = Providers.Where(p => !p.isExplicitProvider).ToList();
                 OverrideFilter.Providers = Providers;
                 TextFilterIds = new Dictionary<string, string>();
                 foreach (var provider in Providers)

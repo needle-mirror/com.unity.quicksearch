@@ -75,11 +75,7 @@ namespace Unity.QuickSearch
 
             private static string FormatDescription(UnityEditor.PackageManager.PackageInfo pi)
             {
-                const int k_MaxLength = 90;
-                var desc = pi.description.Replace("\r", "").Replace("\n", "");
-                if (desc.Length > k_MaxLength)
-                    desc = desc.Substring(0, Math.Min(k_MaxLength, desc.Length)) + "...";
-                return desc;
+                return pi.description.Replace("\r", "").Replace("\n", "");
             }
 
             [UsedImplicitly, SearchActionsProvider]

@@ -21,13 +21,18 @@ namespace Unity.QuickSearch
 
             class SceneSearchProvider : SearchProvider
             {
-                public GOD[] gods { get; set; }
+                private GOD[] gods { get; set; }
 
                 public SceneSearchProvider(string providerId, string displayName = null)
                     : base(providerId, displayName)
                 {
                     priority = 50;
                     filterId = "h:";
+
+                    subCategories = new List<NameId>
+                    {
+                        new NameId("fuzzy", "fuzzy")
+                    };
 
                     onEnable = () =>
                     {
@@ -36,7 +41,7 @@ namespace Unity.QuickSearch
                         for (int i = 0; i < objects.Length; ++i)
                         {
                             gods[i].gameObject = (GameObject)objects[i];
-                            gods[i].name = gods[i].gameObject.name.ToLower();
+                            gods[i].name = CleanString(gods[i].gameObject.name.ToLower());
                         }
                     };
 
@@ -52,21 +57,33 @@ namespace Unity.QuickSearch
                         if (gods == null)
                             return;
 
-                        var sq = context.searchQuery.ToLowerInvariant();
+                        var useFuzzySearch = context.categories.Any(c => c.name.id == "fuzzy" && c.isEnabled);
+                        var sq = CleanString(context.searchQuery.ToLowerInvariant());
 
                         int addedCount = 0;
-                        int i = 0, end = 0;
-                        for (i = 0, end = gods.Length; i != end; ++i)
+                        List<int> matches = new List<int>();
+                        for (int i = 0, end = gods.Length; i != end; ++i)
                         {
-                            if (!SearchProvider.MatchSearchGroups(context, gods[i].name, true))
-                                continue;
-
                             var go = gods[i].gameObject;
                             if (!go)
                                 continue;
+
+                            long score = 1;
+                            if (useFuzzySearch)
+                            {
+                                if (!FuzzySearch.FuzzyMatch(sq, gods[i].name, ref score, matches))
+                                    continue;
+                            }
+                            else
+                            {
+                                if (!MatchSearchGroups(context, gods[i].name, true))
+                                    continue;
+                            }
+
                             var gameObjectId = go.GetInstanceID().ToString();
-                        
-                            items.Add(provider.CreateItem(gameObjectId, $"{go.name} ({gameObjectId})", null));
+                            var item = provider.CreateItem(gameObjectId, ~(int)score, $"{go.name} ({gameObjectId})", null, null, null);
+                            item.customDescriptionFormatter = useFuzzySearch;
+                            items.Add(item);
                             if (++addedCount >= 200)
                                 break;
                         }
@@ -74,11 +91,22 @@ namespace Unity.QuickSearch
 
                     fetchDescription = (item, context) =>
                     {
-                        const int maxChars = 85;
                         var go = ObjectFromItem(item);
-                        item.data = item.description = go.transform.GetPath();
-                        if (item.description.Length > maxChars)
-                            item.description = "..." + item.description.Substring(item.description.Length-maxChars, maxChars);
+                        var sq = CleanString(context.searchQuery.ToLowerInvariant());
+
+                        item.description = go.transform.GetPath() + " (" + item.score + ")";
+
+                        const int maxCharCount = 105;
+                        if (item.description.Length > maxCharCount)
+                            item.description = "..." + item.description.Substring(item.description.Length - maxCharCount);
+
+                        if (item.customDescriptionFormatter)
+                        {
+                            long score = 1;
+                            List<int> matches = new List<int>();
+                            if (FuzzySearch.FuzzyMatch(sq, CleanString(item.description), ref score, matches))
+                                item.description = RichTextFormatter.FormatSuggestionTitle(item.description, matches, "<color=#FF6100>", "<color=#FF6100>");
+                        }
                         return item.description;
                     };
 
@@ -112,6 +140,13 @@ namespace Unity.QuickSearch
 
                     trackSelection = (item, context) => PingItem(item);
                 }
+            }
+
+            private static string CleanString(string s)
+            {
+                return s.Replace('_', ' ')
+                        .Replace('.', ' ')
+                        .Replace('-', ' ');
             }
 
             private static UnityEngine.Object PingItem(SearchItem item)
@@ -171,7 +206,6 @@ namespace Unity.QuickSearch
             {
                 QuickSearchTool.OpenWithContextualProvider(type);
             }
-
             #endif
         }
     }

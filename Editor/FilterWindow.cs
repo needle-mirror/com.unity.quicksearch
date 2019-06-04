@@ -145,6 +145,9 @@ namespace Unity.QuickSearch
 
             m_ToggleFilterCount = m_ToggleFilterNextIndex;
 
+            GUILayout.Space(10);
+            DrawExplicitProviders();
+
             GUILayout.EndScrollView();
             GUILayout.Space(1);
         }
@@ -169,6 +172,23 @@ namespace Unity.QuickSearch
             }
 
             GUI.FocusControl($"Box_{m_ToggleFilterFocusIndex}");
+        }
+
+        private static void DrawExplicitProviders()
+        {
+            GUILayout.BeginHorizontal();
+            GUILayout.Label(new GUIContent("Explicit Providers", null, "Providers only available if specified explicitly"), Styles.filterHeader);
+            GUILayout.FlexibleSpace();
+            GUILayout.EndHorizontal();
+            GUILayout.Label(GUIContent.none, Styles.separator);
+
+            foreach (var provider in SearchService.Providers.Where(p => p.isExplicitProvider))
+            {
+                GUILayout.BeginHorizontal();
+                GUILayout.Space(Styles.foldoutIndent);
+                GUILayout.Label(GetProviderLabelContent(provider), Styles.filterHeader);
+                GUILayout.EndHorizontal();
+            }
         }
 
         private void DrawHeader()
@@ -218,7 +238,7 @@ namespace Unity.QuickSearch
                 GUILayout.Space(Styles.foldoutIndent);
             }
 
-            GUILayout.Label(desc.entry.name.displayName, Styles.filterHeader);
+            GUILayout.Label(GetProviderLabelContent(desc.provider, desc.entry.name.displayName), Styles.filterHeader);
             GUILayout.FlexibleSpace();
             if (desc.provider != null)
             {
@@ -237,6 +257,19 @@ namespace Unity.QuickSearch
             }
 
             GUILayout.EndHorizontal();
+        }
+
+        private static GUIContent GetProviderLabelContent(SearchProvider provider, string displayName = null)
+        {
+            if (displayName == null)
+                displayName = SearchFilter.GetProviderNameWithFilter(provider);
+
+            string tooltip = null;
+            if (provider.filterId != null)
+            {
+                tooltip = $"Type \"{provider.filterId}\" to search ONLY for {provider.name.displayName}";
+            }
+            return new GUIContent(displayName, null, tooltip);
         }
 
         private void DrawSubCategories(SearchFilter.ProviderDesc desc)

@@ -6,6 +6,7 @@ using System.IO;
 using System.Reflection;
 using System.Diagnostics;
 using System.Text.RegularExpressions;
+using JetBrains.Annotations;
 using UnityEditor;
 using UnityEngine;
 using Debug = UnityEngine.Debug;
@@ -192,11 +193,9 @@ namespace Unity.QuickSearch
             var parentViewField = editorWindowType.GetField("m_Parent", BindingFlags.Instance | BindingFlags.NonPublic);
             var parentViewValue = parentViewField.GetValue(window);
 
-            //m_Parent.AddToAuxWindowList();
             hostViewType.InvokeMember("AddToAuxWindowList", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.InvokeMethod, null, parentViewValue, null);
 
             // Dropdown windows should not be saved to layout
-            //m_Parent.window.m_DontSaveToLayout = true;
             var containerWindowProperty = hostViewType.GetProperty("window", BindingFlags.Instance | BindingFlags.Public);
             var parentContainerWindowValue = containerWindowProperty.GetValue(parentViewValue);
             var dontSaveToLayoutField = containerWindowType.GetField("m_DontSaveToLayout", BindingFlags.Instance | BindingFlags.NonPublic);
@@ -454,7 +453,7 @@ namespace Unity.QuickSearch
             return rev;
         }
 
-        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
+        [UsedImplicitly, RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
         private static void EnsureLoaded()
         {
             // This method ensures that this type has been initialized before any loading of objects occurs.

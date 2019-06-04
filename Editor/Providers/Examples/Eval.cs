@@ -26,11 +26,9 @@ namespace Unity.QuickSearch
                 {
                     priority = 1,
                     filterId = "$",
+                    isExplicitProvider = true,
                     fetchItems = (context, items, provider) =>
                     {
-                        if (!context.searchText.StartsWith(provider.filterId))
-                            return;
-
                         items.Add(provider.CreateItem(GUID.Generate().ToString(), "Evaluate C# expression", context.searchQuery.Trim()));
                     }
                 };
@@ -43,7 +41,7 @@ namespace Unity.QuickSearch
             {
                 return new[]
                 {
-                    new SearchAction(type, "locate", null, "locate")
+                    new SearchAction(type, "evaluate", null, "evaluate")
                     {
                         handler = (item, context) =>
                         {
