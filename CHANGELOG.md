@@ -1,15 +1,26 @@
+## [1.2.3-preview] - 2019-06-06
+- Add a new help search provider to guide the user how to use other search providers (type ? to get a list of search help items).
+- [UX] Draw some nice up and down arrows to order the search provider priority.
+- [UX] Add a status bar to give some context to the user what is going on and what is filtered or not.
+- [UX] Add a Reset Priorities button in the Settings window to restore all default search provider priorities if messed up for whatever reason.
+- [FIX] Fix the ordering of search provider priorities in the Settings window.
+- [FIX] Fix the order of explicit providers in the filter popup window.
+- [FIX] Fix a rare exception when the SearchIndexer is trying to write to the temporary index DB.
+- [API] Add `SearchAction.closeWindowAfterExecution` to indicate if the window should be closed after executing an action. Now an action can append to the search text and show additional search items.
+- [API] Add `ISearchView` interface for `SearchContext.searchView` to give access to some functionalities of the Quick Search host window.
+
 ## [1.2.2-preview] - 2019-06-05
 - Add more performance, productivity and fun!
 - Add fuzzy search to scene objects search provider.
-- [API] Add Search.customDescriptionFormatter to allow a search provider to indicate that the item description was already done and should not be done generically (used by the scene object search provider fuzzy search). 
-- [API] Add SearchProvider.isExplicitProvider to mark a provider as explicit. An explicit provider only list search result if the the search query start with its filter id. In example, # will get into the calcultor search provider and # will only return static method APIs.
-- [API] Expose the SearchIndexer API to easily add new search provider with indexed data.
-- [UX] Add ... to long search item description and show the entire description as a tooltip.
-- [UX] Add more tooltips to some controls to indicate more advance features.
-- [UX] Allow the user to change the default action to be executed for search item with multiple actions.
-- [UX] Make the asset indexed search the default search for the asset search provider.
-- [UX] Make the Quick Search window default size larger.
 - [UX] Separate regular search providers from explicit search providers in the filter popup window.
+- [UX] Make the Quick Search window default size larger.
+- [UX] Make the asset indexed search the default search for the asset search provider.
+- [UX] Allow the user to change the default action to be executed for search item with multiple actions.
+- [UX] Add more tooltips to some controls to indicate more advance features.
+- [UX] Add ... to long search item description and show the entire description as a tooltip.
+- [API] Expose the SearchIndexer API to easily add new search provider with indexed data.
+- [API] Add SearchProvider.isExplicitProvider to mark a provider as explicit. An explicit provider only list search result if the the search query start with its filter id. In example, # will get into the calculator search provider and # will only return static method APIs.
+- [API] Add Search.customDescriptionFormatter to allow a search provider to indicate that the item description was already done and should not be done generically (used by the scene object search provider fuzzy search). 
 
 ## [1.2.1-preview] - 2019-05-29
 - Various domain reload fixes

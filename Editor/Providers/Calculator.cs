@@ -19,6 +19,7 @@ namespace Unity.QuickSearch
             {
                 return new SearchProvider(type, displayName)
                 {
+                    priority = 10,
                     filterId = "=",
                     isExplicitProvider = true,
                     fetchItems = (context, items, provider) =>

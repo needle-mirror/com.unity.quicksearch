@@ -84,6 +84,11 @@ namespace Unity.QuickSearch
             return result.ToArray();
         }
 
+        internal static string FormatProviderList(IEnumerable<SearchProvider> providers)
+        {
+            return string.Join(", ", providers.Select(p => $"<b>{p.name.displayName}</b>"));
+        }
+
         private static bool IsIgnoredAssembly(AssemblyName assemblyName)
         {
             var name = assemblyName.Name;

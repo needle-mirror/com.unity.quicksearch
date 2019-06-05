@@ -23,6 +23,12 @@ namespace Unity.QuickSearch
     public delegate void GetKeywordsHandler(SearchContext context, string lastToken, List<string> keywords);
     public delegate bool IsEnabledForContextualSearch();
 
+    interface ISearchView
+    {
+        void SetSearchText(string searchText);
+        void PopFilterWindow();
+    }
+
     public class SearchAction
     {
         public const string kContextualMenuAction = "context";
@@ -40,6 +46,7 @@ namespace Unity.QuickSearch
 
         public string Id => content.text;
         public string DisplayName => content.tooltip;
+        public bool closeWindowAfterExecution = true;
 
         // Unique (for a given provider) id of the action 
         public string providerId;
@@ -434,6 +441,8 @@ namespace Unity.QuickSearch
         // Send SearchService new asynchronous results. First parameter is the search Id who owns those results.
         public Action<int, SearchItem[]> sendAsyncItems;
 
+        internal ISearchView searchView;
+
         static public readonly SearchContext Empty = new SearchContext {searchId = 0, searchText = String.Empty};
 
     }
@@ -458,12 +467,20 @@ namespace Unity.QuickSearch
 
         private static int s_CurrentSearchId = 0;
         private static string s_LastSearch;
-        private static List<string> s_RecentSearches = new List<string>(10);
         private static int s_RecentSearchIndex = -1;
         private static List<int> s_UserScores = new List<int>();
         private static HashSet<int> s_SortedUserScores = new HashSet<int>();
 
+        internal static List<string> s_RecentSearches = new List<string>(10);
         internal static List<SearchProvider> Providers { get; private set; }
+        internal static IEnumerable<SearchProvider> OrderedProviders
+        {
+            get
+            {
+                return Providers.OrderBy(p => p.priority + (p.isExplicitProvider ? 100000 : 0));
+            }
+        }
+
         internal static Dictionary<string, string> TextFilterIds { get; private set; }
         internal static Dictionary<string, List<string>> ActionIdToProviders { get; private set; }
         internal static SearchFilter OverrideFilter { get; private set; }
@@ -520,6 +537,18 @@ namespace Unity.QuickSearch
         public static bool IsRecent(string id)
         {
             return s_SortedUserScores.Contains(id.GetHashCode());
+        }
+
+        public static SearchProvider GetProvider(string providerId)
+        {
+            return Providers.Find(p => p.name.id == providerId);
+        }
+
+        public static SearchAction GetAction(SearchProvider provider, string actionId)
+        {
+            if (provider == null)
+                return null;
+            return provider.actions.Find(a => a.Id == actionId);
         }
 
         internal static void Refresh()
@@ -593,11 +622,12 @@ namespace Unity.QuickSearch
         public static List<SearchItem> GetItems(SearchContext context)
         {
             PrepareSearch(context);
-            if (string.IsNullOrEmpty(context.searchQuery))
-                return new List<SearchItem>(0);
 
             if (context.isActionQuery || OverrideFilter.filteredProviders.Count > 0)
                 return GetItems(context, OverrideFilter);
+
+            if (string.IsNullOrEmpty(context.searchQuery))
+                return new List<SearchItem>(0);
 
             return GetItems(context, Filter);
         }

@@ -124,6 +124,7 @@ namespace Unity.QuickSearch
             private volatile bool m_IndexReady = false;
             private volatile bool m_ThreadAborted = false;
 
+            private string m_IndexTempFilePath;
             private string[] m_Entries;
             private WordIndexEntry[] m_WordIndexEntries;
 
@@ -145,6 +146,7 @@ namespace Unity.QuickSearch
             public SearchIndexer(IEnumerable<Root> roots)
             {
                 this.roots = roots.ToArray();
+                m_IndexTempFilePath = FileUtil.GetUniqueTempPathInProject();
                 getQueryTokensHandler = ParseQuery;
 
                 EditorApplication.delayCall += CreateIndexerThread;
@@ -307,30 +309,27 @@ namespace Unity.QuickSearch
                         #if QUICKSEARCH_DEBUG
                         using (new DebugTimer($"Save Index (<a>{indexFilePath}</a>)"))
                         #endif
-                        {
-                            var tempIndexFilePath = getIndexFilePathHandler(saveIndexBasePath, true);
-                            if (String.IsNullOrEmpty(tempIndexFilePath))
-                                return;
-                            if (File.Exists(tempIndexFilePath))
-                                File.Delete(tempIndexFilePath);
-                            var indexStream = new FileStream(tempIndexFilePath, FileMode.CreateNew, FileAccess.Write, FileShare.None);
-                            BinaryWriter indexWriter = new BinaryWriter(indexStream);
-                            indexWriter.Write(k_IndexFileVersion);
-                            indexWriter.Write(saveIndexBasePath);
-
-                            indexWriter.Write(m_Entries.Length);
-                            foreach (var p in m_Entries)
-                                indexWriter.Write(p);
-                            indexWriter.Write(m_WordIndexEntries.Length);
-                            foreach (var p in m_WordIndexEntries)
+                        {                            
+                            using (var indexStream = new FileStream(m_IndexTempFilePath, FileMode.Create, FileAccess.Write, FileShare.None))
                             {
-                                indexWriter.Write(p.key);
-                                indexWriter.Write(p.length);
-                                indexWriter.Write(p.fileIndex);
-                                indexWriter.Write(p.score);
-                            }
+                                BinaryWriter indexWriter = new BinaryWriter(indexStream);
+                                indexWriter.Write(k_IndexFileVersion);
+                                indexWriter.Write(saveIndexBasePath);
 
-                            indexStream.Close();
+                                indexWriter.Write(m_Entries.Length);
+                                foreach (var p in m_Entries)
+                                    indexWriter.Write(p);
+                                indexWriter.Write(m_WordIndexEntries.Length);
+                                foreach (var p in m_WordIndexEntries)
+                                {
+                                    indexWriter.Write(p.key);
+                                    indexWriter.Write(p.length);
+                                    indexWriter.Write(p.fileIndex);
+                                    indexWriter.Write(p.score);
+                                }
+
+                                indexStream.Close();
+                            }
 
                             try
                             {
@@ -344,7 +343,7 @@ namespace Unity.QuickSearch
 
                             try
                             {
-                                File.Move(tempIndexFilePath, indexFilePath);
+                                File.Move(m_IndexTempFilePath, indexFilePath);
                             }
                             catch (IOException)
                             {

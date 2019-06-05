@@ -36,7 +36,7 @@ namespace Unity.QuickSearch
                 keywords = new[] { "quick", "omni", "search" },
                 guiHandler = searchContext =>
                 {
-                    EditorGUIUtility.labelWidth = 450;
+                    EditorGUIUtility.labelWidth = 500;
                     GUILayout.BeginHorizontal();
                     {
                         GUILayout.Space(10);
@@ -45,10 +45,10 @@ namespace Unity.QuickSearch
                             GUILayout.Space(10);
                             EditorGUI.BeginChangeCheck();
                             {
+                                trackSelection = EditorGUILayout.Toggle(Styles.trackSelectionContent, trackSelection);
                                 useDockableWindow = EditorGUILayout.Toggle(Styles.useDockableWindowContent, useDockableWindow);
                                 if (useDockableWindow)
                                     closeWindowByDefault = EditorGUILayout.Toggle(Styles.closeWindowByDefaultContent, closeWindowByDefault);
-                                trackSelection = EditorGUILayout.Toggle(Styles.trackSelectionContent, trackSelection);
                                 GUILayout.Space(10);
                                 DrawProviderSettings();
                             }
@@ -69,29 +69,18 @@ namespace Unity.QuickSearch
         private static void DrawProviderSettings()
         {
             EditorGUILayout.LabelField("Provider Settings", EditorStyles.largeLabel);
-            int upper = 0;
-            SearchProvider lowerProviderPriority = null;
-            SearchProvider upperProviderPriority = null;
-            foreach (var p in SearchService.Providers.OrderBy(p => p.priority + (p.isExplicitProvider ? 100000 : 0)))
+            foreach (var p in SearchService.OrderedProviders)
             {
-                int lower = upper;
-                if (upperProviderPriority != null)
-                {
-                    upperProviderPriority.priority = p.priority + 1;
-                    EditorPrefs.SetInt($"{k_KeyPrefix}.{upperProviderPriority.name.id}.priority", upperProviderPriority.priority);
-                    upperProviderPriority = null;
-                    GUI.changed = true;
-                }
                 GUILayout.BeginHorizontal();
                 GUILayout.Space(20);
-                GUILayout.Label(p.name.displayName, GUILayout.Width(175));
+                GUILayout.Label(new GUIContent(p.name.displayName, $"{p.name.id} ({p.priority})"), GUILayout.Width(175));
 
                 if (!p.isExplicitProvider)
                 {
                     if (GUILayout.Button(Styles.increasePriorityContent, Styles.priorityButton))
-                        lowerProviderPriority = p;
+                        LowerProviderPriority(p);
                     if (GUILayout.Button(Styles.decreasePriorityContent, Styles.priorityButton))
-                        upperProviderPriority = p;
+                        UpperProviderPriority(p);
                 }
                 else
                 {
@@ -118,15 +107,65 @@ namespace Unity.QuickSearch
                 }
 
                 GUILayout.EndHorizontal();
-                upper = p.priority;
+            }
 
-                if (lowerProviderPriority != null)
-                {
-                    lowerProviderPriority.priority = lower - 1;
-                    EditorPrefs.SetInt($"{k_KeyPrefix}.{lowerProviderPriority.name.id}.priority", lowerProviderPriority.priority);
-                    lowerProviderPriority = null;
-                    GUI.changed = true;
-                }
+            GUILayout.BeginHorizontal();
+            GUILayout.Space(20);
+            if (GUILayout.Button(Styles.resetPrioritiesContent, GUILayout.MaxWidth(100)))
+                ResetProviderPriorities();
+            GUILayout.EndHorizontal();
+        }
+
+        private static void ResetProviderPriorities()
+        {
+            foreach (var p in SearchService.Providers)
+                EditorPrefs.DeleteKey($"{k_KeyPrefix}.{p.name.id}.priority");
+            SearchService.Refresh();
+        }
+
+        private static void LowerProviderPriority(SearchProvider provider)
+        {
+            var sortedProviderList = SearchService.Providers.Where(p => !p.isExplicitProvider).OrderBy(p => p.priority).ToList();
+            for (int i = 1, end = sortedProviderList.Count; i < end; ++i)
+            {
+                var cp = sortedProviderList[i];
+                if (cp != provider)
+                    continue;
+
+                var adj = sortedProviderList[i-1];
+                var temp = provider.priority;
+                if (cp.priority == adj.priority)
+                    temp++;
+                
+                provider.priority = adj.priority;
+                adj.priority = temp;
+
+                EditorPrefs.SetInt($"{k_KeyPrefix}.{adj.name.id}.priority", adj.priority);
+                EditorPrefs.SetInt($"{k_KeyPrefix}.{provider.name.id}.priority", provider.priority);
+                break;
+            }
+        }
+
+        private static void UpperProviderPriority(SearchProvider provider)
+        {
+            var sortedProviderList = SearchService.Providers.Where(p => !p.isExplicitProvider).OrderBy(p => p.priority).ToList();
+            for (int i = 0, end = sortedProviderList.Count-1; i < end; ++i)
+            {
+                var cp = sortedProviderList[i];
+                if (cp != provider)
+                    continue;
+
+                var adj = sortedProviderList[i+1];
+                var temp = provider.priority;
+                if (cp.priority == adj.priority)
+                    temp--;
+                
+                provider.priority = adj.priority;
+                adj.priority = temp;
+
+                EditorPrefs.SetInt($"{k_KeyPrefix}.{adj.name.id}.priority", adj.priority);
+                EditorPrefs.SetInt($"{k_KeyPrefix}.{provider.name.id}.priority", provider.priority);
+                break;
             }
         }
 
@@ -136,15 +175,23 @@ namespace Unity.QuickSearch
             {
                 fixedHeight = 20,
                 fixedWidth = 20,
-                padding = new RectOffset(2, 1, 0, 1),
+                #if UNITY_2019_3_OR_NEWER
+                fontSize = 14,
+                padding = new RectOffset(0, 0, 0, 4),
+                #else
+                fontSize = 16,
+                padding = new RectOffset(0, 0, 0, 2),
+                #endif
                 margin = new RectOffset(1, 1, 1, 1),
-                alignment = TextAnchor.MiddleCenter
+                alignment = TextAnchor.MiddleCenter,
+                richText = true
             };
 
-            public static GUIContent increasePriorityContent = new GUIContent("+", "Increase the provider's priority");
-            public static GUIContent decreasePriorityContent = new GUIContent("-", "Decrease the provider's priority");
+            public static GUIContent resetPrioritiesContent = new GUIContent("Reset Priorities", "All search providers will restore their initial priority");
+            public static GUIContent increasePriorityContent = new GUIContent("\u2191", "Increase the provider's priority");
+            public static GUIContent decreasePriorityContent = new GUIContent("\u2193", "Decrease the provider's priority");
 
-            public static GUIContent useDockableWindowContent = new GUIContent("Use a dockable window (instead of a modal popup window)");
+            public static GUIContent useDockableWindowContent = new GUIContent("Use a dockable window (instead of a modal popup window, not recommended)");
             public static GUIContent closeWindowByDefaultContent = new GUIContent("Automatically close the window when an action is executed");
             public static GUIContent useFilePathIndexerContent = new GUIContent(
                 "Enable fast indexing of file system entries under your project (experimental)", 
