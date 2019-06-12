@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using JetBrains.Annotations;
 using UnityEditor;
@@ -75,6 +76,7 @@ namespace Unity.QuickSearch
         public QuickSearchTool quickSearchTool;
 
         private Vector2 m_ScrollPos;
+        private List<SearchFilter.ProviderDesc> initialProviders;
         private int m_ToggleFilterFocusIndex = 1;
         private int m_ToggleFilterNextIndex = 0;
         private int m_ToggleFilterCount = 0;
@@ -102,13 +104,22 @@ namespace Unity.QuickSearch
         }
 
         [UsedImplicitly]
+        internal void OnEnable()
+        {
+            if (SearchService.Filter.allActive)
+                initialProviders = SearchService.Filter.providerFilters.ToList();
+            else
+                initialProviders = SearchService.Filter.providerFilters.Where(p => p.entry.isEnabled).ToList();
+        }
+
+        [UsedImplicitly]
         internal void OnDestroy()
         {
             s_CloseTime = EditorApplication.timeSinceStartup;
             if (SearchService.Filter.providerFilters.All(desc => !desc.entry.isEnabled))
             {
                 Debug.LogWarning("All filters are disabled. Loading last used filters.");
-                SearchService.LoadSettings();
+                SearchService.LoadGlobalSettings();
             }
         }
 
@@ -133,14 +144,11 @@ namespace Unity.QuickSearch
 
             m_ScrollPos = GUILayout.BeginScrollView(m_ScrollPos);
              
-            foreach (var providerDesc in SearchService.Filter.providerFilters.OrderBy(f => f.priority))
+            foreach (var providerDesc in initialProviders.OrderBy(f => f.priority))
             {
-                if (!quickSearchTool.PartialFilterMode || providerDesc.entry.isEnabled)
-                {
-                    DrawSectionHeader(providerDesc);
-                    if (providerDesc.isExpanded)
-                        DrawSubCategories(providerDesc);
-                }
+                DrawSectionHeader(providerDesc);
+                if (providerDesc.isExpanded)
+                    DrawSubCategories(providerDesc);
             }
 
             m_ToggleFilterCount = m_ToggleFilterNextIndex;

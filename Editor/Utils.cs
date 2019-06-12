@@ -56,6 +56,42 @@ namespace Unity.QuickSearch
             return path.Substring(lastSep + 1);
         }
 
+        public static Texture2D GetAssetThumbnailFromPath(string path, bool fullPreview = false)
+        {
+            Texture2D thumbnail = null;
+            if (fullPreview)
+            {
+                var obj = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(path);
+                if (obj != null)
+                    thumbnail = AssetPreview.GetAssetPreview(obj);
+                if (thumbnail)
+                    return thumbnail;
+            }
+            thumbnail = AssetDatabase.GetCachedIcon(path) as Texture2D;
+            if (thumbnail)
+                return thumbnail;
+
+            return UnityEditorInternal.InternalEditorUtility.FindIconForFile(path);
+        }
+
+        public static void FrameAssetFromPath(string path)
+        {
+            var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(path);
+            if (asset != null)
+            {
+                Selection.activeObject = asset;
+                EditorApplication.delayCall += () =>
+                {
+                    EditorWindow.FocusWindowIfItsOpen(Utils.GetProjectBrowserWindowType());
+                    EditorApplication.delayCall += () => EditorGUIUtility.PingObject(asset);
+                };
+            }
+            else
+            {
+                EditorUtility.RevealInFinder(path);
+            }
+        }
+
         public static IEnumerable<Type> GetLoadableTypes(this Assembly assembly)
         {
             try

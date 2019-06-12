@@ -1,7 +1,7 @@
 {
   "name": "com.unity.quicksearch",
   "displayName": "Quick Search",
-  "version": "1.2.3-preview",
+  "version": "1.2.4-preview",
   "unity": "2018.3",
   "keywords": [
     "unity",
@@ -26,6 +26,6 @@
   "repository": {
     "type": "git",
     "url": "git@github.cds.internal.unity3d.com:unity/com.unity.quicksearch.git",
-    "revision": "013bec747c2f7c0aa485c9f8b951264b4df3492f"
+    "revision": "ac756277fef9d3c3be3d1f84b34080d01312c4f0"
   }
 }

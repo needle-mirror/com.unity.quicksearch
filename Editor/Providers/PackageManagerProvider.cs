@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using JetBrains.Annotations;
 using UnityEditor;
 using UnityEditor.PackageManager.Requests;
@@ -29,7 +30,7 @@ namespace Unity.QuickSearch
 
                     onEnable = () =>
                     {
-                        s_ListRequest = UnityEditor.PackageManager.Client.List();
+                        s_ListRequest = UnityEditor.PackageManager.Client.List(true);
                         s_SearchRequest = UnityEditor.PackageManager.Client.SearchAll();
                     },
 
@@ -78,6 +79,24 @@ namespace Unity.QuickSearch
                 return pi.description.Replace("\r", "").Replace("\n", "");
             }
 
+            private static bool WaitForRequestBase(UnityEditor.PackageManager.Requests.Request request, string msg, int loopDelay)
+            {
+                var progress = 0.0f;
+                while (!request.IsCompleted)
+                {
+                    Thread.Sleep(loopDelay);
+                    EditorUtility.DisplayProgressBar("Unity Package Manager", msg, Mathf.Min(1.0f, progress++ / 100f));
+                }
+                EditorUtility.ClearProgressBar();
+
+                return request.Status == UnityEditor.PackageManager.StatusCode.Success;
+            }
+
+            private static bool WaitForRequest<T>(UnityEditor.PackageManager.Requests.Request<T> request, string msg, int loopDelay = 20)
+            {
+                return WaitForRequestBase(request, msg, loopDelay) && request.Result != null;
+            }
+
             [UsedImplicitly, SearchActionsProvider]
             internal static IEnumerable<SearchAction> ActionHandlers()
             {
@@ -88,10 +107,12 @@ namespace Unity.QuickSearch
                         handler = (item, context) =>
                         {
                             var packageInfo = (UnityEditor.PackageManager.PackageInfo)item.data;
-                            if (EditorUtility.DisplayDialog("About to install package " + item.id, 
-                                "Are you sure you want to install the following package?\r\n\r\n" +
-                                FormatName(packageInfo), "Install...", "Cancel"))
-                                UnityEditor.PackageManager.Client.Add(item.id);
+                            if (EditorUtility.DisplayDialog("About to install package " + item.id,
+                                                            "Are you sure you want to install the following package?\r\n\r\n" +
+                                                            FormatName(packageInfo), "Install...", "Cancel"))
+                            {
+                                WaitForRequest(UnityEditor.PackageManager.Client.Add(item.id), $"Installing {item.id}...", 25);
+                            }
                         }
                     },
                     new SearchAction(type, "browse", null, "Browse...")
@@ -110,7 +131,7 @@ namespace Unity.QuickSearch
                         handler = (item, context) =>
                         {
                             var packageInfo = (UnityEditor.PackageManager.PackageInfo)item.data;
-                            UnityEditor.PackageManager.Client.Remove(packageInfo.name);
+                            WaitForRequestBase(UnityEditor.PackageManager.Client.Remove(packageInfo.name), $"Removing {packageInfo.packageId}...", 1);
                         }
                     }
                 };

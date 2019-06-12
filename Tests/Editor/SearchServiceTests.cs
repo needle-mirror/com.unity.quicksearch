@@ -16,7 +16,7 @@ internal class SearchServiceTests
     [TearDown]
     public void DisableService()
     {
-        SearchService.Disable(SearchContext.Empty, false);
+        SearchService.Disable(SearchContext.Empty);
     }
 
     [Test]

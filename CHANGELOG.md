@@ -1,3 +1,11 @@
+## [1.2.4-preview] - 2019-06-13
+- [UX] Add support to search asset by its GUID.
+- [UX] Add scene objects root container asset information.
+- [UX] Add prefab instance preview for scene objects
+- [FIX] Improve search provider filtering
+- [FIX] Fix recently used item persistence
+- [FIX] Add an active loop while installing and removing packages to prevent any race conditions.
+
 ## [1.2.3-preview] - 2019-06-06
 - Add a new help search provider to guide the user how to use other search providers (type ? to get a list of search help items).
 - [UX] Draw some nice up and down arrows to order the search provider priority.

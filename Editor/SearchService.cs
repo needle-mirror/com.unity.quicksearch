@@ -14,7 +14,7 @@ using Debug = UnityEngine.Debug;
 namespace Unity.QuickSearch
 {
     public delegate Texture2D PreviewHandler(SearchItem item, SearchContext context);
-    public delegate string DescriptionHandler(SearchItem item, SearchContext context);
+    public delegate string FetchStringHandler(SearchItem item, SearchContext context);
     public delegate void ActionHandler(SearchItem item, SearchContext context);
     public delegate void StartDragHandler(SearchItem item, SearchContext context);
     public delegate void TrackSelectionHandler(SearchItem item, SearchContext context);
@@ -57,10 +57,11 @@ namespace Unity.QuickSearch
         public EnabledHandler isEnabled;
     }
 
-    public class SearchItem : IEqualityComparer<SearchItem>
+    [DebuggerDisplay("{id} | {label}")]
+    public class SearchItem : IEqualityComparer<SearchItem>, IEquatable<SearchItem>
     {
         // Unique id of this item among this provider items.
-        public string id;
+        public readonly string id;
         // The item score can affect how the item gets sorted within the same provider.
         public int score;
         // Display name of the item
@@ -76,6 +77,11 @@ namespace Unity.QuickSearch
         // Search provider defined content
         public object data;
 
+        public SearchItem(string _id)
+        {
+            id = _id;
+        }
+
         public bool Equals(SearchItem x, SearchItem y)
         {
             return x.id == y.id;
@@ -84,6 +90,11 @@ namespace Unity.QuickSearch
         public int GetHashCode(SearchItem obj)
         {
             return obj.id.GetHashCode();
+        }
+
+        public bool Equals(SearchItem other)
+        {
+            return id == other.id;
         }
     }
 
@@ -121,6 +132,8 @@ namespace Unity.QuickSearch
             public SearchProvider provider;
         }
 
+        public bool allActive { get; internal set; }
+
         public List<SearchProvider> filteredProviders;
         public List<ProviderDesc> providerFilters;
 
@@ -155,10 +168,9 @@ namespace Unity.QuickSearch
 
         public void ResetFilter(bool enableAll)
         {
+            allActive = enableAll;
             foreach (var providerDesc in providerFilters)
-            {
                 SetFilterInternal(enableAll, providerDesc.entry.name.id);
-            }
             UpdateFilteredProviders();
         }
 
@@ -261,7 +273,7 @@ namespace Unity.QuickSearch
         public string displayName;
     }
 
-    [DebuggerDisplay("{name}")]
+    [DebuggerDisplay("{name.id}")]
     public class SearchProvider
     {
         private const int k_RecentUserScore = -100;
@@ -272,6 +284,7 @@ namespace Unity.QuickSearch
             actions = new List<SearchAction>();
             fetchItems = (context, items, provider) => {};
             fetchThumbnail = (item, context) => item.thumbnail ?? Icons.quicksearch;
+            fetchLabel = (item, context) => item.label ?? item.id ?? String.Empty;
             fetchDescription = (item, context) => item.description ?? String.Empty;
             subCategories = new List<NameId>();
             priority = 100;
@@ -286,11 +299,10 @@ namespace Unity.QuickSearch
             if (SearchService.IsRecent(id))
                 score = k_RecentUserScore;
 
-            return new SearchItem
+            return new SearchItem(id)
             {
-                id = id,
                 score = score,
-                label = label ?? id,
+                label = label,
                 description = description,
                 thumbnail = thumbnail,
                 provider = this,
@@ -379,9 +391,11 @@ namespace Unity.QuickSearch
         public string filterId;
         // This provider is only active when specified explicitly using his filterId
         public bool isExplicitProvider;
+        // Handler used to fetch and format the label of a search item.
+        public FetchStringHandler fetchLabel;
         // Handler to provider an async description for an item. Will be called when the item is about to be displayed.
         // allow a plugin provider to only fetch long description when they are needed.
-        public DescriptionHandler fetchDescription;
+        public FetchStringHandler fetchDescription;
         // Handler to provider an async thumbnail for an item. Will be called when the item is about to be displayed.
         // allow a plugin provider to only fetch/generate preview when they are needed.
         public PreviewHandler fetchThumbnail;
@@ -443,7 +457,7 @@ namespace Unity.QuickSearch
 
         internal ISearchView searchView;
 
-        static public readonly SearchContext Empty = new SearchContext {searchId = 0, searchText = String.Empty};
+        static public readonly SearchContext Empty = new SearchContext {searchId = 0, searchText = String.Empty, searchQuery = String.Empty};
 
     }
 
@@ -458,10 +472,12 @@ namespace Unity.QuickSearch
     public static class SearchService
     {
         public const string prefKey = "quicksearch";
+        // Global settings
         const string k_FilterPrefKey = prefKey + ".filters";
-        const string k_LastSearchPrefKey = prefKey + ".last_search";
-        const string k_RecentsPrefKey = prefKey + ".recents";
         const string k_DefaultActionPrefKey = prefKey + ".defaultactions.";
+        // Session settings
+        const string k_LastSearchPrefKey = "last_search";
+        const string k_RecentsPrefKey = "recents";
 
         const string k_ActionQueryToken = ">";
 
@@ -557,36 +573,46 @@ namespace Unity.QuickSearch
             Filter = new SearchFilter();
             OverrideFilter = new SearchFilter();
             var settingsValid = FetchProviders();
+            settingsValid = LoadGlobalSettings() || settingsValid;
             SortActionsPriority();
-            settingsValid = LoadSettings() || settingsValid;
-            LastSearch = EditorPrefs.GetString(k_LastSearchPrefKey, "");
 
             if (!settingsValid)
             {
                 // Override all settings
-                SaveSettings();
+                SaveGlobalSettings();
             }
         }
 
-        internal static bool LoadSettings()
+        internal static bool LoadSessionSettings()
         {
-            LastSearch = EditorPrefs.GetString(k_LastSearchPrefKey, "");
-            return LoadFilters() && LoadRecents();
+            LastSearch = LoadSessionSetting(k_LastSearchPrefKey, String.Empty);
+            return LoadRecents();
         }
 
-        internal static void SaveSettings()
+        internal static void SaveSessionSettings()
         {
-            SaveFilters();
-            SaveLastSearch();
+            SaveSessionSetting(k_LastSearchPrefKey, LastSearch);
             SaveRecents();
         }
 
+        internal static bool LoadGlobalSettings()
+        {
+            return LoadFilters();
+        }
+
+        internal static void SaveGlobalSettings()
+        {
+            if (SearchService.Filter.allActive)
+                SaveFilters();
+        }
+
+        #if QUICKSEARCH_DEBUG
         internal static void Reset()
         {
             EditorPrefs.SetString(k_FilterPrefKey, null);
-            EditorPrefs.SetString(k_LastSearchPrefKey, null);
             Refresh();
         }
+        #endif
 
         public static string[] GetKeywords(SearchContext context, string lastToken)
         {
@@ -632,36 +658,25 @@ namespace Unity.QuickSearch
             return GetItems(context, Filter);
         }
 
-        internal static void SaveLastSearch()
-        {
-            EditorPrefs.SetString(k_LastSearchPrefKey, LastSearch);
-        }
-
         public static void Enable(SearchContext context)
         {
             s_CurrentSearchId = 0;
+            LoadSessionSettings();
             PrepareSearch(context);
             foreach (var provider in Providers)
                 provider.onEnable?.Invoke();
         }
 
-        public static void Disable(SearchContext context, bool saveState)
+        public static void Disable(SearchContext context)
         {
-            if (saveState)
-            {
-                LastSearch = context.searchText;
-                SaveSettings();
-            }
-            else
-            {
-                // Reload settings
-                LoadSettings();
-            }
+            asyncItemReceived = null;
+            LastSearch = context.searchText;
 
             foreach (var provider in Providers)
                 provider.onDisable?.Invoke();
 
-            asyncItemReceived = null;
+            SaveSessionSettings();
+            SaveGlobalSettings();
         }
 
         internal static void SetDefaultAction(string providerId, string actionId)
@@ -706,8 +721,8 @@ namespace Unity.QuickSearch
 
         internal static void PrepareSearch(SearchContext context)
         {
-            context.searchQuery = context.searchText;
             string[] overrideFilterId = null;
+            context.searchQuery = context.searchText ?? String.Empty;
             context.isActionQuery = context.searchQuery.StartsWith(">");
             if (context.isActionQuery)
             {
@@ -798,7 +813,7 @@ namespace Unity.QuickSearch
                 #endif
                 {
                     SortItemList(allItems);
-                    return allItems.Distinct().ToList();
+                    return allItems.GroupBy(i => i.id).Select(i => i.First()).ToList();
                 }
             }
         }
@@ -878,7 +893,7 @@ namespace Unity.QuickSearch
             return true;
         }
 
-        private static bool LoadFilters()
+        internal static bool LoadFilters()
         {
             try
             {
@@ -920,10 +935,11 @@ namespace Unity.QuickSearch
         {
             try
             {
-                if (!(Utils.JsonDeserialize(EditorPrefs.GetString(k_RecentsPrefKey, null)) is List<object> recents))
+                var ro = Utils.JsonDeserialize(LoadSessionSetting(k_RecentsPrefKey));
+                if (!(ro is List<object> recents))
                     return false;
 
-                s_UserScores = recents.Cast<int>().ToList();
+                s_UserScores = recents.Select(Convert.ToInt32).ToList();
                 s_SortedUserScores = new HashSet<int>(s_UserScores);
                 return true;
             }
@@ -960,6 +976,27 @@ namespace Unity.QuickSearch
             return Utils.JsonSerialize(filters);
         }
 
+        private static string GetPrefKeyName(string suffix)
+        {
+            var scope = Filter.filteredProviders.Select(p => p.filterId.GetHashCode()).Aggregate((h1, h2) => (h1 ^ h2).GetHashCode());
+            return $"{prefKey}.{scope}.{suffix}";
+        }
+
+        private static void SaveSessionSetting(string key, string value)
+        {
+            var prefKeyName = GetPrefKeyName(key);
+            //UnityEngine.Debug.Log($"Saving session setting {prefKeyName} with {value}");
+            EditorPrefs.SetString(prefKeyName, value);
+        }
+
+        private static string LoadSessionSetting(string key, string defaultValue = default)
+        {
+            var prefKeyName = GetPrefKeyName(key);
+            var value = EditorPrefs.GetString(prefKeyName, defaultValue);
+            //UnityEngine.Debug.Log($"Loading session setting {prefKeyName} with {value}");
+            return value;
+        }
+
         private static void SaveFilters()
         {
             var filter = FilterToString();
@@ -969,7 +1006,7 @@ namespace Unity.QuickSearch
         private static void SaveRecents()
         {
             // We only save the last 40 most recent items.
-            EditorPrefs.SetString(k_RecentsPrefKey, Utils.JsonSerialize(s_UserScores.Skip(s_UserScores.Count - 40).ToList()));
+            SaveSessionSetting(k_RecentsPrefKey, Utils.JsonSerialize(s_UserScores.Skip(s_UserScores.Count - 40).ToArray()));
         }
 
         #region Refresh search content event

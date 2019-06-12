@@ -73,7 +73,7 @@ namespace Unity.QuickSearch
             // Was the item activated using the Enter key (false: user clicked in the item)
             public bool endSearchWithKeyboard;
             // Was the tool opened in general mode (where we record the search state)
-            public bool saveSearchStateOnExit;
+            [Obsolete] public bool saveSearchStateOnExit = true;
             // Was the history shortcut used.
             public bool useHistoryShortcut;
             // Was the FilterMenu shortcut used.
@@ -82,7 +82,7 @@ namespace Unity.QuickSearch
             public bool useActionMenuShortcut;
             // Was drag and drop used.
             public bool useDragAndDrop;
-            // Provider specific datas
+            // Provider specific data
             public ProviderData[] providerDatas;
 
             public bool useOverrideFilter;

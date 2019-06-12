@@ -90,19 +90,7 @@ namespace Unity.QuickSearch
                         if (item.thumbnail)
                             return item.thumbnail;
 
-                        if (context.totalItemCount < 200)
-                        {
-                            var obj = AssetDatabase.LoadAssetAtPath<Object>(item.id);
-                            if (obj != null)
-                                item.thumbnail = AssetPreview.GetAssetPreview(obj);
-                            if (item.thumbnail)
-                                return item.thumbnail;
-                        }
-                        item.thumbnail = AssetDatabase.GetCachedIcon(item.id) as Texture2D;
-                        if (item.thumbnail)
-                            return item.thumbnail;
-
-                        item.thumbnail = UnityEditorInternal.InternalEditorUtility.FindIconForFile(item.id);
+                        item.thumbnail = Utils.GetAssetThumbnailFromPath(item.id, context.totalItemCount < 200);
                         return item.thumbnail;
                     },
 
@@ -141,6 +129,7 @@ namespace Unity.QuickSearch
                 var provider = CreateProvider(k_ProjectAssetsType, displayName, "p:", 25, 
                     (context, items, _provider) => SearchAssets(context, items, _provider, fileIndexer));
 
+                provider.subCategories.Add(new NameId("guid", "guid"));
                 provider.subCategories.Add(new NameId("packages", "packages"));
 
                 return provider;
@@ -150,6 +139,16 @@ namespace Unity.QuickSearch
             {
                 var filter = context.searchQuery;
                 var searchPackages = context.categories.Any(c => c.name.id == "packages" && c.isEnabled);
+                var searchGuids = context.categories.Any(c => c.name.id == "guid" && c.isEnabled);
+
+                if (searchGuids)
+                {
+                    var gui2Path = AssetDatabase.GUIDToAssetPath(filter);
+                    if (!System.String.IsNullOrEmpty(gui2Path))
+                    {
+                        items.Add(provider.CreateItem(gui2Path, -1, $"{Path.GetFileName(gui2Path)} ({filter})", null, null, null));
+                    }
+                }
 
                 if (fileIndexer.IsReady())
                 {
@@ -206,23 +205,7 @@ namespace Unity.QuickSearch
                 {
                     new SearchAction(type, "select", null, "Select asset...")
                     {
-                        handler = (item, context) =>
-                        {
-                            var asset = AssetDatabase.LoadAssetAtPath<Object>(item.id);
-                            if (asset != null)
-                            {
-                                Selection.activeObject = asset;
-                                EditorApplication.delayCall += () =>
-                                {
-                                    EditorWindow.FocusWindowIfItsOpen(Utils.GetProjectBrowserWindowType());
-                                    EditorApplication.delayCall += () => EditorGUIUtility.PingObject(asset);
-                                };
-                            }
-                            else
-                            {
-                                EditorUtility.RevealInFinder(item.id);
-                            }
-                        }
+                        handler = (item, context) => Utils.FrameAssetFromPath(item.id)
                     },
                     new SearchAction(type, "open", null, "Open asset...")
                     {
@@ -291,9 +274,7 @@ namespace Unity.QuickSearch
             [UsedImplicitly, Shortcut("Help/Quick Search/Assets")]
             private static void PopQuickSearch()
             {
-                SearchService.Filter.ResetFilter(false);
-                SearchService.Filter.SetFilter(true, k_ProjectAssetsType);
-                QuickSearchTool.ShowWindow(false);
+                QuickSearchTool.OpenWithContextualProvider(k_ProjectAssetsType);
             }
             #endif
         }

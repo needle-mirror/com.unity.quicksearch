@@ -116,7 +116,6 @@ namespace Unity.QuickSearch
             {
                 QuickSearchTool.OpenWithContextualProvider(type);
             }
-
             #endif
 
             private static void GetMenuInfo(List<string> outItemNames, List<string> outItemDefaultShortcuts)

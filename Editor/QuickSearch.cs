@@ -20,7 +20,6 @@ namespace Unity.QuickSearch
         public static string packageFolderName = $"Packages/{packageName}";
 
         private static EditorWindow s_FocusedWindow;
-        private static bool s_SaveStateOnExit;
         private static bool isDeveloperMode = Utils.IsDeveloperMode();
 
         private const int k_ResetSelectionIndex = -1;
@@ -37,7 +36,6 @@ namespace Unity.QuickSearch
         [SerializeField] private Vector2 m_ScrollPosition;
         [SerializeField] public EditorWindow lastFocusedWindow;
         [SerializeField] private int m_SelectedIndex = k_ResetSelectionIndex;
-        [SerializeField] private bool m_SaveStateOnExit = true;
         [SerializeField] private string m_SearchTopic = "anything";
 
         private bool m_SendAnalyticsEvent;
@@ -333,16 +331,14 @@ namespace Unity.QuickSearch
         }
 
         internal static Rect ContextualActionPosition { get; private set; }
-        internal bool IsTransient => !m_SaveStateOnExit;
-        internal bool PartialFilterMode => IsTransient;
 
         [UsedImplicitly]
         internal void OnEnable()
         {
             m_CurrentSearchEvent = new SearchAnalytics.SearchEvent();
-            m_SaveStateOnExit = s_SaveStateOnExit || SearchSettings.useDockableWindow;
-            m_Context = new SearchContext { searchText = m_SaveStateOnExit ? SearchService.LastSearch : "", focusedWindow = lastFocusedWindow, searchView = this };
+            m_Context = new SearchContext { searchText = String.Empty, focusedWindow = lastFocusedWindow, searchView = this };
             SearchService.Enable(m_Context);
+            m_Context.searchText = SearchService.LastSearch;
             m_SearchBoxFocus = true;
             lastFocusedWindow = s_FocusedWindow;
             UpdateWindowTitle();
@@ -350,22 +346,6 @@ namespace Unity.QuickSearch
             Refresh();
 
             SearchService.asyncItemReceived += OnAsyncItemsReceived;
-            //SearchService.contentRefreshed += (a, b, c) => Refresh();
-        }
-
-        private void OnAsyncItemsReceived(IEnumerable<SearchItem> items)
-        {
-            if (m_SelectedIndex == -1)
-            {
-                m_FilteredItems.AddRange(items);
-                SearchService.SortItemList(m_FilteredItems);
-            }
-            else
-            {
-                m_FilteredItems.InsertRange(m_SelectedIndex + 1, items);
-            }
-
-            Repaint();
         }
 
         [UsedImplicitly]
@@ -377,7 +357,7 @@ namespace Unity.QuickSearch
                 SendSearchEvent(null); // Track canceled searches
 
             SearchService.asyncItemReceived -= OnAsyncItemsReceived;
-            SearchService.Disable(m_Context, m_SaveStateOnExit);
+            SearchService.Disable(m_Context);
         }
 
         public void SetSearchText(string searchText)
@@ -397,6 +377,21 @@ namespace Unity.QuickSearch
             nextFrame += () => m_ShowFilterWindow = true;
         }
 
+        private void OnAsyncItemsReceived(IEnumerable<SearchItem> items)
+        {
+            if (m_SelectedIndex == -1)
+            {
+                m_FilteredItems.AddRange(items);
+                SearchService.SortItemList(m_FilteredItems);
+            }
+            else
+            {
+                m_FilteredItems.InsertRange(m_SelectedIndex + 1, items);
+            }
+
+            Repaint();
+        }
+
         private void SendSearchEvent(SearchItem item, SearchAction action = null)
         {
             if (item != null)
@@ -405,8 +400,10 @@ namespace Unity.QuickSearch
             if (m_CurrentSearchEvent.success || m_CurrentSearchEvent.elapsedTimeMs > 7000)
             {
                 m_CurrentSearchEvent.Done();
-                m_CurrentSearchEvent.searchText = m_Context.searchText;
-                m_CurrentSearchEvent.saveSearchStateOnExit = m_SaveStateOnExit;
+                if (item != null)
+                    m_CurrentSearchEvent.searchText = $"{m_Context.searchText} => {item.id}";
+                else
+                    m_CurrentSearchEvent.searchText = m_Context.searchText;
                 if (m_SendAnalyticsEvent)
                     SearchAnalytics.SendSearchEvent(m_CurrentSearchEvent);
             }
@@ -1131,7 +1128,7 @@ namespace Unity.QuickSearch
                 {
                     var maxWidth = position.width - Styles.actionButtonSize - Styles.itemPreviewSize - Styles.itemRowSpacing;
                     var textMaxWidthLayoutOption = GUILayout.MaxWidth(maxWidth);
-                    GUILayout.Label(item.label ?? item.id, m_SelectedIndex == index ? Styles.selectedItemLabel : Styles.itemLabel, textMaxWidthLayoutOption);
+                    GUILayout.Label(item.provider.fetchLabel(item, context), m_SelectedIndex == index ? Styles.selectedItemLabel : Styles.itemLabel, textMaxWidthLayoutOption);
                     GUILayout.Label(FormatDescription(item, context, maxWidth), m_SelectedIndex == index ? Styles.selectedItemDescription : Styles.itemDescription, textMaxWidthLayoutOption);
                 }
 
@@ -1211,7 +1208,7 @@ namespace Unity.QuickSearch
             if (SearchSettings.useDockableWindow)
             {
                 Debug.LogWarning("Contextual Quick Search cannot be used when the dockable quick search is enabled");
-                ShowWindow();
+                OpenQuickSearch();
                 return;
             }
 
@@ -1219,12 +1216,12 @@ namespace Unity.QuickSearch
             if (provider == null)
             {
                 Debug.LogWarning("Quick Search Cannot find search provider with id: " + providerId);
-                ShowWindow();
+                OpenQuickSearch();
                 return;
             }
             SearchService.Filter.ResetFilter(false);
             SearchService.Filter.SetFilter(true, providerId);
-            var toolWindow = ShowWindow(false);
+            var toolWindow = ShowWindow();
             toolWindow.m_SearchTopic = provider.name.displayName.ToLower();
             toolWindow.UpdateWindowTitle();
         }
@@ -1254,13 +1251,12 @@ namespace Unity.QuickSearch
                 SearchService.Filter.SetFilter(true, searchProvider.name.id);
             }
 
-            ShowWindow(false);
+            ShowWindow();
         }
 
-        public static QuickSearchTool ShowWindow(bool saveSearchStateOnExit = true)
+        public static QuickSearchTool ShowWindow()
         {
             s_FocusedWindow = focusedWindow;
-            s_SaveStateOnExit = saveSearchStateOnExit;
 
             var windowSize = new Vector2(650, 440);
             
@@ -1438,6 +1434,7 @@ namespace Unity.QuickSearch
         [UsedImplicitly]
         private static void OpenQuickSearch()
         {
+            SearchService.LoadFilters();
             ShowWindow();
         }
 

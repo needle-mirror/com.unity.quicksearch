@@ -1,12 +1,16 @@
 ﻿//#define QUICKSERACH_DEBUG
 using System;
 using System.Collections.Generic;
+using UnityEditor;
 using UnityEngine.Profiling;
 
 namespace Unity.QuickSearch
 {
-    internal static class FuzzySearch
+    public static class FuzzySearch
     {
+        public static string HighlightColorTag = EditorGUIUtility.isProSkin ? "<color=#FF6100>" : "<color=#EE4400>";
+        public static string HighlightColorTagSpecial = EditorGUIUtility.isProSkin ? "<color=#FF6100>" : "<color=#BB1100>";
+
         struct ScoreIndx
         {
             public int i;
@@ -139,8 +143,18 @@ namespace Unity.QuickSearch
                         var min_i = str_n + 1;
                         var first_match = true;
 
-                        for (var i = Math.Max(j, prev_min_i); i < str_n_minus_pattern_n_plus_1 + j; ++i)
+                        for (int i = Math.Max(j, prev_min_i), end_i = str_n_minus_pattern_n_plus_1 + j; i < end_i; ++i)
                         {
+                            // Skip existing <> tags
+                            if (str[i] == '<')
+                            {
+                                for (; i < end_i; ++i)
+                                {
+                                    if (str[i] == '>')
+                                        break;
+                                }
+                            }
+
                             var si = i + str_start;
 
                             var inQuoteExpectEquality = false; //i > 0 && j > 0 && filter.indexesAreInSameQuotes(j, j - 1);
