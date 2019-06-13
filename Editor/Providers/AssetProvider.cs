@@ -90,7 +90,7 @@ namespace Unity.QuickSearch
                         if (item.thumbnail)
                             return item.thumbnail;
 
-                        item.thumbnail = Utils.GetAssetThumbnailFromPath(item.id, context.totalItemCount < 200);
+                        item.thumbnail = Utils.GetAssetThumbnailFromPath(item.id, SearchSettings.fetchPreview && context.totalItemCount < 200);
                         return item.thumbnail;
                     },
 
@@ -101,7 +101,7 @@ namespace Unity.QuickSearch
                         {
                             DragAndDrop.PrepareStartDrag();
                             DragAndDrop.objectReferences = new[] { obj };
-                            DragAndDrop.StartDrag("Drag asset");
+                            DragAndDrop.StartDrag(item.label);
                         }
                     },
 

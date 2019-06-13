@@ -13,12 +13,14 @@ namespace Unity.QuickSearch
         public static bool useDockableWindow { get; private set; }
         public static bool closeWindowByDefault { get; private set; }
         public static bool trackSelection { get; private set; }
+        public static bool fetchPreview { get; private set; }
 
         static SearchSettings()
         {
             useDockableWindow = EditorPrefs.GetBool($"{k_KeyPrefix}.{nameof(useDockableWindow)}", false);
             closeWindowByDefault = EditorPrefs.GetBool($"{k_KeyPrefix}.{nameof(closeWindowByDefault)}", true);
             trackSelection = EditorPrefs.GetBool($"{k_KeyPrefix}.{nameof(trackSelection)}", true);
+            fetchPreview = EditorPrefs.GetBool($"{k_KeyPrefix}.{nameof(fetchPreview)}", true);
         }
 
         private static void Save()
@@ -26,6 +28,7 @@ namespace Unity.QuickSearch
             EditorPrefs.SetBool($"{k_KeyPrefix}.{nameof(useDockableWindow)}", useDockableWindow);
             EditorPrefs.SetBool($"{k_KeyPrefix}.{nameof(closeWindowByDefault)}", closeWindowByDefault);
             EditorPrefs.SetBool($"{k_KeyPrefix}.{nameof(trackSelection)}", trackSelection);
+            EditorPrefs.SetBool($"{k_KeyPrefix}.{nameof(fetchPreview)}", fetchPreview);
         }
 
         [UsedImplicitly, SettingsProvider]
@@ -46,6 +49,7 @@ namespace Unity.QuickSearch
                             EditorGUI.BeginChangeCheck();
                             {
                                 trackSelection = EditorGUILayout.Toggle(Styles.trackSelectionContent, trackSelection);
+                                fetchPreview = EditorGUILayout.Toggle(Styles.fetchPreviewContent, fetchPreview);
                                 useDockableWindow = EditorGUILayout.Toggle(Styles.useDockableWindowContent, useDockableWindow);
                                 if (useDockableWindow)
                                     closeWindowByDefault = EditorGUILayout.Toggle(Styles.closeWindowByDefaultContent, closeWindowByDefault);
@@ -201,6 +205,9 @@ namespace Unity.QuickSearch
             public static GUIContent trackSelectionContent = new GUIContent(
                 "Track the current selection in the quick search",
                 "Tracking the current selection can alter other window state, such as pinging the project browser or the scene hierarchy window.");
+            public static GUIContent fetchPreviewContent = new GUIContent(
+                "Generate an asset preview thumbnail for found items",
+                "Fetching the preview of the items can consume more memory and make searches within very large project slower.");
         }
     }
 }

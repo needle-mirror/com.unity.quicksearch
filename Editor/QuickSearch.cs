@@ -846,13 +846,23 @@ namespace Unity.QuickSearch
                     var item = m_FilteredItems.ElementAt(m_SelectedIndex);
                     if (item.provider?.startDrag != null)
                     {
+                        item.provider.startDrag(item, context);
+                        m_PrepareDrag = false;
+
                         m_CurrentSearchEvent.useDragAndDrop = true;
                         SendSearchEvent(item);
 
-                        item.provider.startDrag(item, context);
-                        m_PrepareDrag = false;
+                        Event.current.Use();
+                        #if UNITY_EDITOR_OSX
+                        CloseSearchWindow();
+                        #endif
                     }
                 }
+            }
+            else if (Event.current.type == EventType.MouseUp)
+            {
+                m_PrepareDrag = false;
+                DragAndDrop.PrepareStartDrag(); // Reset drag content
             }
         }
 
@@ -1097,7 +1107,7 @@ namespace Unity.QuickSearch
                 if (m_DebounceTime == 0)
                     m_DebounceTime = currentTime;
 
-                #if QUICKSEARCH_DEBUG
+                #if QUICKSEARCH_DEBUG && UNITY_2019_1_OR_NEWER
                 Debug.LogFormat(LogType.Log, LogOption.NoStacktrace, null, "Debouncing {0}", m_Context.searchText);
                 #endif
                 EditorApplication.delayCall -= DebouncedRefresh;
@@ -1122,7 +1132,9 @@ namespace Unity.QuickSearch
 
             using (new EditorGUILayout.HorizontalScope(bgStyle))
             {
-                GUILayout.Label(item.thumbnail ?? item.provider.fetchThumbnail(item, context), Styles.preview);
+                if (!item.thumbnail)
+                    item.thumbnail = item.provider.fetchThumbnail(item, context);
+                GUILayout.Label(item.thumbnail, Styles.preview);
 
                 using (new EditorGUILayout.VerticalScope())
                 {
@@ -1145,23 +1157,69 @@ namespace Unity.QuickSearch
             }
         }
 
+        private static string CleanString(string s)
+        {
+            return s.Replace('_', ' ')
+                    .Replace('.', ' ')
+                    .Replace('-', ' ');
+        }
+
+        private static int s_GUIContentPoolIndex = 0;
+        private static readonly GUIContent[] s_GUIContentPool = new GUIContent[100];
+        private static GUIContent TakeContent(string text = null, string tooltip = null, Texture2D thumbnail = null)
+        {
+            GUIContent content = s_GUIContentPool[s_GUIContentPoolIndex];
+            if (content == null)
+                s_GUIContentPool[s_GUIContentPoolIndex] = content = new GUIContent(text, thumbnail, tooltip);
+            else
+            {
+                content.text = text;
+                content.tooltip = tooltip;
+                content.image = thumbnail;
+            }
+
+            SearchService.Wrap(s_GUIContentPoolIndex + 1, s_GUIContentPool.Length);
+            return content;
+        }
+
         private static GUIContent FormatDescription(SearchItem item, SearchContext context, float availableSpace)
         {
             var desc = item.description ?? item.provider.fetchDescription(item, context);
-            var content = new GUIContent(desc);
-            if (item.customDescriptionFormatter || Event.current.type != EventType.Repaint)
+            var content = TakeContent(desc);
+            if (item.descriptionFormat == SearchItemDescriptionFormat.None || Event.current.type != EventType.Repaint)
                 return content;
 
-            Styles.itemDescription.CalcMinMaxWidth(content, out var minWidth, out _);
-            int maxCharLength = (int)(availableSpace / (minWidth / content.text.Length)) - 3;
             var truncatedDesc = desc;
-            var truncated = desc.Length > maxCharLength;
-            if (truncated)
-                truncatedDesc = desc.Substring(0, Math.Min(maxCharLength, desc.Length)) + "...";
+            var truncated = false;
+            if (item.descriptionFormat.HasFlag(SearchItemDescriptionFormat.Ellipsis))
+            {
+                int maxCharLength = Utils.GetNumCharactersThatFitWithinWidth(Styles.itemDescription, truncatedDesc + "...", availableSpace);
+                if (maxCharLength < 0)
+                    maxCharLength = truncatedDesc.Length;
+                truncated = desc.Length > maxCharLength;
+                if (truncated)
+                {
+                    if (item.descriptionFormat.HasFlag(SearchItemDescriptionFormat.RightToLeft))
+                        truncatedDesc = "..." + desc.Replace("<b>", "").Replace("</b>", "").Substring(desc.Length - maxCharLength);
+                    else
+                        truncatedDesc = desc.Substring(0, Math.Min(maxCharLength, desc.Length)) + "...";
+                }
+            }
 
-            var parts = context.searchQuery.Split('*', ' ', '.').Where(p => p.Length > 2);
-            foreach (var p in parts)
-                truncatedDesc = Regex.Replace(truncatedDesc, Regex.Escape(p), string.Format(Styles.highlightedTextColorFormat, "$0"), RegexOptions.IgnoreCase);
+            if (item.descriptionFormat.HasFlag(SearchItemDescriptionFormat.Highlight))
+            {
+                var parts = context.searchQuery.Split('*', ' ', '.').Where(p => p.Length > 2);
+                foreach (var p in parts)
+                    truncatedDesc = Regex.Replace(truncatedDesc, Regex.Escape(p), string.Format(Styles.highlightedTextColorFormat, "$0"), RegexOptions.IgnoreCase);
+            }
+            else if (item.descriptionFormat.HasFlag(SearchItemDescriptionFormat.FuzzyHighlight))
+            {
+                long score = 1;
+                List<int> matches = new List<int>();
+                var sq = CleanString(context.searchQuery.ToLowerInvariant());
+                if (FuzzySearch.FuzzyMatch(sq, CleanString(truncatedDesc), ref score, matches))
+                    truncatedDesc = RichTextFormatter.FormatSuggestionTitle(truncatedDesc, matches);
+            }
 
             content.text = truncatedDesc;
             if (truncated)
@@ -1454,7 +1512,7 @@ namespace Unity.QuickSearch
             }
             if (GUILayout.Button("Save", EditorStyles.toolbarButton))
             {
-                SearchService.SaveSettings();
+                SearchService.SaveGlobalSettings();
             }
             if (GUILayout.Button("Reset", EditorStyles.toolbarButton))
             {

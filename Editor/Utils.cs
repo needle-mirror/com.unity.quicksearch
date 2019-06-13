@@ -27,19 +27,7 @@ namespace Unity.QuickSearch
 
         private static Type[] GetAllEditorWindowTypes()
         {
-            var result = new List<Type>();
-            var AS = AppDomain.CurrentDomain.GetAssemblies();
-            var editorWindow = typeof(EditorWindow);
-            foreach (var A in AS)
-            {
-                var types = A.GetLoadableTypes();
-                foreach (var T in types)
-                {
-                    if (T.IsSubclassOf(editorWindow))
-                        result.Add(T);
-                }
-            }
-            return result.ToArray();
+            return GetAllDerivedTypes(AppDomain.CurrentDomain, typeof(EditorWindow));
         }
 
         internal static Type GetProjectBrowserWindowType()
@@ -106,6 +94,9 @@ namespace Unity.QuickSearch
 
         internal static Type[] GetAllDerivedTypes(this AppDomain aAppDomain, Type aType)
         {
+            #if UNITY_2019_2_OR_NEWER
+            return TypeCache.GetTypesDerivedFrom(aType).ToArray();
+            #else
             var result = new List<Type>();
             var assemblies = aAppDomain.GetAssemblies();
             foreach (var assembly in assemblies)
@@ -118,6 +109,7 @@ namespace Unity.QuickSearch
                 }
             }
             return result.ToArray();
+            #endif
         }
 
         internal static string FormatProviderList(IEnumerable<SearchProvider> providers)
@@ -168,26 +160,36 @@ namespace Unity.QuickSearch
             return result.ToArray();
         }
 
+        static UnityEngine.Object s_MainWindow = null;
         internal static Rect GetEditorMainWindowPos()
         {
-            var containerWinType = AppDomain.CurrentDomain.GetAllDerivedTypes(typeof(ScriptableObject)).FirstOrDefault(t => t.Name == "ContainerWindow");
-            if (containerWinType == null)
-                throw new MissingMemberException("Can't find internal type ContainerWindow. Maybe something has changed inside Unity");
-            var showModeField = containerWinType.GetField("m_ShowMode", BindingFlags.NonPublic | BindingFlags.Instance);
-            var positionProperty = containerWinType.GetProperty("position", BindingFlags.Public | BindingFlags.Instance);
-            if (showModeField == null || positionProperty == null)
-                throw new MissingFieldException("Can't find internal fields 'm_ShowMode' or 'position'. Maybe something has changed inside Unity");
-            var windows = Resources.FindObjectsOfTypeAll(containerWinType);
-            foreach (var win in windows)
+            if (s_MainWindow == null)
             {
-                var showMode = (int)showModeField.GetValue(win);
-                if (showMode == 4) // main window
+                var containerWinType = AppDomain.CurrentDomain.GetAllDerivedTypes(typeof(ScriptableObject)).FirstOrDefault(t => t.Name == "ContainerWindow");
+                if (containerWinType == null)
+                    throw new MissingMemberException("Can't find internal type ContainerWindow. Maybe something has changed inside Unity");
+                var showModeField = containerWinType.GetField("m_ShowMode", BindingFlags.NonPublic | BindingFlags.Instance);
+                if (showModeField == null)
+                    throw new MissingFieldException("Can't find internal fields 'm_ShowMode'. Maybe something has changed inside Unity");
+                var windows = Resources.FindObjectsOfTypeAll(containerWinType);
+                foreach (var win in windows)
                 {
-                    var pos = (Rect)positionProperty.GetValue(win, null);
-                    return pos;
+                    var showMode = (int)showModeField.GetValue(win);
+                    if (showMode == 4) // main window
+                    {
+                        s_MainWindow = win;
+                        break;
+                    }
                 }
             }
-            throw new NotSupportedException("Can't find internal main window. Maybe something has changed inside Unity");
+
+            if (s_MainWindow == null)
+                throw new NotSupportedException("Can't find internal main window. Maybe something has changed inside Unity");
+
+            var positionProperty = s_MainWindow.GetType().GetProperty("position", BindingFlags.Public | BindingFlags.Instance);
+            if (positionProperty == null)
+                throw new MissingFieldException("Can't find internal fields 'position'. Maybe something has changed inside Unity.");
+            return (Rect)positionProperty.GetValue(s_MainWindow, null);
         }
 
         internal static Rect GetCenteredWindowPosition(Rect parentWindowPosition, Vector2 size)
@@ -204,6 +206,7 @@ namespace Unity.QuickSearch
             pos.y = parentWindowPosition.y + h;
             return pos;
         }
+
         internal static IEnumerable<MethodInfo> GetAllMethodsWithAttribute<T>(BindingFlags bindingFlags = BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic)
         {
             Assembly assembly = typeof(Selection).Assembly;
@@ -272,6 +275,23 @@ namespace Unity.QuickSearch
             return method.Invoke(null, arguments);
         }
 
+        private static MethodInfo s_GetNumCharactersThatFitWithinWidthMethod;
+        internal static int GetNumCharactersThatFitWithinWidth(GUIStyle style, string text, float width)
+        {
+            #if UNITY_2019_1_OR_NEWER
+            if (s_GetNumCharactersThatFitWithinWidthMethod == null)
+            {
+                var kType = typeof(GUIStyle);
+                s_GetNumCharactersThatFitWithinWidthMethod = kType.GetMethod("Internal_GetNumCharactersThatFitWithinWidth", BindingFlags.NonPublic | BindingFlags.Instance);
+            }
+            var arguments = new object[] { text, width };
+            return (int)s_GetNumCharactersThatFitWithinWidthMethod.Invoke(style, arguments);
+            #else
+            style.CalcMinMaxWidth(new GUIContent(text), out var minWidth, out _);
+            return (int)(width / (minWidth / text.Length)) - 3;
+            #endif
+        }
+
         internal static string GetQuickSearchVersion()
         {
             string version = null;
@@ -324,35 +344,23 @@ namespace Unity.QuickSearch
 
         public static int LevenshteinDistance<T>(IEnumerable<T> lhs, IEnumerable<T> rhs) where T : System.IEquatable<T>
         {
-            // Validate parameters
             if (lhs == null) throw new System.ArgumentNullException("lhs");
             if (rhs == null) throw new System.ArgumentNullException("rhs");
 
-            // Convert the parameters into IList instances
-            // in order to obtain indexing capabilities
             IList<T> first = lhs as IList<T> ?? new List<T>(lhs);
             IList<T> second = rhs as IList<T> ?? new List<T>(rhs);
 
-            // Get the length of both.  If either is 0, return
-            // the length of the other, since that number of insertions
-            // would be required.
             int n = first.Count, m = second.Count;
             if (n == 0) return m;
             if (m == 0) return n;
 
-            // Rather than maintain an entire matrix (which would require O(n*m) space),
-            // just store the current row and the next row, each of which has a length m+1,
-            // so just O(m) space. Initialize the current row.
             int curRow = 0, nextRow = 1;
-
-            int[][] rows = new int[][] { new int[m + 1], new int[m + 1] };
+            int[][] rows = { new int[m + 1], new int[m + 1] };
             for (int j = 0; j <= m; ++j)
                 rows[curRow][j] = j;
 
-            // For each virtual row (since we only have physical storage for two)
             for (int i = 1; i <= n; ++i)
             {
-                // Fill in the values in the row
                 rows[nextRow][0] = i;
 
                 for (int j = 1; j <= m; ++j)
@@ -364,8 +372,6 @@ namespace Unity.QuickSearch
 
                     rows[nextRow][j] = System.Math.Min(dist1, System.Math.Min(dist2, dist3));
                 }
-
-                // Swap the current and next rows
                 if (curRow == 0)
                 {
                     curRow = 1;
@@ -377,8 +383,6 @@ namespace Unity.QuickSearch
                     nextRow = 1;
                 }
             }
-
-            // Return the computed edit distance
             return rows[curRow][m];
         }
 

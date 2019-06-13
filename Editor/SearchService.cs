@@ -5,6 +5,7 @@ using System.Diagnostics;
 using System.Linq;
 using UnityEditor;
 using UnityEngine;
+using JetBrains.Annotations;
 
 #if QUICKSEARCH_DEBUG
 using System.Reflection;
@@ -57,6 +58,16 @@ namespace Unity.QuickSearch
         public EnabledHandler isEnabled;
     }
 
+    [Flags]
+    public enum SearchItemDescriptionFormat
+    {
+        None = 0,
+        Ellipsis = 1 << 0,
+        RightToLeft = 1 << 1,
+        Highlight = 1 << 2,
+        FuzzyHighlight = 1 << 3
+    }
+
     [DebuggerDisplay("{id} | {label}")]
     public class SearchItem : IEqualityComparer<SearchItem>, IEquatable<SearchItem>
     {
@@ -69,7 +80,7 @@ namespace Unity.QuickSearch
         // If no description is provided, SearchProvider.fetchDescription will be called when the item is first displayed.
         public string description;
         // If true - description already has formatting / rich text
-        public bool customDescriptionFormatter;
+        public SearchItemDescriptionFormat descriptionFormat;
         // If no thumbnail are provider, SearchProvider.fetchThumbnail will be called when the item is first displayed.
         public Texture2D thumbnail;
         // Back pointer to the provider.
@@ -276,7 +287,7 @@ namespace Unity.QuickSearch
     [DebuggerDisplay("{name.id}")]
     public class SearchProvider
     {
-        private const int k_RecentUserScore = -100;
+        private const int k_RecentUserScore = -99;
 
         public SearchProvider(string id, string displayName = null)
         {
@@ -297,13 +308,14 @@ namespace Unity.QuickSearch
             // If the user searched that item recently,
             // let give it a good score so it gets sorted first.
             if (SearchService.IsRecent(id))
-                score = k_RecentUserScore;
+                score = Math.Min(k_RecentUserScore, score);
 
             return new SearchItem(id)
             {
                 score = score,
                 label = label,
                 description = description,
+                descriptionFormat = SearchItemDescriptionFormat.Highlight | SearchItemDescriptionFormat.Ellipsis,
                 thumbnail = thumbnail,
                 provider = this,
                 data = data
@@ -606,13 +618,12 @@ namespace Unity.QuickSearch
                 SaveFilters();
         }
 
-        #if QUICKSEARCH_DEBUG
+        [UsedImplicitly]
         internal static void Reset()
         {
             EditorPrefs.SetString(k_FilterPrefKey, null);
             Refresh();
         }
-        #endif
 
         public static string[] GetKeywords(SearchContext context, string lastToken)
         {

@@ -1,9 +1,18 @@
+## [1.2.6-preview] - 2019-06-14
+- [FIX] Hot fix for crash on OSX when dragging an element.
+
+## [1.2.5-preview] - 2019-06-14
+- [UX] Search scene objects by component and contained sub scene name.
+- [FIX] Optimize GetAllDerivedTypes usage based on the comment <https://forum.unity.com/threads/quick-search-preview.635863/page-4#post-4643902>
+- [FIX] Improve item description formatting.
+- [CI] Update yamato config.
+
 ## [1.2.4-preview] - 2019-06-13
 - [UX] Add support to search asset by its GUID.
 - [UX] Add scene objects root container asset information.
-- [UX] Add prefab instance preview for scene objects
-- [FIX] Improve search provider filtering
-- [FIX] Fix recently used item persistence
+- [UX] Add prefab instance preview for scene objects.
+- [FIX] Improve search provider filtering.
+- [FIX] Fix recently used item persistence.
 - [FIX] Add an active loop while installing and removing packages to prevent any race conditions.
 
 ## [1.2.3-preview] - 2019-06-06

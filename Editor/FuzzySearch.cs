@@ -73,7 +73,7 @@ namespace Unity.QuickSearch
             int str_n;
             int pattern_n;
             int str_start;
-            
+
             string str;
             using (new ScopedProfiler("[FM] Init"))
             {
@@ -211,7 +211,7 @@ namespace Unity.QuickSearch
                                     first_match = false;
                                 }
 
-                                d.matches_indx[j].Add(new ScoreIndx {i = i, score = 1, prev_mi = -1});
+                                d.matches_indx[j].Add(new ScoreIndx { i = i, score = 1, prev_mi = -1 });
                             }
                         }
 
@@ -262,7 +262,9 @@ namespace Unity.QuickSearch
 
                         d.matches_indx[0][mi] = new ScoreIndx
                         {
-                            i = i, score = s, prev_mi = -1
+                            i = i,
+                            score = s,
+                            prev_mi = -1
                         };
                     }
 
@@ -363,13 +365,17 @@ namespace Unity.QuickSearch
             }
         }
     }
-    
-        internal static class RichTextFormatter
+
+    internal static class RichTextFormatter
     {
         static readonly char[] cache_result = new char[1024];
 
-        public static string FormatSuggestionTitle(string title, List<int> matches, string selectedTextColorTag,
-            string specialTextColorTag)
+        public static string FormatSuggestionTitle(string title, List<int> matches)
+        {
+            return FormatSuggestionTitle(title, matches, FuzzySearch.HighlightColorTag, FuzzySearch.HighlightColorTagSpecial);
+        }
+
+        public static string FormatSuggestionTitle(string title, List<int> matches, string selectedTextColorTag, string specialTextColorTag)
         {
             const string closingTag = "</color>";
             int openCharCount = specialTextColorTag.Length;

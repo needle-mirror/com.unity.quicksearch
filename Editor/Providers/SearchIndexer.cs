@@ -148,6 +148,8 @@ namespace Unity.QuickSearch
                 this.roots = roots.ToArray();
                 m_IndexTempFilePath = FileUtil.GetUniqueTempPathInProject();
                 getQueryTokensHandler = ParseQuery;
+                m_Entries = new string[0];
+                m_WordIndexEntries = new WordIndexEntry[0];
 
                 EditorApplication.delayCall += CreateIndexerThread;
             }
@@ -398,6 +400,9 @@ namespace Unity.QuickSearch
                             baseScore = 100;
                         }
                     }
+
+                    if (m_ThreadAborted)
+                        return;
 
                     #if QUICKSEARCH_PRINT_INDEXING_TIMING
                     using (new DebugTimer($"Updating Index ({entries.Count} entries and {wordIndexes.Count} words)"))
