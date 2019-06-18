@@ -1,3 +1,7 @@
+## [1.2.7-preview] - 2019-06-19
+- [FIX] Fix asset refreshing after quitting the application, causing Unity to freeze.
+- [FIX] Fix fetching scene object label when component are missing
+
 ## [1.2.6-preview] - 2019-06-14
 - [FIX] Hot fix for crash on OSX when dragging an element.
 

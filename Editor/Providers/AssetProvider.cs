@@ -1,5 +1,6 @@
 //#define QUICKSEARCH_DEBUG
 
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -252,12 +253,18 @@ namespace Unity.QuickSearch
                 static AssetRefreshWatcher()
                 {
                     EditorApplication.update += Enable;
+                    EditorApplication.quitting += OnQuitting;
                 }
 
                 private static void Enable()
                 {
                     EditorApplication.update -= Enable;
                     s_Enabled = true;
+                }
+
+                private static void OnQuitting()
+                {
+                    s_Enabled = false;
                 }
 
                 [UsedImplicitly]

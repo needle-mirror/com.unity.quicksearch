@@ -109,9 +109,9 @@ namespace Unity.QuickSearch.Providers
 
                 var transformPath = GetTransformPath(go.transform);
                 var components = go.GetComponents<Component>();
-                if (components.Length > 2)
+                if (components.Length > 2 && components[1] && components[components.Length-1])
                     item.label = $"{transformPath} ({components[1].GetType().Name}..{components[components.Length-1].GetType().Name})";
-                else if (components.Length > 1)
+                else if (components.Length > 1 && components[1])
                     item.label = $"{transformPath} ({components[1].GetType().Name})";
                 else
                     item.label = $"{transformPath} ({item.id})";
