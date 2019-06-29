@@ -124,7 +124,6 @@ namespace Unity.QuickSearch
         {
             foreach (var p in SearchService.Providers)
                 EditorPrefs.DeleteKey($"{k_KeyPrefix}.{p.name.id}.priority");
-            SearchService.Refresh();
         }
 
         private static void LowerProviderPriority(SearchProvider provider)

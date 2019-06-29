@@ -287,7 +287,7 @@ namespace Unity.QuickSearch
     [DebuggerDisplay("{name.id}")]
     public class SearchProvider
     {
-        private const int k_RecentUserScore = -99;
+        internal const int k_RecentUserScore = -99;
 
         public SearchProvider(string id, string displayName = null)
         {

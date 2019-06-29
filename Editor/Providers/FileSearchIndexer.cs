@@ -32,12 +32,9 @@ namespace Unity.QuickSearch
                 return entry.Length == 0 || entry[0] == '.' || entry.EndsWith(".meta");
             }
 
-            private string GetIndexFilePath(string basePath, bool temp)
+            private string GetIndexFilePath(string basePath)
             {
                 string indexFileName = $"quicksearch.{type}.index";
-                if (temp)
-                    indexFileName = "~" + indexFileName;
-
                 return Path.GetFullPath(Path.Combine(basePath, "..", "Library", indexFileName));
             }
 

@@ -1,7 +1,10 @@
 fileFormatVersion: 2
 guid: 0db2e1930ecffa147be3db83c5aa6a88
 ScriptedImporter:
-  internalIDToNameTable: []
+  internalIDToNameTable:
+  - first:
+      114: 11400000
+    second: stylesheet
   externalObjects: {}
   serializedVersion: 2
   userData: 

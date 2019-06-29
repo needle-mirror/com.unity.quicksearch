@@ -124,10 +124,12 @@ namespace Unity.QuickSearch
                 while (!listPackageRequest.IsCompleted)
                     System.Threading.Thread.Yield();
 
-                var fileIndexer = new FileSearchIndexer(k_ProjectAssetsType, new[] { new SearchIndexer.Root(Application.dataPath, "Assets") }
+                var fileIndexer = new FileSearchIndexer(k_ProjectAssetsType,
+                    new[] { new SearchIndexer.Root(Application.dataPath, "Assets") }
                         .Concat(listPackageRequest.Result.Select(p => new SearchIndexer.Root(p.resolvedPath, p.assetPath))));
+                fileIndexer.Build();
 
-                var provider = CreateProvider(k_ProjectAssetsType, displayName, "p:", 25, 
+                var provider = CreateProvider(k_ProjectAssetsType, displayName, "p:", 25,
                     (context, items, _provider) => SearchAssets(context, items, _provider, fileIndexer));
 
                 provider.subCategories.Add(new NameId("guid", "guid"));
@@ -156,9 +158,15 @@ namespace Unity.QuickSearch
                     if (filter.IndexOfAny(k_InvalidIndexedChars) == -1)
                     {
                         items.AddRange(fileIndexer.Search(filter, searchPackages ? int.MaxValue : 100).Take(201)
-                                                  .Select(e => provider.CreateItem(e.path, e.score, Path.GetFileName(e.path),
-                                                                                    null,//$"{e.path} ({e.score})", 
-                                                                                    null, null)));
+                                                  .Select(e =>
+                                                  {
+                                                      var filename = Path.GetFileName(e.path);
+                                                      var filenameNoExt = Path.GetFileNameWithoutExtension(e.path);
+                                                      var itemScore = e.score;
+                                                      if (filenameNoExt.Equals(filter, StringComparison.InvariantCultureIgnoreCase))
+                                                          itemScore = SearchProvider.k_RecentUserScore+1;
+                                                      return provider.CreateItem(e.path, itemScore, filename, null, null, null);
+                                                  }));
                         if (!context.wantsMore)
                             return;
                     }
