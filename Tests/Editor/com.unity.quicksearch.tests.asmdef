@@ -1,5 +1,5 @@
 {
-    "name": "Unity.QuickSearch.Package.EditorTests",
+    "name": "com.unity.quicksearch.tests",
     "references": [
         "com.unity.quicksearch"
     ],

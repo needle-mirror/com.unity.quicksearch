@@ -177,20 +177,18 @@ namespace Unity.QuickSearch
             providerFilters = new List<ProviderDesc>();
         }
 
-        public void ResetFilter(bool enableAll)
+        public void ResetFilter(bool enableAll, bool preserveSubFilters = false)
         {
             allActive = enableAll;
             foreach (var providerDesc in providerFilters)
-                SetFilterInternal(enableAll, providerDesc.entry.name.id);
+                SetFilterInternal(enableAll, providerDesc.entry.name.id, null, preserveSubFilters);
             UpdateFilteredProviders();
         }
 
-        public void SetFilter(bool isEnabled, string providerId, string subCategory = null)
+        public void SetFilter(bool isEnabled, string providerId, string subCategory = null, bool preserveSubFilters = false)
         {
-            if (SetFilterInternal(isEnabled, providerId, subCategory))
-            {
+            if (SetFilterInternal(isEnabled, providerId, subCategory, preserveSubFilters))
                 UpdateFilteredProviders();
-            }
         }
 
         public void SetExpanded(bool isExpanded, string providerId)
@@ -238,36 +236,36 @@ namespace Unity.QuickSearch
             filteredProviders = Providers.Where(p => IsEnabled(p.name.id)).ToList();
         }
 
-        internal bool SetFilterInternal(bool isEnabled, string providerId, string subCategory = null)
+        internal bool SetFilterInternal(bool isEnabled, string providerId, string subCategory = null, bool preserveSubFilters = false)
         {
             var providerDesc = providerFilters.Find(pd => pd.entry.name.id == providerId);
-            if (providerDesc != null)
+            if (providerDesc == null) 
+                return false;
+
+            if (subCategory == null)
             {
-                if (subCategory == null)
+                providerDesc.entry.isEnabled = isEnabled;
+                if (preserveSubFilters) 
+                    return true;
+
+                foreach (var cat in providerDesc.categories)
+                    cat.isEnabled = isEnabled;
+            }
+            else
+            {
+                foreach (var cat in providerDesc.categories)
                 {
-                    providerDesc.entry.isEnabled = isEnabled;
-                    foreach (var cat in providerDesc.categories)
+                    if (cat.name.id == subCategory)
                     {
                         cat.isEnabled = isEnabled;
+                        if (isEnabled)
+                            providerDesc.entry.isEnabled = true;
                     }
                 }
-                else
-                {
-                    foreach (var cat in providerDesc.categories)
-                    {
-                        if (cat.name.id == subCategory)
-                        {
-                            cat.isEnabled = isEnabled;
-                            if (isEnabled)
-                                providerDesc.entry.isEnabled = true;
-                        }
-                    }
-                }
-
-                return true;
             }
 
-            return false;
+            return true;
+
         }
     }
 
@@ -433,6 +431,8 @@ namespace Unity.QuickSearch
         // INTERNAL
         internal List<SearchAction> actions;
         internal double[] fetchTimes;
+        internal double loadTime;
+        internal double enableTime;
         internal int fetchTimeWriteIndex;
     }
 
@@ -675,7 +675,13 @@ namespace Unity.QuickSearch
             LoadSessionSettings();
             PrepareSearch(context);
             foreach (var provider in Providers)
-                provider.onEnable?.Invoke();
+            {
+                using (var enableTimer = new DebugTimer(null))
+                {
+                    provider.onEnable?.Invoke();
+                    provider.enableTime = enableTimer.timeMs;
+                }
+            }
         }
 
         public static void Disable(SearchContext context)
@@ -774,7 +780,7 @@ namespace Unity.QuickSearch
 
             if (overrideFilterId != null)
             {
-                OverrideFilter.ResetFilter(false);
+                OverrideFilter.ResetFilter(false, false);
                 foreach (var provider in Providers)
                 {
                     if (overrideFilterId.Contains(provider.name.id))
@@ -785,7 +791,7 @@ namespace Unity.QuickSearch
             }
             else if (OverrideFilter.filteredProviders.Count > 0)
             {
-                OverrideFilter.ResetFilter(false);
+                OverrideFilter.ResetFilter(false, false);
             }
         }
 
@@ -857,7 +863,25 @@ namespace Unity.QuickSearch
             try
             {
                 Providers = Utils.GetAllMethodsWithAttribute<SearchItemProviderAttribute>()
-                    .Select(methodInfo => methodInfo.Invoke(null, null) as SearchProvider)
+                    .Select(methodInfo =>
+                    {
+                        try
+                        {
+                            SearchProvider fetchedProvider = null;
+                            using (var fetchLoadTimer = new DebugTimer(null))
+                            {
+                                fetchedProvider = methodInfo.Invoke(null, null) as SearchProvider;
+                                if (fetchedProvider != null)
+                                    fetchedProvider.loadTime = fetchLoadTimer.timeMs;
+                            }
+                            return fetchedProvider;
+                        }
+                        catch (Exception ex)
+                        {
+                            UnityEngine.Debug.LogException(ex);
+                            return null;
+                        }
+                    })
                     .Where(provider => provider != null).ToList();
 
                 ActionIdToProviders = new Dictionary<string, List<string>>();

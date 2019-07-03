@@ -1,7 +1,13 @@
+## [1.2.9-preview] - 2019-07-04
+- [UX] Show additional timing information in tooltips.
+- [FIX] Fix QUICKSEARCH_EXAMPLES and QUICKSEARCH_DEBUG compilation.
+- [FIX] Fix asset search provider performance regression at initialization.
+- [DOC] Update documentation with all the new workflows and apis.
+
 ## [1.2.8-preview] - 2019-06-30
 - [FIX] Add more resilience when a domain reload happens while being searching indexes in another thread.
 - [FIX] Add search indexing to the scene search provider, providing better results.
-- 
+
 ## [1.2.7-preview] - 2019-06-19
 - [FIX] Fix asset refreshing after quitting the application, causing Unity to freeze.
 - [FIX] Fix fetching scene object label when component are missing

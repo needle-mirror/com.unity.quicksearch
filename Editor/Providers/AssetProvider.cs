@@ -117,16 +117,16 @@ namespace Unity.QuickSearch
                 };
             }
 
+            private static IEnumerable<SearchIndexer.Root> GetPackageRoots()
+            {
+                return Utils.GetPackagesPaths().Select(p => new SearchIndexer.Root(Path.GetFullPath(p).Replace('\\', '/'), p));
+            }
+
             [UsedImplicitly, SearchItemProvider]
             private  static SearchProvider CreateProjectAssetsProvider()
             {
-                var listPackageRequest = UnityEditor.PackageManager.Client.List(true);
-                while (!listPackageRequest.IsCompleted)
-                    System.Threading.Thread.Yield();
-
-                var fileIndexer = new FileSearchIndexer(k_ProjectAssetsType,
-                    new[] { new SearchIndexer.Root(Application.dataPath, "Assets") }
-                        .Concat(listPackageRequest.Result.Select(p => new SearchIndexer.Root(p.resolvedPath, p.assetPath))));
+                var roots = new[] { new SearchIndexer.Root(Application.dataPath, "Assets") }.Concat(GetPackageRoots());
+                var fileIndexer = new FileSearchIndexer(k_ProjectAssetsType, roots);
                 fileIndexer.Build();
 
                 var provider = CreateProvider(k_ProjectAssetsType, displayName, "p:", 25,
@@ -183,9 +183,9 @@ namespace Unity.QuickSearch
                                             .Take(202)
                                             .Select(path => provider.CreateItem(path, Path.GetFileName(path))));
 
-                var safeFilter = string.Join("_", context.searchQuery.Split(k_InvalidSearchFileChars));
                 if (context.searchQuery.Contains('*'))
                 {
+                    var safeFilter = string.Join("_", context.searchQuery.Split(k_InvalidSearchFileChars));
                     items.AddRange(Directory.EnumerateFiles(Application.dataPath, safeFilter, SearchOption.AllDirectories)
                                             .Select(path => provider.CreateItem(path.Replace(Application.dataPath, "Assets").Replace("\\", "/"),
                                                                                 Path.GetFileName(path))));
@@ -228,15 +228,6 @@ namespace Unity.QuickSearch
                     {
                         handler = (item, context) => EditorUtility.RevealInFinder(item.id)
                     },
-                    #if QUICKSEARCH_DEBUG
-                    new SearchAction(type, "debug", null, "Debug Print")
-                    {
-                        handler = (item, context) =>
-                        {
-                            Debug.Log($"{item.id} => {System.String.Join(" ", SearchIndexer.GetEntryComponents(item.id))}");
-                        }
-                    },
-                    #endif
                     new SearchAction(type, "context", null, "Context")
                     {
                         handler = (item, context) =>

@@ -2,40 +2,43 @@ using System.IO;
 using NUnit.Framework;
 using Unity.QuickSearch;
 
-internal class SearchServiceTests
+namespace Unity.QuickSearch
 {
-    const string k_TestFileName = "Packages/com.unity.quicksearch/Tests/Editor/Content/test_material_42.mat";
-
-    [SetUp]
-    public void EnableService()
+    internal class SearchServiceTests
     {
-        SearchService.Enable(SearchContext.Empty);
-        SearchService.Filter.ResetFilter(true);
-    }
+        const string k_TestFileName = "Packages/com.unity.quicksearch/Tests/Editor/Content/test_material_42.mat";
 
-    [TearDown]
-    public void DisableService()
-    {
-        SearchService.Disable(SearchContext.Empty);
-    }
+        [SetUp]
+        public void EnableService()
+        {
+            SearchService.Enable(SearchContext.Empty);
+            SearchService.Filter.ResetFilter(true);
+        }
 
-    [Test]
-    public void AssetProvider_FetchItems()
-    {
-        var ctx = new SearchContext { searchText = "test", wantsMore = true };
-        Assert.AreEqual(0, ctx.searchId);
+        [TearDown]
+        public void DisableService()
+        {
+            SearchService.Disable(SearchContext.Empty);
+        }
 
-        var fetchedItems = SearchService.GetItems(ctx);
+        [Test]
+        public void FetchItems()
+        {
+            var ctx = new SearchContext {searchText = "test", wantsMore = true};
+            Assert.AreEqual(0, ctx.searchId);
 
-        Assert.AreEqual(1, ctx.searchId);
-        Assert.IsNotEmpty(fetchedItems);
-        var foundItem = fetchedItems.Find(item => item.label == Path.GetFileName(k_TestFileName));
-        Assert.IsNotNull(foundItem.id);
-        Assert.IsNull(foundItem.description);
+            var fetchedItems = SearchService.GetItems(ctx);
 
-        Assert.IsNotNull(foundItem.provider);
-        Assert.IsNotNull(foundItem.provider.fetchDescription);
-        var fetchedDescription = foundItem.provider.fetchDescription(foundItem, ctx);
-        Assert.AreEqual("Packages/com.unity.quicksearch/Tests/Editor/Content/test_material_42.mat (2.0 KB)", fetchedDescription);
+            Assert.AreEqual(1, ctx.searchId);
+            Assert.IsNotEmpty(fetchedItems);
+            var foundItem = fetchedItems.Find(item => item.label == Path.GetFileName(k_TestFileName));
+            Assert.IsNotNull(foundItem.id);
+            Assert.IsNull(foundItem.description);
+
+            Assert.IsNotNull(foundItem.provider);
+            Assert.IsNotNull(foundItem.provider.fetchDescription);
+            var fetchedDescription = foundItem.provider.fetchDescription(foundItem, ctx);
+            Assert.AreEqual("Packages/com.unity.quicksearch/Tests/Editor/Content/test_material_42.mat (2.0 KB)", fetchedDescription);
+        }
     }
 }

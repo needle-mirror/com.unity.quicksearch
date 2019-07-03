@@ -56,7 +56,7 @@ namespace Unity.QuickSearch
         private SearchAnalytics.SearchEvent m_CurrentSearchEvent;
         private double m_DebounceTime = 0.0;
         private float m_Height = 0;
-
+        private GUIContent m_StatusLabelContent = new GUIContent();
         private event Action nextFrame;
 
         private static class Styles
@@ -314,6 +314,14 @@ namespace Unity.QuickSearch
                 onNormal = clear, onHover = clear, onFocused = clear, onActive = clear
             };
 
+            public static readonly GUIContent prefButtonContent = new GUIContent(Icons.settings, "Open quick search preferences...");
+            public static readonly GUIStyle prefButton = new GUIStyle("IconButton")
+            {
+                fixedWidth = 16, fixedHeight = 16,
+                margin = new RectOffset(0, 0, 0, 2),
+                padding = new RectOffset(0, 0, 0, 0)
+            };
+
             private static Texture2D GenerateSolidColorTexture(Color fillColor)
             {
                 Texture2D texture = new Texture2D(1, 1);
@@ -488,39 +496,41 @@ namespace Unity.QuickSearch
         {
             var msg = "";
             if (m_Context.isActionQuery)
-            {
                 msg = "Action for ";
-            }
-            
+
+            IEnumerable<SearchProvider> providerList = SearchService.Filter.filteredProviders;
             if (SearchService.OverrideFilter.filteredProviders.Count > 0)
             {
                 if (SearchService.OverrideFilter.filteredProviders.All(p => p.isExplicitProvider))
                 {
                     if (msg.Length == 0)
-                    {
                         msg = "Activate ";
-                    }
-                    msg += Utils.FormatProviderList(SearchService.OverrideFilter.filteredProviders);
                 }
                 else
                 {
                     if (msg.Length == 0)
-                    {
                         msg = "Searching only ";
-                    }
-                    msg += Utils.FormatProviderList(SearchService.OverrideFilter.filteredProviders);
                 }
+                providerList = SearchService.OverrideFilter.filteredProviders;
             }
             else
             {
                 if (msg.Length == 0)
-                {
                     msg = "Searching ";
-                }
-                msg += Utils.FormatProviderList(SearchService.Filter.filteredProviders);
             }
 
-            GUILayout.Label(msg, Styles.statusLabel);
+            msg += Utils.FormatProviderList(providerList);
+
+            m_StatusLabelContent.text = msg;
+            m_StatusLabelContent.tooltip = Utils.FormatProviderList(providerList, true);
+
+            GUILayout.BeginHorizontal();
+            GUILayout.Label(m_StatusLabelContent, Styles.statusLabel);
+            GUILayout.FlexibleSpace();
+            GUILayout.Label(SearchAnalytics.Version, Styles.statusLabel);
+            if (GUILayout.Button(Styles.prefButtonContent, Styles.prefButton))
+                SettingsService.OpenUserPreferences(SearchSettings.settingsPreferencesKey);
+            GUILayout.EndHorizontal();
         }
 
         [UsedImplicitly]
@@ -1277,7 +1287,7 @@ namespace Unity.QuickSearch
                 OpenQuickSearch();
                 return;
             }
-            SearchService.Filter.ResetFilter(false);
+            SearchService.Filter.ResetFilter(false, true);
             SearchService.Filter.SetFilter(true, providerId);
             var toolWindow = ShowWindow();
             toolWindow.m_SearchTopic = provider.name.displayName.ToLower();
@@ -1302,12 +1312,9 @@ namespace Unity.QuickSearch
                 return;
             }
 
-            SearchService.Filter.ResetFilter(false);
+            SearchService.Filter.ResetFilter(false, true);
             foreach (var searchProvider in contextualProviders)
-            {
-                
-                SearchService.Filter.SetFilter(true, searchProvider.name.id);
-            }
+                SearchService.Filter.SetFilter(true, searchProvider.name.id, null, true);
 
             ShowWindow();
         }

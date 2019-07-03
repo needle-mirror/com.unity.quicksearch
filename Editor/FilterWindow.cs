@@ -251,8 +251,15 @@ namespace Unity.QuickSearch
             if (desc.provider != null)
             {
                 var avgTime = desc.provider.avgTime;
-                if (avgTime > 0.99)
-                    GUILayout.Label(avgTime.ToString("0.#") + " ms", avgTime < 25.0 ? Styles.filterTimeLabel : Styles.filterTimeLongLabel);
+                var loadTime = desc.provider.loadTime;
+                var enableTime = desc.provider.enableTime;
+                if (avgTime > 0.99 || loadTime > 9.99 || enableTime > 9.99)
+                {
+                    GUIContent content = new GUIContent(avgTime.ToString("0.#") + " ms", 
+                                                        $"Initialization took {loadTime.ToString("0.#")} ms\r\n" +
+                                                        $"Activation took {enableTime.ToString("0.#")} ms");
+                    GUILayout.Label(content, avgTime < 25.0 ? Styles.filterTimeLabel : Styles.filterTimeLongLabel);
+                }
             }
 
             EditorGUI.BeginChangeCheck();

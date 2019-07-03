@@ -17,7 +17,7 @@ namespace Unity.QuickSearch
         public class SearchIndexer
         {
             [Serializable, DebuggerDisplay("{key} - {length} - {fileIndex}")]
-            private struct WordIndexEntry
+            internal struct WordIndexEntry
             {
                 public readonly int key;
                 public readonly int length;
@@ -299,32 +299,6 @@ namespace Unity.QuickSearch
                         return null;
                     }
                 }
-
-                #if TODO_ADD_A_TEST_TO_VALIDATE_THIS
-                // TODO: Add a test with this
-                List<WordIndexEntry> temp = new List<WordIndexEntry>(5);
-                temp.Add(new WordIndexEntry(33, 2, 1, 2));
-                temp.Add(new WordIndexEntry(33, 2, 1, 44));
-                temp.Add(new WordIndexEntry(33, 3, 1, 445));
-                temp.Add(new WordIndexEntry(33, 1, 2, 446));
-                temp.Add(new WordIndexEntry(33, 2, 1, 1));
-                temp.Add(new WordIndexEntry(34, 3, 2, 447));
-                temp.Add(new WordIndexEntry(33, 1, 2, -3));
-
-                Debug.Log($"===> Raw {temp.Count}");
-                foreach (var w in temp)
-                    Debug.Log($"Word {w.length} - {w.key} - {w.fileIndex} - {w.score}");
-
-                temp.Sort(SortWordEntryComparer);
-                Debug.Log($"===> Sort {temp.Count}");
-                foreach (var w in temp)
-                    Debug.Log($"Word {w.length} - {w.key} - {w.fileIndex} - {w.score}");
-
-                temp = temp.Distinct().ToList();
-                Debug.Log($"===> Distinct {temp.Count}");
-                foreach (var w in temp)
-                    Debug.Log($"Word {w.length} - {w.key} - {w.fileIndex} - {w.score}");
-                #endif
             }
 
             private void UpdateIndexes(string[] paths, IEnumerable<WordIndexEntry> words, string saveIndexBasePath = null)
@@ -478,7 +452,7 @@ namespace Unity.QuickSearch
             }
 
             [Pure] 
-            private static int SortWordEntryComparer(WordIndexEntry item1, WordIndexEntry item2)
+            internal static int SortWordEntryComparer(WordIndexEntry item1, WordIndexEntry item2)
             {
                 var c = item1.length.CompareTo(item2.length);
                 if (c != 0)

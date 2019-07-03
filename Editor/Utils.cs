@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
 using JetBrains.Annotations;
 using UnityEditor;
@@ -14,6 +15,8 @@ using Debug = UnityEngine.Debug;
 #if QUICKSEARCH_DEBUG
 using UnityEditorInternal;
 #endif
+
+[assembly: InternalsVisibleTo("com.unity.quicksearch.tests")]
 
 namespace Unity.QuickSearch
 {
@@ -112,9 +115,19 @@ namespace Unity.QuickSearch
             #endif
         }
 
-        internal static string FormatProviderList(IEnumerable<SearchProvider> providers)
+        internal static string FormatProviderList(IEnumerable<SearchProvider> providers, bool fullTimingInfo = false)
         {
-            return string.Join(", ", providers.Select(p => $"<b>{p.name.displayName}</b>"));
+            return string.Join(fullTimingInfo ? "\r\n" : ", ", providers.Select(p =>
+            {
+                var avgTime = p.avgTime;
+                if (fullTimingInfo)
+                    return $"{p.name.displayName} ({avgTime.ToString("0.#")} ms, Enable: {p.enableTime.ToString("0.#")} ms, Init: {p.loadTime.ToString("0.#")} ms)";
+             
+                var avgTimeLabel = String.Empty;
+                if (avgTime > 9.99)
+                    avgTimeLabel = $" ({avgTime.ToString("#")} ms)";
+                return $"<b>{p.name.displayName}</b>{avgTimeLabel}";
+            }));
         }
 
         private static bool IsIgnoredAssembly(AssemblyName assemblyName)
@@ -290,6 +303,18 @@ namespace Unity.QuickSearch
             style.CalcMinMaxWidth(new GUIContent(text), out var minWidth, out _);
             return (int)(width / (minWidth / text.Length)) - 3;
             #endif
+        }
+
+        private static MethodInfo s_GetPackagesPathsMethod;
+        internal static string[] GetPackagesPaths()
+        {
+            if (s_GetPackagesPathsMethod == null)
+            {
+                Assembly assembly = typeof(UnityEditor.PackageManager.Client).Assembly;
+                var type = assembly.GetTypes().First(t => t.FullName == "UnityEditor.PackageManager.Folders");
+                s_GetPackagesPathsMethod = type.GetMethod("GetPackagesPaths", BindingFlags.Public | BindingFlags.Static);
+            }
+            return (string[])s_GetPackagesPathsMethod.Invoke(null, null);
         }
 
         internal static string GetQuickSearchVersion()

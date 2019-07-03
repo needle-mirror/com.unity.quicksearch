@@ -193,7 +193,7 @@ namespace Unity.QuickSearch
             }
 
             #if QUICKSEARCH_EXAMPLES
-            [UsedImplicitly, InitializeOnLoadMethod]
+            [UsedImplicitly, UnityEditor.InitializeOnLoadMethod]
             #endif
             private static void BuildIndex()
             {
