@@ -16,6 +16,8 @@ namespace Unity.QuickSearch
     {
         public class SearchIndexer
         {
+            private const int k_MaxSimilarResultCount = 999;
+
             [Serializable, DebuggerDisplay("{key} - {length} - {fileIndex}")]
             internal struct WordIndexEntry
             {
@@ -157,6 +159,13 @@ namespace Unity.QuickSearch
                 return m_IndexReady;
             }
 
+            static void Swap<T>(ref T a, ref T b)
+            {
+                T temp = a;
+                a = b;
+                b = temp;
+            }
+
             public IEnumerable<EntryResult> Search(string query, int maxScore = int.MaxValue)
             {
                 //using (new DebugTimer("File Index Search"))
@@ -178,6 +187,17 @@ namespace Unity.QuickSearch
 
                         if (remains.Count == 0)
                             return Enumerable.Empty<EntryResult>();
+
+                        if (remains.Count >= k_MaxSimilarResultCount)
+                        {
+                            //Debug.LogWarning($"Searching for {tokens[0]} returned too many equivalent results (>={k_MaxSimilarResultCount}), please consider refining your search.");
+                            if (patterns.Length > 1)
+                            {
+                                Swap(ref patterns[0], ref patterns[1]);
+                                Swap(ref lengths[0], ref lengths[1]);
+                                remains = GetPatternFileIndexes(patterns[0], lengths[0], maxScore, wiec).ToList();
+                            }
+                        }
 
                         for (int i = 1; i < patterns.Length; ++i)
                         {
@@ -257,11 +277,7 @@ namespace Unity.QuickSearch
                 if (m_IndexReady)
                     return;
 
-                //if (!m_IndexerThread.Join(50))
-                {
-                    Debug.LogWarning("Aborting search indexing...");
-                    m_ThreadAborted = true;
-                }
+                m_ThreadAborted = true;
             } 
 
             private void CreateIndexerThread()
@@ -427,6 +443,9 @@ namespace Unity.QuickSearch
                     if (m_ThreadAborted)
                         break;
 
+                    if (String.IsNullOrEmpty(entries[i]))
+                        continue;
+
                     // Reformat entry to have them all uniformized.
                     if (!String.IsNullOrEmpty(basis))
                         entries[i] = entries[i].Replace('\\', '/').Replace(basis, "");
@@ -442,7 +461,7 @@ namespace Unity.QuickSearch
                     for (int compIndex = 0; compIndex < filePathComponents.Length; ++compIndex)
                     {
                         var p = filePathComponents[compIndex];
-                        for (int c = minIndexCharVariation; c <= p.Length; ++c)
+                        for (int c = Math.Min(minIndexCharVariation, p.Length); c <= p.Length; ++c)
                         {
                             var ss = p.Substring(0, c);
                             wordIndexes.Add(new WordIndexEntry(ss.GetHashCode(), ss.Length, i, baseScore + compIndex));
@@ -491,8 +510,12 @@ namespace Unity.QuickSearch
                 {
                     if (m_WordIndexEntries[foundIndex].score < maxScore)
                         matches.Add(new PatternMatch(m_WordIndexEntries[foundIndex].fileIndex, m_WordIndexEntries[foundIndex].score));
-                    foundIndex++;
+
+                    if (matches.Count >= k_MaxSimilarResultCount)
+                        return matches; // Too many equivalent results, lets bail
+                    
                     // Advance to last matching element
+                    foundIndex++;
                 } while (foundIndex < m_WordIndexEntries.Length && m_WordIndexEntries[foundIndex].key == key && m_WordIndexEntries[foundIndex].length == length);
 
                 return matches;
@@ -572,8 +595,8 @@ namespace Unity.QuickSearch
             {
                 return query.Trim().ToLowerInvariant()
                             .Split(entrySeparators)
-                            .Where(t => t.Length > minIndexCharVariation - 1)
                             .Select(t => t.Substring(0, Math.Min(t.Length, maxIndexCharVariation)))
+                            .Where(t => t.Length > 0)
                             .OrderBy(t => -t.Length).ToArray();
             }
         }

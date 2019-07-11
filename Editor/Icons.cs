@@ -14,6 +14,12 @@ namespace Unity.QuickSearch
         public static Texture2D clear = (Texture2D)EditorGUIUtility.Load($"{iconFolder}/clear.png");
         public static Texture2D more = (Texture2D)EditorGUIUtility.Load($"{iconFolder}/more.png");
         public static Texture2D store = (Texture2D)EditorGUIUtility.Load($"{iconFolder}/store.png");
+        public static Texture2D logInfo = (Texture2D)EditorGUIUtility.Load($"{iconFolder}/log_info.png");
+        public static Texture2D logWarning = (Texture2D)EditorGUIUtility.Load($"{iconFolder}/log_warning.png");
+        public static Texture2D logError = (Texture2D)EditorGUIUtility.Load($"{iconFolder}/log_error.png");
+        public static Texture2D packageInstalled = (Texture2D)EditorGUIUtility.Load($"{iconFolder}/package_installed.png");
+        public static Texture2D packageUpdate = (Texture2D)EditorGUIUtility.Load($"{iconFolder}/package_update.png");
+        public static Texture2D loading = (Texture2D)EditorGUIUtility.Load($"{iconFolder}/loading.png");
 
         static Icons()
         {
@@ -27,6 +33,8 @@ namespace Unity.QuickSearch
                 clear = LightenTexture(clear);
                 more = LightenTexture(more);
                 store = LightenTexture(store);
+                packageInstalled = LightenTexture(packageInstalled);
+                packageUpdate = LightenTexture(packageUpdate);
             }
         }
 

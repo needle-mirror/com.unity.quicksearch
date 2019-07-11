@@ -28,13 +28,14 @@ namespace Unity.QuickSearch.Providers
         struct GOD
         {
             public string name;
+            public string rawname;
             public GameObject gameObject;
         }
 
         class SceneSearchIndexer : SearchIndexer
         {
             private const int k_MinIndexCharVariation = 2;
-            private const int k_MaxIndexCharVariation = 12;
+            private const int k_MaxIndexCharVariation = 8;
 
             private GOD[] gods { get; set; }
 
@@ -45,13 +46,22 @@ namespace Unity.QuickSearch.Providers
                 minIndexCharVariation = k_MinIndexCharVariation;
                 maxIndexCharVariation = k_MaxIndexCharVariation;
                 skipEntryHandler = e => false;
-                getEntryComponentsHandler = (e, i) => SearchUtils.SplitFileEntryComponents(e, entrySeparators, k_MinIndexCharVariation, k_MaxIndexCharVariation);
+                getEntryComponentsHandler = (e, i) => SplitComponents(e, entrySeparators, k_MaxIndexCharVariation);
                 enumerateRootEntriesHandler = EnumerateSceneObjects;
             }
 
             private IEnumerable<string> EnumerateSceneObjects(Root root)
             {
-                return gods.Select(god => god.name);
+                return gods.Select(god => god.rawname);
+            }
+
+            private static IEnumerable<string> SplitComponents(string path, char[] entrySeparators, int maxIndexCharVariation)
+            {
+                var nameTokens = path.Split(entrySeparators).Reverse().ToArray();
+                var scc = nameTokens.SelectMany(s => SearchUtils.SplitCamelCase(s)).Where(s => s.Length > 0);
+                return nameTokens.Concat(scc)
+                          .Select(s => s.Substring(0, Math.Min(s.Length, maxIndexCharVariation)).ToLowerInvariant())
+                          .Distinct();
             }
         }
 
@@ -65,14 +75,14 @@ namespace Unity.QuickSearch.Providers
             priority = 50;
             filterId = "h:";
 
-            subCategories = new List<NameId> 
-            { 
+            subCategories = new List<NameId>
+            {
                 new NameId("fuzzy", "fuzzy"),
                 new NameId("limit", $"limit to {k_LimitMatches} matches")
             };
 
-            isEnabledForContextualSearch = () => 
-                QuickSearchTool.IsFocusedWindowTypeName("SceneView") || 
+            isEnabledForContextualSearch = () =>
+                QuickSearchTool.IsFocusedWindowTypeName("SceneView") ||
                 QuickSearchTool.IsFocusedWindowTypeName("SceneHierarchyWindow");
 
             EditorApplication.hierarchyChanged += () => componentsById.Clear();
@@ -90,13 +100,24 @@ namespace Unity.QuickSearch.Providers
                     else
                     {
                         var goRoots = new List<UnityEngine.Object>();
-                        for (int i = 0; i < UnityEngine.SceneManagement.SceneManager.sceneCount; ++i)
-                            goRoots.AddRange(UnityEngine.SceneManagement.SceneManager.GetSceneAt(i).GetRootGameObjects());
+                        for (int i = 0; i < SceneManager.sceneCount; ++i)
+                        {
+                            var scene = SceneManager.GetSceneAt(i);
+                            if (!scene.IsValid() || !scene.isLoaded)
+                                continue;
+                            var sceneRootObjects = scene.GetRootGameObjects();
+                            if (sceneRootObjects != null && sceneRootObjects.Length > 0)
+                                goRoots.AddRange(sceneRootObjects);
+                        }
                         objects = SceneModeUtility.GetObjects(goRoots.ToArray(), true);
                     }
 
                     //using (new DebugTimer($"Fetching {gods.Length} Scene Objects Components"))
                     {
+                        var createNewIndex = componentsById.Count == 0;
+                        if (createNewIndex)
+                            indexer = null;
+
                         gods = new GOD[objects.Length];
                         for (int i = 0; i < objects.Length; ++i)
                         {
@@ -105,31 +126,34 @@ namespace Unity.QuickSearch.Providers
                             if (!componentsById.TryGetValue(id, out gods[i].name))
                             {
                                 if (gods.Length > k_LODDetail2)
-                                    gods[i].name = CleanString(gods[i].gameObject.name);
+                                    gods[i].rawname = gods[i].gameObject.name;
                                 else if (gods.Length > k_LODDetail1)
-                                    gods[i].name = CleanString(GetTransformPath(gods[i].gameObject.transform));
+                                    gods[i].rawname = GetTransformPath(gods[i].gameObject.transform);
                                 else
-                                    gods[i].name = BuildComponents(gods[i].gameObject);
+                                    gods[i].rawname = BuildComponents(gods[i].gameObject);
+                                gods[i].name = CleanString(gods[i].rawname);
                                 componentsById[id] = gods[i].name;
                             }
                         }
 
-                        indexer = new SceneSearchIndexer(SceneManager.GetActiveScene().name, gods);
-                        indexer.Build();
+                        if (indexer == null)
+                        {
+                            indexer = new SceneSearchIndexer(SceneManager.GetActiveScene().name, gods);
+                            indexer.Build();
+                        }
                     }
                 }
             };
 
             onDisable = () =>
             {
-                indexer = null;
-                gods = new GOD[0];
+                gods = null;
             };
 
             fetchItems = (context, items, provider) =>
             {
                 if (gods == null)
-                    return;
+                    return null;
 
                 if (indexer != null && indexer.IsReady())
                 {
@@ -145,14 +169,14 @@ namespace Unity.QuickSearch.Providers
                         if (gameObjectName.Equals(context.searchQuery, StringComparison.InvariantCultureIgnoreCase))
                             itemScore *= 2;
                         var item = provider.CreateItem(gameObjectId, itemScore, null, null, null, r.index);
-                        item.descriptionFormat = SearchItemDescriptionFormat.Ellipsis | 
-                                                 SearchItemDescriptionFormat.RightToLeft | 
+                        item.descriptionFormat = SearchItemDescriptionFormat.Ellipsis |
+                                                 SearchItemDescriptionFormat.RightToLeft |
                                                  SearchItemDescriptionFormat.Highlight;
                         return item;
                     }));
                 }
 
-                SearchGODs(context, provider, items);
+                return SearchGODs(context, provider);
             };
 
             fetchLabel = (item, context) =>
@@ -238,7 +262,7 @@ namespace Unity.QuickSearch.Providers
             trackSelection = (item, context) => PingItem(item);
         }
 
-        private void SearchGODs(SearchContext context, SearchProvider provider, List<SearchItem> items)
+        private IEnumerable<SearchItem> SearchGODs(SearchContext context, SearchProvider provider)
         {
             int addedCount = 0;
             List<int> matches = new List<int>();
@@ -258,18 +282,24 @@ namespace Unity.QuickSearch.Providers
                 if (useFuzzySearch)
                 {
                     if (!FuzzySearch.FuzzyMatch(sq, gods[i].name, ref score, matches))
+                    {
+                        yield return null;
                         continue;
+                    }
 
                     if (score > bestScore)
                         bestScore = score;
-                    if (limitSearch && addedCount > (k_LimitMatches/2))
-                        useFuzzySearch = addedCount < ((k_LimitMatches*7)/8);
+                    if (limitSearch && addedCount > (k_LimitMatches / 2))
+                        useFuzzySearch = addedCount < ((k_LimitMatches * 7) / 8);
                 }
                 else
                 {
                     if (!MatchSearchGroups(context, gods[i].name, true))
+                    {
+                        yield return null;
                         continue;
-                    score = bestScore+1;
+                    }
+                    score = bestScore + 1;
                 }
 
                 var gameObjectId = go.GetInstanceID().ToString();
@@ -279,9 +309,9 @@ namespace Unity.QuickSearch.Providers
                     item.descriptionFormat |= SearchItemDescriptionFormat.FuzzyHighlight;
                 else
                     item.descriptionFormat |= SearchItemDescriptionFormat.Highlight;
-                items.Add(item);
+                yield return item;
                 if (limitSearch && ++addedCount > k_LimitMatches)
-                    break;
+                    yield break;
             }
         }
 
@@ -348,7 +378,7 @@ namespace Unity.QuickSearch.Providers
                 components.Add(c.GetType().Name);
             }
 
-            return CleanString(String.Join(" ", components.Distinct()));
+            return String.Join(" ", components.Distinct());
         }
 
         private static string GetHierarchyPath(GameObject gameObject, bool includeScene = true)
@@ -371,7 +401,7 @@ namespace Unity.QuickSearch.Providers
             {
                 bool isPrefab;
                 #if UNITY_2018_3_OR_NEWER
-                isPrefab = UnityEditor.PrefabUtility.GetPrefabAssetType(gameObject.gameObject) != UnityEditor.PrefabAssetType.NotAPrefab;
+                isPrefab = PrefabUtility.GetPrefabAssetType(gameObject.gameObject) != PrefabAssetType.NotAPrefab;
                 #else
                 isPrefab = UnityEditor.PrefabUtility.GetPrefabType(o) == UnityEditor.PrefabType.Prefab;
                 #endif
@@ -427,7 +457,7 @@ namespace Unity.QuickSearch.Providers
 
             bool isPrefab;
             #if UNITY_2018_3_OR_NEWER
-            isPrefab = UnityEditor.PrefabUtility.GetPrefabAssetType(gameObject.gameObject) != UnityEditor.PrefabAssetType.NotAPrefab;
+            isPrefab = PrefabUtility.GetPrefabAssetType(gameObject.gameObject) != PrefabAssetType.NotAPrefab;
             #else
             isPrefab = UnityEditor.PrefabUtility.GetPrefabType(o) == UnityEditor.PrefabType.Prefab;
             #endif

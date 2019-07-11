@@ -1,4 +1,3 @@
-//#define QUICKSEARCH_EXAMPLES
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -18,12 +17,6 @@ namespace Unity.QuickSearch
             internal static readonly string displayName = "Asset Store";
             internal static readonly string url = "http://shawarma.unity3d.com/public-api/search/assets.json?unityversion=2019.2.0a7&skip_terms=1&q=";
 
-            private static UnityWebRequest s_CurrentSearchRequest;
-            private static UnityWebRequestAsyncOperation s_CurrentSearchRequestOp;
-            private static Action<int, SearchItem[]> s_AddAsyncItems;
-            private static int s_SearchId;
-            private static SearchProvider s_Provider;
-
             class AssetStoreData
             {
                 public int id;
@@ -39,29 +32,15 @@ namespace Unity.QuickSearch
 
             private static Dictionary<string, AssetPreviewData> s_CurrentSearchAssetData = new Dictionary<string, AssetPreviewData>();
 
-            #if QUICKSEARCH_EXAMPLES
             [UsedImplicitly, SearchItemProvider]
-            #endif
             internal static SearchProvider CreateProvider()
             {
                 return new SearchProvider(type, displayName)
                 {
+                    active = false, // Still experimental
+                    priority = 120,
                     filterId = "store:",
-                    fetchItems = (context, items, provider) =>
-                    {
-                        if (s_CurrentSearchRequestOp != null)
-                        {
-                            s_CurrentSearchRequestOp.completed -= SearchCompleted;
-                        }
-
-                        s_SearchId = context.searchId;
-                        s_Provider = provider;
-                        s_AddAsyncItems = context.sendAsyncItems;
-                        s_CurrentSearchRequest = UnityWebRequest.Get(url + context.searchQuery);
-                        s_CurrentSearchRequest.SetRequestHeader("X-Unity-Session", InternalEditorUtility.GetAuthToken());
-                        s_CurrentSearchRequestOp = s_CurrentSearchRequest.SendWebRequest();
-                        s_CurrentSearchRequestOp.completed += SearchCompleted;
-                    },
+                    fetchItems = (context, items, provider) => SearchItems(context, provider),
 
                     fetchThumbnail = (item, context) =>
                     {
@@ -85,7 +64,6 @@ namespace Unity.QuickSearch
                             }
                         }
 
-                        item.thumbnail = InternalEditorUtility.FindIconForFile(item.label);
                         return item.thumbnail ?? Icons.store;
                     },
 
@@ -106,14 +84,12 @@ namespace Unity.QuickSearch
                 };
             }
 
-            #if QUICKSEARCH_EXAMPLES
             [UsedImplicitly, SearchActionsProvider]
-            #endif
             internal static IEnumerable<SearchAction> ActionHandlers()
             {
                 return new[]
                 {
-                    new SearchAction(type, "open", null, "Open project settings...") {
+                    new SearchAction(type, "open", null, "Open package in the Asset Store...") {
                         handler = (item, context) =>
                         {
                             var data = (AssetStoreData)item.data;
@@ -137,73 +113,75 @@ namespace Unity.QuickSearch
                 }
             }
 
-            internal static void SearchCompleted(AsyncOperation op)
+            internal static IEnumerable<SearchItem> SearchItems(SearchContext context, SearchProvider provider)
             {
-                if (s_CurrentSearchRequest.isDone && !s_CurrentSearchRequest.isHttpError && !s_CurrentSearchRequest.isNetworkError && !string.IsNullOrEmpty(s_CurrentSearchRequest.downloadHandler.text))
+                var webRequest = UnityWebRequest.Get(url + context.searchQuery);
+                webRequest.SetRequestHeader("X-Unity-Session", InternalEditorUtility.GetAuthToken());
+                webRequest.SendWebRequest(); // Don't yield return this, as it is not a coroutine and will block the UI
+
+                while (!webRequest.isDone)
                 {
-                    try
-                    {
-                        var reqJson = Utils.JsonDeserialize(s_CurrentSearchRequest.downloadHandler.text) as Dictionary<string, object>;
-                        if (!reqJson.ContainsKey("status") || reqJson["status"].ToString() != "ok" || !reqJson.ContainsKey("groups"))
-                        {
-                            return;
-                        }
-
-                        if (!(reqJson["groups"] is List<object> groups))
-                            return;
-
-                        var limitedMatches = new List<Dictionary<string, object>>();
-                        foreach (var g in groups)
-                        {
-                            var group = g as Dictionary<string, object>;
-                            if (group == null || !group.ContainsKey("matches"))
-                                continue;
-
-                            var matches = group["matches"] as List<object>;
-                            if (matches == null)
-                                continue;
-
-                            foreach (var m in matches.Take(50))
-                            {
-                                var item = m as Dictionary<string, object>;
-                                if (item == null)
-                                    continue;
-                                item["groupType"] = group["name"];
-                                limitedMatches.Add(item);
-                            }
-                        }
-                        
-                        var items = new List<SearchItem>();
-                        foreach (var match in limitedMatches)
-                        {
-                            if (!match.ContainsKey("name") || !match.ContainsKey("id") || !match.ContainsKey("package_id"))
-                                continue;
-                            var id = match["id"].ToString();
-                            var item = s_Provider.CreateItem(id, match["name"].ToString(), $"Asset Store ({match["groupType"]})");
-                            var data = new AssetStoreData();
-                            data.packageId = Convert.ToInt32(match["package_id"]);
-                            data.id = Convert.ToInt32(match["id"]);
-                            item.data = data;
-
-                            items.Add(item);
-                            if (match.ContainsKey("static_preview_url") && !s_CurrentSearchAssetData.ContainsKey(id))
-                            {
-                                s_CurrentSearchAssetData.Add(id, new AssetPreviewData() { staticPreviewUrl = match["static_preview_url"].ToString() });
-                            }
-                        }
-
-                        SearchService.SortItemList(items);
-                        s_AddAsyncItems(s_SearchId, items.ToArray());
-                    }
-                    catch
-                    {
-                        // ignored
-                    }
+                    if (webRequest.isHttpError || webRequest.isNetworkError)
+                        yield break;
+                    yield return null;
                 }
 
-                s_CurrentSearchRequestOp.completed -= SearchCompleted;
-                s_CurrentSearchRequestOp = null;
-                s_CurrentSearchRequest = null;
+                if (string.IsNullOrEmpty(webRequest.downloadHandler.text))
+                    yield break;
+
+
+                var reqJson = Utils.JsonDeserialize(webRequest.downloadHandler.text) as Dictionary<string, object>;
+                if (reqJson == null || !reqJson.ContainsKey("status") || reqJson["status"].ToString() != "ok" || !reqJson.ContainsKey("groups"))
+                {
+                    yield break;
+                }
+
+                if (!(reqJson["groups"] is List<object> groups))
+                    yield break;
+
+                foreach (var g in groups)
+                {
+                    var group = g as Dictionary<string, object>;
+                    if (group == null || !group.ContainsKey("matches"))
+                    {
+                        yield return null;
+                        continue;
+                    }
+
+                    var matches = group["matches"] as List<object>;
+                    if (matches == null)
+                    {
+                        yield return null;
+                        continue;
+                    }
+
+                    foreach (var m in matches.Take(50))
+                    {
+                        var match = m as Dictionary<string, object>;
+                        if (match == null)
+                        {
+                            yield return null;
+                            continue;
+                        }
+                        match["groupType"] = group["name"];
+
+                        if (!match.ContainsKey("name") || !match.ContainsKey("id") || !match.ContainsKey("package_id"))
+                        {
+                            yield return null;
+                            continue;
+                        }
+                        var id = match["id"].ToString();
+                        var data = new AssetStoreData {packageId = Convert.ToInt32(match["package_id"]), id = Convert.ToInt32(match["id"])};
+                        var item = provider.CreateItem(id, match["name"].ToString(), $"Asset Store ({match["groupType"]})", null, data);
+
+                        if (match.ContainsKey("static_preview_url") && !s_CurrentSearchAssetData.ContainsKey(id))
+                        {
+                            s_CurrentSearchAssetData.Add(id, new AssetPreviewData() { staticPreviewUrl = match["static_preview_url"].ToString() });
+                        }
+
+                        yield return item;
+                    }
+                }
             }
         }
     }

@@ -190,7 +190,7 @@ namespace Unity.QuickSearch
             GUILayout.EndHorizontal();
             GUILayout.Label(GUIContent.none, Styles.separator);
 
-            foreach (var provider in SearchService.Providers.Where(p => p.isExplicitProvider).OrderBy(p => p.priority))
+            foreach (var provider in SearchService.Providers.Where(p => p.active && p.isExplicitProvider).OrderBy(p => p.priority))
             {
                 GUILayout.BeginHorizontal();
                 GUILayout.Space(Styles.foldoutIndent);

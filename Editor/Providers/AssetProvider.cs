@@ -138,7 +138,7 @@ namespace Unity.QuickSearch
                 return provider;
             }
 
-            private static void SearchAssets(SearchContext context, List<SearchItem> items, SearchProvider provider, SearchIndexer fileIndexer)
+            private static IEnumerable<SearchItem> SearchAssets(SearchContext context, List<SearchItem> items, SearchProvider provider, SearchIndexer fileIndexer)
             {
                 var filter = context.searchQuery;
                 var searchPackages = context.categories.Any(c => c.name.id == "packages" && c.isEnabled);
@@ -168,7 +168,7 @@ namespace Unity.QuickSearch
                                                       return provider.CreateItem(e.path, itemScore, filename, null, null, null);
                                                   }));
                         if (!context.wantsMore)
-                            return;
+                            return null;
                     }
                 }
 
@@ -190,6 +190,8 @@ namespace Unity.QuickSearch
                                             .Select(path => provider.CreateItem(path.Replace(Application.dataPath, "Assets").Replace("\\", "/"),
                                                                                 Path.GetFileName(path))));
                 }
+
+                return null;
             }
 
             #endregion

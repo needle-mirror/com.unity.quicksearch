@@ -42,7 +42,7 @@ namespace Unity.QuickSearch
                         #endif
                     },
 
-                    onDisable = () => 
+                    onDisable = () =>
                     {
                         shortcutIds = new string[0];
                     },
@@ -54,9 +54,11 @@ namespace Unity.QuickSearch
                             var menuName = itemNames[i];
                             if (!SearchProvider.MatchSearchGroups(context, itemNamesLower[i], true))
                                 continue;
-                            
+
                             items.Add(provider.CreateItem(menuName, Utils.GetNameFromPath(menuName)));
                         }
+
+                        return null;
                     },
 
                     fetchDescription = (item, context) =>
@@ -66,7 +68,12 @@ namespace Unity.QuickSearch
                         return item.description;
                     },
 
-                    fetchThumbnail = (item, context) => Icons.shortcut
+                    fetchThumbnail = (item, context) =>
+                    {
+                        if (!item.thumbnail)
+                            item.thumbnail = Icons.shortcut;
+                        return item.thumbnail;
+                    }
                 };
             }
 

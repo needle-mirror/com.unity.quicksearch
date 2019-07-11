@@ -30,7 +30,7 @@ namespace Unity.QuickSearch
                     fetchItems = (context, items, provider) =>
                     {
                         if (!context.searchText.StartsWith(provider.filterId))
-                            return;
+                            return null;
 
                         // Cache all available static APIs
                         if (methods == null)
@@ -44,9 +44,16 @@ namespace Unity.QuickSearch
                             var visibilityString = !m.IsPublic ? "<i>Internal</i> - " : String.Empty;
                             items.Add(provider.CreateItem(m.Name, m.IsPublic ? 0 : 1, m.Name, $"{visibilityString}{m.DeclaringType} - {m.ToString()}" , null, m));
                         }
+
+                        return null;
                     },
 
-                    fetchThumbnail = (item, context) => Icons.shortcut
+                    fetchThumbnail = (item, context) =>
+                    {
+                        if (!item.thumbnail)
+                            item.thumbnail = Icons.shortcut;
+                        return item.thumbnail;
+                    }
                 };
             }
 
@@ -89,10 +96,10 @@ namespace Unity.QuickSearch
                         handler = (item, context) =>
                         {
                             var m = item.data as MethodInfo;
-                            if (m == null) 
+                            if (m == null)
                                 return;
                             var result = m.Invoke(null, null);
-                            if (result == null) 
+                            if (result == null)
                                 return;
                             var list = result as IEnumerable;
                             if (result is string || list == null)

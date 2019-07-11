@@ -43,10 +43,10 @@ namespace Unity.QuickSearch
             internal static void Goto(SearchItem item, SearchContext context)
             {
                 // ex: https://answers.unity.com/search.html?f=&type=question&sort=relevance&q=Visual+scripting
-                var query = new List<Tuple<string, string>>();
-                query.Add(Tuple.Create("type", "question"));
-                query.Add(Tuple.Create("sort", "relevance"));
-                query.Add(Tuple.Create("q", string.Join("+", context.tokenizedSearchQuery)));
+                var query = new List<Tuple<string, string>>
+                {
+                    Tuple.Create("type", "question"), Tuple.Create("sort", "relevance"), Tuple.Create("q", string.Join("+", context.tokenizedSearchQuery))
+                };
                 SearchUtility.Goto(searchUrl, query);
             }
         }
@@ -65,8 +65,7 @@ namespace Unity.QuickSearch
             internal static void Goto(SearchItem item, SearchContext context)
             {
                 // ex: https://docs.unity3d.com/Manual/30_search.html?q=Visual+Scripting
-                var query = new List<Tuple<string, string>>();
-                query.Add(Tuple.Create("q", string.Join("+", context.tokenizedSearchQuery)));
+                var query = new List<Tuple<string, string>> {Tuple.Create("q", string.Join("+", context.tokenizedSearchQuery))};
                 SearchUtility.Goto(searchUrl, query);
             }
         }
@@ -85,8 +84,7 @@ namespace Unity.QuickSearch
             internal static void Goto(SearchItem item, SearchContext context)
             {
                 // ex: https://docs.unity3d.com/ScriptReference/30_search.html?q=Visual+Scripting
-                var query = new List<Tuple<string, string>>();
-                query.Add(Tuple.Create("q", string.Join("+", context.tokenizedSearchQuery)));
+                var query = new List<Tuple<string, string>> {Tuple.Create("q", string.Join("+", context.tokenizedSearchQuery))};
                 SearchUtility.Goto(searchUrl, query);
             }
         }
@@ -164,6 +162,8 @@ namespace Unity.QuickSearch
                             var item = provider.CreateItem(category.name.id, "Search " + template.descriptionTitle, "Search for: " + context.searchQuery, template.icon);
                             items.Add(item);
                         }
+
+                        return null;
                     },
                     subCategories = s_ItemTemplates.Select(template => template.name).ToList()
                 };
@@ -174,7 +174,8 @@ namespace Unity.QuickSearch
             {
                 return new []
                 {
-                    new SearchAction(type, "search", null, "Search") {
+                    new SearchAction(type, "browse", null, "Search online...")
+                    {
                         handler = (item, context) => FindById(item.id).actionHandler(item, context)
                     }
                 };

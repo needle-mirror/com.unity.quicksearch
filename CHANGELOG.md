@@ -1,3 +1,16 @@
+## [1.3.0-preview] - 2019-07-12
+- [UX] Add the ability to enable or disable completely a search provider in the user preferences.
+- [UX] Add experimental Asset Store provider (disabled by default, see Quick Search preferences).
+- [UX] Add an experimental log search provider (disabled by default, see Quick Search preferences).
+- [UX] Add a spinner when search is in progress.
+- [FIX] Do not fetch scene root objects for invalid or unloaded scenes.
+- [FIX] Delay the track selection, keeping only the last selection to actually be pinged.
+- [FIX] Add support for one letter word indexing (i.e. Searching for "Rock A" should match asset Assets/Rock_A.png").
+- [API] Removed the old asynchronous API.
+- [API] Port the ESS provider example to the new asynchronous API.
+- [API] Port the AssetStore provider example to the new asynchronous API.
+- [API] Add asynchronous SearchProvider.fetchItems API.
+
 ## [1.2.9-preview] - 2019-07-04
 - [UX] Show additional timing information in tooltips.
 - [FIX] Fix QUICKSEARCH_EXAMPLES and QUICKSEARCH_DEBUG compilation.

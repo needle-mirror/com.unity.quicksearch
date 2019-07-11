@@ -34,27 +34,35 @@ namespace Unity.QuickSearch
                         s_SearchRequest = UnityEditor.PackageManager.Client.SearchAll();
                     },
 
-                    fetchItems = (context, items, provider) =>
+                    fetchItems = (context, items, provider) => SearchPackages(context, provider),
+
+                    fetchThumbnail = (item, context) =>
                     {
-                        if (s_SearchRequest == null || s_ListRequest == null)
-                            return;
-                        
-                        if (!s_SearchRequest.IsCompleted || !s_ListRequest.IsCompleted)
-                            return;
-
-                        if (s_SearchRequest.Result == null || s_ListRequest.Result == null)
-                            return;
-
-                        items.AddRange(s_SearchRequest.Result
-                            .Where(p => SearchProvider.MatchSearchGroups(context, p.description.ToLowerInvariant(), true) ||
-                                        SearchProvider.MatchSearchGroups(context, p.name.ToLowerInvariant(), true) ||
-                                        p.keywords.Contains(context.searchQuery))
-                            .Select(p => provider.CreateItem(p.packageId, 
-                                String.IsNullOrEmpty(p.resolvedPath) ? 0 : 1, FormatLabel(p), FormatDescription(p), null, p)).ToArray());
-                    },
-
-                    fetchThumbnail = (item, context) => Icons.settings
+                        if (!item.thumbnail)
+                            item.thumbnail = item.score == 0 ? Icons.packageUpdate : Icons.packageInstalled;
+                        return item.thumbnail;
+                    }
                 };
+            }
+
+            private static IEnumerable<SearchItem> SearchPackages(SearchContext context, SearchProvider provider)
+            {
+                if (s_SearchRequest == null || s_ListRequest == null)
+                    yield break;
+
+                while (!s_SearchRequest.IsCompleted || !s_ListRequest.IsCompleted)
+                    yield return null;
+
+                if (s_SearchRequest.Result == null || s_ListRequest.Result == null)
+                    yield break;
+
+                foreach (var p in s_SearchRequest.Result)
+                {
+                    if (p.keywords.Contains(context.searchQuery) ||
+                        SearchProvider.MatchSearchGroups(context, p.description.ToLowerInvariant(), true) ||
+                        SearchProvider.MatchSearchGroups(context, p.name.ToLowerInvariant(), true))
+                        yield return provider.CreateItem(p.packageId, String.IsNullOrEmpty(p.resolvedPath) ? 0 : 1, FormatLabel(p), FormatDescription(p), null, p);
+                }
             }
 
             private static string FormatName(UnityEditor.PackageManager.PackageInfo pi)
@@ -67,7 +75,7 @@ namespace Unity.QuickSearch
             private static string FormatLabel(UnityEditor.PackageManager.PackageInfo pi)
             {
                 var installedPackage = s_ListRequest.Result.FirstOrDefault(l => l.name == pi.name);
-                var status = installedPackage != null ? (installedPackage.version == pi.version ? 
+                var status = installedPackage != null ? (installedPackage.version == pi.version ?
                     " - <i>In Project</i>" : " - <b>Update Available</b>") : "";
                 if (String.IsNullOrEmpty(pi.displayName))
                     return $"{pi.name}@{pi.version}{status}";
@@ -102,6 +110,17 @@ namespace Unity.QuickSearch
             {
                 return new[]
                 {
+                    #if UNITY_2020_1_OR_NEWER
+                    new SearchAction(type, "open", null, "Open in Package Manager...")
+                    {
+                        handler = (item, context) =>
+                        {
+                            var packageInfo = (UnityEditor.PackageManager.PackageInfo)item.data;
+                        
+                            UnityEditor.PackageManager.UI.Window.Open(packageInfo.name);
+                        }
+                    },
+                    #endif
                     new SearchAction(type, "install", null, "Install...")
                     {
                         handler = (item, context) =>

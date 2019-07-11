@@ -29,9 +29,15 @@ namespace Unity.QuickSearch
                             item += " = " + result;
 
                         items.Add(provider.CreateItem(type, "compute", item));
+                        return null;
                     },
 
-                    fetchThumbnail = (item, context) => Icons.settings
+                    fetchThumbnail = (item, context) =>
+                    {
+                        if (!item.thumbnail)
+                            item.thumbnail = Icons.settings;
+                        return item.thumbnail;
+                    }
                 };
             }
 
@@ -40,7 +46,7 @@ namespace Unity.QuickSearch
             {
                 return new[]
                 {
-                    new SearchAction(type, "compute", null, "Compute...") {
+                    new SearchAction(type, "exec", null, "Compute...") {
                         handler = (item, context) =>
                         {
                             if (Evaluate(context.searchQuery, out var result))

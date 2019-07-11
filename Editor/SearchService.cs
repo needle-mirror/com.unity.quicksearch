@@ -1,486 +1,38 @@
-// #define QUICKSEARCH_DEBUG
+//#define QUICKSEARCH_DEBUG
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Linq;
 using UnityEditor;
-using UnityEngine;
 using JetBrains.Annotations;
-
-#if QUICKSEARCH_DEBUG
-using System.Reflection;
-using Debug = UnityEngine.Debug;
-#endif
 
 namespace Unity.QuickSearch
 {
-    public delegate Texture2D PreviewHandler(SearchItem item, SearchContext context);
-    public delegate string FetchStringHandler(SearchItem item, SearchContext context);
-    public delegate void ActionHandler(SearchItem item, SearchContext context);
-    public delegate void StartDragHandler(SearchItem item, SearchContext context);
-    public delegate void TrackSelectionHandler(SearchItem item, SearchContext context);
-    public delegate bool EnabledHandler(SearchItem item, SearchContext context);
-    public delegate void GetItemsHandler(SearchContext context, List<SearchItem> items, SearchProvider provider);
-    public delegate void GetKeywordsHandler(SearchContext context, string lastToken, List<string> keywords);
-    public delegate bool IsEnabledForContextualSearch();
+    /// <summary>
+    /// Attribute used to declare a static method that will a new search provider at load time.
+    /// </summary>
+    public class SearchItemProviderAttribute : Attribute
+    {
+    }
 
-    interface ISearchView
+    /// <summary>
+    /// Attribute used to declare a static method that define new available actions for specific search providers.
+    /// </summary>
+    public class SearchActionsProviderAttribute : Attribute
+    {
+    }
+
+    /// <summary>
+    /// Search view interface used by the search context to execute a few UI operations.
+    /// </summary>
+    internal interface ISearchView
     {
         void SetSearchText(string searchText);
         void PopFilterWindow();
     }
 
-    public class SearchAction
-    {
-        public const string kContextualMenuAction = "context";
-        public SearchAction(string type, GUIContent content)
-        {
-            providerId = type;
-            this.content = content;
-            isEnabled = (item, context) => true;
-        }
-
-        public SearchAction(string type, string name, Texture2D icon = null, string tooltip = null)
-            : this(type, new GUIContent(name, icon, tooltip ?? name))
-        {
-        }
-
-        public string Id => content.text;
-        public string DisplayName => content.tooltip;
-        public bool closeWindowAfterExecution = true;
-
-        // Unique (for a given provider) id of the action 
-        public string providerId;
-        public GUIContent content;
-        // Called when an item is executed with this action
-        public ActionHandler handler;
-        // Called before displaying the menu to see if an action is available for a given item.
-        public EnabledHandler isEnabled;
-    }
-
-    [Flags]
-    public enum SearchItemDescriptionFormat
-    {
-        None = 0,
-        Ellipsis = 1 << 0,
-        RightToLeft = 1 << 1,
-        Highlight = 1 << 2,
-        FuzzyHighlight = 1 << 3
-    }
-
-    [DebuggerDisplay("{id} | {label}")]
-    public class SearchItem : IEqualityComparer<SearchItem>, IEquatable<SearchItem>
-    {
-        // Unique id of this item among this provider items.
-        public readonly string id;
-        // The item score can affect how the item gets sorted within the same provider.
-        public int score;
-        // Display name of the item
-        public string label;
-        // If no description is provided, SearchProvider.fetchDescription will be called when the item is first displayed.
-        public string description;
-        // If true - description already has formatting / rich text
-        public SearchItemDescriptionFormat descriptionFormat;
-        // If no thumbnail are provider, SearchProvider.fetchThumbnail will be called when the item is first displayed.
-        public Texture2D thumbnail;
-        // Back pointer to the provider.
-        public SearchProvider provider;
-        // Search provider defined content
-        public object data;
-
-        public SearchItem(string _id)
-        {
-            id = _id;
-        }
-
-        public bool Equals(SearchItem x, SearchItem y)
-        {
-            return x.id == y.id;
-        }
-
-        public int GetHashCode(SearchItem obj)
-        {
-            return obj.id.GetHashCode();
-        }
-
-        public bool Equals(SearchItem other)
-        {
-            return id == other.id;
-        }
-    }
-
-    public class SearchFilter
-    {
-        [DebuggerDisplay("{name.displayName}")]
-        public class Entry
-        {
-            public Entry(NameId name)
-            {
-                this.name = name;
-                isEnabled = true;
-            }
-
-            public NameId name;
-            public bool isEnabled;
-        }
-
-        [DebuggerDisplay("{entry.name.displayName} expanded:{isExpanded}")]
-        public class ProviderDesc
-        {
-            public ProviderDesc(NameId name, SearchProvider provider)
-            {
-                entry = new Entry(name);
-                categories = new List<Entry>();
-                isExpanded = false;
-                this.provider = provider;
-            }
-
-            public int priority => provider.priority;
-
-            public Entry entry;
-            public bool isExpanded;
-            public List<Entry> categories;
-            public SearchProvider provider;
-        }
-
-        public bool allActive { get; internal set; }
-
-        public List<SearchProvider> filteredProviders;
-        public List<ProviderDesc> providerFilters;
-
-        private List<SearchProvider> m_Providers;
-        public List<SearchProvider> Providers
-        {
-            get => m_Providers;
-
-            set
-            {
-                m_Providers = value;
-                providerFilters.Clear();
-                filteredProviders.Clear();
-                foreach (var provider in m_Providers)
-                {
-                    var providerFilter = new ProviderDesc(new NameId(provider.name.id, GetProviderNameWithFilter(provider)), provider);
-                    providerFilters.Add(providerFilter);
-                    foreach (var subCategory in provider.subCategories)
-                    {
-                        providerFilter.categories.Add(new Entry(subCategory));
-                    }
-                }
-                UpdateFilteredProviders();
-            }
-        }
-
-        public SearchFilter()
-        {
-            filteredProviders = new List<SearchProvider>();
-            providerFilters = new List<ProviderDesc>();
-        }
-
-        public void ResetFilter(bool enableAll, bool preserveSubFilters = false)
-        {
-            allActive = enableAll;
-            foreach (var providerDesc in providerFilters)
-                SetFilterInternal(enableAll, providerDesc.entry.name.id, null, preserveSubFilters);
-            UpdateFilteredProviders();
-        }
-
-        public void SetFilter(bool isEnabled, string providerId, string subCategory = null, bool preserveSubFilters = false)
-        {
-            if (SetFilterInternal(isEnabled, providerId, subCategory, preserveSubFilters))
-                UpdateFilteredProviders();
-        }
-
-        public void SetExpanded(bool isExpanded, string providerId)
-        {
-            var providerDesc = providerFilters.Find(pd => pd.entry.name.id == providerId);
-            if (providerDesc != null)
-            {
-                providerDesc.isExpanded = isExpanded;
-            }
-        }
-
-        public bool IsEnabled(string providerId, string subCategory = null)
-        {
-            var desc = providerFilters.Find(pd => pd.entry.name.id == providerId);
-            if (desc != null)
-            {
-                if (subCategory == null)
-                {
-                    return desc.entry.isEnabled;
-                }
-
-                foreach (var cat in desc.categories)
-                {
-                    if (cat.name.id == subCategory)
-                        return cat.isEnabled;
-                }
-            }
-
-            return false;
-        }
-
-        public static string GetProviderNameWithFilter(SearchProvider provider)
-        {
-            return string.IsNullOrEmpty(provider.filterId) ? provider.name.displayName : provider.name.displayName + " (" + provider.filterId + ")";
-        }
-
-        public List<Entry> GetSubCategories(SearchProvider provider)
-        {
-            var desc = providerFilters.Find(pd => pd.entry.name.id == provider.name.id);
-            return desc?.categories;
-        }
-
-        internal void UpdateFilteredProviders()
-        {
-            filteredProviders = Providers.Where(p => IsEnabled(p.name.id)).ToList();
-        }
-
-        internal bool SetFilterInternal(bool isEnabled, string providerId, string subCategory = null, bool preserveSubFilters = false)
-        {
-            var providerDesc = providerFilters.Find(pd => pd.entry.name.id == providerId);
-            if (providerDesc == null) 
-                return false;
-
-            if (subCategory == null)
-            {
-                providerDesc.entry.isEnabled = isEnabled;
-                if (preserveSubFilters) 
-                    return true;
-
-                foreach (var cat in providerDesc.categories)
-                    cat.isEnabled = isEnabled;
-            }
-            else
-            {
-                foreach (var cat in providerDesc.categories)
-                {
-                    if (cat.name.id == subCategory)
-                    {
-                        cat.isEnabled = isEnabled;
-                        if (isEnabled)
-                            providerDesc.entry.isEnabled = true;
-                    }
-                }
-            }
-
-            return true;
-
-        }
-    }
-
-    [DebuggerDisplay("{id}")]
-    public class NameId
-    {
-        public NameId(string id, string displayName = null)
-        {
-            this.id = id;
-            this.displayName = displayName ?? id;
-        }
-
-        public string id;
-        public string displayName;
-    }
-
-    [DebuggerDisplay("{name.id}")]
-    public class SearchProvider
-    {
-        internal const int k_RecentUserScore = -99;
-
-        public SearchProvider(string id, string displayName = null)
-        {
-            name = new NameId(id, displayName);
-            actions = new List<SearchAction>();
-            fetchItems = (context, items, provider) => {};
-            fetchThumbnail = (item, context) => item.thumbnail ?? Icons.quicksearch;
-            fetchLabel = (item, context) => item.label ?? item.id ?? String.Empty;
-            fetchDescription = (item, context) => item.description ?? String.Empty;
-            subCategories = new List<NameId>();
-            priority = 100;
-            fetchTimes = new double[10];
-            fetchTimeWriteIndex = 0;
-        }
-
-        public SearchItem CreateItem(string id, int score, string label, string description, Texture2D thumbnail, object data)
-        {
-            // If the user searched that item recently,
-            // let give it a good score so it gets sorted first.
-            if (SearchService.IsRecent(id))
-                score = Math.Min(k_RecentUserScore, score);
-
-            return new SearchItem(id)
-            {
-                score = score,
-                label = label,
-                description = description,
-                descriptionFormat = SearchItemDescriptionFormat.Highlight | SearchItemDescriptionFormat.Ellipsis,
-                thumbnail = thumbnail,
-                provider = this,
-                data = data
-            };
-        }
-
-        public SearchItem CreateItem(string id, string label = null, string description = null, Texture2D thumbnail = null, object data = null)
-        {
-            return CreateItem(id, 0, label, description, thumbnail, data);
-        }
-
-        public static bool MatchSearchGroups(SearchContext context, string content, bool useLowerTokens = false)
-        {
-            return MatchSearchGroups(context.searchQuery,
-                useLowerTokens ? context.tokenizedSearchQueryLower : context.tokenizedSearchQuery, content, out _, out _, 
-                useLowerTokens ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase);
-        }
-
-        public void RecordFetchTime(double t)
-        {
-            fetchTimes[fetchTimeWriteIndex] = t;
-            fetchTimeWriteIndex = SearchService.Wrap(fetchTimeWriteIndex + 1, fetchTimes.Length);
-        }
-
-        private static bool MatchSearchGroups(string searchContext, string[] tokens, string content, out int startIndex, out int endIndex, StringComparison sc = StringComparison.OrdinalIgnoreCase)
-        {
-            startIndex = endIndex = -1;
-            if (content == null)
-                return false;
-
-            if (string.IsNullOrEmpty(searchContext) || searchContext == content)
-            {
-                startIndex = 0;
-                endIndex = content.Length - 1;
-                return true;
-            }
-
-            // Each search group is space separated
-            // Search group must match in order and be complete.
-            var searchGroups = tokens;
-            var startSearchIndex = 0;
-            foreach (var searchGroup in searchGroups)
-            {
-                if (searchGroup.Length == 0)
-                    continue;
-
-                startSearchIndex = content.IndexOf(searchGroup, startSearchIndex, sc);
-                if (startSearchIndex == -1)
-                {
-                    return false;
-                }
-
-                startIndex = startIndex == -1 ? startSearchIndex : startIndex;
-                startSearchIndex = endIndex = startSearchIndex + searchGroup.Length - 1;
-            }
-
-            return startIndex != -1 && endIndex != -1;
-        }
-
-        public double avgTime
-        {
-            get
-            {
-                double total = 0.0;
-                int validTimeCount = 0;
-                foreach (var t in fetchTimes)
-                {
-                    if (t > 0.0)
-                    {
-                        total += t;
-                        validTimeCount++;
-                    }
-                }
-
-                if (validTimeCount == 0)
-                    return 0.0;
-
-                return total / validTimeCount;
-            }
-        }
-
-        // Unique id of the provider
-        public NameId name;
-        // Text token use to "filter" a provider (ex:  "me:", "p:", "s:")
-        public string filterId;
-        // This provider is only active when specified explicitly using his filterId
-        public bool isExplicitProvider;
-        // Handler used to fetch and format the label of a search item.
-        public FetchStringHandler fetchLabel;
-        // Handler to provider an async description for an item. Will be called when the item is about to be displayed.
-        // allow a plugin provider to only fetch long description when they are needed.
-        public FetchStringHandler fetchDescription;
-        // Handler to provider an async thumbnail for an item. Will be called when the item is about to be displayed.
-        // allow a plugin provider to only fetch/generate preview when they are needed.
-        public PreviewHandler fetchThumbnail;
-        // If implemented, it means the item supports drag. It is up to the SearchProvider to properly setup the DragAndDrop manager.
-        public StartDragHandler startDrag;
-        // Called when the selection changed and can be tracked.
-        public TrackSelectionHandler trackSelection;
-        // MANDATORY: Handler to get items for a given search context. 
-        public GetItemsHandler fetchItems;
-        // Provider can return a list of words that will help the user complete his search query
-        public GetKeywordsHandler fetchKeywords;
-        // List of subfilters that will be visible in the FilterWindow for a given SearchProvider (see AssetProvider for an example).
-        public List<NameId> subCategories;
-        // Called when the QuickSearchWindow is opened. Allow the Provider to perform some caching.
-        public Action onEnable;
-        // Called when the QuickSearchWindow is closed. Allow the Provider to release cached resources.
-        public Action onDisable;
-        // Hint to sort the Provider. Affect the order of search results and the order in which provider are shown in the FilterWindow.
-        public int priority;
-        // Called when quicksearch is invoked in "contextual mode". If you return true it means the provider is enabled for this search context.
-        public IsEnabledForContextualSearch isEnabledForContextualSearch;
-
-        // INTERNAL
-        internal List<SearchAction> actions;
-        internal double[] fetchTimes;
-        internal double loadTime;
-        internal double enableTime;
-        internal int fetchTimeWriteIndex;
-    }
-
-    [DebuggerDisplay("{searchQuery}")]
-    public class SearchContext
-    {
-        // Raw search text (i.e. what is in the search text box)
-        public string searchText;
-        // Processed search query: filterId were removed.
-        public string searchQuery;
-        // Search query tokenized by words.
-        public string[] tokenizedSearchQuery;
-        // Search query tokenized by words all in lower case.
-        public string[] tokenizedSearchQueryLower;
-        // All tokens containing a colon (':')
-        public string[] textFilters;
-        // All sub categories related to this provider and their enabled state.
-        public List<SearchFilter.Entry> categories;
-        // Mark the number of item found after running the search.
-        public int totalItemCount;
-        // Editor window that initiated the search
-        public EditorWindow focusedWindow;
-        // Indicates if the search should return results as many as possible.
-        public bool wantsMore;
-
-        public string actionQueryId;
-        public bool isActionQuery;
-
-        // Async search information
-        // Unique id of this search.
-        public int searchId;
-        // Send SearchService new asynchronous results. First parameter is the search Id who owns those results.
-        public Action<int, SearchItem[]> sendAsyncItems;
-
-        internal ISearchView searchView;
-
-        static public readonly SearchContext Empty = new SearchContext {searchId = 0, searchText = String.Empty, searchQuery = String.Empty};
-
-    }
-
-    public class SearchItemProviderAttribute : Attribute
-    {
-    }
-
-    public class SearchActionsProviderAttribute : Attribute
-    {
-    }
-
+    /// <summary>
+    /// Principal Quick Search API to initiate searches and fetch results.
+    /// </summary>
     public static class SearchService
     {
         public const string prefKey = "quicksearch";
@@ -493,11 +45,12 @@ namespace Unity.QuickSearch
 
         const string k_ActionQueryToken = ">";
 
-        private static int s_CurrentSearchId = 0;
         private static string s_LastSearch;
         private static int s_RecentSearchIndex = -1;
+        private const int k_MaxFetchTimeMs = 10;
         private static List<int> s_UserScores = new List<int>();
         private static HashSet<int> s_SortedUserScores = new HashSet<int>();
+        private static Dictionary<string, AsyncSearchSession> s_SearchSessions = new Dictionary<string, AsyncSearchSession>();
 
         internal static List<string> s_RecentSearches = new List<string>(10);
         internal static List<SearchProvider> Providers { get; private set; }
@@ -537,7 +90,7 @@ namespace Unity.QuickSearch
                 return s_LastSearch;
 
             s_RecentSearchIndex = Wrap(s_RecentSearchIndex + shift, s_RecentSearches.Count);
-            
+
             return s_RecentSearches[s_RecentSearchIndex];
         }
 
@@ -547,7 +100,6 @@ namespace Unity.QuickSearch
         }
 
         public static SearchFilter Filter { get; private set; }
-        public static event Action<IEnumerable<SearchItem>> asyncItemReceived;
         public static event Action<string[], string[], string[]> contentRefreshed;
 
         static SearchService()
@@ -658,6 +210,9 @@ namespace Unity.QuickSearch
 
         public static List<SearchItem> GetItems(SearchContext context)
         {
+            // Stop all search sessions every time there is a new search.
+            StopAllAsyncSearchSessions();
+
             PrepareSearch(context);
 
             if (context.isActionQuery || OverrideFilter.filteredProviders.Count > 0)
@@ -671,10 +226,9 @@ namespace Unity.QuickSearch
 
         public static void Enable(SearchContext context)
         {
-            s_CurrentSearchId = 0;
             LoadSessionSettings();
             PrepareSearch(context);
-            foreach (var provider in Providers)
+            foreach (var provider in Providers.Where(p => p.active))
             {
                 using (var enableTimer = new DebugTimer(null))
                 {
@@ -686,10 +240,12 @@ namespace Unity.QuickSearch
 
         public static void Disable(SearchContext context)
         {
-            asyncItemReceived = null;
             LastSearch = context.searchText;
 
-            foreach (var provider in Providers)
+            StopAllAsyncSearchSessions();
+            s_SearchSessions.Clear();
+
+            foreach (var provider in Providers.Where(p => p.active))
                 provider.onDisable?.Invoke();
 
             SaveSessionSettings();
@@ -731,9 +287,7 @@ namespace Unity.QuickSearch
         internal static void SortActionsPriority()
         {
             foreach (var searchProvider in Providers)
-            {
                 SortActionsPriority(searchProvider);
-            }
         }
 
         internal static void PrepareSearch(SearchContext context)
@@ -780,7 +334,7 @@ namespace Unity.QuickSearch
 
             if (overrideFilterId != null)
             {
-                OverrideFilter.ResetFilter(false, false);
+                OverrideFilter.ResetFilter(false);
                 foreach (var provider in Providers)
                 {
                     if (overrideFilterId.Contains(provider.name.id))
@@ -791,7 +345,7 @@ namespace Unity.QuickSearch
             }
             else if (OverrideFilter.filteredProviders.Count > 0)
             {
-                OverrideFilter.ResetFilter(false, false);
+                OverrideFilter.ResetFilter(false);
             }
         }
 
@@ -801,8 +355,6 @@ namespace Unity.QuickSearch
             using (new DebugTimer("==> Search Items"))
             #endif
             {
-                context.searchId = ++s_CurrentSearchId;
-                context.sendAsyncItems = OnAsyncItemsReceived;
                 var allItems = new List<SearchItem>(100);
                 foreach (var provider in filter.filteredProviders)
                 {
@@ -815,7 +367,18 @@ namespace Unity.QuickSearch
                         context.categories = filter.GetSubCategories(provider);
                         try
                         {
-                            provider.fetchItems(context, allItems, provider);
+                            var enumerable = provider.fetchItems(context, allItems, provider);
+                            if (enumerable != null)
+                            {
+                                if (!s_SearchSessions.TryGetValue(provider.name.id, out var session))
+                                {
+                                    session = new AsyncSearchSession();
+                                    s_SearchSessions.Add(provider.name.id, session);
+                                }
+                                session.Reset(enumerable.GetEnumerator());
+                                if (!session.FetchSome(allItems, k_MaxFetchTimeMs))
+                                    session.Stop();
+                            }
                             provider.RecordFetchTime(fetchTimer.timeMs);
                         }
                         catch (Exception ex)
@@ -843,7 +406,7 @@ namespace Unity.QuickSearch
         private static int SortItemComparer(SearchItem item1, SearchItem item2)
         {
             var po = item1.provider.priority.CompareTo(item2.provider.priority);
-            if (po != 0) 
+            if (po != 0)
                 return po;
             po = item1.score.CompareTo(item2.score);
             if (po != 0)
@@ -851,74 +414,37 @@ namespace Unity.QuickSearch
             return String.Compare(item1.id, item2.id, StringComparison.Ordinal);
         }
 
-        private static void OnAsyncItemsReceived(int searchId, SearchItem[] items)
-        {
-            if (s_CurrentSearchId != searchId)
-                return;
-            EditorApplication.delayCall += () => asyncItemReceived?.Invoke(items);
-        }
-
         private static bool FetchProviders()
         {
             try
             {
-                Providers = Utils.GetAllMethodsWithAttribute<SearchItemProviderAttribute>()
-                    .Select(methodInfo =>
-                    {
-                        try
-                        {
-                            SearchProvider fetchedProvider = null;
-                            using (var fetchLoadTimer = new DebugTimer(null))
-                            {
-                                fetchedProvider = methodInfo.Invoke(null, null) as SearchProvider;
-                                if (fetchedProvider != null)
-                                    fetchedProvider.loadTime = fetchLoadTimer.timeMs;
-                            }
-                            return fetchedProvider;
-                        }
-                        catch (Exception ex)
-                        {
-                            UnityEngine.Debug.LogException(ex);
-                            return null;
-                        }
-                    })
-                    .Where(provider => provider != null).ToList();
-
-                ActionIdToProviders = new Dictionary<string, List<string>>();
-                foreach (var action in Utils.GetAllMethodsWithAttribute<SearchActionsProviderAttribute>()
-                         .SelectMany(methodInfo => methodInfo.Invoke(null, null) as IEnumerable<object>).Where(a => a != null).Cast<SearchAction>())
+                Providers = Utils.GetAllMethodsWithAttribute<SearchItemProviderAttribute>().Select(methodInfo =>
                 {
-                    var provider = Providers.Find(p => p.name.id == action.providerId);
-                    if (provider != null)
+                    try
                     {
-                        provider.actions.Add(action);
-                        if (!ActionIdToProviders.TryGetValue(action.Id, out var providerIds))
+                        SearchProvider fetchedProvider = null;
+                        using (var fetchLoadTimer = new DebugTimer(null))
                         {
-                            providerIds = new List<string>();
-                            ActionIdToProviders[action.Id] = providerIds;
+                            fetchedProvider = methodInfo.Invoke(null, null) as SearchProvider;
+                            if (fetchedProvider == null) 
+                                return null;
+
+                            fetchedProvider.loadTime = fetchLoadTimer.timeMs;
+
+                            // Load per provider user settings
+                            fetchedProvider.active = EditorPrefs.GetBool($"{prefKey}.{fetchedProvider.name.id}.active", fetchedProvider.active);
+                            fetchedProvider.priority = EditorPrefs.GetInt($"{prefKey}.{fetchedProvider.name.id}.priority", fetchedProvider.priority);
                         }
-                        providerIds.Add(provider.name.id);
+                        return fetchedProvider;
                     }
-                }
-
-                Filter.Providers = Providers.Where(p => !p.isExplicitProvider).ToList();
-                OverrideFilter.Providers = Providers;
-                TextFilterIds = new Dictionary<string, string>();
-                foreach (var provider in Providers)
-                {
-                    // Load per provider user settings
-                    provider.priority = EditorPrefs.GetInt($"{prefKey}.{provider.name.id}.priority", provider.priority);
-                    if (string.IsNullOrEmpty(provider.filterId))
-                        continue;
-
-                    if (char.IsLetterOrDigit(provider.filterId[provider.filterId.Length - 1]))
+                    catch (Exception ex)
                     {
-                        UnityEngine.Debug.LogWarning($"Provider: {provider.name.id} filterId: {provider.filterId} must ends with non-alphanumeric character.");
-                        continue;
+                        UnityEngine.Debug.LogException(ex);
+                        return null;
                     }
+                }).Where(provider => provider != null).ToList();
 
-                    TextFilterIds.Add(provider.filterId, provider.name.id);
-                }
+                RefreshProviders();
             }
             catch (Exception)
             {
@@ -926,6 +452,42 @@ namespace Unity.QuickSearch
             }
 
             return true;
+        }
+
+        internal static void RefreshProviders()
+        {
+            ActionIdToProviders = new Dictionary<string, List<string>>();
+            foreach (var action in Utils.GetAllMethodsWithAttribute<SearchActionsProviderAttribute>()
+                                        .SelectMany(methodInfo => methodInfo.Invoke(null, null) as IEnumerable<object>).Where(a => a != null).Cast<SearchAction>())
+            {
+                var provider = Providers.Find(p => p.name.id == action.providerId);
+                if (provider == null) 
+                    continue;
+                provider.actions.Add(action);
+                if (!ActionIdToProviders.TryGetValue(action.Id, out var providerIds))
+                {
+                    providerIds = new List<string>();
+                    ActionIdToProviders[action.Id] = providerIds;
+                }
+                providerIds.Add(provider.name.id);
+            }
+
+            Filter.Providers = Providers.Where(p => !p.isExplicitProvider).ToList();
+            OverrideFilter.Providers = Providers;
+            TextFilterIds = new Dictionary<string, string>();
+            foreach (var provider in Providers)
+            {
+                if (string.IsNullOrEmpty(provider.filterId))
+                    continue;
+
+                if (char.IsLetterOrDigit(provider.filterId[provider.filterId.Length - 1]))
+                {
+                    UnityEngine.Debug.LogWarning($"Provider: {provider.name.id} filterId: {provider.filterId} must ends with non-alphanumeric character.");
+                    continue;
+                }
+
+                TextFilterIds.Add(provider.filterId, provider.name.id);
+            }
         }
 
         internal static bool LoadFilters()
@@ -991,8 +553,8 @@ namespace Unity.QuickSearch
             {
                 var filter = new Dictionary<string, object>
                 {
-                    ["providerId"] = providerDesc.entry.name.id, 
-                    ["isEnabled"] = providerDesc.entry.isEnabled, 
+                    ["providerId"] = providerDesc.entry.name.id,
+                    ["isEnabled"] = providerDesc.entry.isEnabled,
                     ["isExpanded"] = providerDesc.isExpanded
                 };
                 var categories = new List<object>();
@@ -1013,6 +575,9 @@ namespace Unity.QuickSearch
 
         private static string GetPrefKeyName(string suffix)
         {
+            if (Filter.filteredProviders.Count == 0)
+                return $"{prefKey}.noscope.{suffix}";
+
             var scope = Filter.filteredProviders.Select(p => p.filterId.GetHashCode()).Aggregate((h1, h2) => (h1 ^ h2).GetHashCode());
             return $"{prefKey}.{scope}.{suffix}";
         }
@@ -1042,6 +607,14 @@ namespace Unity.QuickSearch
         {
             // We only save the last 40 most recent items.
             SaveSessionSetting(k_RecentsPrefKey, Utils.JsonSerialize(s_UserScores.Skip(s_UserScores.Count - 40).ToArray()));
+        }
+
+        private static void StopAllAsyncSearchSessions()
+        {
+            foreach (var searchSession in s_SearchSessions)
+            {
+                searchSession.Value.Stop();
+            }
         }
 
         #region Refresh search content event

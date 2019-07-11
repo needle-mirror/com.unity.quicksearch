@@ -1,5 +1,4 @@
-﻿// #define QUICKSEARCH_EXAMPLES
-using JetBrains.Annotations;
+﻿using JetBrains.Annotations;
 using System.CodeDom.Compiler;
 using System.Collections.Generic;
 using System.Text;
@@ -15,33 +14,31 @@ namespace Unity.QuickSearch
         static class Eval
         {
             internal static string type = "eval";
-            internal static string displayName = "Evaluator";
+            internal static string displayName = "C# Evaluator";
 
-            #if QUICKSEARCH_EXAMPLES
             [UsedImplicitly, SearchItemProvider]
-            #endif
             internal static SearchProvider CreateProvider()
             {
                 return new SearchProvider(type, displayName)
                 {
+                    active = false, // Still experimental
                     priority = 1,
                     filterId = "$",
                     isExplicitProvider = true,
                     fetchItems = (context, items, provider) =>
                     {
                         items.Add(provider.CreateItem(GUID.Generate().ToString(), "Evaluate C# expression", context.searchQuery.Trim()));
+                        return null;
                     }
                 };
             }
 
-            #if QUICKSEARCH_EXAMPLES
             [UsedImplicitly, SearchActionsProvider]
-            #endif
             internal static IEnumerable<SearchAction> ActionHandlers()
             {
                 return new[]
                 {
-                    new SearchAction(type, "evaluate", null, "evaluate")
+                    new SearchAction(type, "exec", null, "Evaluate C# expression...")
                     {
                         handler = (item, context) =>
                         {
@@ -61,8 +58,7 @@ namespace Unity.QuickSearch
                             cp.CompilerOptions = "/t:library";
                             cp.GenerateInMemory = true;
 
-                            CompilerResults cr;
-                            if (!CompileSource(sCSCode, icc, cp, out cr, true))
+                            if (!CompileSource(sCSCode, icc, cp, out var cr, true))
                             {
                                 if (!CompileSource(sCSCode, icc, cp, out cr, false))
                                     return;

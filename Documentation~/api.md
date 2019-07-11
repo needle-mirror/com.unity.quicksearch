@@ -134,14 +134,14 @@ The bulk of the provider work happens in the `fetchItems` functor. This is  the 
 
 ```CSharp
 // context: all the necessary search context (tokenized search, sub filters...)
-// items: list of items to populate
+// items: list of items to populate (if not using the async api)
 // provider: the provider itself
-public delegate void GetItemsHandler(SearchContext context, 
+public delegate IEnumerable<SearchItem> GetItemsHandler(SearchContext context, 
                                     List<SearchItem> items, 
                                     SearchProvider provider);
 ```
 
-The `SearchProvider` must add new `SearchItem`s to the `items` list.
+The `SearchProvider` must add new `SearchItem`s to the `items` list or return an `IEnumerable<SearchItem>`. If you do not use the asynchronous `fetchItems` api, you must return `null` in your `fetchItems` function.
 
 An `SearchItem` is a simple struct:
 
@@ -179,39 +179,56 @@ if (FuzzySearch.FuzzyMatch(sq, CleanString(item.label), ref score, matches))
 
 All search items are sorted again item of the same provider with their `score`. The **lower score** will appear at the top of the item list (**ascending sorting**).
 
-### Asynchronous Search Results
+### Asynchronous Search API
 
-If your search providers can take a long time to compute its results or rely on asynchronous search engine (ex: WebRequests) you can use the `context.sendAsyncItems` callback to populate search results asynchronously.
+If your search provider can take a long time to compute its results or rely on asynchronous search engine (ex: WebRequests) you can return an `IEnumerable<SearchItem>` from your `fetchItems` function. Your `IEnumerable<SearchItem>` should be a function that yields results, so that the api can fetch one item at a time.
 
-The `SearchContext` also contains a `searchId` that needs to be provided with the call to `sendAsyncItems`. This allows Quick Search to know for which search those results are provided.
+When an `IEnumerable<SearchItem>` is returned, the enumerator is stored and iterated over during an application update. Furthermore, we constrain the iterating time to ensure the UI is not blocked. However, since the call is in the main thread, you should make sure to yield as soon as possible if your results are not ready. The enumeration continues over multiple application updates until it is done.
 
-An example of using asynchronous search result would be:
+Here is an example using the asynchronous `fetchItems` api:
 
 ```CSharp
-new SearchProvider(type, displayName)
+public class AsyncSearchProvider : SearchProvider
 {
-    filterId = "store:",
-    fetchItems = (context, items, provider) =>
+    public AsyncSearchProvider(string id, string displayName = null)
+        : base(id, displayName)
     {
-        var currentSearchRequest = UnityWebRequest.Get(url + context.searchQuery);
-        currentSearchRequest.SetRequestHeader("X-Unity-Session", InternalEditorUtility.GetAuthToken());
-        var currentSearchRequestOp = currentSearchRequest.SendWebRequest();
-        currentSearchRequestOp.completed += op => {
- 
-            var items = // GetItems from websearch
- 
-            // Notify the search about async items:
-            // ensure to set the searchId you are providing result for!
-            context.sendAsyncItems(context.searchId, items);
-        };
+        fetchItems = (context, items, provider) => FetchItems(context, provider);
     }
-};
+
+    private IEnumerable<SearchItem> FetchItems(SearchContext context, SearchProvider provider)
+    {
+        while(ResultsNotReady())
+        {
+            yield return null;
+        }
+
+        var oneItem = // Get an item
+        yield return oneItem;
+
+        var anotherItem = // Get another item
+        yield return anotherItem;
+
+        if(SomeConditionThatBreaksTheSearch())
+        {
+            // Search must be terminated
+            yield break;
+        }
+
+        // You can iterate over an enumerable, the enumeration will
+        // continue where it left.
+        foreach(var item in someItems)
+        {
+            yield return item;
+        }
+    }
+}
 ```
 
 The Quick Search package contains 2 examples with async results:
 
 - `com.unity.quicksearch/Editor/Providers/Examples/AssetStoreProvider.cs` : which provide a way to query the asset store using WebRequest.
-- `com.unity.quicksearch/Editor/Providers/Examples/ESS.cs`: which creates a thread to start the EntrianSource search indexer to provide full text search for assets in your project.
+- `com.unity.quicksearch/Editor/Providers/Examples/ESS.cs`: which creates a process to start the EntrianSource search indexer to provide full text search for assets in your project.
 
 ### Registering an Action Handler
 

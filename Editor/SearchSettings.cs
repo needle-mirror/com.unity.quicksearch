@@ -77,7 +77,16 @@ namespace Unity.QuickSearch
             {
                 GUILayout.BeginHorizontal();
                 GUILayout.Space(20);
-                GUILayout.Label(new GUIContent(p.name.displayName, $"{p.name.id} ({p.priority})"), GUILayout.Width(175));
+
+                var wasActive = p.active;
+                p.active = GUILayout.Toggle(wasActive, Styles.toggleActiveContent);
+                if (p.active != wasActive)
+                    EditorPrefs.SetBool($"{k_KeyPrefix}.{p.name.id}.active", p.active);
+
+                using (new EditorGUI.DisabledGroupScope(!p.active))
+                {
+                    GUILayout.Label(new GUIContent(p.name.displayName, $"{p.name.id} ({p.priority})"), GUILayout.Width(175));
+                }
 
                 if (!p.isExplicitProvider)
                 {
@@ -91,15 +100,15 @@ namespace Unity.QuickSearch
                     GUILayoutUtility.GetRect(Styles.increasePriorityContent, Styles.priorityButton);
                     GUILayoutUtility.GetRect(Styles.increasePriorityContent, Styles.priorityButton);
                 }
-                
+
                 GUILayout.Space(20);
 
                 using (new EditorGUI.DisabledScope(p.actions.Count < 2))
                 {
                     EditorGUI.BeginChangeCheck();
-                    var items = p.actions.Select(a => new GUIContent(a.DisplayName, a.content.image, 
+                    var items = p.actions.Select(a => new GUIContent(a.DisplayName, a.content.image,
                         p.actions.Count == 1 ?
-                        $"Default action for {p.name.displayName} (Enter)" : 
+                        $"Default action for {p.name.displayName} (Enter)" :
                         $"Set default action for {p.name.displayName} (Enter)")).ToArray();
                     var newDefaultAction = EditorGUILayout.Popup(0, items, GUILayout.ExpandWidth(true));
                     if (EditorGUI.EndChangeCheck())
@@ -123,7 +132,10 @@ namespace Unity.QuickSearch
         private static void ResetProviderPriorities()
         {
             foreach (var p in SearchService.Providers)
+            {
+                EditorPrefs.DeleteKey($"{k_KeyPrefix}.{p.name.id}.active");
                 EditorPrefs.DeleteKey($"{k_KeyPrefix}.{p.name.id}.priority");
+            }
         }
 
         private static void LowerProviderPriority(SearchProvider provider)
@@ -139,7 +151,7 @@ namespace Unity.QuickSearch
                 var temp = provider.priority;
                 if (cp.priority == adj.priority)
                     temp++;
-                
+
                 provider.priority = adj.priority;
                 adj.priority = temp;
 
@@ -162,7 +174,7 @@ namespace Unity.QuickSearch
                 var temp = provider.priority;
                 if (cp.priority == adj.priority)
                     temp--;
-                
+
                 provider.priority = adj.priority;
                 adj.priority = temp;
 
@@ -190,6 +202,7 @@ namespace Unity.QuickSearch
                 richText = true
             };
 
+            public static GUIContent toggleActiveContent = new GUIContent("", "Enable or disable this provider. Disabled search provider will be completely ignored by the search service.");
             public static GUIContent resetPrioritiesContent = new GUIContent("Reset Priorities", "All search providers will restore their initial priority");
             public static GUIContent increasePriorityContent = new GUIContent("\u2191", "Increase the provider's priority");
             public static GUIContent decreasePriorityContent = new GUIContent("\u2193", "Decrease the provider's priority");
@@ -197,7 +210,7 @@ namespace Unity.QuickSearch
             public static GUIContent useDockableWindowContent = new GUIContent("Use a dockable window (instead of a modal popup window, not recommended)");
             public static GUIContent closeWindowByDefaultContent = new GUIContent("Automatically close the window when an action is executed");
             public static GUIContent useFilePathIndexerContent = new GUIContent(
-                "Enable fast indexing of file system entries under your project (experimental)", 
+                "Enable fast indexing of file system entries under your project (experimental)",
                 "This indexing system takes around 1 and 10 seconds to build the first time you launch the quick search window. " +
                 "It can take up to 30-40 mb of memory, but it provides very fast search for large projects. " +
                 "Note that if you want to use standard asset database filtering, you will need to rely on `t:`, `a:`, etc.");

@@ -11,36 +11,44 @@ namespace Unity.QuickSearch
         [UsedImplicitly]
         static class Settings
         {
-            internal static string type = "settings";
-            internal static string displayName = "Settings";
-            internal static SettingsProvider[] providers;
+            private const string type = "settings";
+            private const string displayName = "Settings";
+            private static string[] settingsPaths;
 
             [UsedImplicitly, SearchItemProvider]
-            internal static SearchProvider CreateProvider()
+            private static SearchProvider CreateProvider()
             {
-                if (providers == null)
-                    providers = FetchSettingsProviders();
+                settingsPaths = FetchSettingsProviders().Select(provider => provider.settingsPath).ToArray();
 
                 return new SearchProvider(type, displayName)
                 {
                     filterId = "se:",
                     fetchItems = (context, items, provider) =>
                     {
-                        items.AddRange(providers.Where(settings =>
-                            SearchProvider.MatchSearchGroups(context, settings.settingsPath))
-                            .Select(settings => provider.CreateItem(settings.settingsPath, Utils.GetNameFromPath(settings.settingsPath), settings.settingsPath)));
+                        items.AddRange(settingsPaths
+                                       .Where(path => SearchProvider.MatchSearchGroups(context, path))
+                                       .Select(path => provider.CreateItem(path, null, path)));
+                        return null;
                     },
 
-                    fetchThumbnail = (item, context) => Icons.settings
+                    fetchLabel = (item, context) => item.label ?? (item.label = Utils.GetNameFromPath(item.id)),
+
+                    fetchThumbnail = (item, context) =>
+                    {
+                        if (!item.thumbnail)
+                            item.thumbnail = Icons.settings;
+                        return item.thumbnail;
+                    }
                 };
             }
 
             [UsedImplicitly, SearchActionsProvider]
-            internal static IEnumerable<SearchAction> ActionHandlers()
+            private static IEnumerable<SearchAction> ActionHandlers()
             {
                 return new[]
                 {
-                    new SearchAction(type, "open", null, "Open project settings...") {
+                    new SearchAction(type, "open", null, "Open project settings...")
+                    {
                         handler = (item, context) =>
                         {
                             if (item.id.StartsWith("Project/"))
@@ -54,11 +62,9 @@ namespace Unity.QuickSearch
 
             private static SettingsProvider[] FetchSettingsProviders()
             {
-                Assembly assembly = typeof(SettingsService).Assembly;
-                var managerType = assembly.GetTypes().First(t => t.Name == "SettingsService");
-                var method = managerType.GetMethod("FetchSettingsProviders", BindingFlags.NonPublic | BindingFlags.Static);
-                var arguments = new object[] {};
-                return method.Invoke(null, arguments) as SettingsProvider[];
+                var type = typeof(SettingsService);
+                var method = type.GetMethod("FetchSettingsProviders", BindingFlags.NonPublic | BindingFlags.Static);
+                return (SettingsProvider[])method.Invoke(null, null);
             }
         }
     }

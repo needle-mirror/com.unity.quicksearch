@@ -34,10 +34,11 @@ namespace Unity.QuickSearch
                         if (string.IsNullOrEmpty(context.searchQuery) || string.IsNullOrWhiteSpace(context.searchQuery))
                         {
                             items.AddRange(helpItems);
-                            return;
+                            return null;
                         }
 
                         items.AddRange(helpItems.Where(item => SearchProvider.MatchSearchGroups(context, item.label) || SearchProvider.MatchSearchGroups(context, item.description)));
+                        return null;
                     }
                 };
 
@@ -135,7 +136,7 @@ namespace Unity.QuickSearch
                         SettingsService.OpenUserPreferences(SearchSettings.settingsPreferencesKey);
                     });
                 }
-                
+
                 {
                     var helpItem = helpProvider.CreateItem("help_open_filter_window", "Open Filter Window", "Type Alt + Left Arrow to open the Filter Window");
                     helpItem.score = m_StaticItemToAction.Count;

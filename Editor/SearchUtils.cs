@@ -12,6 +12,9 @@ namespace Unity.QuickSearch
 
         public static string[] FindShiftLeftVariations(string word)
         {
+            if (word.Length <= 1)
+                return new string[0];
+
             var variations = new List<string>(word.Length) { word };
             for (int i = 1, end = word.Length - 1; i < end; ++i)
             {
@@ -30,10 +33,10 @@ namespace Unity.QuickSearch
         public static IEnumerable<string> SplitEntryComponents(string entry, char[] entrySeparators, int minIndexCharVariation, int maxIndexCharVariation)
         {
             var nameTokens = entry.Split(entrySeparators).Distinct().ToArray();
-            var scc = nameTokens.SelectMany(SearchUtils.SplitCamelCase).Where(s => s.Length > 0).ToArray();
+            var scc = nameTokens.SelectMany(s => SplitCamelCase(s)).Where(s => s.Length > 0);
             return Enumerable.Empty<string>()
                              .Concat(scc)
-                             .Where(s => s.Length >= minIndexCharVariation)
+                             .Where(s => s.Length > 0)
                              .Select(s => s.Substring(0, Math.Min(s.Length, maxIndexCharVariation)).ToLowerInvariant())
                              .Distinct();
         }
@@ -42,15 +45,15 @@ namespace Unity.QuickSearch
         {
             var name = Path.GetFileNameWithoutExtension(path);
             var nameTokens = name.Split(entrySeparators).Distinct().ToArray();
-            var scc = nameTokens.SelectMany(SearchUtils.SplitCamelCase).Where(s => s.Length > 0).ToArray();
+            var scc = nameTokens.SelectMany(s => SplitCamelCase(s)).Where(s => s.Length > 0).ToArray();
             var fcc = scc.Aggregate("", (current, s) => current + s[0]);
             return Enumerable.Empty<string>()
                              .Concat(scc)
                              .Concat(new[] { Path.GetExtension(path).Replace(".", "") })
-                             .Concat(SearchUtils.FindShiftLeftVariations(fcc))
-                             .Concat(nameTokens.Select(s => s.ToLowerInvariant()))
+                             .Concat(FindShiftLeftVariations(fcc))
+                             .Concat(nameTokens)
                              .Concat(path.Split(entrySeparators).Reverse())
-                             .Where(s => s.Length >= minIndexCharVariation)
+                             .Where(s => s.Length > 0)
                              .Select(s => s.Substring(0, Math.Min(s.Length, maxIndexCharVariation)).ToLowerInvariant())
                              .Distinct();
         }
