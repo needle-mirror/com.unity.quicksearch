@@ -1,3 +1,12 @@
+## [1.3.1-preview] - 2019-07-18
+- [UX] Show the async spinner while the scene and asset indexes are being built.
+- [UX] Removed the objects limit for the scene object provider.
+- [UX] Progressively show search item previews (preventing the UI to block when fetching large previews)
+- [FIX] Use the async fetchItems for the asset search provider returning result faster when using file system wildcard * (i.e. *.png)
+- [FIX] Optimize the scene object provider to build all indexes asynchronously.
+- [FIX] Optimize the insert and sort algorithm.
+- [API] Add new API `SearchProvider.fetchPreview` to fetch larger and slower preview of search item. `fetchThumbnail` is used to show a thumbnail and must be fast, then `fetchPreview` is called progressively to display a better and larger preview.
+
 ## [1.3.0-preview] - 2019-07-12
 - [UX] Add the ability to enable or disable completely a search provider in the user preferences.
 - [UX] Add experimental Asset Store provider (disabled by default, see Quick Search preferences).

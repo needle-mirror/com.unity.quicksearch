@@ -47,7 +47,7 @@ namespace Unity.QuickSearch
 
         private static string s_LastSearch;
         private static int s_RecentSearchIndex = -1;
-        private const int k_MaxFetchTimeMs = 10;
+        private const int k_MaxFetchTimeMs = 100;
         private static List<int> s_UserScores = new List<int>();
         private static HashSet<int> s_SortedUserScores = new HashSet<int>();
         private static Dictionary<string, AsyncSearchSession> s_SearchSessions = new Dictionary<string, AsyncSearchSession>();
@@ -355,7 +355,8 @@ namespace Unity.QuickSearch
             using (new DebugTimer("==> Search Items"))
             #endif
             {
-                var allItems = new List<SearchItem>(100);
+                var allItems = new List<SearchItem>(3);
+                var maxFetchTimePerProviderMs = k_MaxFetchTimeMs / filter.filteredProviders.Count;
                 foreach (var provider in filter.filteredProviders)
                 {
                     #if QUICKSEARCH_DEBUG
@@ -375,8 +376,8 @@ namespace Unity.QuickSearch
                                     session = new AsyncSearchSession();
                                     s_SearchSessions.Add(provider.name.id, session);
                                 }
-                                session.Reset(enumerable.GetEnumerator());
-                                if (!session.FetchSome(allItems, k_MaxFetchTimeMs))
+                                session.Reset(enumerable.GetEnumerator(), maxFetchTimePerProviderMs);
+                                if (!session.FetchSome(allItems, maxFetchTimePerProviderMs))
                                     session.Stop();
                             }
                             provider.RecordFetchTime(fetchTimer.timeMs);

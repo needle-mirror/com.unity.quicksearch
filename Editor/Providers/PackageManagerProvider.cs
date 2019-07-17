@@ -34,14 +34,15 @@ namespace Unity.QuickSearch
                         s_SearchRequest = UnityEditor.PackageManager.Client.SearchAll();
                     },
 
+                    onDisable = () =>
+                    {
+                        s_ListRequest = null;
+                        s_SearchRequest = null;
+                    },
+
                     fetchItems = (context, items, provider) => SearchPackages(context, provider),
 
-                    fetchThumbnail = (item, context) =>
-                    {
-                        if (!item.thumbnail)
-                            item.thumbnail = item.score == 0 ? Icons.packageUpdate : Icons.packageInstalled;
-                        return item.thumbnail;
-                    }
+                    fetchThumbnail = (item, context) => (item.thumbnail = item.score == 0 ? Icons.packageUpdate : Icons.packageInstalled)
                 };
             }
 

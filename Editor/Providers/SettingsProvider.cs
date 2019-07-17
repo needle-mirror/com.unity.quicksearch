@@ -33,12 +33,7 @@ namespace Unity.QuickSearch
 
                     fetchLabel = (item, context) => item.label ?? (item.label = Utils.GetNameFromPath(item.id)),
 
-                    fetchThumbnail = (item, context) =>
-                    {
-                        if (!item.thumbnail)
-                            item.thumbnail = Icons.settings;
-                        return item.thumbnail;
-                    }
+                    fetchThumbnail = (item, context) => Icons.settings
                 };
             }
 

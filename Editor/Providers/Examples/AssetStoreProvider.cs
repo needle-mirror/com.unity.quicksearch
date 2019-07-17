@@ -42,29 +42,27 @@ namespace Unity.QuickSearch
                     filterId = "store:",
                     fetchItems = (context, items, provider) => SearchItems(context, provider),
 
-                    fetchThumbnail = (item, context) =>
+                    fetchThumbnail = (item, context) => Icons.store,
+
+                    fetchPreview = (item, context, size, options) =>
                     {
-                        if (item.thumbnail)
-                            return item.thumbnail;
+                        if (!s_CurrentSearchAssetData.ContainsKey(item.id)) 
+                            return null;
 
-                        if (s_CurrentSearchAssetData.ContainsKey(item.id))
+                        var searchPreview = s_CurrentSearchAssetData[item.id];
+                        if (searchPreview.preview)
                         {
-                            var searchPreview = s_CurrentSearchAssetData[item.id];
-                            if (searchPreview.preview)
-                                item.thumbnail = s_CurrentSearchAssetData[item.id].preview;
-
-                            if (item.thumbnail)
-                                return item.thumbnail;
-
-                            if (searchPreview.request == null)
-                            {
-                                searchPreview.request = UnityWebRequestTexture.GetTexture(searchPreview.staticPreviewUrl);
-                                searchPreview.requestOp = searchPreview.request.SendWebRequest();
-                                searchPreview.requestOp.completed += TextureFetched;
-                            }
+                            return s_CurrentSearchAssetData[item.id].preview;
                         }
 
-                        return item.thumbnail ?? Icons.store;
+                        if (searchPreview.request == null)
+                        {
+                            searchPreview.request = UnityWebRequestTexture.GetTexture(searchPreview.staticPreviewUrl);
+                            searchPreview.requestOp = searchPreview.request.SendWebRequest();
+                            searchPreview.requestOp.completed += TextureFetched;
+                        }
+
+                        return null;
                     },
 
                     onDisable = () =>

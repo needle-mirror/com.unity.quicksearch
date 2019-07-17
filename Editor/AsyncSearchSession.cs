@@ -13,6 +13,7 @@ namespace Unity.QuickSearch
 
         private IEnumerator<SearchItem> m_ItemsIterator;
         private bool m_IsRunning = false;
+        private long m_MaxFetchTimePerProviderMs;
 
         private static int s_RunningSessions = 0;
 
@@ -21,22 +22,23 @@ namespace Unity.QuickSearch
         public void OnUpdate()
         {
             var newItems = new List<SearchItem>();
-            var atEnd = !FetchSome(newItems, k_MaxTimePerUpdate);
+            var atEnd = !FetchSome(newItems, m_MaxFetchTimePerProviderMs);
+
+            if (newItems.Count > 0)
+                asyncItemReceived?.Invoke(newItems);
 
             if (atEnd)
             {
                 Stop();
             }
-
-            if (newItems.Count > 0)
-                asyncItemReceived?.Invoke(newItems);
         }
 
-        public void Reset(IEnumerator<SearchItem> itemEnumerator)
+        public void Reset(IEnumerator<SearchItem> itemEnumerator, long maxFetchTimePerProviderMs = k_MaxTimePerUpdate)
         {
             // Remove and add the event handler in case it was already removed.
             Stop();
             m_IsRunning = true;
+            m_MaxFetchTimePerProviderMs = maxFetchTimePerProviderMs;
             ++s_RunningSessions;
             m_ItemsIterator = itemEnumerator;
             EditorApplication.update += OnUpdate;

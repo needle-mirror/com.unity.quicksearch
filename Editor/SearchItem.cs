@@ -37,6 +37,8 @@ namespace Unity.QuickSearch
         public SearchItemDescriptionFormat descriptionFormat;
         /// <summary>If no thumbnail are provider, SearchProvider.fetchThumbnail will be called when the item is first displayed.</summary>
         public Texture2D thumbnail;
+        /// <summary>Large preview of the search item. Usually cached by fetchPreview.</summary>
+        public Texture2D preview;
         /// <summary>Back pointer to the provider.</summary>
         public SearchProvider provider;
         /// <summary>Search provider defined content. It can be used to transport any data to custom search provider handlers (i.e. `fetchDescription`).</summary>

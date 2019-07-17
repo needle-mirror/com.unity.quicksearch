@@ -67,17 +67,20 @@ namespace Unity.QuickSearch
 
                     fetchThumbnail = (item, context) =>
                     {
-                        if (!item.thumbnail)
+                        var logEntry = (LogEntry)item.data;
+                        switch (logEntry.logType)
                         {
-                            var logEntry = (LogEntry)item.data;
-                            if (logEntry.logType == LogType.Log)
-                                item.thumbnail = Icons.logInfo;
-                            else if (logEntry.logType == LogType.Warning)
-                                item.thumbnail = Icons.logWarning;
-                            else
-                                item.thumbnail = Icons.logError;
+                        case LogType.Log:
+                            return (item.thumbnail = Icons.logInfo);
+                        case LogType.Warning:
+                            return (item.thumbnail = Icons.logWarning);
+                        case LogType.Error:
+                        case LogType.Assert:
+                        case LogType.Exception:
+                            return (item.thumbnail = Icons.logError);
+                        default:
+                            return null;
                         }
-                        return item.thumbnail;
                     }
                 };
             }

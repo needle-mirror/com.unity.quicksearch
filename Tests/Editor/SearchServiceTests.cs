@@ -4,11 +4,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Threading;
-using JetBrains.Annotations;
 using NUnit.Framework;
-using Unity.QuickSearch;
-using UnityEditor.VersionControl;
-using UnityEngine;
 using UnityEngine.TestTools;
 
 namespace Unity.QuickSearch
@@ -56,6 +52,7 @@ namespace Unity.QuickSearch
         {
             SearchService.Enable(SearchContext.Empty);
             SearchService.Filter.ResetFilter(true);
+            SearchService.Providers.First(p => p.name.id == "packages").active = false;
         }
 
         [TearDown]
@@ -64,15 +61,18 @@ namespace Unity.QuickSearch
             SearchService.Disable(SearchContext.Empty);
         }
 
-        [Test]
-        public void FetchItems()
+        [UnityTest]
+        public IEnumerator FetchItems()
         {
-            var ctx = new SearchContext {searchText = "test", wantsMore = true};
+            var ctx = new SearchContext {searchText = "test_material_42", wantsMore = true};
 
             var fetchedItems = SearchService.GetItems(ctx);
+            while (AsyncSearchSession.SearchInProgress)
+                yield return null;
 
             Assert.IsNotEmpty(fetchedItems);
             var foundItem = fetchedItems.Find(item => item.label == Path.GetFileName(k_TestFileName));
+            Assert.IsNotNull(foundItem);
             Assert.IsNotNull(foundItem.id);
             Assert.IsNull(foundItem.description);
 
@@ -95,7 +95,7 @@ namespace Unity.QuickSearch
                 wasCalled = items.Any(i => i.id == k_SearchType);
             }
 
-            IEnumerable<SearchItem> TestFetchAsyncCallback(SearchContext context, List<SearchItem> items, SearchProvider provider)
+            IEnumerable<SearchItem> TestFetchAsyncCallback(SearchProvider provider)
             {
                 var ft = UnityEditor.EditorApplication.timeSinceStartup + 1;
                 while (UnityEditor.EditorApplication.timeSinceStartup < ft)
@@ -108,14 +108,19 @@ namespace Unity.QuickSearch
             {
                 filterId = k_SearchType+":",
                 isExplicitProvider = true,
-                fetchItems = (context, items, provider) => TestFetchAsyncCallback(context, items, provider)
+                fetchItems = (context, items, provider) => TestFetchAsyncCallback(provider)
             };
 
             AsyncSearchSession.asyncItemReceived += OnAsyncCallback;
 
             SearchService.Providers.Add(testSearchProvider);
             SearchService.RefreshProviders();
-            var fetchedItems = SearchService.GetItems(ctx);
+
+            SearchService.GetItems(ctx);
+            yield return null;
+
+            while (AsyncSearchSession.SearchInProgress)
+                yield return null;
 
             while (!wasCalled)
                 yield return null;

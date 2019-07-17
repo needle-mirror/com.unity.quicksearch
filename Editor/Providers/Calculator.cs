@@ -32,12 +32,7 @@ namespace Unity.QuickSearch
                         return null;
                     },
 
-                    fetchThumbnail = (item, context) =>
-                    {
-                        if (!item.thumbnail)
-                            item.thumbnail = Icons.settings;
-                        return item.thumbnail;
-                    }
+                    fetchThumbnail = (item, context) => Icons.settings
                 };
             }
 

@@ -47,22 +47,18 @@ namespace Unity.QuickSearch
             return path.Substring(lastSep + 1);
         }
 
-        public static Texture2D GetAssetThumbnailFromPath(string path, bool fullPreview = false)
+        public static Texture2D GetAssetThumbnailFromPath(string path)
         {
-            Texture2D thumbnail = null;
-            if (fullPreview)
-            {
-                var obj = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(path);
-                if (obj != null)
-                    thumbnail = AssetPreview.GetAssetPreview(obj);
-                if (thumbnail)
-                    return thumbnail;
-            }
-            thumbnail = AssetDatabase.GetCachedIcon(path) as Texture2D;
-            if (thumbnail)
-                return thumbnail;
+            Texture2D thumbnail = AssetDatabase.GetCachedIcon(path) as Texture2D;
+            return thumbnail ?? UnityEditorInternal.InternalEditorUtility.FindIconForFile(path);
+        }
 
-            return UnityEditorInternal.InternalEditorUtility.FindIconForFile(path);
+        public static Texture2D GetAssetPreviewFromPath(string path)
+        {
+            var obj = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(path);
+            if (obj == null)
+                return null;
+            return AssetPreview.GetAssetPreview(obj);
         }
 
         public static void FrameAssetFromPath(string path)
@@ -197,7 +193,7 @@ namespace Unity.QuickSearch
             }
 
             if (s_MainWindow == null)
-                throw new NotSupportedException("Can't find internal main window. Maybe something has changed inside Unity");
+                return new Rect(0, 0, 800, 600);
 
             var positionProperty = s_MainWindow.GetType().GetProperty("position", BindingFlags.Public | BindingFlags.Instance);
             if (positionProperty == null)

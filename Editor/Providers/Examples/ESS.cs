@@ -59,12 +59,8 @@ namespace Unity.QuickSearch
                         if (item.data == null)
                             return null;
 
-                        if (item.thumbnail)
-                            return item.thumbnail;
-
                         var essmi = (ESSMatchInfo)item.data;
-                        item.thumbnail = UnityEditorInternal.InternalEditorUtility.FindIconForFile(essmi.path);
-                        return item.thumbnail;
+                        return (item.thumbnail = UnityEditorInternal.InternalEditorUtility.FindIconForFile(essmi.path));
                     }
                 };
             }

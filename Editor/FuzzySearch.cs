@@ -201,6 +201,8 @@ namespace Unity.QuickSearch
                                 }
                             }
 
+                            if (i >= d.matchData.GetLength(0) || j >= d.matchData.GetLength(1))
+                                return false;
                             d.matchData[i, j] = match;
 
                             if (match)

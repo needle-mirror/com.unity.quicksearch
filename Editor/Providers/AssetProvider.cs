@@ -86,24 +86,18 @@ namespace Unity.QuickSearch
                         return item.description;
                     },
 
-                    fetchThumbnail = (item, context) =>
-                    {
-                        if (item.thumbnail)
-                            return item.thumbnail;
-
-                        item.thumbnail = Utils.GetAssetThumbnailFromPath(item.id, SearchSettings.fetchPreview && context.totalItemCount < 200);
-                        return item.thumbnail;
-                    },
+                    fetchThumbnail = (item, context) => Utils.GetAssetThumbnailFromPath(item.id),
+                    fetchPreview = (item, context, size, options) => Utils.GetAssetPreviewFromPath(item.id),
 
                     startDrag = (item, context) =>
                     {
                         var obj = AssetDatabase.LoadAssetAtPath<Object>(item.id);
-                        if (obj != null)
-                        {
-                            DragAndDrop.PrepareStartDrag();
-                            DragAndDrop.objectReferences = new[] { obj };
-                            DragAndDrop.StartDrag(item.label);
-                        }
+                        if (obj == null) 
+                            return;
+
+                        DragAndDrop.PrepareStartDrag();
+                        DragAndDrop.objectReferences = new[] { obj };
+                        DragAndDrop.StartDrag(item.label);
                     },
 
                     trackSelection = (item, context) =>
@@ -153,22 +147,15 @@ namespace Unity.QuickSearch
                     }
                 }
 
-                if (fileIndexer.IsReady())
+                var indexReady = fileIndexer.IsReady();
+                if (indexReady)
                 {
                     if (filter.IndexOfAny(k_InvalidIndexedChars) == -1)
                     {
-                        items.AddRange(fileIndexer.Search(filter, searchPackages ? int.MaxValue : 100).Take(201)
-                                                  .Select(e =>
-                                                  {
-                                                      var filename = Path.GetFileName(e.path);
-                                                      var filenameNoExt = Path.GetFileNameWithoutExtension(e.path);
-                                                      var itemScore = e.score;
-                                                      if (filenameNoExt.Equals(filter, StringComparison.InvariantCultureIgnoreCase))
-                                                          itemScore = SearchProvider.k_RecentUserScore+1;
-                                                      return provider.CreateItem(e.path, itemScore, filename, null, null, null);
-                                                  }));
+                        foreach (var item in SearchIndex(fileIndexer, filter, searchPackages, provider))
+                            yield return item;
                         if (!context.wantsMore)
-                            return null;
+                            yield break;
                     }
                 }
 
@@ -178,20 +165,39 @@ namespace Unity.QuickSearch
                         filter = "a:assets " + filter;
                 }
 
-                items.AddRange(AssetDatabase.FindAssets(filter)
-                                            .Select(AssetDatabase.GUIDToAssetPath)
-                                            .Take(202)
-                                            .Select(path => provider.CreateItem(path, Path.GetFileName(path))));
+                foreach (var assetEntry in AssetDatabase.FindAssets(filter).Select(AssetDatabase.GUIDToAssetPath).Select(path => provider.CreateItem(path, Path.GetFileName(path))))
+                    yield return assetEntry;
 
                 if (context.searchQuery.Contains('*'))
                 {
                     var safeFilter = string.Join("_", context.searchQuery.Split(k_InvalidSearchFileChars));
-                    items.AddRange(Directory.EnumerateFiles(Application.dataPath, safeFilter, SearchOption.AllDirectories)
+                    foreach (var fileEntry in Directory.EnumerateFiles(Application.dataPath, safeFilter, SearchOption.AllDirectories)
                                             .Select(path => provider.CreateItem(path.Replace(Application.dataPath, "Assets").Replace("\\", "/"),
-                                                                                Path.GetFileName(path))));
+                                                                                Path.GetFileName(path))))
+                        yield return fileEntry;
                 }
 
-                return null;
+                if (!indexReady)
+                {
+                    // Indicate to the user that we are still building the index.
+                    while (!fileIndexer.IsReady())
+                        yield return null;
+
+                    foreach (var item in SearchIndex(fileIndexer, filter, searchPackages, provider))
+                        yield return item;
+                }
+            }
+
+            private static IEnumerable<SearchItem> SearchIndex(SearchIndexer fileIndexer, string filter, bool searchPackages, SearchProvider provider)
+            {
+                return fileIndexer.Search(filter, searchPackages ? int.MaxValue : 100).Select(e => {
+                    var filename = Path.GetFileName(e.path);
+                    var filenameNoExt = Path.GetFileNameWithoutExtension(e.path);
+                    var itemScore = e.score;
+                    if (filenameNoExt.Equals(filter, StringComparison.InvariantCultureIgnoreCase))
+                        itemScore = SearchProvider.k_RecentUserScore+1;
+                    return provider.CreateItem(e.path, itemScore, filename, null, null, null);
+                });
             }
 
             #endregion

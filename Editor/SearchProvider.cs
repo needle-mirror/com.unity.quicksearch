@@ -1,12 +1,20 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using UnityEditor;
 using UnityEngine;
 
 namespace Unity.QuickSearch
 {
-    public delegate Texture2D PreviewHandler(SearchItem item, SearchContext context);
+    [Flags]
+    public enum FetchPreviewOptions
+    {
+        None = 0,
+        Preview2D = 1 << 0,
+        Preview3D = 1 << 1
+    }
+
+    public delegate Texture2D ThumbnailHandler(SearchItem item, SearchContext context);
+    public delegate Texture2D PreviewHandler(SearchItem item, SearchContext context, Vector2 size, FetchPreviewOptions options);
     public delegate string FetchStringHandler(SearchItem item, SearchContext context);
     public delegate void ActionHandler(SearchItem item, SearchContext context);
     public delegate void StartDragHandler(SearchItem item, SearchContext context);
@@ -44,6 +52,7 @@ namespace Unity.QuickSearch
             actions = new List<SearchAction>();
             fetchItems = (context, items, provider) => null;
             fetchThumbnail = (item, context) => item.thumbnail ?? Icons.quicksearch;
+            fetchPreview = null;
             fetchLabel = (item, context) => item.label ?? item.id ?? String.Empty;
             fetchDescription = (item, context) => item.description ?? String.Empty;
             subCategories = new List<NameId>();
@@ -178,9 +187,15 @@ namespace Unity.QuickSearch
         public FetchStringHandler fetchDescription;
         /// <summary>
         /// Handler to provider an async thumbnail for an item. Will be called when the item is about to be displayed.
+        /// Compared to preview a thumbnail should be small and returned as fast as possible. Use fetchPreview if you want to generate a preview that is bigger and slower to return.
         /// Allows a plugin provider to only fetch/generate preview when they are needed.
         /// </summary>
-        public PreviewHandler fetchThumbnail;
+        public ThumbnailHandler fetchThumbnail;
+        /// <summary>
+        /// Similar to fetchThumbnail, fetchPreview usually returns a bigger preview. The QuickSearch UI will progressively show one preview each frame,
+        /// preventing the UI to block if many preview needs to be generated at the same time.
+        /// </summary>
+        public PreviewHandler fetchPreview;
         /// <summary> If implemented, it means the item supports drag. It is up to the SearchProvider to properly setup the DragAndDrop manager.</summary>
         public StartDragHandler startDrag;
         /// <summary> Called when the selection changed and can be tracked.</summary>

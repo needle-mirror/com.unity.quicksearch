@@ -68,12 +68,7 @@ namespace Unity.QuickSearch
                         return item.description;
                     },
 
-                    fetchThumbnail = (item, context) =>
-                    {
-                        if (!item.thumbnail)
-                            item.thumbnail = Icons.shortcut;
-                        return item.thumbnail;
-                    }
+                    fetchThumbnail = (item, context) => Icons.shortcut
                 };
             }
 

@@ -16,8 +16,6 @@ namespace Unity.QuickSearch
     {
         public class SearchIndexer
         {
-            private const int k_MaxSimilarResultCount = 999;
-
             [Serializable, DebuggerDisplay("{key} - {length} - {fileIndex}")]
             internal struct WordIndexEntry
             {
@@ -124,6 +122,7 @@ namespace Unity.QuickSearch
             private string m_IndexTempFilePath;
             private string[] m_Entries;
             private WordIndexEntry[] m_WordIndexEntries;
+            internal Dictionary<int, int> patternMatchCount { get; set; } = new Dictionary<int, int>();
 
             // 1- Initial format
             // 2- Added score to words
@@ -159,14 +158,14 @@ namespace Unity.QuickSearch
                 return m_IndexReady;
             }
 
-            static void Swap<T>(ref T a, ref T b)
+            private static void Swap<T>(ref T a, ref T b)
             {
                 T temp = a;
                 a = b;
                 b = temp;
             }
 
-            public IEnumerable<EntryResult> Search(string query, int maxScore = int.MaxValue)
+            public IEnumerable<EntryResult> Search(string query, int maxScore = int.MaxValue, int patternMatchLimit = 2999)
             {
                 //using (new DebugTimer("File Index Search"))
                 {
@@ -174,6 +173,8 @@ namespace Unity.QuickSearch
                         return Enumerable.Empty<EntryResult>();
 
                     var tokens = getQueryTokensHandler(query);
+                    Array.Sort(tokens, SortTokensByPatternMatches);
+
                     var lengths = tokens.Select(p => p.Length).ToArray();
                     var patterns = tokens.Select(p => p.GetHashCode()).ToArray();
 
@@ -181,33 +182,47 @@ namespace Unity.QuickSearch
                         return Enumerable.Empty<EntryResult>();
 
                     var wiec = new WordIndexEntryComparer();
+                    var entryIndexes = new HashSet<int>();
                     lock (this)
                     {
-                        var remains = GetPatternFileIndexes(patterns[0], lengths[0], maxScore, wiec).ToList();
+                        var remains = GetPatternFileIndexes(patterns[0], lengths[0], maxScore, wiec, entryIndexes, patternMatchLimit).ToList();
+                        patternMatchCount[patterns[0]] = remains.Count;
 
                         if (remains.Count == 0)
                             return Enumerable.Empty<EntryResult>();
 
-                        if (remains.Count >= k_MaxSimilarResultCount)
-                        {
-                            //Debug.LogWarning($"Searching for {tokens[0]} returned too many equivalent results (>={k_MaxSimilarResultCount}), please consider refining your search.");
-                            if (patterns.Length > 1)
-                            {
-                                Swap(ref patterns[0], ref patterns[1]);
-                                Swap(ref lengths[0], ref lengths[1]);
-                                remains = GetPatternFileIndexes(patterns[0], lengths[0], maxScore, wiec).ToList();
-                            }
-                        }
+                        //Debug.Log($"R({remains.Count>entryIndexes.Count}):" + GetDebugPatternMatchDebugString(tokens));
 
                         for (int i = 1; i < patterns.Length; ++i)
                         {
-                            var newMatches = GetPatternFileIndexes(patterns[i], lengths[i], maxScore, wiec).ToArray();
+                            var newMatches = GetPatternFileIndexes(patterns[i], lengths[i], maxScore, wiec, entryIndexes).ToArray();
                             IntersectPatternMatches(remains, newMatches);
+
+                            //Debug.Log($"I({entryIndexes.Count}>{newMatches.Length}>{remains.Count}):" + GetDebugPatternMatchDebugString(tokens));
                         }
 
-                        return remains.OrderBy(r=>r.score).Select(fi => new EntryResult{path = m_Entries[fi.index], index = fi.index, score = fi.score});
+                        return remains.Select(fi => new EntryResult{path = m_Entries[fi.index], index = fi.index, score = fi.score});
                     }
                 }
+            }
+
+            private string GetDebugPatternMatchDebugString(string[] tokens)
+            {
+                return String.Join(",", tokens.Select(t =>
+                {
+                    patternMatchCount.TryGetValue(t.GetHashCode(), out var pmc);
+                    return $"{t}({pmc})";
+                }));
+            }
+
+            private int SortTokensByPatternMatches(string item1, string item2)
+            {
+                patternMatchCount.TryGetValue(item1.GetHashCode(), out var item1PatternMatchCount);
+                patternMatchCount.TryGetValue(item2.GetHashCode(), out var item2PatternMatchCount);
+                var c = item1PatternMatchCount.CompareTo(item2PatternMatchCount);
+                if (c != 0) 
+                    return c;
+                return item1.Length.CompareTo(item2.Length) * -1;
             }
 
             private void IntersectPatternMatches(IList<PatternMatch> remains, PatternMatch[] newMatches)
@@ -493,8 +508,10 @@ namespace Unity.QuickSearch
                 }
             }
 
-            private IEnumerable<PatternMatch> GetPatternFileIndexes(int key, int length, int maxScore, WordIndexEntryComparer wiec)
+            private IEnumerable<PatternMatch> GetPatternFileIndexes(int key, int length, int maxScore, WordIndexEntryComparer wiec, HashSet<int> entryIndexes, int limit = int.MaxValue)
             {
+                bool foundAll = entryIndexes == null || entryIndexes.Count == 0;
+
                 // Find a match in the sorted word indexes.
                 int foundIndex = Array.BinarySearch(m_WordIndexEntries, new WordIndexEntry(key, length), wiec);
                 
@@ -508,11 +525,16 @@ namespace Unity.QuickSearch
                 var matches = new List<PatternMatch>();
                 do
                 {
-                    if (m_WordIndexEntries[foundIndex].score < maxScore)
+                    bool intersects = foundAll || entryIndexes.Contains(m_WordIndexEntries[foundIndex].fileIndex);
+                    if (intersects && m_WordIndexEntries[foundIndex].score < maxScore)
+                    {
+                        if (foundAll && entryIndexes != null)
+                            entryIndexes.Add(m_WordIndexEntries[foundIndex].fileIndex);
                         matches.Add(new PatternMatch(m_WordIndexEntries[foundIndex].fileIndex, m_WordIndexEntries[foundIndex].score));
 
-                    if (matches.Count >= k_MaxSimilarResultCount)
-                        return matches; // Too many equivalent results, lets bail
+                        if (matches.Count >= limit)
+                            return matches;
+                    }
                     
                     // Advance to last matching element
                     foundIndex++;
