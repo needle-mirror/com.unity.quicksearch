@@ -53,15 +53,6 @@ namespace Unity.QuickSearch
         private static Dictionary<string, AsyncSearchSession> s_SearchSessions = new Dictionary<string, AsyncSearchSession>();
 
         internal static List<string> s_RecentSearches = new List<string>(10);
-        internal static List<SearchProvider> Providers { get; private set; }
-        internal static IEnumerable<SearchProvider> OrderedProviders
-        {
-            get
-            {
-                return Providers.OrderBy(p => p.priority + (p.isExplicitProvider ? 100000 : 0));
-            }
-        }
-
         internal static Dictionary<string, string> TextFilterIds { get; private set; }
         internal static Dictionary<string, List<string>> ActionIdToProviders { get; private set; }
         internal static SearchFilter OverrideFilter { get; private set; }
@@ -84,29 +75,41 @@ namespace Unity.QuickSearch
             }
         }
 
-        internal static string CyclePreviousSearch(int shift)
-        {
-            if (s_RecentSearches.Count == 0)
-                return s_LastSearch;
-
-            s_RecentSearchIndex = Wrap(s_RecentSearchIndex + shift, s_RecentSearches.Count);
-
-            return s_RecentSearches[s_RecentSearchIndex];
-        }
-
-        internal static int Wrap(int index, int n)
-        {
-            return ((index % n) + n) % n;
-        }
-
-        public static SearchFilter Filter { get; private set; }
+        /// <summary>
+        /// Raised when the content of a search provider has changed.
+        /// </summary>
         public static event Action<string[], string[], string[]> contentRefreshed;
+
+        /// <summary>
+        /// Returns the current search filter being applied.
+        /// </summary>
+        public static SearchFilter Filter { get; private set; }
+
+        /// <summary>
+        /// Returns the list of all providers (active or not)
+        /// </summary>
+        public static List<SearchProvider> Providers { get; private set; }
+
+        /// <summary>
+        /// Returns the list of providers sorted by priority.
+        /// </summary>
+        public static IEnumerable<SearchProvider> OrderedProviders
+        {
+            get
+            {
+                return Providers.OrderBy(p => p.priority + (p.isExplicitProvider ? 100000 : 0));
+            }
+        }
 
         static SearchService()
         {
             Refresh();
         }
 
+        /// <summary>
+        /// Sets the last activated search item.
+        /// </summary>
+        /// <param name="item">The item to be marked as been used recently.</param>
         public static void SetRecent(SearchItem item)
         {
             int itemKey = item.id.GetHashCode();
@@ -114,16 +117,32 @@ namespace Unity.QuickSearch
             s_SortedUserScores.Add(itemKey);
         }
 
+        /// <summary>
+        /// Checks if a search item has been used recently.
+        /// </summary>
+        /// <param name="id">Unique ID of the search item.</param>
+        /// <returns>True if the item was used recently or false otherwise.</returns>
         public static bool IsRecent(string id)
         {
             return s_SortedUserScores.Contains(id.GetHashCode());
         }
 
+        /// <summary>
+        /// Returns the data of a search provider given its ID.
+        /// </summary>
+        /// <param name="providerId">Unique ID of the provider</param>
+        /// <returns>The matching provider</returns>
         public static SearchProvider GetProvider(string providerId)
         {
             return Providers.Find(p => p.name.id == providerId);
         }
 
+        /// <summary>
+        /// Returns the search action data for a given provider and search action id.
+        /// </summary>
+        /// <param name="provider">Provider to lookup</param>
+        /// <param name="actionId">Unique action ID within the provider.</param>
+        /// <returns>The matching action</returns>
         public static SearchAction GetAction(SearchProvider provider, string actionId)
         {
             if (provider == null)
@@ -131,7 +150,11 @@ namespace Unity.QuickSearch
             return provider.actions.Find(a => a.Id == actionId);
         }
 
-        internal static void Refresh()
+        /// <summary>
+        /// Clears everything and reloads all search providers.
+        /// </summary>
+        /// <remarks>Use with care. Useful for unit tests.</remarks>
+        public static void Refresh()
         {
             Providers = new List<SearchProvider>();
             Filter = new SearchFilter();
@@ -145,6 +168,96 @@ namespace Unity.QuickSearch
                 // Override all settings
                 SaveGlobalSettings();
             }
+        }
+
+        /// <summary>
+        /// Returns a list of keywords used by auto-completion for the active providers.
+        /// </summary>
+        /// <param name="context">Current search context</param>
+        /// <param name="lastToken">Search token currently being typed.</param>
+        /// <returns>A list of keywords that can be shown in an auto-complete dropdown.</returns>
+        public static string[] GetKeywords(SearchContext context, string lastToken)
+        {
+            var allItems = new List<string>();
+            if (context.isActionQuery && lastToken.StartsWith(k_ActionQueryToken))
+            {
+                allItems.AddRange(ActionIdToProviders.Keys.Select(k => k_ActionQueryToken + k));
+            }
+            else
+            {
+                var activeProviders = OverrideFilter.filteredProviders.Count > 0 ? OverrideFilter.filteredProviders : Filter.filteredProviders;
+                foreach (var provider in activeProviders)
+                {
+                    try
+                    {
+                        provider.fetchKeywords?.Invoke(context, lastToken, allItems);
+                    }
+                    catch (Exception ex)
+                    {
+                        UnityEngine.Debug.LogError($"Failed to get keywords with {provider.name.displayName}.\r\n{ex}");
+                    }
+                }
+            }
+
+            return allItems.Distinct().OrderBy(s=>s).ToArray();
+        }
+
+        /// <summary>
+        /// Initiate a search and return all search items matching the search context. Other items can be found later using the asynchronous searches.
+        /// </summary>
+        /// <param name="context">The current search context</param>
+        /// <returns>A list of search items matching the search query.</returns>
+        public static List<SearchItem> GetItems(SearchContext context)
+        {
+            // Stop all search sessions every time there is a new search.
+            StopAllAsyncSearchSessions();
+
+            PrepareSearch(context);
+
+            if (context.isActionQuery || OverrideFilter.filteredProviders.Count > 0)
+                return GetItems(context, OverrideFilter);
+
+            if (string.IsNullOrEmpty(context.searchQuery))
+                return new List<SearchItem>(0);
+
+            return GetItems(context, Filter);
+        }
+
+        /// <summary>
+        /// Setup the search service before initiating a search session. A search session can be composed of many searches (different words, etc.)
+        /// </summary>
+        /// <param name="context">The search context to be initialized.</param>
+        public static void Enable(SearchContext context)
+        {
+            LoadSessionSettings();
+            PrepareSearch(context);
+            foreach (var provider in Providers.Where(p => p.active))
+            {
+                using (var enableTimer = new DebugTimer(null))
+                {
+                    provider.onEnable?.Invoke();
+                    provider.enableTime = enableTimer.timeMs;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Indicates that a search session should be terminated.
+        /// </summary>
+        /// <param name="context">The search context ending the search session.</param>
+        /// <remarks>Any asynchronously running search query will be stopped and all search result will be lost.</remarks>
+        public static void Disable(SearchContext context)
+        {
+            LastSearch = context.searchText;
+
+            StopAllAsyncSearchSessions();
+            s_SearchSessions.Clear();
+
+            foreach (var provider in Providers.Where(p => p.active))
+                provider.onDisable?.Invoke();
+
+            SaveSessionSettings();
+            SaveGlobalSettings();
         }
 
         internal static bool LoadSessionSettings()
@@ -177,79 +290,19 @@ namespace Unity.QuickSearch
             Refresh();
         }
 
-        public static string[] GetKeywords(SearchContext context, string lastToken)
+        internal static string CyclePreviousSearch(int shift)
         {
-            #if QUICKSEARCH_DEBUG
-            using (new DebugTimer("==> Get Keywords"))
-            #endif
-            {
-                var allItems = new List<string>();
-                if (context.isActionQuery && lastToken.StartsWith(k_ActionQueryToken))
-                {
-                    allItems.AddRange(ActionIdToProviders.Keys.Select(k => k_ActionQueryToken + k));
-                }
-                else
-                {
-                    List<SearchProvider> activeProviders = OverrideFilter.filteredProviders.Count > 0 ? OverrideFilter.filteredProviders : Filter.filteredProviders;
-                    foreach (var provider in activeProviders)
-                    {
-                        try
-                        {
-                            provider.fetchKeywords?.Invoke(context, lastToken, allItems);
-                        }
-                        catch (Exception ex)
-                        {
-                            UnityEngine.Debug.LogError($"Failed to get keywords with {provider.name.displayName}.\r\n{ex}");
-                        }
-                    }
-                }
+            if (s_RecentSearches.Count == 0)
+                return s_LastSearch;
 
-                return allItems.Distinct().OrderBy(s=>s).ToArray();
-            }
+            s_RecentSearchIndex = Wrap(s_RecentSearchIndex + shift, s_RecentSearches.Count);
+
+            return s_RecentSearches[s_RecentSearchIndex];
         }
 
-        public static List<SearchItem> GetItems(SearchContext context)
+        internal static int Wrap(int index, int n)
         {
-            // Stop all search sessions every time there is a new search.
-            StopAllAsyncSearchSessions();
-
-            PrepareSearch(context);
-
-            if (context.isActionQuery || OverrideFilter.filteredProviders.Count > 0)
-                return GetItems(context, OverrideFilter);
-
-            if (string.IsNullOrEmpty(context.searchQuery))
-                return new List<SearchItem>(0);
-
-            return GetItems(context, Filter);
-        }
-
-        public static void Enable(SearchContext context)
-        {
-            LoadSessionSettings();
-            PrepareSearch(context);
-            foreach (var provider in Providers.Where(p => p.active))
-            {
-                using (var enableTimer = new DebugTimer(null))
-                {
-                    provider.onEnable?.Invoke();
-                    provider.enableTime = enableTimer.timeMs;
-                }
-            }
-        }
-
-        public static void Disable(SearchContext context)
-        {
-            LastSearch = context.searchText;
-
-            StopAllAsyncSearchSessions();
-            s_SearchSessions.Clear();
-
-            foreach (var provider in Providers.Where(p => p.active))
-                provider.onDisable?.Invoke();
-
-            SaveSessionSettings();
-            SaveGlobalSettings();
+            return ((index % n) + n) % n;
         }
 
         internal static void SetDefaultAction(string providerId, string actionId)
@@ -298,7 +351,7 @@ namespace Unity.QuickSearch
             if (context.isActionQuery)
             {
                 var searchIndex = 1;
-                var potentialCommand = Utils.GetNextWord(context.searchQuery, ref searchIndex);
+                var potentialCommand = Utils.GetNextWord(context.searchQuery, ref searchIndex).ToLowerInvariant();
                 if (ActionIdToProviders.ContainsKey(potentialCommand))
                 {
                     // We are in command mode:
@@ -315,7 +368,7 @@ namespace Unity.QuickSearch
             {
                 foreach (var kvp in TextFilterIds)
                 {
-                    if (context.searchQuery.StartsWith(kvp.Key))
+                    if (context.searchQuery.StartsWith(kvp.Key, StringComparison.InvariantCultureIgnoreCase))
                     {
                         overrideFilterId = new [] {kvp.Value};
                         context.searchQuery = context.searchQuery.Remove(0, kvp.Key.Length).Trim();
@@ -356,14 +409,10 @@ namespace Unity.QuickSearch
             #endif
             {
                 var allItems = new List<SearchItem>(3);
-                var maxFetchTimePerProviderMs = k_MaxFetchTimeMs / filter.filteredProviders.Count;
+                var maxFetchTimePerProviderMs = k_MaxFetchTimeMs / Math.Max(1, filter.filteredProviders.Count);
                 foreach (var provider in filter.filteredProviders)
                 {
-                    #if QUICKSEARCH_DEBUG
-                    using (var fetchTimer = new DebugTimer($"{provider.name.id} fetch items"))
-                    #else
                     using (var fetchTimer = new DebugTimer(null))
-                    #endif
                     {
                         context.categories = filter.GetSubCategories(provider);
                         try

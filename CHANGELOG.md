@@ -1,3 +1,8 @@
+## [1.3.2-preview] - 2019-07-24
+- [UX] Ignore filter ID casing in search text queries (i.e. H:camera will works like h:camera)
+- [FIX] Fix division by 0 when searching with no search provider enabled.
+- [API] Expose new async API and add more documentation XML tags.
+
 ## [1.3.1-preview] - 2019-07-18
 - [UX] Show the async spinner while the scene and asset indexes are being built.
 - [UX] Removed the objects limit for the scene object provider.

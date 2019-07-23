@@ -5,8 +5,15 @@ using UnityEditor;
 
 namespace Unity.QuickSearch
 {
-    internal class AsyncSearchSession
+    /// <summary>
+    /// An async search session tracks all incoming items found by search provider that weren't returned right away after the search was initiated.
+    /// </summary>
+    public class AsyncSearchSession
     {
+        /// <summary>
+        /// This event is used to receive any async search result.
+        /// </summary>
+        /// <remarks>It is usually used by a search view to append additional search results to a UI list.</remarks>
         public static event Action<IEnumerable<SearchItem>> asyncItemReceived;
 
         private const long k_MaxTimePerUpdate = 10; // milliseconds
@@ -17,8 +24,14 @@ namespace Unity.QuickSearch
 
         private static int s_RunningSessions = 0;
 
+        /// <summary>
+        /// Checks if there is any active async search sessions.
+        /// </summary>
         public static bool SearchInProgress => s_RunningSessions > 0;
 
+        /// <summary>
+        /// Called when the system is ready to process any new async results.
+        /// </summary>
         public void OnUpdate()
         {
             var newItems = new List<SearchItem>();
@@ -33,6 +46,12 @@ namespace Unity.QuickSearch
             }
         }
 
+        /// <summary>
+        /// Hard reset an async search session.
+        /// </summary>
+        /// <param name="itemEnumerator">The enumerator that will yield new search results.</param>
+        /// <param name="maxFetchTimePerProviderMs">The amount of time allowed to yield new results.</param>
+        /// <remarks>Normally async search sessions are re-used per search provider.</remarks>
         public void Reset(IEnumerator<SearchItem> itemEnumerator, long maxFetchTimePerProviderMs = k_MaxTimePerUpdate)
         {
             // Remove and add the event handler in case it was already removed.
@@ -44,6 +63,9 @@ namespace Unity.QuickSearch
             EditorApplication.update += OnUpdate;
         }
 
+        /// <summary>
+        /// Stop the async search session and discard any new search results.
+        /// </summary>
         public void Stop()
         {
             if (m_IsRunning)
@@ -53,6 +75,13 @@ namespace Unity.QuickSearch
             m_ItemsIterator = null;
         }
 
+        /// <summary>
+        /// Request to fetch new async search results.
+        /// </summary>
+        /// <param name="items">The list of items to append new results to.</param>
+        /// <param name="quantity">The maximum amount of items to be added to @items</param>
+        /// <param name="doNotCountNull">Ignore all yield return null results.</param>
+        /// <returns>Returns true if there is still some results to fetch later or false if we've fetched everything remaining.</returns>
         public bool FetchSome(List<SearchItem> items, int quantity, bool doNotCountNull)
         {
             if (m_ItemsIterator == null)
@@ -77,6 +106,14 @@ namespace Unity.QuickSearch
             return !atEnd;
         }
 
+        /// <summary>
+        /// Request to fetch new async search results.
+        /// </summary>
+        /// <param name="items">The list of items to append new results to.</param>
+        /// <param name="quantity">The maximum amount of items to add to @items</param>
+        /// <param name="doNotCountNull">Ignore all yield return null results.</param>
+        /// <param name="maxFetchTimeMs">The amount of time allowed to yield new results.</param>
+        /// <returns>Returns true if there is still some results to fetch later or false if we've fetched everything remaining.</returns>
         public bool FetchSome(List<SearchItem> items, int quantity, bool doNotCountNull, long maxFetchTimeMs)
         {
             if (m_ItemsIterator == null)
@@ -102,6 +139,12 @@ namespace Unity.QuickSearch
             return !atEnd;
         }
 
+        /// <summary>
+        /// Request to fetch new async search results.
+        /// </summary>
+        /// <param name="items">The list of items to append new results to.</param>
+        /// <param name="maxFetchTimeMs">The amount of time allowed to yield new results.</param>
+        /// <returns>Returns true if there is still some results to fetch later or false if we've fetched everything remaining.</returns>
         public bool FetchSome(List<SearchItem> items, long maxFetchTimeMs)
         {
             if (m_ItemsIterator == null)
