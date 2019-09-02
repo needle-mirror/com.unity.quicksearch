@@ -44,7 +44,7 @@ namespace Unity.QuickSearch
             }
         }
 
-        public struct ScopedProfiler : IDisposable
+        internal struct ScopedProfiler : IDisposable
         {
             public ScopedProfiler(string name)
             {
@@ -68,6 +68,14 @@ namespace Unity.QuickSearch
             }
         }
 
+        /// <summary>
+        /// Performs a fuzzy search on a string to see if it matches a pattern. 
+        /// </summary>
+        /// <param name="pattern">Pattern that we try to match the source string</param>
+        /// <param name="str_origin">String we are looking into for a match</param>
+        /// <param name="outScore">Score of the match. A higher score means the pattern is a better match for the string.</param>
+        /// <param name="matches">List of indices in the source string where a match was found.</param>
+        /// <returns>Returns true if a match was found</returns>
         public static bool FuzzyMatch(string pattern, string str_origin, ref long outScore, List<int> matches)
         {
             int str_n;

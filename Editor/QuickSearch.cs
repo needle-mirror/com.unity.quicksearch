@@ -228,7 +228,7 @@ namespace Unity.QuickSearch
             private const int itemRowPadding = 4;
             public const float actionButtonSize = 24f;
             public const float itemPreviewSize = 32f;
-            public const float itemRowSpacing = 35.0f;
+            public const float itemRowSpacing = 30.0f;
             private const int actionButtonMargin = (int)((itemRowHeight - actionButtonSize) / 2f);
             public const float itemRowHeight = itemPreviewSize + itemRowPadding * 2f;
             public const float statusOffset = 20;
@@ -619,7 +619,7 @@ namespace Unity.QuickSearch
                 .Where(k => !k.Equals(lastToken, StringComparison.InvariantCultureIgnoreCase)).ToArray();
             if (keywords.Length > 0)
             {
-                const int maxAutoCompleteCount = 10;
+                const int maxAutoCompleteCount = 16;
                 m_AutoCompleteMaxIndex = Math.Min(keywords.Length, maxAutoCompleteCount);
                 if (!m_AutoCompleting)
                     m_AutoCompleteIndex = 0;
@@ -631,7 +631,7 @@ namespace Unity.QuickSearch
                     m_AutoCompleteRect = rect;
                     m_AutoCompleteRect.x += offset;
                     m_AutoCompleteRect.y = rect.yMax;
-                    m_AutoCompleteRect.width = 150;
+                    m_AutoCompleteRect.width = 250;
                     m_AutoCompleteRect.x = Math.Min(position.width - m_AutoCompleteRect.width - 25, m_AutoCompleteRect.x);
                 }
 

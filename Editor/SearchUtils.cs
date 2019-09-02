@@ -24,7 +24,11 @@ namespace Unity.QuickSearch
 
             return variations.ToArray();
         }
-
+        /// <summary>
+        /// Tokenize a string each Capital letter.
+        /// </summary>
+        /// <param name="source"></param>
+        /// <returns></returns>
         public static string[] SplitCamelCase(string source)
         {
             return Regex.Split(source, @"(?<!^)(?=[A-Z])");

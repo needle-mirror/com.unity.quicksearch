@@ -35,7 +35,7 @@ namespace Unity.QuickSearch
     /// </summary>
     public static class SearchService
     {
-        public const string prefKey = "quicksearch";
+        internal const string prefKey = "quicksearch";
         // Global settings
         const string k_FilterPrefKey = prefKey + ".filters";
         const string k_DefaultActionPrefKey = prefKey + ".defaultactions.";
@@ -178,10 +178,10 @@ namespace Unity.QuickSearch
         /// <returns>A list of keywords that can be shown in an auto-complete dropdown.</returns>
         public static string[] GetKeywords(SearchContext context, string lastToken)
         {
-            var allItems = new List<string>();
+            var keywords = new List<string>();
             if (context.isActionQuery && lastToken.StartsWith(k_ActionQueryToken))
             {
-                allItems.AddRange(ActionIdToProviders.Keys.Select(k => k_ActionQueryToken + k));
+                keywords.AddRange(ActionIdToProviders.Keys.Select(k => k_ActionQueryToken + k));
             }
             else
             {
@@ -190,7 +190,7 @@ namespace Unity.QuickSearch
                 {
                     try
                     {
-                        provider.fetchKeywords?.Invoke(context, lastToken, allItems);
+                        provider.fetchKeywords?.Invoke(context, lastToken, keywords);
                     }
                     catch (Exception ex)
                     {
@@ -199,7 +199,7 @@ namespace Unity.QuickSearch
                 }
             }
 
-            return allItems.Distinct().OrderBy(s=>s).ToArray();
+            return keywords.Distinct().ToArray();
         }
 
         /// <summary>

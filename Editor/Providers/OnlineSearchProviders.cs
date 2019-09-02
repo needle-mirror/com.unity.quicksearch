@@ -91,7 +91,7 @@ namespace Unity.QuickSearch
 
         static class AssetStoreHelper
         {
-            internal static string searchUrl = "https://assetstore.unity.com/search";
+            internal static string searchUrl = "https://assetstore.unity.com/";
             internal static OnlineSearchItemTemplate template = new OnlineSearchItemTemplate()
             {
                 name = new NameId("store", "Asset Store"),
@@ -102,13 +102,10 @@ namespace Unity.QuickSearch
 
             internal static void Goto(SearchItem item, SearchContext context)
             {
-                // ex: https://docs.unity3d.com/Manual/30_search.html?q=Visual+Scripting
-                var query = new List<Tuple<string, string>>();
-
-                foreach (var token in context.tokenizedSearchQuery)
-                    query.Add(Tuple.Create("q", token));
-
-                query.Add(Tuple.Create("k", string.Join(" ", context.tokenizedSearchQuery)));
+                // ex: https://assetstore.unity.com/?q=Visual+Scripting
+                var query = new List<Tuple<string, string>>();                
+                query.Add(Tuple.Create("q",context.searchQuery));
+                query.Add(Tuple.Create("orderBy", "1"));
                 SearchUtility.Goto(searchUrl, query);
             }
         }

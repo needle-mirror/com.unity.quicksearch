@@ -33,7 +33,9 @@ namespace Unity.QuickSearch
             this.displayName = displayName ?? id;
         }
 
+        /// <summary> Unique name for an object </summary>
         public string id;
+        /// <summary> Display name (use by UI) </summary>
         public string displayName;
     }
 
@@ -90,11 +92,27 @@ namespace Unity.QuickSearch
             };
         }
 
+        /// <summary>
+        /// Create a Search item that will be bound to the SeaechProvider.
+        /// </summary>
+        /// <param name="id">Unique id of the search item. This is used to remove duplicates to the user view.</param>
+        /// <param name="label">The search item label is displayed on the first line of the search item UI widget.</param>
+        /// <param name="description">The search item description is displayed on the second line of the search item UI widget.</param>
+        /// <param name="thumbnail">The search item thumbnail is displayed left to the item label and description as a preview.</param>
+        /// <param name="data">User data used to recover more information about a search item. Generally used in fetchLabel, fetchDescription, etc.</param>
+        /// <returns>New SearchItem</returns>
         public SearchItem CreateItem(string id, string label = null, string description = null, Texture2D thumbnail = null, object data = null)
         {
             return CreateItem(id, 0, label, description, thumbnail, data);
         }
 
+        /// <summary>
+        /// Helper function to match a string against the SearchContext. This will try to match the search query against each tokens of content (similar to the AddComponent menu workflow)
+        /// </summary>
+        /// <param name="context">Search context containing the searchQuery that we try to match.</param>
+        /// <param name="content">String content that will be tokenized and use to match the search query.</param>
+        /// <param name="useLowerTokens">Perform matching ignoring casing.</param>
+        /// <returns>Has a match occurred.</returns>
         public static bool MatchSearchGroups(SearchContext context, string content, bool useLowerTokens = false)
         {
             return MatchSearchGroups(context.searchQuery,
@@ -102,7 +120,7 @@ namespace Unity.QuickSearch
                                      useLowerTokens ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase);
         }
 
-        public void RecordFetchTime(double t)
+        internal void RecordFetchTime(double t)
         {
             fetchTimes[fetchTimeWriteIndex] = t;
             fetchTimeWriteIndex = SearchService.Wrap(fetchTimeWriteIndex + 1, fetchTimes.Length);
@@ -146,6 +164,7 @@ namespace Unity.QuickSearch
             return startIndex != -1 && endIndex != -1;
         }
 
+        /// <summary> Average time it takes to query that provider.</summary>
         public double avgTime
         {
             get

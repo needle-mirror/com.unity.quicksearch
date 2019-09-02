@@ -62,6 +62,7 @@ namespace Unity.QuickSearch
             }
         }
 
+        #if !UNITY_EDITOR_LINUX // This test doesn't run smoothly on Linux yet.
         [UnityTest]
         public IEnumerator Search_SceneObjects([ValueSource(nameof(k_IterationCount))] int iterationCount)
         {
@@ -103,6 +104,7 @@ namespace Unity.QuickSearch
                 yield return SendKeyCharacterEvent(qsWindow, (char) 0, KeyCode.Escape);
             }
         }
+        #endif
 
         public static string StripHTML(string input)
         {

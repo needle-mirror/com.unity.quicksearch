@@ -28,7 +28,7 @@ namespace Unity.QuickSearch
             private const string k_ProjectAssetsType = "asset";
             private const string displayName = "Asset";
 
-            private static readonly string[] typeFilter = new[]
+            private static readonly string[] baseTypeFilters = new[]
             {
                 "Folder",
                 "DefaultAsset",
@@ -52,6 +52,15 @@ namespace Unity.QuickSearch
                 "Texture",
                 "VideoClip"
             };
+
+            #if UNITY_2019_2_OR_NEWER
+            private static readonly string[] typeFilter = baseTypeFilters.Concat(TypeCache.GetTypesDerivedFrom<ScriptableObject>()
+                                                                                          .Select(t => t.Name)
+                                                                                          .Distinct()
+                                                                                          .OrderBy(n => n)).ToArray();
+            #else
+            private static readonly string[] typeFilter = baseTypeFilters;
+            #endif
 
             private static readonly char[] k_InvalidIndexedChars = { '*', ':' };
             private static readonly char[] k_InvalidSearchFileChars = Path.GetInvalidFileNameChars().Where(c => c != '*').ToArray();

@@ -114,7 +114,7 @@ namespace Unity.QuickSearch
 
             #if UNITY_2019_1_OR_NEWER
             [UsedImplicitly, Shortcut("Help/Quick Search/Menu", KeyCode.M, ShortcutModifiers.Alt | ShortcutModifiers.Shift)]
-            public static void OpenQuickSearch()
+            private static void OpenQuickSearch()
             {
                 QuickSearchTool.OpenWithContextualProvider(type);
             }

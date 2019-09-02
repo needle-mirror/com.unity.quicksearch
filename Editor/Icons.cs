@@ -57,7 +57,7 @@ namespace Unity.QuickSearch
                 {
                     string scaledResourcePath = $"{dirName}/{fileName}@{s}x{fileExt}";
                     var scaledResource = EditorResources.Load<Texture2D>(scaledResourcePath, false);
-                    if (scaledResource != null)
+                    if (scaledResource)
                         return scaledResource;
                 }
             }
@@ -67,6 +67,8 @@ namespace Unity.QuickSearch
 
         private static Texture2D LightenTexture(Texture2D texture)
         {
+            if (!texture)
+                return texture;
             Texture2D outTexture = new Texture2D(texture.width, texture.height);
             var outColorArray = outTexture.GetPixels();
 
