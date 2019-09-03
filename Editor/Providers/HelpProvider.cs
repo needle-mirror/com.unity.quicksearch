@@ -85,6 +85,17 @@ namespace Unity.QuickSearch
             static void BuildHelpItems(SearchProvider helpProvider)
             {
                 m_StaticItemToAction = new Dictionary<SearchItem, ActionHandler>();
+
+                {
+                    var helpItem = helpProvider.CreateItem("help_open_quicksearch_doc", "Open Quick Search Documentation");
+                    helpItem.score = m_StaticItemToAction.Count;
+                    helpItem.thumbnail = Icons.settings;
+                    m_StaticItemToAction.Add(helpItem, (item, context) =>
+                    {
+                        QuickSearchTool.OpenDocumentationUrl();
+                    });
+                }
+
                 // Settings provider: id, Search for...
                 foreach (var provider in SearchService.OrderedProviders)
                 {

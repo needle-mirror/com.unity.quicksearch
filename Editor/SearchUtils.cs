@@ -31,7 +31,7 @@ namespace Unity.QuickSearch
         /// <returns></returns>
         public static string[] SplitCamelCase(string source)
         {
-            return Regex.Split(source, @"(?<!^)(?=[A-Z])");
+            return Regex.Split(source, @"(?<!^)(?=[A-Z0-9])");
         }
 
         public static IEnumerable<string> SplitEntryComponents(string entry, char[] entrySeparators, int minIndexCharVariation, int maxIndexCharVariation)

@@ -2,12 +2,14 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Text.RegularExpressions;
 using JetBrains.Annotations;
 using UnityEditor;
 using UnityEditor.ShortcutManagement;
 using UnityEngine;
+using Debug = UnityEngine.Debug;
 
 #if QUICKSEARCH_DEBUG
 using UnityEngine.Profiling;
@@ -170,6 +172,7 @@ namespace Unity.QuickSearch
     {
         public static string packageName = "com.unity.quicksearch";
         public static string packageFolderName = $"Packages/{packageName}";
+        public static string documentationUrl = "https://docs.unity3d.com/Packages/com.unity.quicksearch@1.3/";
 
         private static EditorWindow s_FocusedWindow;
         private static bool isDeveloperMode = Utils.IsDeveloperMode();
@@ -379,6 +382,12 @@ namespace Unity.QuickSearch
                 margin = new RectOffset(4, 4, 2, 2)
             };
 
+            public static readonly GUIStyle versionLabel = new GUIStyle(statusLabel)
+            {
+                name = "quick-search-version-label",
+                normal = new GUIStyleState { textColor = new Color(79/255f, 128/255f, 248/255f) },
+            };
+
             public static readonly GUIStyle selectedItemDescription = new GUIStyle(itemDescription)
             {
                 name = "quick-search-item-selected-description"
@@ -553,6 +562,12 @@ namespace Unity.QuickSearch
             nextFrame += () => m_ShowFilterWindow = true;
         }
 
+        public static void OpenDocumentationUrl()
+        {
+            var uri = new Uri(documentationUrl);
+            Process.Start(uri.AbsoluteUri);
+        }
+
         private void OnAsyncItemsReceived(IEnumerable<SearchItem> items)
         {
             if (m_SelectedIndex == -1)
@@ -702,7 +717,11 @@ namespace Unity.QuickSearch
             GUILayout.Label(m_StatusLabelContent, Styles.statusLabel, GUILayout.MaxWidth(position.width - 100));
             GUILayout.FlexibleSpace();
 
-            GUILayout.Label(SearchAnalytics.Version, Styles.statusLabel);
+            if (GUILayout.Button(SearchAnalytics.Version, Styles.versionLabel))
+            {
+                OpenDocumentationUrl();
+            }
+
             if (AsyncSearchSession.SearchInProgress)
             {
                 var searchInProgressRect = EditorGUILayout.GetControlRect(false, Styles.searchInProgressButton.fixedHeight, Styles.searchInProgressButton, Styles.searchInProgressLayoutOptions);

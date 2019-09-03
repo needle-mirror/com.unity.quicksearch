@@ -1,10 +1,14 @@
+## [1.4.2-preview.1] - 2019-09-04
+- [UX] Add documentation link to Help provider and version label.
+- [FIX] Add support for digits when splitting camel cases of file names.
+
 ## [1.4.1] - 2019-09-03
 - Quick Search is now a verified package.
-- [UX] Add UIElements experimental search provider
-- [FIX] Add to the asset search provider type filter all ScriptableObject types
-- [FIX] Fix Asset store URL
-- [DOC] Document more public APIs
-- [API] Add programming hooks to the scene search provider
+- [UX] Add UIElements experimental search provider.
+- [FIX] Add to the asset search provider type filter all ScriptableObject types.
+- [FIX] Fix Asset store URL.
+- [DOC] Document more public APIs.
+- [API] Add programming hooks to the scene search provider.
 
 ## [1.3.2-preview] - 2019-07-24
 - [UX] Ignore filter ID casing in search text queries (i.e. H:camera will works like h:camera)
