@@ -10,23 +10,17 @@ namespace Unity.QuickSearch
         private const string k_KeyPrefix = "quicksearch";
 
         public const string settingsPreferencesKey = "Preferences/Quick Search";
-        public static bool useDockableWindow { get; private set; }
-        public static bool closeWindowByDefault { get; private set; }
         public static bool trackSelection { get; private set; }
         public static bool fetchPreview { get; private set; }
 
         static SearchSettings()
         {
-            useDockableWindow = EditorPrefs.GetBool($"{k_KeyPrefix}.{nameof(useDockableWindow)}", false);
-            closeWindowByDefault = EditorPrefs.GetBool($"{k_KeyPrefix}.{nameof(closeWindowByDefault)}", true);
             trackSelection = EditorPrefs.GetBool($"{k_KeyPrefix}.{nameof(trackSelection)}", true);
             fetchPreview = EditorPrefs.GetBool($"{k_KeyPrefix}.{nameof(fetchPreview)}", true);
         }
 
         private static void Save()
         {
-            EditorPrefs.SetBool($"{k_KeyPrefix}.{nameof(useDockableWindow)}", useDockableWindow);
-            EditorPrefs.SetBool($"{k_KeyPrefix}.{nameof(closeWindowByDefault)}", closeWindowByDefault);
             EditorPrefs.SetBool($"{k_KeyPrefix}.{nameof(trackSelection)}", trackSelection);
             EditorPrefs.SetBool($"{k_KeyPrefix}.{nameof(fetchPreview)}", fetchPreview);
         }
@@ -50,9 +44,6 @@ namespace Unity.QuickSearch
                             {
                                 trackSelection = EditorGUILayout.Toggle(Styles.trackSelectionContent, trackSelection);
                                 fetchPreview = EditorGUILayout.Toggle(Styles.fetchPreviewContent, fetchPreview);
-                                useDockableWindow = EditorGUILayout.Toggle(Styles.useDockableWindowContent, useDockableWindow);
-                                if (useDockableWindow)
-                                    closeWindowByDefault = EditorGUILayout.Toggle(Styles.closeWindowByDefaultContent, closeWindowByDefault);
                                 GUILayout.Space(10);
                                 DrawProviderSettings();
                             }

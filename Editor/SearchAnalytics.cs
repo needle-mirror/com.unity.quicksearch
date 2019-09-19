@@ -27,8 +27,11 @@ namespace Unity.QuickSearch
         [Serializable]
         internal class PreferenceData
         {
+            // BEGIN- Not used anymore
             public bool useDockableWindow;
             public bool closeWindowByDefault;
+            // END - Not used anymore
+
             public bool trackSelection;
         }
 
@@ -210,8 +213,8 @@ namespace Unity.QuickSearch
             evt.isDeveloperMode = Utils.IsDeveloperMode();
             evt.preferences = new PreferenceData()
             {
-                closeWindowByDefault = SearchSettings.closeWindowByDefault,
-                useDockableWindow = SearchSettings.useDockableWindow,
+                closeWindowByDefault = true,
+                useDockableWindow = false,
                 trackSelection = SearchSettings.trackSelection
             };
             

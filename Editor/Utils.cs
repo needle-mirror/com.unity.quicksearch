@@ -117,11 +117,11 @@ namespace Unity.QuickSearch
             {
                 var avgTime = p.avgTime;
                 if (fullTimingInfo)
-                    return $"{p.name.displayName} ({avgTime.ToString("0.#")} ms, Enable: {p.enableTime.ToString("0.#")} ms, Init: {p.loadTime.ToString("0.#")} ms)";
+                    return $"{p.name.displayName} ({avgTime:0.#} ms, Enable: {p.enableTime:0.#} ms, Init: {p.loadTime:0.#} ms)";
              
                 var avgTimeLabel = String.Empty;
                 if (avgTime > 9.99)
-                    avgTimeLabel = $" ({avgTime.ToString("#")} ms)";
+                    avgTimeLabel = $" ({avgTime:#} ms)";
                 return $"<b>{p.name.displayName}</b>{avgTimeLabel}";
             }));
         }
@@ -216,13 +216,17 @@ namespace Unity.QuickSearch
             return pos;
         }
 
-        internal static IEnumerable<MethodInfo> GetAllMethodsWithAttribute<T>(BindingFlags bindingFlags = BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic)
+        internal static IEnumerable<MethodInfo> GetAllMethodsWithAttribute<T>(BindingFlags bindingFlags = BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic) where T : System.Attribute
         {
+            #if UNITY_2019_2_OR_NEWER
+            return TypeCache.GetMethodsWithAttribute<T>();
+            #else
             Assembly assembly = typeof(Selection).Assembly;
             var managerType = assembly.GetTypes().First(t => t.Name == "EditorAssemblies");
             var method = managerType.GetMethod("Internal_GetAllMethodsWithAttribute", BindingFlags.NonPublic | BindingFlags.Static);
             var arguments = new object[] { typeof(T), bindingFlags };
             return ((method.Invoke(null, arguments) as object[]) ?? throw new InvalidOperationException()).Cast<MethodInfo>();
+            #endif
         }
 
         internal static Rect GetMainWindowCenteredPosition(Vector2 size)
@@ -318,7 +322,7 @@ namespace Unity.QuickSearch
             string version = null;
             try
             {
-                var filePath = File.ReadAllText($"{QuickSearchTool.packageFolderName}/package.json");
+                var filePath = File.ReadAllText($"{QuickSearch.packageFolderName}/package.json");
                 if (JsonDeserialize(filePath) is Dictionary<string, object> manifest && manifest.ContainsKey("version"))
                 {
                     version = manifest["version"] as string;
@@ -359,7 +363,7 @@ namespace Unity.QuickSearch
             #if QUICKSEARCH_DEBUG
             return true;
             #else
-            return Directory.Exists($"{QuickSearchTool.packageFolderName}/.git");
+            return Directory.Exists($"{QuickSearch.packageFolderName}/.git");
             #endif
         }
 
@@ -514,7 +518,7 @@ namespace Unity.QuickSearch
             if (tags.Length == 2)
             {
                 rev += Convert.ToInt32(tags[0], 10) << 4;
-                rev += Convert.ToInt32(tags[1], 10) << 0;
+                rev += Convert.ToInt32(tags[1], 10);
             }
             return rev;
         }

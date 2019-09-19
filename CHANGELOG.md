@@ -1,6 +1,10 @@
-## [1.4.2-preview.1] - 2019-09-04
+## [1.4.2-preview.2] - 2019-09-20
+- We've removed the dockable window mode of Quick Search since it wasn't playing nice with some loading and refreshing workflows and optimizations.
 - [UX] Add documentation link to Help provider and version label.
 - [FIX] Add support for digits when splitting camel cases of file names.
+- [FIX] (1184860) Only enable the search asset watcher once the quick search tool is used the first time.
+- [API] Make Unity.QuickSearch.QuickSearch public to allow user to open quick search explicitly with specific context data.
+- [API] Add `QuickSearch.ShowWindow(float width, float height)` to allow opening Quick Search at any size.
 
 ## [1.4.1] - 2019-09-03
 - Quick Search is now a verified package.

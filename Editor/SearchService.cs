@@ -24,10 +24,28 @@ namespace Unity.QuickSearch
     /// <summary>
     /// Search view interface used by the search context to execute a few UI operations.
     /// </summary>
-    internal interface ISearchView
+    public interface ISearchView
     {
+        /// <summary>
+        /// Sets the search query text.
+        /// </summary>
+        /// <param name="searchText">Text to be displayed in the search view.</param>
         void SetSearchText(string searchText);
+
+        /// <summary>
+        /// Open the associated filter window.
+        /// </summary>
         void PopFilterWindow();
+
+        /// <summary>
+        /// Make sure the search is now focused.
+        /// </summary>
+        void Focus();
+
+        /// <summary>
+        /// Triggers a refresh of the search view, re-fetching all the search items from enabled search providers.
+        /// </summary>
+        void Refresh();
     }
 
     /// <summary>
@@ -540,7 +558,11 @@ namespace Unity.QuickSearch
             }
         }
 
-        internal static bool LoadFilters()
+        /// <summary>
+        /// Load user default filters.
+        /// </summary>
+        /// <returns>True if filters were properly loaded, otherwise false is returned.</returns>
+        public static bool LoadFilters()
         {
             try
             {

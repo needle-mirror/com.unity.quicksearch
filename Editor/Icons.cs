@@ -8,7 +8,7 @@ namespace Unity.QuickSearch
 {
     public static class Icons
     {
-        public static string iconFolder = $"{QuickSearchTool.packageFolderName}/Editor/Icons";
+        public static string iconFolder = $"{QuickSearch.packageFolderName}/Editor/Icons";
         public static Texture2D shortcut = LoadIcon($"{iconFolder}/shortcut.png");
         public static Texture2D quicksearch = LoadIcon($"{iconFolder}/quicksearch.png");
         public static Texture2D filter = LoadIcon($"{iconFolder}/filter.png");

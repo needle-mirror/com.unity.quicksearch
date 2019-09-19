@@ -73,7 +73,7 @@ namespace Unity.QuickSearch
             public static float foldoutIndent = filterExpanded.fixedWidth + 6;
         }
 
-        public QuickSearchTool quickSearchTool;
+        public ISearchView searchView;
 
         private Vector2 m_ScrollPos;
         private List<SearchFilter.ProviderDesc> initialProviders;
@@ -93,12 +93,12 @@ namespace Unity.QuickSearch
             }
         }
 
-        public static bool ShowAtPosition(QuickSearchTool quickSearchTool, Rect rect)
+        public static bool ShowAtPosition(ISearchView quickSearchTool, Rect rect)
         {
             var screenPos = GUIUtility.GUIToScreenPoint(new Vector2(rect.x, rect.y));
             var screenRect = new Rect(screenPos, rect.size);
             var filterWindow = ScriptableObject.CreateInstance<FilterWindow>();
-            filterWindow.quickSearchTool = quickSearchTool;
+            filterWindow.searchView = quickSearchTool;
             filterWindow.ShowAsDropDown(screenRect, Styles.windowSize);
             return true;
         }
@@ -129,8 +129,8 @@ namespace Unity.QuickSearch
             if (Event.current.type == EventType.KeyDown && Event.current.keyCode == KeyCode.Escape)
             {
                 Close();
-                if (quickSearchTool)
-                    quickSearchTool.Focus();
+                if (searchView != null)
+                    searchView.Focus();
                 return;
             }
 
@@ -215,7 +215,7 @@ namespace Unity.QuickSearch
                 {
                     SearchService.Filter.SetFilter(isEnabled, provider.entry.name.id);
                 }
-                quickSearchTool.Refresh();
+                searchView.Refresh();
             }
 
             GUILayout.EndHorizontal();
@@ -268,7 +268,7 @@ namespace Unity.QuickSearch
             if (EditorGUI.EndChangeCheck())
             {
                 SearchService.Filter.SetFilter(isEnabled, desc.entry.name.id);
-                quickSearchTool.Refresh();
+                searchView.Refresh();
             }
 
             GUILayout.EndHorizontal();
@@ -302,7 +302,7 @@ namespace Unity.QuickSearch
                 if (EditorGUI.EndChangeCheck())
                 {
                     SearchService.Filter.SetFilter(isEnabled, desc.entry.name.id, cat.name.id);
-                    quickSearchTool.Refresh();
+                    searchView.Refresh();
                 }
 
                 GUILayout.EndHorizontal();

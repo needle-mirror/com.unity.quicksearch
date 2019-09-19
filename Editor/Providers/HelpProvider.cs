@@ -92,7 +92,7 @@ namespace Unity.QuickSearch
                     helpItem.thumbnail = Icons.settings;
                     m_StaticItemToAction.Add(helpItem, (item, context) =>
                     {
-                        QuickSearchTool.OpenDocumentationUrl();
+                        QuickSearch.OpenDocumentationUrl();
                     });
                 }
 

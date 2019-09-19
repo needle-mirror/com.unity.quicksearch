@@ -168,11 +168,23 @@ namespace Unity.QuickSearch
         }
     }
 
-    internal class QuickSearchTool : EditorWindow, ISearchView
+    /// <summary>
+    /// Quick Search Editor Window
+    /// </summary>
+    /// <example>
+    /// using Unity.QuickSearch;
+    /// [MenuItem("Tools/Quick Search %space", priority = 42)]
+    /// private static void OpenQuickSearch()
+    /// {
+    ///     SearchService.LoadFilters(); // Set desire filters here...
+    ///     QuickSearch.ShowWindow();
+    /// }
+    /// </example>
+    public class QuickSearch : EditorWindow, ISearchView
     {
-        public static string packageName = "com.unity.quicksearch";
-        public static string packageFolderName = $"Packages/{packageName}";
-        public static string documentationUrl = "https://docs.unity3d.com/Packages/com.unity.quicksearch@1.3/";
+        private static string packageName = "com.unity.quicksearch";
+        internal static string packageFolderName = $"Packages/{packageName}";
+        private static string documentationUrl = "https://docs.unity3d.com/Packages/com.unity.quicksearch@1.4/";
 
         private static EditorWindow s_FocusedWindow;
         private static bool isDeveloperMode = Utils.IsDeveloperMode();
@@ -190,7 +202,7 @@ namespace Unity.QuickSearch
             "- Type <b>?</b> to get help\r\n";
 
         [SerializeField] private Vector2 m_ScrollPosition;
-        [SerializeField] public EditorWindow lastFocusedWindow;
+        [SerializeField] private EditorWindow lastFocusedWindow;
         [SerializeField] private int m_SelectedIndex = k_ResetSelectionIndex;
         [SerializeField] private string m_SearchTopic = "anything";
 
@@ -538,7 +550,7 @@ namespace Unity.QuickSearch
             EditorApplication.delayCall -= DebouncedRefresh;
             s_FocusedWindow = null;
 
-            if (!isDeveloperMode && !SearchSettings.useDockableWindow)
+            if (!isDeveloperMode)
                 SendSearchEvent(null); // Track canceled searches
 
             SearchService.Disable(m_Context);
@@ -562,7 +574,7 @@ namespace Unity.QuickSearch
             nextFrame += () => m_ShowFilterWindow = true;
         }
 
-        public static void OpenDocumentationUrl()
+        internal static void OpenDocumentationUrl()
         {
             var uri = new Uri(documentationUrl);
             Process.Start(uri.AbsoluteUri);
@@ -767,16 +779,14 @@ namespace Unity.QuickSearch
 
                 HandleKeyboardNavigation(m_Context);
 
-                if (!SearchSettings.useDockableWindow)
-                    EditorGUILayout.BeginVertical(Styles.panelBorder);
+                EditorGUILayout.BeginVertical(Styles.panelBorder);
                 {
                     var rect = DrawToolbar(m_Context);
                     DrawItems(m_Context);
                     DrawAutoCompletion(rect);
                     DrawStatusBar();
                 }
-                if (!SearchSettings.useDockableWindow)
-                    EditorGUILayout.EndVertical();
+                EditorGUILayout.EndVertical();
 
                 UpdateFocusControlState();
             }
@@ -784,13 +794,6 @@ namespace Unity.QuickSearch
             #if QUICKSEARCH_DEBUG
             Profiler.EndSample();
             #endif
-        }
-
-        [UsedImplicitly]
-        internal void OnFocus()
-        {
-            if (SearchSettings.useDockableWindow)
-                m_SearchBoxFocus = true;
         }
 
         internal void OnResize()
@@ -1190,7 +1193,7 @@ namespace Unity.QuickSearch
             SearchService.LastSearch = context.searchText;
             SearchService.SetRecent(item);
             action.handler(item, context);
-            if ((endSearch && action.closeWindowAfterExecution) && (!SearchSettings.useDockableWindow || SearchSettings.closeWindowByDefault))
+            if (endSearch && action.closeWindowAfterExecution)
                 CloseSearchWindow();
         }
 
@@ -1543,15 +1546,19 @@ namespace Unity.QuickSearch
                 menu.DropDown(position);
         }
 
+        /// <summary>
+        /// Open the quick search window using a specific context (activating specific filters and such).
+        /// </summary>
+        /// <param name="providerId">Unique name of the provider to start the quick search in.</param>
+        /// <example>
+        /// [MenuItem("Tools/Search Menus _F1")]
+        /// public static void SearchMenuItems()
+        /// {
+        ///     QuickSearch.OpenWithContextualProvider("menu");
+        /// }
+        /// </example>
         public static void OpenWithContextualProvider(string providerId)
         {
-            if (SearchSettings.useDockableWindow)
-            {
-                Debug.LogWarning("Contextual Quick Search cannot be used when the dockable quick search is enabled");
-                OpenQuickSearch();
-                return;
-            }
-
             var provider = SearchService.Providers.Find(p => p.name.id == providerId);
             if (provider == null)
             {
@@ -1566,17 +1573,15 @@ namespace Unity.QuickSearch
             toolWindow.UpdateWindowTitle();
         }
 
+        /// <summary>
+        /// Open Quick Search using a global context.
+        /// The context is discovered by asking each providers if the current context is suitable for them by calling `IsEnabledForContextualSearch`.
+        /// </summary>
         #if UNITY_2019_1_OR_NEWER
         [UsedImplicitly, Shortcut("Help/Quick Search Contextual", KeyCode.C, ShortcutModifiers.Alt | ShortcutModifiers.Shift)]
         #endif
         public static void OpenContextual()
         {
-            if (SearchSettings.useDockableWindow)
-            {
-                Debug.LogWarning("Contextual Quick Search cannot be used when the dockable quick search is enabled");
-                return;
-            }
-
             var contextualProviders = SearchService.Providers
                 .Where(searchProvider => searchProvider.active && searchProvider.isEnabledForContextualSearch != null && searchProvider.isEnabledForContextualSearch()).ToArray();
             if (contextualProviders.Length == 0)
@@ -1592,23 +1597,19 @@ namespace Unity.QuickSearch
             ShowWindow();
         }
 
-        public static QuickSearchTool ShowWindow()
+        /// <summary>
+        /// Open the default Quick Search window using default settings.
+        /// </summary>
+        /// <param name="defaultWidth">Initial width of the window.</param>
+        /// <param name="defaultHeight">Initial height of the window.</param>
+        /// <returns>Returns the Quick Search editor window instance.</returns>
+        public static QuickSearch ShowWindow(float defaultWidth = 650, float defaultHeight = 440)
         {
             s_FocusedWindow = focusedWindow;
 
-            var windowSize = new Vector2(650, 440);
-
-            QuickSearchTool qsWindow;
-            if (!SearchSettings.useDockableWindow)
-            {
-                qsWindow = CreateInstance<QuickSearchTool>();
-                qsWindow.ShowDropDown(windowSize);
-            }
-            else
-            {
-                qsWindow = GetWindow<QuickSearchTool>();
-                qsWindow.Show();
-            }
+            var windowSize = new Vector2(defaultWidth, defaultHeight);
+            var qsWindow = CreateInstance<QuickSearch>();
+            qsWindow.ShowDropDown(windowSize);
 
             qsWindow.m_SearchTopic = "anything";
             // Ensure we won't send events while doing a domain reload.
@@ -1618,6 +1619,11 @@ namespace Unity.QuickSearch
             return qsWindow;
         }
 
+        /// <summary>
+        /// Checks if the previously focused window used to open quick search is of a given type.
+        /// </summary>
+        /// <param name="focusWindowName">Class name of the window to be verified.</param>
+        /// <returns>True if the class name matches the quick search opener window class name.</returns>
         public static bool IsFocusedWindowTypeName(string focusWindowName)
         {
             return focusedWindow != null && focusedWindow.GetType().ToString().EndsWith("." + focusWindowName);

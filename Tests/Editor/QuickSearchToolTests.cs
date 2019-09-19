@@ -31,7 +31,7 @@ namespace Unity.QuickSearch
         [UnityTest]
         public IEnumerator Open()
         {
-            var qsWindow = QuickSearchTool.ShowWindow();
+            var qsWindow = QuickSearch.ShowWindow();
             Assert.IsNotNull(qsWindow);
 
             yield return SendKeyCharacterEvent(qsWindow, (char) 0, KeyCode.Escape);
@@ -45,7 +45,7 @@ namespace Unity.QuickSearch
         {
             for (int i = 0; i < iterationCount; ++i)
             {
-                var qsWindow = QuickSearchTool.ShowWindow();
+                var qsWindow = QuickSearch.ShowWindow();
                 yield return PrepareSearchTool(qsWindow);
 
                 var queryString = "test 42";
@@ -83,7 +83,7 @@ namespace Unity.QuickSearch
 
                 EditorApplication.hierarchyChanged -= OnEditorApplicationOnHierarchyChanged;
 
-                var qsWindow = QuickSearchTool.ShowWindow();
+                var qsWindow = QuickSearch.ShowWindow();
                 yield return PrepareSearchTool(qsWindow);
 
                 var queryString = uniqueName.Substring(Random.Range(0, uniqueName.Length / 2 - 1), Math.Max(3, Random.Range(0, uniqueName.Length / 2 - 1)));
@@ -111,7 +111,7 @@ namespace Unity.QuickSearch
             return Regex.Replace(input, "<.*?>", String.Empty);
         }
 
-        private static IEnumerator WaitForSearchCompleted(QuickSearchTool qsWindow)
+        private static IEnumerator WaitForSearchCompleted(QuickSearch qsWindow)
         {
             qsWindow.Refresh();
             yield return null;
@@ -120,7 +120,7 @@ namespace Unity.QuickSearch
             yield return null;
         }
 
-        private IEnumerator PrepareSearchTool(QuickSearchTool qsWindow)
+        private IEnumerator PrepareSearchTool(QuickSearch qsWindow)
         {
             qsWindow.m_SendAnalyticsEvent = true;
             Assert.IsNotNull(qsWindow);

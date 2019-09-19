@@ -89,8 +89,8 @@ namespace Unity.QuickSearch.Providers
             };
 
             isEnabledForContextualSearch = () =>
-                QuickSearchTool.IsFocusedWindowTypeName("SceneView") ||
-                QuickSearchTool.IsFocusedWindowTypeName("SceneHierarchyWindow");
+                QuickSearch.IsFocusedWindowTypeName("SceneView") ||
+                QuickSearch.IsFocusedWindowTypeName("SceneHierarchyWindow");
 
             EditorApplication.hierarchyChanged += () => m_HierarchyChanged = true;
 
@@ -542,7 +542,7 @@ namespace Unity.QuickSearch.Providers
         [UsedImplicitly, Shortcut("Help/Quick Search/Scene")]
         private static void OpenQuickSearch()
         {
-            QuickSearchTool.OpenWithContextualProvider(k_DefaultProviderId);
+            QuickSearch.OpenWithContextualProvider(k_DefaultProviderId);
         }
         #endif
     }
