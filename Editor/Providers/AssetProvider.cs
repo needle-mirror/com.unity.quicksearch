@@ -85,11 +85,7 @@ namespace Unity.QuickSearch.Providers
 
                 fetchDescription = (item, context) =>
                 {
-                    if (AssetDatabase.IsValidFolder(item.id))
-                        return item.id;
-                    long fileSize = new FileInfo(item.id).Length;
-                    item.description = $"{item.id} ({EditorUtility.FormatBytes(fileSize)})";
-
+                    item.description = GetAssetDescription(item.id);
                     return item.description;
                 },
 
@@ -107,12 +103,7 @@ namespace Unity.QuickSearch.Providers
                     DragAndDrop.StartDrag(item.label);
                 },
 
-                trackSelection = (item, context) =>
-                {
-                    var asset = AssetDatabase.LoadAssetAtPath<Object>(item.id);
-                    if (asset != null)
-                        EditorGUIUtility.PingObject(asset);
-                },
+                trackSelection = (item, context) => Utils.PingAsset(item.id),
 
                 subCategories = new List<NameId>()
             };
@@ -207,6 +198,14 @@ namespace Unity.QuickSearch.Providers
                     itemScore = SearchProvider.k_RecentUserScore+1;
                 return provider.CreateItem(e.path, itemScore, filename, null, null, null);
             });
+        }
+
+        internal static string GetAssetDescription(string assetPath)
+        {
+            if (AssetDatabase.IsValidFolder(assetPath))
+                return assetPath;
+            var fileSize = new FileInfo(assetPath).Length;
+            return $"{assetPath} ({EditorUtility.FormatBytes(fileSize)})";
         }
 
         #endregion

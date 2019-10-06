@@ -106,6 +106,28 @@ namespace Unity.QuickSearch
         }
         #endif
 
+        [UnityTest]
+        public IEnumerator Search_Resources([ValueSource(nameof(k_IterationCount))] int iterationCount)
+        {
+            for (int i = 0; i < iterationCount; ++i)
+            {
+                var qsWindow = QuickSearch.ShowWindow();
+                yield return PrepareSearchTool(qsWindow);
+
+                var queryString = "res: test_";
+                foreach (var c in queryString)
+                    yield return SendKeyCharacterEvent(qsWindow, c);
+
+                yield return WaitForSearchCompleted(qsWindow);
+
+                var results = qsWindow.Results.ToArray();
+                Assert.GreaterOrEqual(results.Length, 1);
+                Assert.IsTrue(results.Any(r => StripHTML(r.label).Contains("test_monobehavior")));
+
+                yield return SendKeyCharacterEvent(qsWindow, (char)0, KeyCode.Escape);
+            }
+        }
+
         public static string StripHTML(string input)
         {
             return Regex.Replace(input, "<.*?>", String.Empty);

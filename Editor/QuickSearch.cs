@@ -969,29 +969,32 @@ namespace Unity.QuickSearch
                     if (selectedIndex != -1 && m_FilteredItems != null)
                     {
                         var item = m_FilteredItems.ElementAt(selectedIndex);
-                        SearchAction action = item.provider.actions[0];
-                        if (m_Context.actionQueryId != null)
+                        if (item.provider.actions.Count > 0)
                         {
-                            action = SearchService.GetAction(item.provider, m_Context.actionQueryId);
-                        }
-                        else if (evt.modifiers.HasFlag(EventModifiers.Alt))
-                        {
-                            var actionIndex = 1;
-                            if (evt.modifiers.HasFlag(EventModifiers.Control))
+                            SearchAction action = item.provider.actions[0];
+                            if (m_Context.actionQueryId != null)
                             {
-                                actionIndex = 2;
-                                if (evt.modifiers.HasFlag(EventModifiers.Shift))
-                                    actionIndex = 3;
+                                action = SearchService.GetAction(item.provider, m_Context.actionQueryId);
                             }
-                            action = item.provider.actions[Math.Max(0, Math.Min(actionIndex, item.provider.actions.Count - 1))];
-                        }
+                            else if (evt.modifiers.HasFlag(EventModifiers.Alt))
+                            {
+                                var actionIndex = 1;
+                                if (evt.modifiers.HasFlag(EventModifiers.Control))
+                                {
+                                    actionIndex = 2;
+                                    if (evt.modifiers.HasFlag(EventModifiers.Shift))
+                                        actionIndex = 3;
+                                }
+                                action = item.provider.actions[Math.Max(0, Math.Min(actionIndex, item.provider.actions.Count - 1))];
+                            }
 
-                        if (action != null)
-                        {
-                            Event.current.Use();
-                            m_CurrentSearchEvent.endSearchWithKeyboard = true;
-                            ExecuteAction(action, item, context);
-                            GUIUtility.ExitGUI();
+                            if (action != null)
+                            {
+                                Event.current.Use();
+                                m_CurrentSearchEvent.endSearchWithKeyboard = true;
+                                ExecuteAction(action, item, context);
+                                GUIUtility.ExitGUI();
+                            }
                         }
                     }
                 }
@@ -1051,7 +1054,8 @@ namespace Unity.QuickSearch
                         if ((EditorApplication.timeSinceStartup - m_ClickTime) < 0.2)
                         {
                             var item = m_FilteredItems.ElementAt(m_SelectedIndex);
-                            ExecuteAction(item.provider.actions[0], item, context);
+                            if (item.provider.actions.Count > 0)
+                                ExecuteAction(item.provider.actions[0], item, context);
                             GUIUtility.ExitGUI();
                         }
                         EditorGUI.FocusTextInControl(k_QuickSearchBoxName);
@@ -1062,16 +1066,19 @@ namespace Unity.QuickSearch
                     else if (Event.current.button == 1)
                     {
                         var item = m_FilteredItems.ElementAt(m_SelectedIndex);
-                        var contextAction = item.provider.actions.Find(a => a.Id == SearchAction.kContextualMenuAction);
-                        ContextualActionPosition = new Rect(Event.current.mousePosition.x, Event.current.mousePosition.y, 1, 1);
-                        if (contextAction != null)
+                        if (item.provider.actions.Count > 0)
                         {
-                            const bool endSearch = false;
-                            ExecuteAction(contextAction, item, context, endSearch);
-                        }
-                        else
-                        {
-                            ShowItemContextualMenu(item, context, ContextualActionPosition);
+                            var contextAction = item.provider.actions.Find(a => a.Id == SearchAction.kContextualMenuAction);
+                            ContextualActionPosition = new Rect(Event.current.mousePosition.x, Event.current.mousePosition.y, 1, 1);
+                            if (contextAction != null)
+                            {
+                                const bool endSearch = false;
+                                ExecuteAction(contextAction, item, context, endSearch);
+                            }
+                            else
+                            {
+                                ShowItemContextualMenu(item, context, ContextualActionPosition);
+                            }
                         }
                     }
                 }

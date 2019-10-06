@@ -1,5 +1,6 @@
-## [1.4.2-preview.2] - 2019-09-20
-- We've removed the dockable window mode of Quick Search since it wasn't playing nice with some loading and refreshing workflows and optimizations.
+## [1.4.2-preview.3] - 2019-10-07
+- [UX] We've removed the dockable window mode of Quick Search since it wasn't playing nice with some loading and refreshing workflows and optimizations.
+- [UX] Add Resource provider, which lets you search all resources loaded by Unity.
 - [UX] Add documentation link to Help provider and version label.
 - [FIX] Add support for digits when splitting camel cases of file names.
 - [FIX] (1184860) Only enable the search asset watcher once the quick search tool is used the first time.

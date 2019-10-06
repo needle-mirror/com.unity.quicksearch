@@ -12,6 +12,10 @@ using UnityEditor;
 using UnityEngine;
 using Debug = UnityEngine.Debug;
 
+#if UNITY_2020_1_OR_NEWER
+using UnityEngine.UIElements;
+#endif
+
 #if QUICKSEARCH_DEBUG
 using UnityEditorInternal;
 #endif
@@ -421,6 +425,93 @@ namespace Unity.QuickSearch
             char[] first = lhs.ToCharArray();
             char[] second = rhs.ToCharArray();
             return LevenshteinDistance(first, second);
+        }
+
+        internal static Texture2D GetThumbnailForGameObject(GameObject go)
+        {
+            var thumbnail = PrefabUtility.GetIconForGameObject(go);
+            if (thumbnail)
+                return thumbnail;
+            return EditorGUIUtility.ObjectContent(go, go.GetType()).image as Texture2D;
+        }
+
+        private static MethodInfo s_FindTextureMethod;
+        internal static Texture2D FindTextureForType(Type type)
+        {
+            if (s_FindTextureMethod == null)
+            {
+                var t = typeof(EditorGUIUtility);
+                s_FindTextureMethod = t.GetMethod("FindTexture", BindingFlags.NonPublic| BindingFlags.Static);
+            }
+            return (Texture2D)s_FindTextureMethod.Invoke(null, new object[]{type});
+        }
+
+        private static MethodInfo s_GetIconForObject;
+        internal static Texture2D GetIconForObject(UnityEngine.Object obj)
+        {
+            if (s_GetIconForObject == null)
+            {
+                var t = typeof(EditorGUIUtility);
+                s_GetIconForObject = t.GetMethod("GetIconForObject", BindingFlags.NonPublic | BindingFlags.Static);
+            }
+            return (Texture2D)s_GetIconForObject.Invoke(null, new object[] { obj });
+        }
+
+        internal static void PingAsset(string assetPath)
+        {
+            var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(assetPath);
+            if (asset != null)
+                EditorGUIUtility.PingObject(asset);
+        }
+
+        #if UNITY_2020_1_OR_NEWER
+        // TODO: Fix issue if PingUIElement is called more than once before delayCall is called, locking the window with the new style
+        internal static void PingUIElement(VisualElement element, [CanBeNull] EditorWindow window)
+        {
+            var s = element.style;
+            var oldBorderTopColor = s.borderTopColor;
+            var oldBorderBottomColor = s.borderBottomColor;
+            var oldBorderLeftColor = s.borderLeftColor;
+            var oldBorderRightColor = s.borderRightColor;
+            var oldBorderTopWidth = s.borderTopWidth;
+            var oldBorderBottomWidth = s.borderBottomWidth;
+            var oldBorderLeftWidth = s.borderLeftWidth;
+            var oldBorderRightWidth = s.borderRightWidth;
+
+            s.borderTopWidth = s.borderBottomWidth = s.borderLeftWidth = s.borderRightWidth = new StyleFloat(2);
+            s.borderTopColor = s.borderBottomColor = s.borderLeftColor = s.borderRightColor = new StyleColor(Color.cyan);
+
+            element.Focus();
+
+            Utils.DelayCall(1f, () =>
+            {
+                s.borderTopColor = oldBorderTopColor;
+                s.borderBottomColor = oldBorderBottomColor;
+                s.borderLeftColor = oldBorderLeftColor;
+                s.borderRightColor = oldBorderRightColor;
+                s.borderTopWidth = oldBorderTopWidth;
+                s.borderBottomWidth = oldBorderBottomWidth;
+                s.borderLeftWidth = oldBorderLeftWidth;
+                s.borderRightWidth = oldBorderRightWidth;
+
+                if (window)
+                    window.Repaint();
+            });
+        }
+        #endif
+
+        internal static void DelayCall(float seconds, System.Action callback)
+        {
+            DelayCall(EditorApplication.timeSinceStartup, seconds, callback);
+        }
+
+        internal static void DelayCall(double timeStart, float seconds, System.Action callback)
+        {
+            var dt = EditorApplication.timeSinceStartup - timeStart;
+            if (dt >= seconds)
+                callback();
+            else
+                EditorApplication.delayCall += () => DelayCall(timeStart, seconds, callback);
         }
     }
 

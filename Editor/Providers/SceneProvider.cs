@@ -154,10 +154,8 @@ namespace Unity.QuickSearch.Providers
                 if (obj == null)
                     return null;
 
-                item.thumbnail = PrefabUtility.GetIconForGameObject(obj);
-                if (item.thumbnail)
-                    return item.thumbnail;
-                return EditorGUIUtility.ObjectContent(obj, obj.GetType()).image as Texture2D;
+                item.thumbnail = Utils.GetThumbnailForGameObject(obj);
+                return item.thumbnail;
             };
 
             fetchPreview = (item, context, size, options) =>

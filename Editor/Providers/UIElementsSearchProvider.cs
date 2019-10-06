@@ -68,35 +68,7 @@ namespace Unity.QuickSearch.Providers
                 {
                     var info = (VisualElementInfo)item.data;
                     var element = info.element;
-                    var s = element.style;
-                    var oldBorderTopColor = s.borderTopColor;
-                    var oldBorderBottomColor = s.borderBottomColor;
-                    var oldBorderLeftColor = s.borderLeftColor;
-                    var oldBorderRightColor = s.borderRightColor;
-                    var oldBorderTopWidth = s.borderTopWidth;
-                    var oldBorderBottomWidth = s.borderBottomWidth;
-                    var oldBorderLeftWidth = s.borderLeftWidth;
-                    var oldBorderRightWidth = s.borderRightWidth;
-
-                    s.borderTopWidth = s.borderBottomWidth = s.borderLeftWidth = s.borderRightWidth = new StyleFloat(2);
-                    s.borderTopColor = s.borderBottomColor = s.borderLeftColor = s.borderRightColor = new StyleColor(Color.cyan);
-
-                    element.Focus();
-
-                    DelayCall(1f, () =>
-                    {
-                        s.borderTopColor = oldBorderTopColor;
-                        s.borderBottomColor = oldBorderBottomColor;
-                        s.borderLeftColor = oldBorderLeftColor;
-                        s.borderRightColor = oldBorderRightColor;
-                        s.borderTopWidth = oldBorderTopWidth;
-                        s.borderBottomWidth = oldBorderBottomWidth;
-                        s.borderLeftWidth = oldBorderLeftWidth;
-                        s.borderRightWidth = oldBorderRightWidth;
-
-                        if (info.window)
-                            info.window.Repaint();
-                    });
+                    Utils.PingUIElement(element, info.window);
                 }
             };
         }
@@ -114,7 +86,7 @@ namespace Unity.QuickSearch.Providers
                         var oldBackgroundColor = element.style.backgroundColor;
                         element.style.backgroundColor = new StyleColor(Color.green);
                         element.Focus();
-                        DelayCall(2f, () => element.style.backgroundColor = oldBackgroundColor);
+                        Utils.DelayCall(2f, () => element.style.backgroundColor = oldBackgroundColor);
                     }
                 },
                 new SearchAction(type, "inspect", null, "Inspect visual element...")
@@ -122,20 +94,6 @@ namespace Unity.QuickSearch.Providers
                     handler = (item, context) => InspectElement(((VisualElementInfo)item.data).element)
                 }
             };
-        }
-
-        private static void DelayCall(float seconds, System.Action callback)
-        {
-            DelayCall(EditorApplication.timeSinceStartup, seconds, callback);
-        }
-
-        private static void DelayCall(double timeStart, float seconds, System.Action callback)
-        {
-            var dt = EditorApplication.timeSinceStartup - timeStart;
-            if (dt >= seconds)
-                callback();
-            else
-                EditorApplication.delayCall += () => DelayCall(timeStart, seconds, callback);
         }
 
         private static string GetName(VisualElement elm)
@@ -146,7 +104,7 @@ namespace Unity.QuickSearch.Providers
             return name;
         }
 
-        private static string GetTransformPath(VisualElement elm)
+        internal static string GetTransformPath(VisualElement elm)
         {
             var name = GetName(elm);
             if (elm.parent == null)
