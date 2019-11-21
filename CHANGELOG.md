@@ -1,9 +1,15 @@
-## [1.4.2-preview.3] - 2019-10-07
+## [1.5.0-preview.1] - 2019-11-22
 - [UX] We've removed the dockable window mode of Quick Search since it wasn't playing nice with some loading and refreshing workflows and optimizations.
+- [UX] Select search item on mouse up instead of mouse down.
+- [UX] fetchPreview of AssetStoreProvider uses the PurchaseInfo to get a bigger/more detailed preview.
+- [UX] Add selected search item preview panel.
 - [UX] Add Resource provider, which lets you search all resources loaded by Unity.
 - [UX] Add documentation link to Help provider and version label.
+- [UX] Add Asset Store provider populating items with asset store package.
+- [UX] Add Asset Store provider populating items with asset store package.
 - [FIX] Add support for digits when splitting camel cases of file names.
 - [FIX] (1184860) Only enable the search asset watcher once the quick search tool is used the first time.
+- [DOC] Quick Search Manual has been reviewed and edited.
 - [API] Make Unity.QuickSearch.QuickSearch public to allow user to open quick search explicitly with specific context data.
 - [API] Add `QuickSearch.ShowWindow(float width, float height)` to allow opening Quick Search at any size.
 

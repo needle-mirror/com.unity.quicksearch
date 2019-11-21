@@ -5,29 +5,50 @@ using UnityEngine;
 
 namespace Unity.QuickSearch
 {
+    /// <summary>
+    /// Defines at set of options that indicates to the search provider how the preview should be fetched.
+    /// </summary>
     [Flags]
     public enum FetchPreviewOptions
     {
+        /// <summary>
+        /// No options are defined.
+        /// </summary>
         None = 0,
-        Preview2D = 1 << 0,
-        Preview3D = 1 << 1
+
+        /// <summary>
+        /// Indicates that the provider should generate a 2D preview.
+        /// </summary>
+        Preview2D = 1,
+
+        /// <summary>
+        /// Indicates that the provider should generte a 3D preview.
+        /// </summary>
+        Preview3D = 1 << 1,
+
+        /// <summary>
+        /// Indicate that the preview size should be around 128x128.
+        /// </summary>
+        Normal    = 1 << 10,
+
+        /// <summary>
+        /// Indicates that the preview resolution should be higner than 256x256.
+        /// </summary>
+        Large     = 1 << 11
     }
 
-    public delegate Texture2D ThumbnailHandler(SearchItem item, SearchContext context);
-    public delegate Texture2D PreviewHandler(SearchItem item, SearchContext context, Vector2 size, FetchPreviewOptions options);
-    public delegate string FetchStringHandler(SearchItem item, SearchContext context);
-    public delegate void ActionHandler(SearchItem item, SearchContext context);
-    public delegate void StartDragHandler(SearchItem item, SearchContext context);
-    public delegate void TrackSelectionHandler(SearchItem item, SearchContext context);
-    public delegate bool EnabledHandler(SearchItem item, SearchContext context);
-    public delegate IEnumerable<SearchItem> GetItemsHandler(SearchContext context, List<SearchItem> items, SearchProvider provider);
-    public delegate void GetKeywordsHandler(SearchContext context, string lastToken, List<string> keywords);
-    public delegate bool IsEnabledForContextualSearch();
-
-    [DebuggerDisplay("{id}")]
-    public class NameId
+    /// <summary>
+    /// The name entry holds a name and an identifier at once.
+    /// </summary>
+    [DebuggerDisplay("{displayName} ({id})")]
+    public class NameEntry
     {
-        public NameId(string id, string displayName = null)
+        /// <summary>
+        /// Construct a new name identifier
+        /// </summary>
+        /// <param name="id"></param>
+        /// <param name="displayName"></param>
+        public NameEntry(string id, string displayName = null)
         {
             this.id = id;
             this.displayName = displayName ?? id;
@@ -35,8 +56,14 @@ namespace Unity.QuickSearch
 
         /// <summary> Unique name for an object </summary>
         public string id;
+
         /// <summary> Display name (use by UI) </summary>
         public string displayName;
+
+        /// <summary>
+        /// Indicates if the entry is enabled
+        /// </summary>
+        public bool isEnabled;
     }
 
     /// <summary>
@@ -50,17 +77,18 @@ namespace Unity.QuickSearch
         public SearchProvider(string id, string displayName = null)
         {
             active = true;
-            name = new NameId(id, displayName);
+            name = new NameEntry(id, displayName);
             actions = new List<SearchAction>();
             fetchItems = (context, items, provider) => null;
             fetchThumbnail = (item, context) => item.thumbnail ?? Icons.quicksearch;
             fetchPreview = null;
             fetchLabel = (item, context) => item.label ?? item.id ?? String.Empty;
             fetchDescription = (item, context) => item.description ?? String.Empty;
-            subCategories = new List<NameId>();
+            subCategories = new List<NameEntry>();
             priority = 100;
             fetchTimes = new double[10];
             fetchTimeWriteIndex = 0;
+            showDetails = false;
         }
 
         /// <summary>
@@ -188,51 +216,70 @@ namespace Unity.QuickSearch
         }
 
         /// <summary> Unique id of the provider.</summary>
-        public NameId name;
+        public NameEntry name;
+        
         /// <summary>
         /// Indicates if the provider is active or not. Inactive providers are completely ignored by the search service. The active state can be toggled in the search settings.
         /// </summary>
         public bool active;
+        
         /// <summary> Text token use to "filter" a provider (ex:  "me:", "p:", "s:")</summary>
         public string filterId;
+        
         /// <summary> This provider is only active when specified explicitly using his filterId</summary>
         public bool isExplicitProvider;
+        
+        /// <summary> Indicates if the provider can show additional details or not.</summary>
+        public bool showDetails;
+
         /// <summary> Handler used to fetch and format the label of a search item.</summary>
-        public FetchStringHandler fetchLabel;
+        public Func<SearchItem, SearchContext, string> fetchLabel;
+        
         /// <summary>
         /// Handler to provider an async description for an item. Will be called when the item is about to be displayed.
         /// Allows a plugin provider to only fetch long description when they are needed.
         /// </summary>
-        public FetchStringHandler fetchDescription;
+        public Func<SearchItem, SearchContext, string> fetchDescription;
+        
         /// <summary>
         /// Handler to provider an async thumbnail for an item. Will be called when the item is about to be displayed.
         /// Compared to preview a thumbnail should be small and returned as fast as possible. Use fetchPreview if you want to generate a preview that is bigger and slower to return.
         /// Allows a plugin provider to only fetch/generate preview when they are needed.
         /// </summary>
-        public ThumbnailHandler fetchThumbnail;
+        public Func<SearchItem, SearchContext, Texture2D> fetchThumbnail;
+        
         /// <summary>
         /// Similar to fetchThumbnail, fetchPreview usually returns a bigger preview. The QuickSearch UI will progressively show one preview each frame,
         /// preventing the UI to block if many preview needs to be generated at the same time.
         /// </summary>
-        public PreviewHandler fetchPreview;
+        public Func<SearchItem, SearchContext, Vector2, FetchPreviewOptions, Texture2D> fetchPreview;
+        
         /// <summary> If implemented, it means the item supports drag. It is up to the SearchProvider to properly setup the DragAndDrop manager.</summary>
-        public StartDragHandler startDrag;
+        public Action<SearchItem, SearchContext> startDrag;
+        
         /// <summary> Called when the selection changed and can be tracked.</summary>
-        public TrackSelectionHandler trackSelection;
+        public Action<SearchItem, SearchContext> trackSelection;
+        
         /// <summary> MANDATORY: Handler to get items for a given search context.</summary>
-        public GetItemsHandler fetchItems;
+        public Func<SearchContext, List<SearchItem>, SearchProvider, IEnumerable<SearchItem>> fetchItems;
+        
         /// <summary> Provider can return a list of words that will help the user complete his search query</summary>
-        public GetKeywordsHandler fetchKeywords;
+        public Action<SearchContext, string, List<string>> fetchKeywords;
+        
         /// <summary> List of subfilters that will be visible in the FilterWindow for a given SearchProvider (see AssetProvider for an example).</summary>
-        public List<NameId> subCategories;
+        public List<NameEntry> subCategories;
+        
         /// <summary> Called when the QuickSearchWindow is opened. Allow the Provider to perform some caching.</summary>
         public Action onEnable;
+        
         /// <summary> Called when the QuickSearchWindow is closed. Allow the Provider to release cached resources.</summary>
         public Action onDisable;
+        
         /// <summary> Hint to sort the Provider. Affect the order of search results and the order in which provider are shown in the FilterWindow.</summary>
         public int priority;
+        
         /// <summary> Called when quicksearch is invoked in "contextual mode". If you return true it means the provider is enabled for this search context.</summary>
-        public IsEnabledForContextualSearch isEnabledForContextualSearch;
+        public Func<bool> isEnabledForContextualSearch;
 
         // INTERNAL
         internal List<SearchAction> actions;

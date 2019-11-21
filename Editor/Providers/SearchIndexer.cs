@@ -89,31 +89,25 @@ namespace Unity.QuickSearch
                 }
             }
 
-            public delegate bool SkipEntryHandler(string entry);
-            public delegate string[] GetQueryTokensHandler(string query);
-            public delegate IEnumerable<string> GetEntryComponentsHandler(string entry, int index);
-            public delegate string GetIndexFilePathHandler(string basePath);
-            public delegate IEnumerable<string> EnumerateRootEntriesHandler(Root root);
-
             public Root[] roots { get; }
             public int minIndexCharVariation { get; set; } = 2;
             public int maxIndexCharVariation { get; set; } = 8;
             public char[] entrySeparators { get; set; } = SearchUtils.entrySeparators;
 
             // Handler used to skip some entries. 
-            public SkipEntryHandler skipEntryHandler { get; set; } = e => false;
+            public Func<string, bool> skipEntryHandler { get; set; } = e => false;
             
             // Handler used to specify where the index database file should be saved. If the handler returns null, the database won't be saved at all.
-            public GetIndexFilePathHandler getIndexFilePathHandler { get; set; } = (p) => null;
+            public Func<string, string> getIndexFilePathHandler { get; set; } = (p) => null;
             
-            // Handler used to parse and split the search query text into words. The tokens needs to be split similarly to how GetEntryComponentsHandler was specified.
-            public GetQueryTokensHandler getQueryTokensHandler { get; set; }
+            // Handler used to parse and split the search query text into words. The tokens needs to be split similarly to how getEntryComponentsHandler was specified.
+            public Func<string, string[]> getQueryTokensHandler { get; set; }
 
             // Handler used to split into words the entries. The order of the words matter. Words at the beginning of the array have a lower score (lower the better)
-            public GetEntryComponentsHandler getEntryComponentsHandler { get; set; } = (e, i) => throw new Exception("You need to specify the get entry components handler");
+            public Func<string, int, IEnumerable<string>> getEntryComponentsHandler { get; set; } = (e, i) => throw new Exception("You need to specify the get entry components handler");
 
             // Handler used to fetch all the entries under a given root.
-            public EnumerateRootEntriesHandler enumerateRootEntriesHandler { get; set; } = r => throw new Exception("You need to specify the root entries enumerator");
+            public Func<Root, IEnumerable<string>> enumerateRootEntriesHandler { get; set; } = r => throw new Exception("You need to specify the root entries enumerator");
 
             private Thread m_IndexerThread;
             private volatile bool m_IndexReady = false;

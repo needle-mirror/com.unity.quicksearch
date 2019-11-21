@@ -25,6 +25,6 @@
 }
 
 .quick-search-border,
-.quick-search-filter-panel-border {
+.quick-search-filter-panel-border, .quick-search-preview-panel-border {
     border: --theme-window-border;
 }

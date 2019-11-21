@@ -184,7 +184,7 @@ namespace Unity.QuickSearch
     {
         private static string packageName = "com.unity.quicksearch";
         internal static string packageFolderName = $"Packages/{packageName}";
-        private static string documentationUrl = "https://docs.unity3d.com/Packages/com.unity.quicksearch@1.4/";
+        private static string documentationUrl = "https://docs.unity3d.com/Packages/com.unity.quicksearch@1.5/";
 
         private static EditorWindow s_FocusedWindow;
         private static bool isDeveloperMode = Utils.IsDeveloperMode();
@@ -244,6 +244,7 @@ namespace Unity.QuickSearch
             public const float actionButtonSize = 24f;
             public const float itemPreviewSize = 32f;
             public const float itemRowSpacing = 30.0f;
+            public const float descriptionPadding = 2f;
             private const int actionButtonMargin = (int)((itemRowHeight - actionButtonSize) / 2f);
             public const float itemRowHeight = itemPreviewSize + itemRowPadding * 2f;
             public const float statusOffset = 20;
@@ -346,6 +347,18 @@ namespace Unity.QuickSearch
                 padding = paddingNone
             };
 
+            public static readonly Vector2 previewSize = new Vector2(256, 256);
+            public static readonly GUIStyle largePreview = new GUIStyle
+            {
+                name = "quick-search-item-large-preview",
+                fixedWidth = previewSize.x,
+                fixedHeight = previewSize.y,
+                alignment = TextAnchor.MiddleCenter,
+                imagePosition = ImagePosition.ImageOnly,
+                margin = new RectOffset(2, 2, 2, 2),
+                padding = paddingNone
+            };
+
             public static readonly GUIStyle itemLabel = new GUIStyle(EditorStyles.label)
             {
                 name = "quick-search-item-label",
@@ -386,6 +399,14 @@ namespace Unity.QuickSearch
 
                 fontSize = Math.Max(9, itemLabel.fontSize - 2),
                 fontStyle = FontStyle.Italic
+            };
+
+            public static readonly GUIStyle previewDescription = new GUIStyle(itemDescription)
+            {
+                wordWrap = true,
+                padding = new RectOffset(4, 4, 4, 4),
+                fontSize = Math.Max(11, itemLabel.fontSize + 2),
+                fontStyle = FontStyle.Normal
             };
 
             public static readonly GUIStyle statusLabel = new GUIStyle(itemDescription)
@@ -505,7 +526,9 @@ namespace Unity.QuickSearch
                 margin = new RectOffset(0, 0, 0, 2),
                 padding = new RectOffset(0, 0, 0, 0)
             };
+
             public static readonly GUILayoutOption[] searchInProgressLayoutOptions = new[] { GUILayout.MaxWidth(searchInProgressButton.fixedWidth) };
+            public static readonly GUIContent emptyContent = new GUIContent("", "No content");
 
             private static Texture2D GenerateSolidColorTexture(Color fillColor)
             {
@@ -760,6 +783,7 @@ namespace Unity.QuickSearch
             GUILayout.EndHorizontal();
         }
 
+        private float m_DrawItemsWidth = 0;
         [UsedImplicitly]
         internal void OnGUI()
         {
@@ -782,7 +806,15 @@ namespace Unity.QuickSearch
                 EditorGUILayout.BeginVertical(Styles.panelBorder);
                 {
                     var rect = DrawToolbar(m_Context);
-                    DrawItems(m_Context);
+                    UpdateScrollAreaOffset();
+                    EditorGUILayout.BeginHorizontal();
+                    {
+                        DrawItems(m_Context);
+                        if (Event.current.type == EventType.Repaint)
+                            m_DrawItemsWidth = GUILayoutUtility.GetLastRect().width;
+                        DrawDetails(m_Context, m_SelectedIndex);
+                    }
+                    EditorGUILayout.EndHorizontal();
                     DrawAutoCompletion(rect);
                     DrawStatusBar();
                 }
@@ -794,6 +826,58 @@ namespace Unity.QuickSearch
             #if QUICKSEARCH_DEBUG
             Profiler.EndSample();
             #endif
+        }
+
+        private double m_LastPreviewStamp = 0;
+        private Texture2D m_PreviewTexture;
+        private int m_LastSelectedIndexDetails = -1;
+        private void DrawDetails(SearchContext context, int selectedIndex)
+        {
+            if (m_FilteredItems == null || selectedIndex < 0 || selectedIndex >= m_FilteredItems.Count)
+                return;
+
+            var item = m_FilteredItems[selectedIndex];
+            if (!item.provider.showDetails)
+                return;
+
+            var now = EditorApplication.timeSinceStartup;
+
+            using (new EditorGUILayout.VerticalScope(GUILayout.Width(Styles.previewSize.x)))
+            {
+                if (item.provider.fetchPreview != null)
+                {
+                    if (now - m_LastPreviewStamp > 2.5)
+                        m_PreviewTexture = null;
+
+                    if (!m_PreviewTexture || m_LastSelectedIndexDetails != selectedIndex)
+                    {
+                        m_LastPreviewStamp = now;
+                        m_PreviewTexture = item.provider.fetchPreview(item, context, Styles.previewSize, FetchPreviewOptions.Preview2D | FetchPreviewOptions.Large);
+                        m_LastSelectedIndexDetails = selectedIndex;
+                    }
+
+                    if (m_PreviewTexture == null || AssetPreview.IsLoadingAssetPreviews())
+                        Repaint();
+
+                    GUILayout.Space(10);
+                    GUILayout.Label(m_PreviewTexture, Styles.largePreview, GUILayout.MaxWidth(Styles.previewSize.x), GUILayout.MaxHeight(Styles.previewSize.y));
+                }
+
+                var description = FormatDescription(item, context, 2048);
+                GUILayout.Label(description, Styles.previewDescription);
+
+                GUILayout.Space(10);
+                foreach (var action in item.provider.actions)
+                {
+                    if (action == null || action.Id == "context" || action.content == null || action.handler == null)
+                        continue;
+                    if (GUILayout.Button(new GUIContent(action.DisplayName, action.content.image, action.content.tooltip), GUILayout.ExpandWidth(true)))
+                    {
+                        ExecuteAction(action, item, context, true);
+                        GUIUtility.ExitGUI();
+                    }
+                }
+            }
         }
 
         internal void OnResize()
@@ -1042,18 +1126,24 @@ namespace Unity.QuickSearch
             if (m_AutoCompleting && m_AutoCompleteRect.Contains(Event.current.mousePosition))
                 return;
 
-            if (Event.current.type == EventType.MouseDown)
+            if (Event.current.type == EventType.MouseDown && Event.current.button == 0)
+            {
+                var clickedItemIndex = (int)(Event.current.mousePosition.y / Styles.itemRowHeight);
+                if (clickedItemIndex >= 0 && clickedItemIndex < itemTotalCount)
+                    m_PrepareDrag = true;
+            }
+            else if (Event.current.type == EventType.MouseUp)
             {
                 var clickedItemIndex = (int)(Event.current.mousePosition.y / Styles.itemRowHeight);
                 if (clickedItemIndex >= 0 && clickedItemIndex < itemTotalCount)
                 {
-                    SetSelection(clickedItemIndex);
-
                     if (Event.current.button == 0)
                     {
+                        SetSelection(clickedItemIndex);
+
                         if ((EditorApplication.timeSinceStartup - m_ClickTime) < 0.2)
                         {
-                            var item = m_FilteredItems.ElementAt(m_SelectedIndex);
+                            var item = m_FilteredItems.ElementAt(clickedItemIndex);
                             if (item.provider.actions.Count > 0)
                                 ExecuteAction(item.provider.actions[0], item, context);
                             GUIUtility.ExitGUI();
@@ -1061,11 +1151,10 @@ namespace Unity.QuickSearch
                         EditorGUI.FocusTextInControl(k_QuickSearchBoxName);
                         Event.current.Use();
                         m_ClickTime = EditorApplication.timeSinceStartup;
-                        m_PrepareDrag = true;
                     }
                     else if (Event.current.button == 1)
                     {
-                        var item = m_FilteredItems.ElementAt(m_SelectedIndex);
+                        var item = m_FilteredItems.ElementAt(clickedItemIndex);
                         if (item.provider.actions.Count > 0)
                         {
                             var contextAction = item.provider.actions.Find(a => a.Id == SearchAction.kContextualMenuAction);
@@ -1085,9 +1174,10 @@ namespace Unity.QuickSearch
             }
             else if (Event.current.type == EventType.MouseDrag && m_PrepareDrag)
             {
-                if (m_FilteredItems != null && m_SelectedIndex >= 0)
+                var dragIndex = (int)(Event.current.mousePosition.y / Styles.itemRowHeight);
+                if (m_FilteredItems != null && dragIndex >= 0 && dragIndex < itemTotalCount)
                 {
-                    var item = m_FilteredItems.ElementAt(m_SelectedIndex);
+                    var item = m_FilteredItems.ElementAt(dragIndex);
                     if (item.provider?.startDrag != null)
                     {
                         item.provider.startDrag(item, context);
@@ -1112,8 +1202,6 @@ namespace Unity.QuickSearch
 
         private void DrawItems(SearchContext context)
         {
-            UpdateScrollAreaOffset();
-
             context.totalItemCount = m_FilteredItems.Count;
 
             using (var scrollViewScope = new EditorGUILayout.ScrollViewScope(m_ScrollPosition))
@@ -1197,8 +1285,11 @@ namespace Unity.QuickSearch
         {
             SendSearchEvent(item, action);
 
-            SearchService.LastSearch = context.searchText;
-            SearchService.SetRecent(item);
+            if (endSearch)
+            { 
+                SearchService.LastSearch = context.searchText;
+                SearchService.SetRecent(item);
+            }
             action.handler(item, context);
             if (endSearch && action.closeWindowAfterExecution)
                 CloseSearchWindow();
@@ -1382,7 +1473,7 @@ namespace Unity.QuickSearch
 
                 using (new EditorGUILayout.VerticalScope())
                 {
-                    var maxWidth = position.width - Styles.actionButtonSize - Styles.itemPreviewSize - Styles.itemRowSpacing;
+                    var maxWidth = m_DrawItemsWidth - Styles.actionButtonSize - Styles.itemPreviewSize - Styles.itemRowSpacing - Styles.descriptionPadding;
                     var textMaxWidthLayoutOption = GUILayout.MaxWidth(maxWidth);
                     GUILayout.Label(item.provider.fetchLabel(item, context), m_SelectedIndex == index ? Styles.selectedItemLabel : Styles.itemLabel, textMaxWidthLayoutOption);
                     GUILayout.Label(FormatDescription(item, context, maxWidth), m_SelectedIndex == index ? Styles.selectedItemDescription : Styles.itemDescription, textMaxWidthLayoutOption);
@@ -1420,7 +1511,7 @@ namespace Unity.QuickSearch
                         }
 
                         var previewSize = new Vector2(Styles.preview.fixedWidth, Styles.preview.fixedHeight);
-                        thumbnail = item.provider.fetchPreview(item, context, previewSize, FetchPreviewOptions.Preview2D);
+                        thumbnail = item.provider.fetchPreview(item, context, previewSize, FetchPreviewOptions.Preview2D | FetchPreviewOptions.Normal);
                         if (thumbnail)
                         {
                             previewFetchedCount++;
@@ -1477,6 +1568,8 @@ namespace Unity.QuickSearch
         private static GUIContent FormatDescription(SearchItem item, SearchContext context, float availableSpace)
         {
             var desc = item.description ?? item.provider.fetchDescription(item, context);
+            if (String.IsNullOrEmpty(desc))
+                return Styles.emptyContent;
             var content = TakeContent(desc);
             if (item.descriptionFormat == SearchItemDescriptionFormat.None || Event.current.type != EventType.Repaint)
                 return content;
@@ -1492,7 +1585,10 @@ namespace Unity.QuickSearch
                 if (truncated)
                 {
                     if (item.descriptionFormat.HasFlag(SearchItemDescriptionFormat.RightToLeft))
-                        truncatedDesc = "..." + desc.Replace("<b>", "").Replace("</b>", "").Substring(desc.Length - maxCharLength);
+                    {
+                        truncatedDesc = "..." + desc.Replace("<b>", "").Replace("</b>", "");
+                        truncatedDesc = truncatedDesc.Substring(Math.Max(0, truncatedDesc.Length - maxCharLength));
+                    }
                     else
                         truncatedDesc = desc.Substring(0, Math.Min(maxCharLength, desc.Length)) + "...";
                 }
@@ -1523,28 +1619,31 @@ namespace Unity.QuickSearch
         private void ShowItemContextualMenu(SearchItem item, SearchContext context, Rect position = default)
         {
             var menu = new GenericMenu();
-            int i = 0;
+            int shortcutIndex = 0;
             foreach (var action in item.provider.actions)
             {
+                if (action.Id == "context")
+                    continue;
+
                 var itemName = action.content.tooltip;
-                if (i == 0)
+                if (shortcutIndex == 0)
                 {
                     itemName += " _enter";
                 }
-                else if (i == 1)
+                else if (shortcutIndex == 1)
                 {
                     itemName += " _&enter";
                 }
-                else if (i == 2)
+                else if (shortcutIndex == 2)
                 {
                     itemName += " _&%enter";
                 }
-                else if (i == 3)
+                else if (shortcutIndex == 3)
                 {
                     itemName += " _&%#enter";
                 }
                 menu.AddItem(new GUIContent(itemName, action.content.image), false, () => ExecuteAction(action, item, context));
-                ++i;
+                ++shortcutIndex;
             }
 
             if (position == default)
@@ -1610,7 +1709,7 @@ namespace Unity.QuickSearch
         /// <param name="defaultWidth">Initial width of the window.</param>
         /// <param name="defaultHeight">Initial height of the window.</param>
         /// <returns>Returns the Quick Search editor window instance.</returns>
-        public static QuickSearch ShowWindow(float defaultWidth = 650, float defaultHeight = 440)
+        public static QuickSearch ShowWindow(float defaultWidth = 850, float defaultHeight = 539)
         {
             s_FocusedWindow = focusedWindow;
 

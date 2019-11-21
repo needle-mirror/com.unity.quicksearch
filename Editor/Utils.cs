@@ -57,12 +57,19 @@ namespace Unity.QuickSearch
             return thumbnail ?? UnityEditorInternal.InternalEditorUtility.FindIconForFile(path);
         }
 
-        public static Texture2D GetAssetPreviewFromPath(string path)
+        public static Texture2D GetAssetPreviewFromPath(string path, Vector2 previewSize, FetchPreviewOptions previewOptions)
         {
             var obj = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(path);
             if (obj == null)
                 return null;
-            return AssetPreview.GetAssetPreview(obj);
+            var preview = AssetPreview.GetAssetPreview(obj);
+            if (preview == null || previewOptions.HasFlag(FetchPreviewOptions.Large))
+            {
+                var largePreview = AssetPreview.GetMiniThumbnail(obj);
+                if (preview == null || (largePreview != null && largePreview.width > preview.width))
+                    preview = largePreview;
+            }
+            return preview;
         }
 
         public static void FrameAssetFromPath(string path)
@@ -543,6 +550,45 @@ namespace Unity.QuickSearch
             if (!String.IsNullOrEmpty(m_Name))
                 Debug.Log($"{m_Name} took {timeMs} ms");
             #endif
+        }
+    }
+
+    internal static class TryConvert
+    {
+        public static bool ToBool(string value, bool defaultValue = false)
+        {
+            try
+            {
+                return Convert.ToBoolean(value);
+            }
+            catch(Exception)
+            {
+                return defaultValue;
+            }
+        }
+
+        public static float ToFloat(string value, float defaultValue = 0f)
+        {
+            try
+            {
+                return Convert.ToSingle(value);
+            }
+            catch (Exception)
+            {
+                return defaultValue;
+            }
+        }
+
+        public static int ToInt(string value, int defaultValue = 0)
+        {
+            try
+            {
+                return Convert.ToInt32(value);
+            }
+            catch (Exception)
+            {
+                return defaultValue;
+            }
         }
     }
 

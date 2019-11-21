@@ -72,11 +72,11 @@ namespace Unity.QuickSearch
         /// Performs a fuzzy search on a string to see if it matches a pattern. 
         /// </summary>
         /// <param name="pattern">Pattern that we try to match the source string</param>
-        /// <param name="str_origin">String we are looking into for a match</param>
+        /// <param name="origin">String we are looking into for a match</param>
         /// <param name="outScore">Score of the match. A higher score means the pattern is a better match for the string.</param>
         /// <param name="matches">List of indices in the source string where a match was found.</param>
         /// <returns>Returns true if a match was found</returns>
-        public static bool FuzzyMatch(string pattern, string str_origin, ref long outScore, List<int> matches)
+        public static bool FuzzyMatch(string pattern, string origin, ref long outScore, List<int> matches)
         {
             int str_n;
             int pattern_n;
@@ -88,11 +88,11 @@ namespace Unity.QuickSearch
                 outScore = -100000;
                 matches.Clear();
 
-                if (string.IsNullOrEmpty(str_origin)) return false;
+                if (string.IsNullOrEmpty(origin)) return false;
 
                 if (string.IsNullOrEmpty(pattern)) return true;
 
-                str = str_origin.ToLowerInvariant();
+                str = origin.ToLowerInvariant();
                 pattern_n = pattern.Length;
 
                 var allowEmptyQuery = false; //filter.HasFilters();
@@ -261,8 +261,8 @@ namespace Unity.QuickSearch
 
                         else
                         {
-                            var currOrigI = str_origin[si];
-                            var prevOrigI = str_origin[si - 1];
+                            var currOrigI = origin[si];
+                            var prevOrigI = origin[si - 1];
 
                             if (char.IsUpper(currOrigI) && char.IsUpper(prevOrigI) == false)
                                 s += camel_bonus;
@@ -287,8 +287,8 @@ namespace Unity.QuickSearch
 
                             var si = str_start + d.matches_indx[j][mi].i;
 
-                            var currOrigI = str_origin[si];
-                            var prevOrigI = str_origin[si - 1];
+                            var currOrigI = origin[si];
+                            var prevOrigI = origin[si - 1];
 
                             if (char.IsUpper(currOrigI) && char.IsUpper(prevOrigI) == false)
                                 match.score += camel_bonus;
@@ -431,7 +431,7 @@ namespace Unity.QuickSearch
                 }
                 else
                 {
-                    result[guard] = title[t_i++];
+                    result[guard] = title[Math.Min(t_i++, title.Length-1)];
 
                     if (needToClose)
                     {

@@ -6,7 +6,7 @@ using UnityEngine;
 
 namespace Unity.QuickSearch
 {
-    public static class Icons
+    internal static class Icons
     {
         public static string iconFolder = $"{QuickSearch.packageFolderName}/Editor/Icons";
         public static Texture2D shortcut = LoadIcon($"{iconFolder}/shortcut.png");
@@ -83,7 +83,7 @@ namespace Unity.QuickSearch
             return outTexture;
         }
 
-        public static Color LightenColor(Color color)
+        private static Color LightenColor(Color color)
         {
             Color.RGBToHSV(color, out var h, out _, out _);
             var outColor = Color.HSVToRGB((h + 0.5f) % 1, 0f, 0.8f);

@@ -8,7 +8,7 @@ namespace Unity.QuickSearch
     /// <summary>
     /// An async search session tracks all incoming items found by search provider that weren't returned right away after the search was initiated.
     /// </summary>
-    public class AsyncSearchSession
+    class AsyncSearchSession
     {
         /// <summary>
         /// This event is used to receive any async search result.

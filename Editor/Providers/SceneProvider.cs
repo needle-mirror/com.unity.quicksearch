@@ -27,7 +27,7 @@ namespace Unity.QuickSearch.Providers
             public GameObject gameObject;
         }
 
-        protected class SceneSearchIndexer : SearchIndexer
+        class SceneSearchIndexer : SearchIndexer
         {
             private const int k_MinIndexCharVariation = 2;
             private const int k_MaxIndexCharVariation = 8;
@@ -66,7 +66,7 @@ namespace Unity.QuickSearch.Providers
         }
 
         protected GOD[] gods { get; set; }
-        protected SceneSearchIndexer indexer { get; set; }
+        private SceneSearchIndexer indexer { get; set; }
         protected Dictionary<int, string> componentsById { get; set; } = new Dictionary<int, string>();
         protected Dictionary<int, int> patternMatchCount { get; set; } = new Dictionary<int, int>();
         protected bool m_HierarchyChanged = true;
@@ -82,10 +82,11 @@ namespace Unity.QuickSearch.Providers
         {
             priority = 50;
             this.filterId = filterId;
+            this.showDetails = true;
 
-            subCategories = new List<NameId>
+            subCategories = new List<NameEntry>
             {
-                new NameId("fuzzy", "fuzzy"),
+                new NameEntry("fuzzy", "fuzzy"),
             };
 
             isEnabledForContextualSearch = () =>
@@ -167,7 +168,7 @@ namespace Unity.QuickSearch.Providers
                 var assetPath = GetHierarchyAssetPath(obj, true);
                 if (String.IsNullOrEmpty(assetPath))
                     return item.thumbnail;
-                return AssetPreview.GetAssetPreview(obj) ?? Utils.GetAssetPreviewFromPath(assetPath);
+                return AssetPreview.GetAssetPreview(obj) ?? Utils.GetAssetPreviewFromPath(assetPath, size, options);
             };
 
             startDrag = (item, context) =>
@@ -234,7 +235,7 @@ namespace Unity.QuickSearch.Providers
         {
             List<int> matches = new List<int>();
             var sq = CleanString(context.searchQuery);
-            var useFuzzySearch = gods.Length < k_LODDetail2 && context.categories.Any(c => c.name.id == "fuzzy" && c.isEnabled);
+            var useFuzzySearch = gods.Length < k_LODDetail2 && context.categories.Any(c => c.id == "fuzzy" && c.isEnabled);
 
             for (int i = 0, end = gods.Length; i != end; ++i)
             {
@@ -282,7 +283,7 @@ namespace Unity.QuickSearch.Providers
             var matches = new List<int>();
             var objects = fetchGameObjects();
             var filter = CleanString(context.searchQuery);
-            var useFuzzySearch = objects.Length < k_LODDetail2 && context.categories.Any(c => c.name.id == "fuzzy" && c.isEnabled);
+            var useFuzzySearch = objects.Length < k_LODDetail2 && context.categories.Any(c => c.id == "fuzzy" && c.isEnabled);
 
             gods = new GOD[objects.Length];
             for (int i = 0; i < objects.Length; ++i)

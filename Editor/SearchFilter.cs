@@ -6,42 +6,29 @@ namespace Unity.QuickSearch
 {
     public class SearchFilter
     {
-        [DebuggerDisplay("{name.displayName}")]
-        public class Entry
+        [DebuggerDisplay("{entry.name.displayName} expanded:{isExpanded}")]
+        internal class ProviderDesc
         {
-            public Entry(NameId name)
+            public ProviderDesc(NameEntry name, SearchProvider provider)
             {
                 this.name = name;
-                isEnabled = true;
-            }
-
-            public NameId name;
-            public bool isEnabled;
-        }
-
-        [DebuggerDisplay("{entry.name.displayName} expanded:{isExpanded}")]
-        public class ProviderDesc
-        {
-            public ProviderDesc(NameId name, SearchProvider provider)
-            {
-                entry = new Entry(name);
-                categories = new List<Entry>();
+                categories = new List<NameEntry>();
                 isExpanded = false;
                 this.provider = provider;
             }
 
             public int priority => provider.priority;
 
-            public Entry entry;
+            public NameEntry name;
             public bool isExpanded;
-            public List<Entry> categories;
+            public List<NameEntry> categories;
             public SearchProvider provider;
         }
 
         public bool allActive { get; internal set; }
 
-        public List<SearchProvider> filteredProviders;
-        public List<ProviderDesc> providerFilters;
+        internal List<SearchProvider> filteredProviders;
+        internal List<ProviderDesc> providerFilters;
 
         private List<SearchProvider> m_Providers;
         public List<SearchProvider> Providers
@@ -55,11 +42,11 @@ namespace Unity.QuickSearch
                 filteredProviders.Clear();
                 foreach (var provider in m_Providers.Where(p => p.active))
                 {
-                    var providerFilter = new ProviderDesc(new NameId(provider.name.id, GetProviderNameWithFilter(provider)), provider);
+                    var providerFilter = new ProviderDesc(new NameEntry(provider.name.id, GetProviderNameWithFilter(provider)), provider);
                     providerFilters.Add(providerFilter);
                     foreach (var subCategory in provider.subCategories)
                     {
-                        providerFilter.categories.Add(new Entry(subCategory));
+                        providerFilter.categories.Add(subCategory);
                     }
                 }
                 UpdateFilteredProviders();
@@ -76,7 +63,7 @@ namespace Unity.QuickSearch
         {
             allActive = enableAll;
             foreach (var providerDesc in providerFilters)
-                SetFilterInternal(enableAll, providerDesc.entry.name.id, null, preserveSubFilters);
+                SetFilterInternal(enableAll, providerDesc.name.id, null, preserveSubFilters);
             UpdateFilteredProviders();
         }
 
@@ -88,7 +75,7 @@ namespace Unity.QuickSearch
 
         public void SetExpanded(bool isExpanded, string providerId)
         {
-            var providerDesc = providerFilters.Find(pd => pd.entry.name.id == providerId);
+            var providerDesc = providerFilters.Find(pd => pd.name.id == providerId);
             if (providerDesc != null)
             {
                 providerDesc.isExpanded = isExpanded;
@@ -97,17 +84,17 @@ namespace Unity.QuickSearch
 
         public bool IsEnabled(string providerId, string subCategory = null)
         {
-            var desc = providerFilters.Find(pd => pd.entry.name.id == providerId);
+            var desc = providerFilters.Find(pd => pd.name.id == providerId);
             if (desc != null)
             {
                 if (subCategory == null)
                 {
-                    return desc.entry.isEnabled;
+                    return desc.name.isEnabled;
                 }
 
                 foreach (var cat in desc.categories)
                 {
-                    if (cat.name.id == subCategory)
+                    if (cat.id == subCategory)
                         return cat.isEnabled;
                 }
             }
@@ -120,9 +107,9 @@ namespace Unity.QuickSearch
             return string.IsNullOrEmpty(provider.filterId) ? provider.name.displayName : provider.name.displayName + " (" + provider.filterId + ")";
         }
 
-        public List<Entry> GetSubCategories(SearchProvider provider)
+        public List<NameEntry> GetSubCategories(SearchProvider provider)
         {
-            var desc = providerFilters.Find(pd => pd.entry.name.id == provider.name.id);
+            var desc = providerFilters.Find(pd => pd.name.id == provider.name.id);
             return desc?.categories;
         }
 
@@ -133,13 +120,13 @@ namespace Unity.QuickSearch
 
         internal bool SetFilterInternal(bool isEnabled, string providerId, string subCategory = null, bool preserveSubFilters = false)
         {
-            var providerDesc = providerFilters.Find(pd => pd.entry.name.id == providerId);
+            var providerDesc = providerFilters.Find(pd => pd.name.id == providerId);
             if (providerDesc == null) 
                 return false;
 
             if (subCategory == null)
             {
-                providerDesc.entry.isEnabled = isEnabled;
+                providerDesc.name.isEnabled = isEnabled;
                 if (preserveSubFilters) 
                     return true;
 
@@ -150,17 +137,16 @@ namespace Unity.QuickSearch
             {
                 foreach (var cat in providerDesc.categories)
                 {
-                    if (cat.name.id == subCategory)
+                    if (cat.id == subCategory)
                     {
                         cat.isEnabled = isEnabled;
                         if (isEnabled)
-                            providerDesc.entry.isEnabled = true;
+                            providerDesc.name.isEnabled = true;
                     }
                 }
             }
 
             return true;
-
         }
     }
 }

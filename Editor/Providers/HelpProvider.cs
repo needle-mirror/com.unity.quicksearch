@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.Linq;
 using JetBrains.Annotations;
 using UnityEditor;
@@ -13,7 +14,7 @@ namespace Unity.QuickSearch
             internal static string type = "help";
             internal static string displayName = "Help";
 
-            static Dictionary<SearchItem, ActionHandler> m_StaticItemToAction;
+            static Dictionary<SearchItem, Action<SearchItem, SearchContext>> m_StaticItemToAction;
 
             [UsedImplicitly, SearchItemProvider]
             internal static SearchProvider CreateProvider()
@@ -84,16 +85,13 @@ namespace Unity.QuickSearch
 
             static void BuildHelpItems(SearchProvider helpProvider)
             {
-                m_StaticItemToAction = new Dictionary<SearchItem, ActionHandler>();
+                m_StaticItemToAction = new Dictionary<SearchItem, Action<SearchItem, SearchContext>>();
 
                 {
                     var helpItem = helpProvider.CreateItem("help_open_quicksearch_doc", "Open Quick Search Documentation");
                     helpItem.score = m_StaticItemToAction.Count;
                     helpItem.thumbnail = Icons.settings;
-                    m_StaticItemToAction.Add(helpItem, (item, context) =>
-                    {
-                        QuickSearch.OpenDocumentationUrl();
-                    });
+                    m_StaticItemToAction.Add(helpItem, (item, context) => QuickSearch.OpenDocumentationUrl());
                 }
 
                 // Settings provider: id, Search for...
@@ -132,20 +130,14 @@ namespace Unity.QuickSearch
                         );
                     helpItem.thumbnail = Icons.shortcut;
                     helpItem.score = m_StaticItemToAction.Count;
-                    m_StaticItemToAction.Add(helpItem, (item, context) =>
-                    {
-                        context.searchView.SetSearchText($">{actionId} ");
-                    });
+                    m_StaticItemToAction.Add(helpItem, (item, context) => context.searchView.SetSearchText($">{actionId} "));
                 }
 
                 {
                     var helpItem = helpProvider.CreateItem("help_open_pref", "Open Quick Search Preferences");
                     helpItem.score = m_StaticItemToAction.Count;
                     helpItem.thumbnail = Icons.settings;
-                    m_StaticItemToAction.Add(helpItem, (item, context) =>
-                    {
-                        SettingsService.OpenUserPreferences(SearchSettings.settingsPreferencesKey);
-                    });
+                    m_StaticItemToAction.Add(helpItem, (item, context) => SettingsService.OpenUserPreferences(SearchSettings.settingsPreferencesKey));
                 }
 
                 {

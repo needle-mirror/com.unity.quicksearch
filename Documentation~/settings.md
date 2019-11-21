@@ -1,46 +1,20 @@
 # Quick Search Preferences
 
-## Opening Settings page
+You can set Quick Search preferences from the Unity [Preferences window](https://docs.unity3d.com/Manual/Preferences.html) (menu: **Unity > Preferences**).
 
-There are multiple ways to access the QuickSearch preferences:
+> [!TIP]
+> You can also access the Quick Search preferences in any of the following ways:
+> - Enter **?** (question mark) in the search field and select **Open Quick Search Preferences** from the results.
+> - In the [status bar](index.md#the-quick-search-window) or the [Filters pane](search-filters.md#persistent-search-filters), select **Preferences** (gear icon).  
 
-type `?` and select Open QuickSearch preferences
+![settings page](Images/QS_Preferences.png)<br/>_Quick Search Settings_
 
-![settings help](Images/settings_help.png)
-
-Or click the cog icon in the Filter window
-
-![settings help](Images/settings_menu_button.png)
-
-Or use the good old edit -> Preferences menu:
-
-![settings help](Images/settings_edit_menu.png)
-
-## Preference page
-
-The preference page controls all of QuickSearch global settings
-
-![settings page](Images/settings_page.png)
-
-### Track the current selection
-
-If this setting is toggled, it means each time QuickSearch selection changed, the `SearchProvider.trackSelection` callback will be executed (see [api](api.md) section). Usually providers will **ping** assets in the Project browser or Hierarchy. Please note that if your project is big this might lead to a slowdown while navigating between search items.
-
-### Generate an asset preview thumbnail
-
-If toggled, we use Unity preview generator to get a thumbnail for each displayed (and only displayed) items. If not toggled we use a generic icon (which is faster in big projects).
-
-### Use dockable window
-
-Will pop the QuickSearch tool in a normal **dockable** Editor Window. That said it is not a recommended workflow has some caching and refreshing done when we close/open QuickSearch might be done less frequently.
-
-![dockable](Images/quicksearch-dockable.png)
-
-### Provider Order
-
-The **red** section in the settings screenshot shows how you can modify the order search items are shown on the screen. You can reorder providers by their relative importance and all items of a higher order provider will appear BEFORE lower order.
-
-### Provider Default action
-
-The **blue** section in the settings screen shows how you can customize what is the default action when pressing `enter` or when double clicking a search item. This is only valid for providers offering multiple actions.
-
+|Setting:||Function:|
+|-|-|-|
+|**Track the current selection in the quick search**   |   |Enable this setting to execute the [`SearchProvider.trackSelection`](api.md#track-selection) callback each time the Quick Search selection changes.<br/><br/>The callback _pings_ Assets in the Project window or Hierarchy window, which can slow Quick Search navigation in large Projects.|
+|**Generate an asset preview thumbnail for found items**   |   |Enable this setting to display thumbnails for items that are currently visible in the results pane of the Quick Search window.<br/><br/>When you disable this setting, Quick Search displays a generic icon. This is useful in large Projects, where generating icons can slow Quick Search navigation.|
+|**Provider Settings**   |   |   |
+|   | **A** _[Provider Toggles]_  | Enable and disable providers. When you disable a provider, Quick Search ignores it when executing searches.   |
+|   | **B** _[Provider Order]_  | Use these settings to modify the order in which search items are shown on the screen. All items of a given priority appear before any lower priority items.  |
+|   |  **C** _[Default Actions]_  | Use these settings to choose the default actions to execute when you select (for example, double-click) an item in the search results. |
+|**Reset Priorities**   |   | Resets all providers to their default on/off state and priority.  |

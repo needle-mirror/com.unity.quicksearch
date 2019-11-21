@@ -65,12 +65,14 @@ namespace Unity.QuickSearch.Providers
 
         #region Provider
 
-        private static SearchProvider CreateProvider(string type, string label, string filterId, int priority, GetItemsHandler fetchItemsHandler)
+        private static SearchProvider CreateProvider(string type, string label, string filterId, int priority, 
+                Func<SearchContext, List<SearchItem>, SearchProvider, IEnumerable<SearchItem>> fetchItemsHandler)
         {
             return new SearchProvider(type, label)
             {
                 priority = priority,
                 filterId = filterId,
+                showDetails = true,
 
                 isEnabledForContextualSearch = () => QuickSearch.IsFocusedWindowTypeName("ProjectBrowser"),
 
@@ -90,7 +92,7 @@ namespace Unity.QuickSearch.Providers
                 },
 
                 fetchThumbnail = (item, context) => Utils.GetAssetThumbnailFromPath(item.id),
-                fetchPreview = (item, context, size, options) => Utils.GetAssetPreviewFromPath(item.id),
+                fetchPreview = (item, context, size, options) => Utils.GetAssetPreviewFromPath(item.id, size, options),
 
                 startDrag = (item, context) =>
                 {
@@ -105,7 +107,7 @@ namespace Unity.QuickSearch.Providers
 
                 trackSelection = (item, context) => Utils.PingAsset(item.id),
 
-                subCategories = new List<NameId>()
+                subCategories = new List<NameEntry>()
             };
         }
 
@@ -124,8 +126,8 @@ namespace Unity.QuickSearch.Providers
             var provider = CreateProvider(k_ProjectAssetsType, displayName, "p:", 25,
                 (context, items, _provider) => SearchAssets(context, items, _provider, fileIndexer));
 
-            provider.subCategories.Add(new NameId("guid", "guid"));
-            provider.subCategories.Add(new NameId("packages", "packages"));
+            provider.subCategories.Add(new NameEntry("guid", "guid"));
+            provider.subCategories.Add(new NameEntry("packages", "packages"));
 
             AssetRefreshWatcher.Enable();
 
@@ -135,8 +137,8 @@ namespace Unity.QuickSearch.Providers
         private static IEnumerable<SearchItem> SearchAssets(SearchContext context, List<SearchItem> items, SearchProvider provider, SearchIndexer fileIndexer)
         {
             var filter = context.searchQuery;
-            var searchPackages = context.categories.Any(c => c.name.id == "packages" && c.isEnabled);
-            var searchGuids = context.categories.Any(c => c.name.id == "guid" && c.isEnabled);
+            var searchPackages = context.categories.Any(c => c.id == "packages" && c.isEnabled);
+            var searchGuids = context.categories.Any(c => c.id == "guid" && c.isEnabled);
 
             if (searchGuids)
             {
@@ -251,8 +253,10 @@ namespace Unity.QuickSearch.Providers
                         var asset = AssetDatabase.LoadAssetAtPath<Object>(item.id);
                         if (asset != null)
                         {
+                            var old = Selection.activeObject;
                             Selection.activeObject = asset;
                             EditorUtility.DisplayPopupMenu(QuickSearch.ContextualActionPosition, "Assets/", null);
+                            EditorApplication.delayCall += () => Selection.activeObject = old;
                         }
                     }
                 }

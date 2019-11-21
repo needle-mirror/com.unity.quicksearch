@@ -8,14 +8,14 @@ using JetBrains.Annotations;
 namespace Unity.QuickSearch
 {
     /// <summary>
-    /// Attribute used to declare a static method that will a new search provider at load time.
+    /// Attribute used to declare a static method that will create a new search provider at load time.
     /// </summary>
     public class SearchItemProviderAttribute : Attribute
     {
     }
 
     /// <summary>
-    /// Attribute used to declare a static method that define new available actions for specific search providers.
+    /// Attribute used to declare a static method that define new actions for specific search providers.
     /// </summary>
     public class SearchActionsProviderAttribute : Attribute
     {
@@ -401,7 +401,7 @@ namespace Unity.QuickSearch
             context.textFilters = tokens.Where(t => t.Contains(":")).ToArray();
 
             // Reformat search text so it only contains text filter that are specific to providers and ensure those filters are at the beginning of the search text.
-            context.searchQuery = string.Join(" ", context.textFilters.Concat(context.tokenizedSearchQuery));
+            context.searchQuery = string.Join(" ", context.tokenizedSearchQuery).Trim();
 
             if (overrideFilterId != null)
             {
@@ -484,8 +484,7 @@ namespace Unity.QuickSearch
 
         private static bool FetchProviders()
         {
-            try
-            {
+            
                 Providers = Utils.GetAllMethodsWithAttribute<SearchItemProviderAttribute>().Select(methodInfo =>
                 {
                     try
@@ -513,11 +512,7 @@ namespace Unity.QuickSearch
                 }).Where(provider => provider != null).ToList();
 
                 RefreshProviders();
-            }
-            catch (Exception)
-            {
-                return false;
-            }
+            
 
             return true;
         }
@@ -625,8 +620,8 @@ namespace Unity.QuickSearch
             {
                 var filter = new Dictionary<string, object>
                 {
-                    ["providerId"] = providerDesc.entry.name.id,
-                    ["isEnabled"] = providerDesc.entry.isEnabled,
+                    ["providerId"] = providerDesc.name.id,
+                    ["isEnabled"] = providerDesc.name.isEnabled,
                     ["isExpanded"] = providerDesc.isExpanded
                 };
                 var categories = new List<object>();
@@ -635,7 +630,7 @@ namespace Unity.QuickSearch
                 {
                     categories.Add(new Dictionary<string, object>()
                     {
-                        { "id", cat.name.id },
+                        { "id", cat.id },
                         { "isEnabled", cat.isEnabled }
                     });
                 }

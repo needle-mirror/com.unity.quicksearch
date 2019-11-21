@@ -1,87 +1,100 @@
-# Usage
+# Using Quick Search
 
-Quick Search packs a lot of punches and has a lot of hidden features. This section explains all workflows Quick Search is capable of.
+To use Quick Search, do the following:
 
-## How to Open Quick Search
+1. **[Launch Quick Search](#launch-quick-search)**
+1. **[Search](#searching)**
+1. **[Perform actions on items in the results](#performing-actions)**
 
-The more generic way of opening Quick Search is:
+## Launch Quick Search
 
-- `Alt + '` : It opens Quick Search in the same state it was the last time you used it. *The filter configuration and last search are preserved.*
+There are several ways to open the Quick Search window:
 
-There are multiple ways to open Quick Search when you want to specifically look for a **type** of items.
+|Shortcut:|Function:|
+|-|-|
+|**Alt + \'**   | Open Quick Search in the state it was in the last time you used it. <ul><li>The last search term you used appears in the search field.</li><li>The last changes you made to the [filter configuration](search-filters.md#persistent-search-filters) are still in effect.</li></ul> |
+|**Alt + Shift + M**   | Start a search for menu items only. |
+|**Alt + Shift + C**   | Start a contextual search. The scope depends on what has focus when you open the Quick Search window.<ul><li>If the Hierarchy window has focus, Quick Search searches Scene items.</li><li>If the Project window has focus, Quick Search searches Project Assets.</li><li>If any other window has focus, Quick Search opens as though you used the **Alt + \'** shortcut.</li></ul>  |
 
-- `Alt + Shift + M` : Search **only** for Menu items
-- `Alt + Shift + C` : Contextual search. If the *Hierarchy View* has the focus, it searches for Scene items. If the *Project Browser* has the focus, it searches for assets. If any other view has the focus, Quick Search is open as normal.
+> [!TIP]
+> You can change the keyboard shortcuts used to launch Quick Search from the [Shortcuts Manager](https://docs.unity3d.com/Manual/ShortcutsManager.html).
 
-## Keyboard Navigation
+## Searching
 
-All the features of the Quick Search tool can be accessed using the keyboard. Some of these shortcuts are explained on the Quick Search introduction screen (available when no text is in the search area):
+To perform regular or special searches, use the search field.
 
-![qs usage](Images/quicksearch_usage_page.png)
+### Regular searches
 
-The Search box is *always focused* and you can type even with an element selected.
-- `Alt + Left Arrow` : Toggle the Filter view
-    - Using `Up Arrow`, `Down Arrow` in the Filter view cycle between filters.
-    - Using `spacebar` toggle a filter
+A [regular search](regular-searches.md) uses all regular Search Providers unless you exclude them.
 
-![filter](Images/filter_keyboard.gif)
+- To perform a regular search using all [active Search Providers](search-filters.md#persistent-search-filters), enter the search terms in the search field. Results appear as you type.
 
-- `Alt + Right Arrow` : Pop the action selection menu if the selected item has multiple actions available.
+- To only display results for a specific Search Provider, prefix the search terms with the Provider's [search token](regular-searches.md#providers).<br/><br/>A search token is a text string that you can use in the search field to search using only a specific Search Provider.
 
-![action](Images/action_keyboard.gif)
+The following table lists regular Search Providers and their search tokens:
 
-- `Enter` :  default action on selected item
-- `Alt + Enter` : Secondary action on selected item
-- `Alt + Ctrl + Enter` : Third action on selected item
-- `Alt + Ctrl + Shift + Enter` : Fourth action on selected item
+[!include[](incl-search-providers.md)]
 
-- `Alt + Up Arrow` or `Alt + Down Arrow` navigate through the search history:
+### Special searches
 
-![history navigation](Images/history_cycle.gif)
+A [special search](special-searches.md) is opt-in: Quick Search only uses special Search Providers when you perform a special search.    
 
-## Provider Filters
+To perform a special search, prefix the search terms with the Provider's search token.
 
-Those filters define which Search Providers are available for a search. This can help reduce the number of items return by a search query especially if you know what type of item you are looking for:
+The following table lists special Search Providers and their search tokens:
 
-![provider filter](Images/provider_filter.png)
+[!include[](incl-special-search-providers.md)]
 
-The Filter window allows you to customize which providers are available for a search. Note that the filter is kept in the same state each time you open Quick Search.
+### Navigating search results
 
-### Provider text filters
-From the Quick Search Box you can type a search provider `filter id` that will restrain the search to **this specific provider**. The `filter id`s are:
+Use **Alt + &uarr;** (up arrow) and **Alt + &darr;** (down arrow) cycle through the search history.
 
-- Asset (i.e. Project Browser): `p:`
-- Menu: `me:`
-- Scene (i.e. Hierarchy): `h:`
-- Packages: `pkg:`
-- Settings: `se:`
-- Online Search: `web:`
+## Performing actions
 
-Examples of queries using text providers:
+After you search, you can perform actions on the items Quick Search returns. The actions you can perform depend on the type of item.
 
-- `p:Player` : Search assets containing "Player"
-- `h:Main Camera` : Search scene for GameObjects with "Main Camera" in their name
-- `me:Test Runner` : Search menu items for Test Runner
-- `se:VFX` : Search settings (project and preferences) for VFX
+For example if Quick Search returns a package, you can install/uninstall it. If Quick Search returns an Asset, you can select, open, or highlight it in the Hierarchy window.
 
-![text_providers](Images/text_providers.gif)
+- Every type of item has a [default action](#default-actions).
+- Some items support [additional actions](#additional-actions) via a context menu.
+- Some items also support [drag and drop actions](#drag-and-drop-actions).
 
-## Drag and Drop
 
-Asset and Scene items allow dragging from the Quick Search window to anywhere that supports it (hierarchy view, game view, inspector, etc.):
+To find out which actions you can perform on different types of items, see the pages for individual search filters in the [Regular searches](regular-searches.md) and [Special searches](special-searches.md) sections.
 
-![dnd](Images/drag_and_drop.gif)
+### Default actions
 
-## Right click menu
+Every type of item has a default action.
 
-Some items (i.e. Asset) support right clicking and will show the expected contextual menu.
+To perform the default action for an item do one of the following:
 
-![contextual menu](Images/item_contextual_menu.png)
+- Double-click the item.
+- Select the item and use **Enter**.
 
-## Search Results Ordering
+### Additional actions
 
-Quick Search supports a clever "scoring" system per items. This means some items who better match a query will be prioritized.
+Some items support additional actions that you access from a context menu.
 
-Quick Search also learns with you as the "score" of an item will be bumped if it is often selected!
+To access the additional actions context menu for an item, do one of the following:
 
-See the [settings](settings.md) section to learn how to customize search ordering between different providers.
+- Right-click the item.
+- Select the item and use **Alt + &rarr;** (right-arrow).
+- In the item entry, select **More Options** (**&vellip;**).
+
+You can also use the following shortcuts to perform additional actions on a selected item without opening the contextual menu:
+
+|Shortcut:|Function:|
+|-|-|
+|**Alt + Enter**|Second action|
+|**Alt + Ctrl + Enter**|Third action|
+|**Alt + Ctrl + Shift + Enter**|Fourth action|
+
+### Drag and Drop actions
+
+Some Search Providers (for example, the [Asset](search-assets.md) and [Scene](search-scene.md) providers) support drag and drop actions. You can drag items from the results area to any part of Unity that supports them, for example, the Hierarchy window, the Game view, or the Inspector.
+
+
+
+
+
+

@@ -11,7 +11,7 @@ namespace Unity.QuickSearch
     {
         // Raw search text (i.e. what is in the search text box)
         public string searchText;
-        // Processed search query: filterId were removed.
+        // Processed search query (no filterId, no textFilters)
         public string searchQuery;
         // Search query tokenized by words.
         public string[] tokenizedSearchQuery;
@@ -20,7 +20,7 @@ namespace Unity.QuickSearch
         // All tokens containing a colon (':')
         public string[] textFilters;
         // All sub categories related to this provider and their enabled state.
-        public List<SearchFilter.Entry> categories;
+        public List<NameEntry> categories;
         // Mark the number of item found after running the search.
         public int totalItemCount;
         // Editor window that initiated the search

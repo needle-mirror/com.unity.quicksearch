@@ -11,16 +11,21 @@ namespace Unity.QuickSearch
     {
         static class SearchUtility
         {
-            public static void Goto(string baseUrl, List<Tuple<string, string>> query)
+            public static void Goto(string baseUrl, List<Tuple<string, string>> query = null)
             {
-                var url = baseUrl + "?";
-                for (var i = 0; i < query.Count; ++i)
+                var url = baseUrl;
+
+                if (query != null)
                 {
-                    var item = query[i];
-                    url += item.Item1 + "=" + item.Item2;
-                    if (i < query.Count - 1)
+                    url += "?";
+                    for (var i = 0; i < query.Count; ++i)
                     {
-                        url += "&";
+                        var item = query[i];
+                        url += item.Item1 + "=" + item.Item2;
+                        if (i < query.Count - 1)
+                        {
+                            url += "&";
+                        }
                     }
                 }
 
@@ -34,7 +39,7 @@ namespace Unity.QuickSearch
             internal static string searchUrl = "https://answers.unity.com/search.html";
             internal static OnlineSearchItemTemplate template = new OnlineSearchItemTemplate()
             {
-                name = new NameId("answers", "Answers"),
+                name = new NameEntry("answers", "Answers"),
                 icon = Icons.search,
                 descriptionTitle = "answers.unity.com",
                 actionHandler = Goto
@@ -56,7 +61,7 @@ namespace Unity.QuickSearch
             internal static string searchUrl = "https://docs.unity3d.com/Manual/30_search.html";
             internal static OnlineSearchItemTemplate template = new OnlineSearchItemTemplate()
             {
-                name = new NameId("manual", "Manual"),
+                name = new NameEntry("manual", "Manual"),
                 icon = Icons.search,
                 descriptionTitle = "docs.unity3d.com/Manual",
                 actionHandler = Goto
@@ -75,7 +80,7 @@ namespace Unity.QuickSearch
             internal static string searchUrl = "https://docs.unity3d.com/ScriptReference/30_search.html";
             internal static OnlineSearchItemTemplate template = new OnlineSearchItemTemplate()
             {
-                name = new NameId("scripting", "Scripting API"),
+                name = new NameEntry("scripting", "Scripting API"),
                 icon = Icons.search,
                 descriptionTitle = "docs.unity3d.com/ScriptReference",
                 actionHandler = Goto
@@ -94,7 +99,7 @@ namespace Unity.QuickSearch
             internal static string searchUrl = "https://assetstore.unity.com/";
             internal static OnlineSearchItemTemplate template = new OnlineSearchItemTemplate()
             {
-                name = new NameId("store", "Asset Store"),
+                name = new NameEntry("store", "Asset Store"),
                 icon = Icons.store,
                 descriptionTitle = "assetstore.unity.com",
                 actionHandler = Goto
@@ -112,7 +117,7 @@ namespace Unity.QuickSearch
 
         internal class OnlineSearchItemTemplate
         {
-            public NameId name;
+            public NameEntry name;
             public Action<SearchItem, SearchContext> actionHandler;
             public Texture2D icon;
             public string descriptionTitle;
@@ -155,8 +160,8 @@ namespace Unity.QuickSearch
                         {
                             if (!category.isEnabled)
                                 continue;
-                            var template = FindById(category.name.id);
-                            var item = provider.CreateItem(category.name.id, "Search " + template.descriptionTitle, "Search for: " + context.searchQuery, template.icon);
+                            var template = FindById(category.id);
+                            var item = provider.CreateItem(category.id, "Search " + template.descriptionTitle, "Search for: " + context.searchQuery, template.icon);
                             items.Add(item);
                         }
 
