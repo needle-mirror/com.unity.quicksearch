@@ -344,7 +344,7 @@ namespace Unity.QuickSearch.Providers
             }
             else
             {
-                priceStr = doc.price_USD == 0 ? "Free" : $"{doc.price_USD}$";
+                priceStr = doc.price_USD == 0 ? "Free" : $"{doc.price_USD:0.00}$";
             }
             
             var item = provider.CreateItem(doc.id, score, doc.name_en_US, $"{doc.publisher} - {doc.category_slug} - <color=#F6B93F>{priceStr}</color>", null, doc);
@@ -365,13 +365,46 @@ namespace Unity.QuickSearch.Providers
 
         static void OnEnable()
         {
+            #if UNITY_2019_3_OR_NEWER
             CheckPurchases();
+            #endif
+        }
+
+        static object s_UnityConnectInstance = null;
+        static Type s_CloudConfigUrlEnum = null;
+        static object GetUnityConnectInstance()
+        {
+            if (s_UnityConnectInstance != null)
+                return s_UnityConnectInstance;
+            var assembly = typeof(UnityEditor.Connect.UnityOAuth).Assembly;
+            var managerType = assembly.GetTypes().First(t => t.Name == "UnityConnect");
+            var instanceAccessor = managerType.GetProperty("instance", BindingFlags.Public | BindingFlags.Static);
+            s_UnityConnectInstance = instanceAccessor.GetValue(null);
+            s_CloudConfigUrlEnum = assembly.GetTypes().First(t => t.Name == "CloudConfigUrl");
+            return s_UnityConnectInstance;
+        }
+
+        static bool HasAccessToken()
+        {
+            #if UNITY_2019_3_OR_NEWER
+            return !String.IsNullOrEmpty(GetConnectAccessToken());
+            #else
+            return false;
+            #endif
+        }
+
+        #if UNITY_2019_3_OR_NEWER
+        static string GetConnectAccessToken()
+        {
+            //UnityConnect.instance.GetAccessToken()
+            var instance = GetUnityConnectInstance();
+            var method = instance.GetType().GetMethod("GetAccessToken");
+            return (string)method.Invoke(instance, null);
         }
 
         static void CheckPurchases()
         {
-            #if UNITY_2019_3_OR_NEWER
-            if (UnityEditorInternal.InternalEditorUtility.inBatchMode)
+            if (!HasAccessToken())
                 return;
 
             if (s_PackagesKey == null)
@@ -399,8 +432,8 @@ namespace Unity.QuickSearch.Providers
                     purchasePackageIds.Add(purchaseInfo.packageId.ToString());
                 }
             });
-            #endif
         }
+        #endif
 
         [UsedImplicitly, SearchItemProvider]
         internal static SearchProvider CreateProvider()
@@ -414,7 +447,9 @@ namespace Unity.QuickSearch.Providers
                 #endif
                 filterId = "store:",
                 onEnable = OnEnable,
+                #if UNITY_2019_3_OR_NEWER
                 showDetails = true,
+                #endif
                 fetchItems = (context, items, provider) => SearchStore(context, provider),
                 fetchThumbnail = (item, context) => FetchImage(((AssetDocument)item.data).icon, false, s_Previews),
                 fetchPreview = (item, context, size, options) => 
@@ -423,20 +458,25 @@ namespace Unity.QuickSearch.Providers
                         return null;
 
                     var doc = (AssetDocument)item.data;
-                    if (doc.purchaseDetail == null)
+                    #if UNITY_2019_3_OR_NEWER
+                    if (s_PackagesKey != null)
                     {
-                        var productId = Convert.ToInt32(doc.id);
-                        GetPurchaseInfo(Convert.ToInt32(doc.id), (detail, error) =>
+                        if (doc.purchaseDetail == null)
                         {
-                            if (error != null)
+                            var productId = Convert.ToInt32(doc.id);
+                            GetPurchaseInfo(Convert.ToInt32(doc.id), (detail, error) =>
                             {
-                                return;
-                            }
+                                if (error != null)
+                                {
+                                    return;
+                                }
 
-                            doc.purchaseDetail = detail;
-                        });
-                        return null;
+                                doc.purchaseDetail = detail;
+                            });
+                            return null;
+                        }
                     }
+                    #endif
 
                     if (doc.purchaseDetail?.mainImage?.big != null)
                         return FetchImage(new[] { doc.purchaseDetail.mainImage.big }, false, s_Previews);
@@ -520,30 +560,27 @@ namespace Unity.QuickSearch.Providers
         {
             var doc = (AssetDocument)item.data;
             SearchUtility.Goto(doc.url);
+            #if UNITY_2019_3_OR_NEWER
             CheckPurchases();
+            #endif
         }
 
+        #if UNITY_2019_3_OR_NEWER
         static string GetPackagesKey()
         {
-            // using (new DebugTimer("GetPackagesKey"))
-            {
-                // We want to do this:
-                // UnityEditor.Connect.UnityConnect.instance.GetConfigurationURL(CloudConfigUrl.CloudPackagesKey);
-                var assembly = typeof(UnityEditor.Connect.UnityOAuth).Assembly;
-                var managerType = assembly.GetTypes().First(t => t.Name == "UnityConnect");
-                var instanceAccessor = managerType.GetProperty("instance", BindingFlags.Public | BindingFlags.Static);
-                var instance = instanceAccessor.GetValue(null);
-                var getConfigUrl = managerType.GetMethod("GetConfigurationURL");
-                var cloudConfigUrlEnum = assembly.GetTypes().First(t => t.Name == "CloudConfigUrl");
-                var packmanKey = cloudConfigUrlEnum.GetEnumValues().GetValue(12);
-                var packageKey = (string)getConfigUrl.Invoke(instance, new[] { packmanKey });
-                return packageKey;
-            }
+            // We want to do this:
+            // UnityEditor.Connect.UnityConnect.instance.GetConfigurationURL(CloudConfigUrl.CloudPackagesKey);
+            var instance = GetUnityConnectInstance();
+            var getConfigUrl = instance.GetType().GetMethod("GetConfigurationURL");
+            var packmanKey = s_CloudConfigUrlEnum.GetEnumValues().GetValue(12);
+            var packageKey = (string)getConfigUrl.Invoke(instance, new[] { packmanKey });
+            return packageKey;
         }
+        #endif
 
+        #if UNITY_2020_1_OR_NEWER
         static void OpenPackageManager(string packageName)
         {
-            #if UNITY_2020_1_OR_NEWER
             if (s_OpenPackageManager == null)
             {
                 // We want to do this:
@@ -558,8 +595,8 @@ namespace Unity.QuickSearch.Providers
             }
 
             s_OpenPackageManager(packageName);
-            #endif
         }
+        #endif
 
         static void GetAuthCode(Action<string, Exception> done)
         {
@@ -609,6 +646,11 @@ namespace Unity.QuickSearch.Providers
                 }
                 RequestAccessToken(authCode, (accessTokenData, error) => 
                 {
+                    if (accessTokenData == null)
+                    {
+                        done(null, "Failed to get access token.");
+                        return;
+                    }
                     s_AccessTokenData = accessTokenData;
                     s_AccessTokenData.expiration = long.Parse(s_AccessTokenData.expires_in);
                     s_AccessTokenData.expirationStarts = GetEpochSeconds();

@@ -897,6 +897,8 @@ namespace Unity.QuickSearch
 
         private int SetSelection(int selection)
         {
+            if (m_FilteredItems == null)
+                return -1;
             var previousSelection = m_SelectedIndex;
             m_SelectedIndex = Math.Max(-1, Math.Min(selection, m_FilteredItems.Count - 1));
             if (m_SelectedIndex == k_ResetSelectionIndex)
