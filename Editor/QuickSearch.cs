@@ -1192,6 +1192,7 @@ namespace Unity.QuickSearch
                         Event.current.Use();
                         #if UNITY_EDITOR_OSX
                         CloseSearchWindow();
+                        GUIUtility.ExitGUI();
                         #endif
                     }
                 }

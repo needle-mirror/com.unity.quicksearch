@@ -29,7 +29,7 @@ namespace Unity.QuickSearch.Providers
         public static void Initialize()
         {
             EditorApplication.delayCall -= Initialize;
-            using (new DebugTimer("Loading global asset index"))
+            //using (new DebugTimer("Loading global asset index"))
             {
                 s_GlobalIndexer.Build();
                 AssetPostprocessorIndexer.Enable();
@@ -51,10 +51,10 @@ namespace Unity.QuickSearch.Providers
             s_GlobalIndexer.Start();
             foreach (var path in updated.Concat(moved).Distinct())
             {
-                using (new DebugTimer($"Indexing {path}..."))
+                //using (new DebugTimer($"Indexing {path}..."))
                     s_GlobalIndexer.IndexAsset(path, true);
             }
-            using (new DebugTimer($"Merging changes {String.Join(", ", updated.Concat(removed).Concat(moved).Distinct())}..."))
+            //using (new DebugTimer($"Merging changes {String.Join(", ", updated.Concat(removed).Concat(moved).Distinct())}..."))
                 s_GlobalIndexer.Finish(true, removed);
         }
 

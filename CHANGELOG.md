@@ -1,4 +1,4 @@
-## [1.5.0-preview.3] - 2020-01-09
+## [1.5.0-preview.4] - 2020-01-09
 - [UX] You can now search scene objects with a given component using c:<component name>.
 - [UX] We've removed the dockable window mode of Quick Search since it wasn't playing nice with some loading and refreshing workflows and optimizations.
 - [UX] Update the quick search spinning wheel when async results are still being fetched.

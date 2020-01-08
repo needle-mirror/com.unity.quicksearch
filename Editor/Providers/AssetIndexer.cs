@@ -79,25 +79,20 @@ namespace Unity.QuickSearch.Providers
             }, null);
         }
 
-         #if USE_ASYNC_PROGRESS
-        private static IEnumerator BuildIndex(int progressId, object userData)
+        #if USE_ASYNC_PROGRESS
+        private System.Collections.IEnumerator BuildIndex(int progressId, object userData)
         #else
         private void BuildIndex(int progressId, object userData = null)
         #endif
         {
-            EditorApplication.LockReloadAssemblies();
-            AssetDatabase.StartAssetEditing();
-
             var paths = AssetDatabase.GetAllAssetPaths();
             var pathIndex = 0;
             var pathCount = (float)paths.Length;
 
             Start(true);
 
-            #if USE_ASYNC_PROGRESS
-            var sw = new Stopwatch();
-            sw.Start();
-            #endif
+            EditorApplication.LockReloadAssemblies();
+            //AssetDatabase.StartAssetEditing();
             foreach (var path in paths)
             {
                 #if USE_ASYNC_PROGRESS
@@ -109,13 +104,11 @@ namespace Unity.QuickSearch.Providers
                 IndexAsset(path, false);
 
                 #if USE_ASYNC_PROGRESS
-                if (sw.Elapsed.TotalSeconds > 0.25)
-                {
-                    sw.Restart();
-                    yield return null;
-                }
+                yield return null;
                 #endif
             }
+            //AssetDatabase.StopAssetEditing();
+            EditorApplication.UnlockReloadAssemblies();
 
             Finish(true);
             //Print();
@@ -127,9 +120,6 @@ namespace Unity.QuickSearch.Providers
             #else
             EditorUtility.ClearProgressBar();
             #endif
-
-            AssetDatabase.StopAssetEditing();
-            EditorApplication.UnlockReloadAssemblies();
         }
 
         private string[] GetComponents(string value, int documentIndex)
