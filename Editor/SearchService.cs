@@ -94,11 +94,6 @@ namespace Unity.QuickSearch
         }
 
         /// <summary>
-        /// Raised when the content of a search provider has changed.
-        /// </summary>
-        public static event Action<string[], string[], string[]> contentRefreshed;
-
-        /// <summary>
         /// Returns the current search filter being applied.
         /// </summary>
         public static SearchFilter Filter { get; private set; }
@@ -197,7 +192,7 @@ namespace Unity.QuickSearch
         public static string[] GetKeywords(SearchContext context, string lastToken)
         {
             var keywords = new List<string>();
-            if (context.isActionQuery && lastToken.StartsWith(k_ActionQueryToken))
+            if (context.isActionQuery && lastToken.StartsWith(k_ActionQueryToken, StringComparison.Ordinal))
             {
                 keywords.AddRange(ActionIdToProviders.Keys.Select(k => k_ActionQueryToken + k));
             }
@@ -235,7 +230,7 @@ namespace Unity.QuickSearch
             if (context.isActionQuery || OverrideFilter.filteredProviders.Count > 0)
                 return GetItems(context, OverrideFilter);
 
-            if (string.IsNullOrEmpty(context.searchQuery))
+            if (string.IsNullOrEmpty(context.searchText))
                 return new List<SearchItem>(0);
 
             return GetItems(context, Filter);
@@ -365,7 +360,7 @@ namespace Unity.QuickSearch
         {
             string[] overrideFilterId = null;
             context.searchQuery = context.searchText ?? String.Empty;
-            context.isActionQuery = context.searchQuery.StartsWith(">");
+            context.isActionQuery = context.searchQuery.StartsWith(">", StringComparison.Ordinal);
             if (context.isActionQuery)
             {
                 var searchIndex = 1;
@@ -386,7 +381,7 @@ namespace Unity.QuickSearch
             {
                 foreach (var kvp in TextFilterIds)
                 {
-                    if (context.searchQuery.StartsWith(kvp.Key, StringComparison.InvariantCultureIgnoreCase))
+                    if (context.searchQuery.StartsWith(kvp.Key, StringComparison.OrdinalIgnoreCase))
                     {
                         overrideFilterId = new [] {kvp.Value};
                         context.searchQuery = context.searchQuery.Remove(0, kvp.Key.Length).Trim();
@@ -395,13 +390,9 @@ namespace Unity.QuickSearch
                 }
             }
 
-            var tokens = context.searchQuery.Split(' ');
-            context.tokenizedSearchQuery = tokens.Where(t => !t.Contains(":")).ToArray();
-            context.tokenizedSearchQueryLower = context.tokenizedSearchQuery.Select(t => t.ToLowerInvariant()).ToArray();
+            var tokens = context.searchQuery.Split(' ').Select(t => t.ToLowerInvariant()).ToArray();
+            context.searchWords = tokens.Where(t => !t.Contains(":")).ToArray();
             context.textFilters = tokens.Where(t => t.Contains(":")).ToArray();
-
-            // Reformat search text so it only contains text filter that are specific to providers and ensure those filters are at the beginning of the search text.
-            context.searchQuery = string.Join(" ", context.tokenizedSearchQuery).Trim();
 
             if (overrideFilterId != null)
             {
@@ -443,7 +434,7 @@ namespace Unity.QuickSearch
                                     session = new AsyncSearchSession();
                                     s_SearchSessions.Add(provider.name.id, session);
                                 }
-                                session.Reset(enumerable.GetEnumerator(), maxFetchTimePerProviderMs);
+                                session.Reset(enumerable, maxFetchTimePerProviderMs);
                                 if (!session.FetchSome(allItems, maxFetchTimePerProviderMs))
                                     session.Stop();
                             }
@@ -451,7 +442,7 @@ namespace Unity.QuickSearch
                         }
                         catch (Exception ex)
                         {
-                            UnityEngine.Debug.LogError($"Failed to get fetch {provider.name.displayName} provider items.\r\n{ex}");
+                            UnityEngine.Debug.LogException(new Exception($"Failed to get fetch {provider.name.displayName} provider items.", ex));
                         }
                     }
                 }
@@ -683,40 +674,5 @@ namespace Unity.QuickSearch
                 searchSession.Value.Stop();
             }
         }
-
-        #region Refresh search content event
-        private static double s_BatchElapsedTime;
-        private static string[] s_UpdatedItems = new string[0];
-        private static string[] s_RemovedItems = new string[0];
-        private static string[] s_MovedItems = new string[0];
-        internal static void RaiseContentRefreshed(IEnumerable<string> updated, IEnumerable<string> removed, IEnumerable<string> moved)
-        {
-            s_UpdatedItems = s_UpdatedItems.Concat(updated).Distinct().ToArray();
-            s_RemovedItems = s_RemovedItems.Concat(removed).Distinct().ToArray();
-            s_MovedItems = s_MovedItems.Concat(moved).Distinct().ToArray();
-
-            RaiseContentRefreshed();
-        }
-
-        private static void RaiseContentRefreshed()
-        {
-            var currentTime = EditorApplication.timeSinceStartup;
-            if (s_BatchElapsedTime != 0 && currentTime - s_BatchElapsedTime > 0.5)
-            {
-                if (s_UpdatedItems.Length != 0 || s_RemovedItems.Length != 0 || s_MovedItems.Length != 0)
-                    contentRefreshed?.Invoke(s_UpdatedItems, s_RemovedItems, s_MovedItems);
-                s_UpdatedItems = new string[0];
-                s_RemovedItems = new string[0];
-                s_MovedItems = new string[0];
-                s_BatchElapsedTime = 0;
-            }
-            else
-            {
-                if (s_BatchElapsedTime == 0)
-                    s_BatchElapsedTime = currentTime;
-                EditorApplication.delayCall += RaiseContentRefreshed;
-            }
-        }
-        #endregion
     }
 }

@@ -17,13 +17,13 @@ namespace Unity.QuickSearch.Providers
     {
         #pragma warning disable CS0649
         [Serializable]
-        class Request
+        class StoreSearchRequest
         {
             public string q;
         }
 
         [Serializable]
-        class ResponseHeader
+        class StoreSearchResponseHeader
         {
             public int status;
             public int QTime;
@@ -36,7 +36,7 @@ namespace Unity.QuickSearch.Providers
         }
 
         [UsedImplicitly, Serializable]
-        class ResponseObject
+        class StoreSearchResponseObject
         {
             public int numFound;
             public int numInserted;
@@ -71,14 +71,15 @@ namespace Unity.QuickSearch.Providers
             // public string partner;
 
             // Cache for the PurchaseInfo API
-            public PurchaseDetail purchaseDetail;
+            public ProductDetails productDetail;
+            public string[] images;
         }
 
         [UsedImplicitly, Serializable]
-        class StoreResponse
+        class StoreSearchResponse
         {
-            public ResponseHeader responseHeader;
-            public ResponseObject response;
+            public StoreSearchResponseHeader responseHeader;
+            public StoreSearchResponseObject response;
             public ErrorObject error;
         }
 
@@ -170,7 +171,35 @@ namespace Unity.QuickSearch.Providers
             public PurchaseDetailCategory category;
             public PurchaseDetailMainImage mainImage;
         }
-        #pragma warning restore CS0649
+
+
+        [UsedImplicitly, Serializable]
+        class ProductListResponse
+        {
+            public ProductDetails[] results;
+        }
+
+        [Serializable]
+        class ImageDesc
+        {
+            public int height;
+            public int width;
+            public string imageUrl;
+            public string thumbnailUrl;
+            public string type;
+        }
+
+        [Serializable]
+        class ProductDetails
+        {
+            // public string id;
+            // public string packageId;
+            // public string slug;
+            public PurchaseDetailMainImage mainImage;
+            public ImageDesc[] images;
+
+        }
+#pragma warning restore CS0649
 
         class PreviewData
         {
@@ -205,6 +234,7 @@ namespace Unity.QuickSearch.Providers
         }
 
         private const string kSearchEndPoint = "https://assetstore.unity.com/api/search";
+        private const string kProductDetailsEndPoint = "https://api.unity.com/v1/products/list";
         private static Dictionary<string, PreviewData> s_Previews = new Dictionary<string, PreviewData>();
         private static bool s_StartPurchaseRequest;
         private static List<PurchaseInfo> s_Purchases = new List<PurchaseInfo>();
@@ -245,7 +275,7 @@ namespace Unity.QuickSearch.Providers
 
             var requestQuery = new Dictionary<string, object>()
             {
-                { "q", context.searchQuery }
+                { "q", string.Join(" ", context.searchWords).Trim() }
             };
             ProcessFilter(context, requestQuery);
 
@@ -255,11 +285,11 @@ namespace Unity.QuickSearch.Providers
             while (!rao.isDone)
                 yield return null;
 
-            StoreResponse response;
+            StoreSearchResponse response;
             // using (new DebugTimer("Parse response"))
             {
                 var saneJsonStr = webRequest.downloadHandler.text.Replace("name_en-US\"", "name_en_US\"");
-                response = JsonUtility.FromJson<StoreResponse>(saneJsonStr);
+                response = JsonUtility.FromJson<StoreSearchResponse>(saneJsonStr);
             }
 
             if (!string.IsNullOrEmpty(webRequest.error))
@@ -346,9 +376,14 @@ namespace Unity.QuickSearch.Providers
             {
                 priceStr = doc.price_USD == 0 ? "Free" : $"{doc.price_USD:0.00}$";
             }
-            
-            var item = provider.CreateItem(doc.id, score, doc.name_en_US, $"{doc.publisher} - {doc.category_slug} - <color=#F6B93F>{priceStr}</color>", null, doc);
-            doc.purchaseDetail = null;
+
+            var description = $"{doc.publisher} - {doc.category_slug} - <color=#F6B93F>{priceStr}</color>";
+            #if QUICKSEARCH_DEBUG
+            description += $" id: {doc.id}";
+            #endif
+            var item = provider.CreateItem(doc.id, score, doc.name_en_US, description, null, doc);
+
+            doc.productDetail = null;
             doc.url = $"https://assetstore.unity.com/packages/{doc.category_slug}/{doc.id}";
             return item;
         }
@@ -461,25 +496,26 @@ namespace Unity.QuickSearch.Providers
                     #if UNITY_2019_3_OR_NEWER
                     if (s_PackagesKey != null)
                     {
-                        if (doc.purchaseDetail == null)
+                        if (doc.productDetail == null)
                         {
                             var productId = Convert.ToInt32(doc.id);
-                            GetPurchaseInfo(Convert.ToInt32(doc.id), (detail, error) =>
+                            RequestProductDetailsInfo(new [] { productId }, (detail, error) =>
                             {
-                                if (error != null)
+                                if (error != null || detail.results.Length == 0)
                                 {
                                     return;
                                 }
-
-                                doc.purchaseDetail = detail;
+                                doc.productDetail = detail.results[0];
+                                doc.images = new [] {doc.productDetail.mainImage.big}.Concat(
+                                    doc.productDetail.images.Where(img => img.type == "screenshot").Select(imgDesc => imgDesc.imageUrl)).ToArray();
                             });
                             return null;
                         }
                     }
                     #endif
 
-                    if (doc.purchaseDetail?.mainImage?.big != null)
-                        return FetchImage(new[] { doc.purchaseDetail.mainImage.big }, false, s_Previews);
+                    if (doc.productDetail?.images.Length > 0)
+                        return FetchImage(doc.images, true, s_Previews);
 
                     if (doc.key_images.Length > 0)
                         return FetchImage(doc.key_images, true, s_Previews);
@@ -851,6 +887,26 @@ namespace Unity.QuickSearch.Providers
             };
         }
 
+        static void RequestProductDetailsInfo(int[] productIds, Action<ProductListResponse, string> done)
+        {
+            var requestStr = Utils.JsonSerialize(productIds);
+            var request = Post(kProductDetailsEndPoint, requestStr);
+            var asyncOp = request.SendWebRequest();
+            asyncOp.completed += op =>
+            {
+                if (request.isHttpError || request.isNetworkError)
+                {
+                    done(null, request.error);
+                }
+                else
+                {
+                    var text = request.downloadHandler.text;
+                    var result = JsonUtility.FromJson<ProductListResponse>(text);
+                    done(result, null);
+                }
+            };
+        }
+
         static void RequestPurchases(string accessToken, Action<PurchaseResponse, string> done, int offset = 0, int limit = 50)
         {
             var url = $"https://packages-v2.unity.com/-/api/purchases?offset={offset}&limit={limit}&query=";
@@ -946,6 +1002,15 @@ namespace Unity.QuickSearch.Providers
             GetPurchaseInfo(90173, (detail, err) =>
             {
                 Debug.Log($"GetUserInfo: {detail.displayName} {detail.mainImage.big}");
+            });
+        }
+
+        [MenuItem("Tools/GetDetailsInfo")]
+        static void GetDetailsInfo()
+        {
+            RequestProductDetailsInfo(new []{ 116455 }, (detail, err) =>
+            {
+                Debug.Log($"GetDetailsInfo: nb images {detail.results[0].images.Length} {detail.results[0].images[0].imageUrl}");
             });
         }
 

@@ -43,7 +43,79 @@ namespace Unity.QuickSearch
         }
     }
 
-    internal class SearchServiceTests
+    class AsyncSearchProviderEnumerator : AsyncSearchProvider
+    {
+        public AsyncSearchProviderEnumerator(string id, string displayName = null)
+            : base(id, displayName)
+        {
+            fetchItems = (context, items, provider) => FetchItemsIEnumerator(provider);
+            UseSleep = false;
+            SleepTimeMS = 0;
+        }
+
+        private IEnumerator FetchNullItems()
+        {
+            for (var i = 0; i < NumberNullItems; ++i)
+            {
+                if (UseSleep)
+                    Thread.Sleep(SleepTimeMS);
+                yield return null;
+            }
+        }
+
+        private IEnumerator FetchSearchItems(SearchProvider provider)
+        {
+            for (var i = 0; i < NumberSearchItems; ++i)
+            {
+                if (UseSleep)
+                    Thread.Sleep(SleepTimeMS);
+                var item = provider.CreateItem(i.ToString(), i.ToString());
+                yield return item;
+            }
+        }
+
+        private IEnumerator FetchItemsIEnumerator(SearchProvider provider)
+        {
+            yield return FetchNullItems();
+            yield return FetchSearchItems(provider);
+        }
+    }
+
+    class AsyncSearchProviderEnumeratorEnumerable : AsyncSearchProvider
+    {
+        public AsyncSearchProviderEnumeratorEnumerable(string id, string displayName = null)
+            : base(id, displayName)
+        {
+            fetchItems = (context, items, provider) => FetchItemsIEnumerator(provider);
+            UseSleep = false;
+            SleepTimeMS = 0;
+        }
+
+        private IEnumerable<SearchItem> FetchSearchItems(SearchProvider provider)
+        {
+            for (var i = 0; i < NumberSearchItems; ++i)
+            {
+                if (UseSleep)
+                    Thread.Sleep(SleepTimeMS);
+                var item = provider.CreateItem(i.ToString(), i.ToString());
+                yield return item;
+            }
+        }
+
+        private IEnumerator FetchItemsIEnumerator(SearchProvider provider)
+        {
+            for (var i = 0; i < NumberNullItems; ++i)
+            {
+                if (UseSleep)
+                    Thread.Sleep(SleepTimeMS);
+                yield return null;
+            }
+
+            yield return FetchSearchItems(provider);
+        }
+    }
+
+    class SearchServiceTests
     {
         const string k_TestFileName = "Packages/com.unity.quicksearch/Tests/Editor/Content/test_material_42.mat";
 
@@ -62,9 +134,9 @@ namespace Unity.QuickSearch
         }
 
         [UnityTest]
-        public IEnumerator FetchItems()
+        public IEnumerator FetchItems1()
         {
-            var ctx = new SearchContext {searchText = "test_material_42", wantsMore = true};
+            var ctx = new SearchContext {searchText = "p:test_material_42", wantsMore = true};
 
             var fetchedItems = SearchService.GetItems(ctx);
             while (AsyncSearchSession.SearchInProgress)
@@ -80,6 +152,32 @@ namespace Unity.QuickSearch
             Assert.IsNotNull(foundItem.provider.fetchDescription);
             var fetchedDescription = foundItem.provider.fetchDescription(foundItem, ctx);
             Assert.AreEqual("Packages/com.unity.quicksearch/Tests/Editor/Content/test_material_42.mat (2.0 KB)", fetchedDescription);
+        }
+
+        [UnityTest]
+        public IEnumerator FetchItems2()
+        {
+            var fetchedItems = SearchService.GetItems(new SearchContext { searchText = "p:test material 42" });
+            while (AsyncSearchSession.SearchInProgress)
+                yield return null;
+
+            Assert.IsNotEmpty(fetchedItems);
+            var foundItem = fetchedItems.Find(item => item.label == Path.GetFileName(k_TestFileName));
+            Assert.IsNotNull(foundItem);
+            Assert.AreEqual(foundItem.id, k_TestFileName);
+        }
+
+        [UnityTest]
+        public IEnumerator FetchItems3()
+        {
+            var fetchedItems = SearchService.GetItems(new SearchContext { searchText = "p:t:material 42" });
+            while (AsyncSearchSession.SearchInProgress)
+                yield return null;
+
+            Assert.IsNotEmpty(fetchedItems);
+            var foundItem = fetchedItems.Find(item => item.label == Path.GetFileName(k_TestFileName));
+            Assert.IsNotNull(foundItem);
+            Assert.AreEqual(foundItem.id, k_TestFileName);
         }
 
         [UnityTest]
@@ -135,14 +233,11 @@ namespace Unity.QuickSearch
 
     internal class AsyncSearchSessionTests
     {
-        AsyncSearchProvider m_Provider;
-
         [SetUp]
         public void EnableService()
         {
             SearchService.Enable(SearchContext.Empty);
             SearchService.Filter.ResetFilter(true);
-            m_Provider = new AsyncSearchProvider(Guid.NewGuid().ToString());
         }
 
         [TearDown]
@@ -152,14 +247,34 @@ namespace Unity.QuickSearch
         }
 
         [Test]
-        public void FetchSome()
+        public void FetchSomeIEnumerable()
+        {
+            var provider = new AsyncSearchProvider(Guid.NewGuid().ToString());
+            TestProvider(provider);
+        }
+
+        [Test]
+        public void FetchSomeIEnumerator()
+        {
+            var provider = new AsyncSearchProviderEnumerator(Guid.NewGuid().ToString());
+            TestProvider(provider);
+        }
+
+        [Test]
+        public void FetchSomeIEnumeratorIEnumerable()
+        {
+            var provider = new AsyncSearchProviderEnumeratorEnumerable(Guid.NewGuid().ToString());
+            TestProvider(provider);
+        }
+
+        private static void TestProvider(AsyncSearchProvider provider)
         {
             var session = new AsyncSearchSession();
             var ctx = SearchContext.Empty;
             var items = new List<SearchItem>();
-            var enumerable = m_Provider.fetchItems(ctx, items, m_Provider);
+            var enumerable = provider.fetchItems(ctx, items, provider);
             Assert.IsEmpty(items);
-            session.Reset(enumerable.GetEnumerator());
+            session.Reset(enumerable);
 
             // Test fetching all objects
             var total = AsyncSearchProvider.NumberNullItems + AsyncSearchProvider.NumberSearchItems;
@@ -170,12 +285,14 @@ namespace Unity.QuickSearch
             session.FetchSome(items, total, false);
             Assert.AreEqual(0, items.Count); // Should be empty since enumerator is at the end
 
-            session.Reset(enumerable.GetEnumerator());
+            enumerable = provider.fetchItems(ctx, items, provider);
+            session.Reset(enumerable);
             session.FetchSome(items, AsyncSearchProvider.NumberSearchItems, false);
             Assert.AreEqual(AsyncSearchProvider.NumberSearchItems - AsyncSearchProvider.NumberNullItems, items.Count);
 
             // Test fetching non-null objects
-            session.Reset(enumerable.GetEnumerator());
+            enumerable = provider.fetchItems(ctx, items, provider);
+            session.Reset(enumerable);
             session.FetchSome(items, total, true);
             Assert.AreEqual(AsyncSearchProvider.NumberSearchItems, items.Count);
 
@@ -183,24 +300,26 @@ namespace Unity.QuickSearch
             session.FetchSome(items, total, false);
             Assert.AreEqual(0, items.Count); // Should be empty since enumerator is at the end
 
-            session.Reset(enumerable.GetEnumerator());
+            enumerable = provider.fetchItems(ctx, items, provider);
+            session.Reset(enumerable);
             session.FetchSome(items, AsyncSearchProvider.NumberSearchItems, true);
             Assert.AreEqual(AsyncSearchProvider.NumberSearchItems, items.Count);
 
             // Fetch items time constrained
             var maxFetchTimeMs = 1;
             items = new List<SearchItem>();
-            m_Provider.UseSleep = true;
-            m_Provider.SleepTimeMS = 5;
-            session.Reset(enumerable.GetEnumerator());
+            provider.UseSleep = true;
+            provider.SleepTimeMS = 5;
+            session.Reset(enumerable);
             session.FetchSome(items, maxFetchTimeMs);
             Assert.AreEqual(0, items.Count);
 
             // Fetch items with time and size constraints
             items = new List<SearchItem>();
-            session.Reset(enumerable.GetEnumerator());
-            m_Provider.SleepTimeMS = 1;
-            maxFetchTimeMs = m_Provider.SleepTimeMS * AsyncSearchProvider.NumberNullItems;
+            enumerable = provider.fetchItems(ctx, items, provider);
+            session.Reset(enumerable);
+            provider.SleepTimeMS = 1;
+            maxFetchTimeMs = provider.SleepTimeMS * AsyncSearchProvider.NumberNullItems;
             session.FetchSome(items, AsyncSearchProvider.NumberSearchItems, true, maxFetchTimeMs);
             Assert.Less(items.Count, AsyncSearchProvider.NumberSearchItems);
         }

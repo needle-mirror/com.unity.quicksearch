@@ -62,6 +62,7 @@ namespace Unity.QuickSearch.Providers
                 fetchPreview = FetchPreview,
                 trackSelection = TrackSelection,
                 fetchKeywords = FetchKeywords,
+                startDrag = (item, context) => DragItem(item)
             };
         }
 
@@ -79,7 +80,7 @@ namespace Unity.QuickSearch.Providers
 
         private static IEnumerable<SearchItem> SearchItems(SearchContext context, SearchProvider provider)
         {
-            var subFilters = context.textFilters.Where(filter => filter.IndexOf(":") > 0 && !filter.EndsWith(":"))
+            var subFilters = context.textFilters.Where(filter => filter.IndexOf(":", System.StringComparison.OrdinalIgnoreCase) > 0 && !filter.EndsWith(":", System.StringComparison.OrdinalIgnoreCase))
                 .Select(filter => filter.Split(':'));
             var enabledSubFilters = k_SubMatches.Where(subMatch => subFilters.FirstOrDefault(filter => subMatch.matchToken == filter[0]) != null)
                 .Select(subMatch =>
@@ -88,7 +89,7 @@ namespace Unity.QuickSearch.Providers
                     return Tuple.Create(subMatch, filterQuery);
                 });
 
-            var focusedFilters = context.textFilters.Where(filter => filter.EndsWith(":"))
+            var focusedFilters = context.textFilters.Where(filter => filter.EndsWith(":", System.StringComparison.OrdinalIgnoreCase))
                 .Select(filter => filter.Substring(0, filter.Length - 1)).ToList();
             var enabledFocusedFilters = k_SubMatches.Where(subMatch => focusedFilters.Count == 0 || focusedFilters.FirstOrDefault(filterToken => subMatch.matchToken == filterToken) != null).ToList();
 
@@ -96,10 +97,22 @@ namespace Unity.QuickSearch.Providers
             var filteredObjs = objs.Where(obj => enabledSubFilters.All(subFilter => subFilter.Item1.matchQuery(obj, subFilter.Item2)));
             foreach (var obj in filteredObjs)
             {
-                if (context.tokenizedSearchQuery.All(query => enabledFocusedFilters.Any(matchOp => matchOp.matchQuery(obj, query))))
+                if (context.searchWords.All(query => enabledFocusedFilters.Any(matchOp => matchOp.matchQuery(obj, query))))
                     yield return provider.CreateItem(obj.GetInstanceID().ToString(), $"{obj.name} [{obj.GetType()}] ({obj.GetInstanceID()})", null, null, obj.GetInstanceID());
                 else
                     yield return null;
+            }
+        }
+
+        private static void DragItem(SearchItem item)
+        {
+            var instanceID = Convert.ToInt32(item.id);
+            var obj = EditorUtility.InstanceIDToObject(instanceID);
+            if (obj != null)
+            {
+                DragAndDrop.PrepareStartDrag();
+                DragAndDrop.objectReferences = new[] { obj };
+                DragAndDrop.StartDrag("Drag object");
             }
         }
 

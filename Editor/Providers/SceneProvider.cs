@@ -1,7 +1,7 @@
-//#define QUICKSEARCH_DEBUG
-
+//#define DEBUG_TIMING
 using JetBrains.Annotations;
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -16,65 +16,14 @@ namespace Unity.QuickSearch.Providers
     [UsedImplicitly]
     public class SceneProvider : SearchProvider
     {
-        const int k_LODDetail1 = 50000;
-        const int k_LODDetail2 = 100000;
-
-        protected struct GOD
-        {
-            public string id;
-            public string tokens;
-            public string keywords;
-            public GameObject gameObject;
-        }
-
-        class SceneSearchIndexer : SearchIndexer
-        {
-            private const int k_MinIndexCharVariation = 2;
-            private const int k_MaxIndexCharVariation = 8;
-
-            private GOD[] gods { get; set; }
-
-            public SceneSearchIndexer(string sceneName, GOD[] gods)
-                : base(new []{new Root("", sceneName) })
-            {
-                this.gods = gods;
-                minIndexCharVariation = k_MinIndexCharVariation;
-                maxIndexCharVariation = k_MaxIndexCharVariation;
-                skipEntryHandler = e => false;
-                getEntryComponentsHandler = (e, i) => SplitComponents(e, entrySeparators, k_MaxIndexCharVariation);
-                enumerateRootEntriesHandler = EnumerateSceneObjects;
-            }
-
-            private IEnumerable<string> EnumerateSceneObjects(Root root)
-            {
-                return gods.Select(god => god.keywords);
-            }
-
-            internal static IEnumerable<string> SplitComponents(string path)
-            {
-                return SplitComponents(path, SearchUtils.entrySeparators, k_MaxIndexCharVariation);
-            }
-
-            private static IEnumerable<string> SplitComponents(string path, char[] entrySeparators, int maxIndexCharVariation)
-            {
-                var nameTokens = path.Split(entrySeparators).Reverse().ToArray();
-                var scc = nameTokens.SelectMany(s => SearchUtils.SplitCamelCase(s)).Where(s => s.Length > 0);
-                return nameTokens.Concat(scc)
-                          .Select(s => s.Substring(0, Math.Min(s.Length, maxIndexCharVariation)).ToLowerInvariant())
-                          .Distinct();
-            }
-        }
-
-        protected GOD[] gods { get; set; }
-        private SceneSearchIndexer indexer { get; set; }
-        protected Dictionary<int, string> componentsById { get; set; } = new Dictionary<int, string>();
-        protected Dictionary<int, int> patternMatchCount { get; set; } = new Dictionary<int, int>();
-        protected bool m_HierarchyChanged = true;
-
         protected Func<GameObject[]> fetchGameObjects { get; set; }
-        protected Func<GOD, GameObject[], string> buildKeywordComponents { get; set; }
+        protected Func<GameObject, string[]> buildKeywordComponents { get; set; }
 
-        private IEnumerator<SearchItem> m_GodBuilderEnumerator = null;
+        private SearchIndexer m_Indexer { get; set; }
+        private GameObject[] m_GameObjects = null;
+        private IEnumerator m_BuildIndexEnumerator = null;
+        protected bool m_HierarchyChanged = true;
+        private static List<int> s_FuzzyMatches = new List<int>();
         private static readonly Stack<StringBuilder> _SbPool = new Stack<StringBuilder>();
 
         public SceneProvider(string providerId, string filterId, string displayName)
@@ -87,6 +36,7 @@ namespace Unity.QuickSearch.Providers
             subCategories = new List<NameEntry>
             {
                 new NameEntry("fuzzy", "fuzzy"),
+                new NameEntry("components", "components (c:)")
             };
 
             isEnabledForContextualSearch = () =>
@@ -99,17 +49,18 @@ namespace Unity.QuickSearch.Providers
             {
                 if (m_HierarchyChanged)
                 {
-                    componentsById.Clear();
-                    indexer = null;
-                    gods = null;
-                    m_GodBuilderEnumerator = null;
+                    m_BuildIndexEnumerator = null;
                     m_HierarchyChanged = false;
                 }
             };
 
-            onDisable = () => {};
+            onDisable = () =>
+            {
+                // Only track changes that occurs when Quick Search is not active.
+                m_HierarchyChanged = false;
+            };
 
-            fetchItems = (context, items, provider) => FetchItems(context, provider);
+            fetchItems = (context, items, provider) => SearchItems(context, provider);
 
             fetchLabel = (item, context) =>
             {
@@ -140,13 +91,8 @@ namespace Unity.QuickSearch.Providers
 
             fetchDescription = (item, context) =>
             {
-                #if QUICKSEARCH_DEBUG
-                item.description = gods[(int)item.data].name + " * " + item.score;
-                #else
                 var go = ObjectFromItem(item);
-                item.description = GetHierarchyPath(go);
-                #endif
-                return item.description;
+                return (item.description = GetHierarchyPath(go));
             };
 
             fetchThumbnail = (item, context) =>
@@ -155,8 +101,7 @@ namespace Unity.QuickSearch.Providers
                 if (obj == null)
                     return null;
 
-                item.thumbnail = Utils.GetThumbnailForGameObject(obj);
-                return item.thumbnail;
+                return (item.thumbnail = Utils.GetThumbnailForGameObject(obj));
             };
 
             fetchPreview = (item, context, size, options) =>
@@ -183,67 +128,64 @@ namespace Unity.QuickSearch.Providers
             };
 
             fetchGameObjects = FetchGameObjects;
-            buildKeywordComponents = BuildKeywordComponents;
+            buildKeywordComponents = o => null;
 
             trackSelection = (item, context) => PingItem(item);
         }
 
-        private IEnumerable<SearchItem> FetchItems(SearchContext context, SearchProvider provider)
+        private IEnumerator SearchFuzzy(SearchContext context, SearchProvider provider)
         {
-            if (m_GodBuilderEnumerator == null)
-                m_GodBuilderEnumerator = BuildGODS(context, provider);
-
-            while (m_GodBuilderEnumerator.MoveNext())
-                yield return m_GodBuilderEnumerator.Current;
-
-            if (indexer == null)
+            if (context.searchWords.Length > 0 && context.searchPhrase.Length > 2)
             {
-                indexer = new SceneSearchIndexer(SceneManager.GetActiveScene().name, gods)
+                #if DEBUG_TIMING
+                using (new DebugTimer($"Fuzzy search ({context.searchPhrase})"))
+                #endif
                 {
-                    patternMatchCount = patternMatchCount
-                };
-                indexer.Build();
-                yield return null;
-            }
-
-            foreach (var item in SearchGODs(context, provider))
-                yield return item;
-
-            while (!indexer.IsReady())
-                yield return null;
-
-            foreach (var r in indexer.Search(context.searchQuery))
-            {
-                if (r.index < 0 || r.index >= gods.Length)
-                    continue;
-
-                var god = gods[r.index];
-                var gameObjectId = god.id;
-                var gameObjectName = god.gameObject.name;
-                var itemScore = r.score - 1000;
-                if (gameObjectName.Equals(context.searchQuery, StringComparison.InvariantCultureIgnoreCase))
-                    itemScore *= 2;
-                var item = provider.CreateItem(gameObjectId, itemScore, null, null, null, r.index);
-                item.descriptionFormat = SearchItemDescriptionFormat.Ellipsis |
-                    SearchItemDescriptionFormat.RightToLeft |
-                    SearchItemDescriptionFormat.Highlight;
-                yield return item;
+                    var useFuzzySearch = context.IsFilterEnabled("fuzzy");
+                    foreach (var o in m_GameObjects)
+                        yield return MatchItem(context, provider, o.GetInstanceID().ToString(), o.name, useFuzzySearch);
+                }
             }
         }
 
-        private IEnumerable<SearchItem> SearchGODs(SearchContext context, SearchProvider provider)
+        private IEnumerator SearchItems(SearchContext context, SearchProvider provider)
         {
-            List<int> matches = new List<int>();
-            var sq = CleanString(context.searchQuery);
-            var useFuzzySearch = gods.Length < k_LODDetail2 && context.categories.Any(c => c.id == "fuzzy" && c.isEnabled);
-
-            for (int i = 0, end = gods.Length; i != end; ++i)
+            #if DEBUG_TIMING
+            using (new DebugTimer($"Search scene ({context.searchQuery})"))
+            #endif
             {
-                var go = gods[i].gameObject;
-                if (!go)
-                    continue;
+                if (m_BuildIndexEnumerator == null)
+                {
+                    m_GameObjects = fetchGameObjects();
+                    m_Indexer = new SearchIndexer("scene");
+                    m_BuildIndexEnumerator = BuildIndex(context, provider, m_GameObjects, m_Indexer);
+                }
 
-                yield return MatchGOD(context, provider, gods[i], i, useFuzzySearch, sq, matches);
+                yield return m_BuildIndexEnumerator;
+                yield return SearchFuzzy(context, provider);
+
+                // Indicate that we are still building the scene index.
+                while (!m_Indexer.IsReady())
+                    yield return null;
+
+                yield return SearchIndex(context, provider, m_Indexer);
+            }
+        }
+
+        private IEnumerable<SearchItem> SearchIndex(SearchContext context, SearchProvider provider, SearchIndexer indexer)
+        {
+            #if DEBUG_TIMING
+            using (new DebugTimer($"Search index ({context.searchQuery})"))
+            #endif
+            {
+                return indexer.SearchTerms(context.searchQuery).Select(r =>
+                {
+                    var gameObjectId = Convert.ToInt32(r.path);
+                    var gameObject = EditorUtility.InstanceIDToObject(gameObjectId) as GameObject;
+                    if (!gameObject)
+                        return null;
+                    return AddResult(provider, r.path, r.score, false);
+                });
             }
         }
 
@@ -265,60 +207,116 @@ namespace Unity.QuickSearch.Providers
                     goRoots.AddRange(sceneRootObjects);
             }
 
-            return SceneModeUtility.GetObjects(goRoots.ToArray(), true);
+            return SceneModeUtility.GetObjects(goRoots.ToArray(), true)
+                .Where(o => !o.hideFlags.HasFlag(HideFlags.HideInHierarchy)).ToArray();
         }
 
-        protected string BuildKeywordComponents(GOD descriptor, GameObject[] objects)
+        private static IEnumerable<string> SplitWords(string path, char[] entrySeparators, int maxIndexCharVariation)
         {
-            if (gods.Length > k_LODDetail2)
-                return descriptor.gameObject.name;
-            if (gods.Length > k_LODDetail1)
-                return GetTransformPath(descriptor.gameObject.transform);
-
-            return BuildComponents(descriptor.gameObject);
+            var nameTokens = path.Split(entrySeparators).Reverse().ToArray();
+            var scc = nameTokens.SelectMany(s => SearchUtils.SplitCamelCase(s)).Where(s => s.Length > 0);
+            return nameTokens.Concat(scc)
+                      .Select(s => s.Substring(0, Math.Min(s.Length, maxIndexCharVariation)).ToLowerInvariant())
+                      .Distinct();
         }
 
-        private IEnumerator<SearchItem> BuildGODS(SearchContext context, SearchProvider provider)
+        private IEnumerator BuildIndex(SearchContext context, SearchProvider provider, GameObject[] objects, SearchIndexer indexer)
         {
-            var matches = new List<int>();
-            var objects = fetchGameObjects();
-            var filter = CleanString(context.searchQuery);
-            var useFuzzySearch = objects.Length < k_LODDetail2 && context.categories.Any(c => c.id == "fuzzy" && c.isEnabled);
-
-            gods = new GOD[objects.Length];
-            for (int i = 0; i < objects.Length; ++i)
+            #if DEBUG_TIMING
+            using (new DebugTimer("Build scene index"))
+            #endif
             {
-                var id = objects[i].GetInstanceID();
-                gods[i] = new GOD{ id = id.ToString(), gameObject = objects[i]};
-                if (!componentsById.TryGetValue(id, out gods[i].tokens))
+                var useFuzzySearch = context.IsFilterEnabled("fuzzy");
+                var indexComponents = context.IsFilterEnabled("components");
+
+                indexer.Start();
+                for (int i = 0; i < objects.Length; ++i)
                 {
-                    gods[i].keywords = buildKeywordComponents(gods[i], objects);
-                    componentsById[id] = gods[i].tokens = CleanString(gods[i].keywords);
+                    var gameObject = objects[i];
+                    var id = objects[i].GetInstanceID();
+                    var name = gameObject.name;
+                    var path = GetTransformPath(gameObject.transform);
+                    var keywords = buildKeywordComponents(objects[i]);
+
+                    var documentId = id.ToString();
+                    int docIndex = indexer.AddDocument(documentId, false);
+
+                    int scoreIndex = 1;
+                    foreach (var word in SearchUtils.SplitEntryComponents(name, indexer.entrySeparators, 2, 12))
+                        indexer.AddWord(word, scoreIndex++, docIndex);
+                    foreach (var word in SplitWords(path, indexer.entrySeparators, 8))
+                        indexer.AddWord(word, scoreIndex++, docIndex);
+
+                    name = name.ToLowerInvariant();
+                    indexer.AddWord(name, name.Length, 0, docIndex);
+                    indexer.AddExactWord(name.ToLowerInvariant(), 0, docIndex);
+
+                    var ptype = PrefabUtility.GetPrefabAssetType(gameObject);
+                    var pstatus = PrefabUtility.GetPrefabInstanceStatus(gameObject);
+
+                    if (ptype != PrefabAssetType.NotAPrefab)
+                        indexer.AddProperty("prefab", ptype.ToString().ToLowerInvariant(), 30, docIndex);
+                    if (pstatus != PrefabInstanceStatus.NotAPrefab)
+                        indexer.AddProperty("prefab", pstatus.ToString().ToLowerInvariant(), 30, docIndex);
+
+                    if (keywords != null)
+                    {
+                        foreach (var keyword in keywords)
+                            foreach (var word in SplitWords(keyword, indexer.entrySeparators, 8))
+                                indexer.AddWord(word, scoreIndex++, docIndex);
+                    }
+
+                    if (indexComponents)
+                    {
+                        var gocs = gameObject.GetComponents<Component>();
+                        for (int componentIndex = 1; componentIndex < gocs.Length; ++componentIndex)
+                        {
+                            var c = gocs[componentIndex];
+                            if (!c || c.hideFlags == HideFlags.HideInInspector)
+                                continue;
+
+                            indexer.AddProperty("c", c.GetType().Name.ToLowerInvariant(), 2, docIndex);
+                        }
+                    }
+
+                    // While we are building the scene, lets search for objects name
+                    yield return MatchItem(context, provider, documentId, name, useFuzzySearch);
                 }
-                yield return MatchGOD(context, provider, gods[i], i, useFuzzySearch, filter, matches);
+
+                indexer.Finish(true);
             }
         }
 
-        private SearchItem MatchGOD(SearchContext context, SearchProvider provider, GOD god, int index, bool useFuzzySearch, string fuzzyMatchQuery, List<int> FuzzyMatches)
+        private static SearchItem MatchItem(SearchContext context, SearchProvider provider, string id, string name, bool useFuzzySearch)
         {
-            long score = -1;
-            if (useFuzzySearch)
+            if (context.searchPhrase.Length > 2)
             {
-                if (!FuzzySearch.FuzzyMatch(fuzzyMatchQuery, god.tokens, ref score, FuzzyMatches))
-                    return null;
-            }
-            else
-            {
-                if (!MatchSearchGroups(context, god.tokens, true))
-                    return null;
+                long score = 99;
+                bool foundMatch = !useFuzzySearch
+                    ? MatchSearchGroups(context, name, false)
+                    : FuzzySearch.FuzzyMatch(context.searchPhrase, name, ref score, s_FuzzyMatches);
+                if (foundMatch)
+                    return AddResult(provider, id, (~(int)score) + 10000, useFuzzySearch);
             }
 
-            var item = provider.CreateItem(god.id, ~(int)score, null, null, null, index);
-            item.descriptionFormat = SearchItemDescriptionFormat.Ellipsis | SearchItemDescriptionFormat.RightToLeft;
-            if (useFuzzySearch)
-                item.descriptionFormat |= SearchItemDescriptionFormat.FuzzyHighlight;
-            else
-                item.descriptionFormat |= SearchItemDescriptionFormat.Highlight;
+            return null;
+        }
+
+        private static SearchItem AddResult(SearchProvider provider, string id, int score, bool useFuzzySearch)
+        {
+            string description = null;
+            #if false
+            description = $"F:{useFuzzySearch} {id} ({score})";
+            #endif
+            var item = provider.CreateItem(id, score, null, description, null, null);
+            return SetItemDescriptionFormat(item, useFuzzySearch);
+        }
+
+        private static SearchItem SetItemDescriptionFormat(SearchItem item, bool useFuzzySearch)
+        {
+            item.descriptionFormat = SearchItemDescriptionFormat.Ellipsis
+                | SearchItemDescriptionFormat.RightToLeft
+                | (useFuzzySearch ? SearchItemDescriptionFormat.FuzzyHighlight : SearchItemDescriptionFormat.Highlight);
             return item;
         }
 
@@ -362,30 +360,6 @@ namespace Unity.QuickSearch.Providers
             if (tform.parent == null)
                 return "/" + tform.name;
             return GetTransformPath(tform.parent) + "/" + tform.name;
-        }
-
-        public static string BuildComponents(GameObject go)
-        {
-            var components = new List<string>();
-            var tform = go.transform;
-            while (tform != null)
-            {
-                components.Insert(0, tform.name);
-                tform = tform.parent;
-            }
-
-            components.Insert(0, go.scene.name);
-
-            var gocs = go.GetComponents<Component>();
-            for (int i = 1; i < gocs.Length; ++i)
-            {
-                var c = gocs[i];
-                if (!c || c.hideFlags == HideFlags.HideInInspector)
-                    continue;
-                components.Add(c.GetType().Name);
-            }
-
-            return String.Join(" ", components.Distinct());
         }
 
         public static string GetHierarchyPath(GameObject gameObject, bool includeScene = true)

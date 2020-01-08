@@ -58,8 +58,7 @@ namespace Unity.QuickSearch
             public static readonly GUIStyle panelBorder = new GUIStyle("grey_border") { name = "quick-search-filter-panel-border" };
             public static readonly GUIStyle filterExpanded = new GUIStyle("IN Foldout")
             {
-                name = "quick-search-filter-expanded",
-                margin = new RectOffset(1, 1, 2, 0)
+                margin = new RectOffset(2, 1, 2, 0)
             };
             public static readonly GUIStyle separator = new GUIStyle("sv_iconselector_sep")
             {

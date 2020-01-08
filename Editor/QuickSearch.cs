@@ -190,7 +190,6 @@ namespace Unity.QuickSearch
         private static bool isDeveloperMode = Utils.IsDeveloperMode();
 
         private const int k_ResetSelectionIndex = -1;
-        private const float k_SearchInProgressButtonRotationIncrement = 15.0f;
         private const string k_QuickSearchBoxName = "QuickSearchBox";
         private const string s_Helpme = "Search {0}!\r\n\r\n" +
             "- <b>Alt + Up/Down Arrow</b> \u2192 Search history\r\n" +
@@ -227,7 +226,6 @@ namespace Unity.QuickSearch
         private float m_Height = 0;
         private GUIContent m_StatusLabelContent = new GUIContent();
         private int m_DelayedCurrentSelection = -1;
-        private float m_CurrentSearchInProgressButtonRotation = 0.0f;
 
         private static class Styles
         {
@@ -238,6 +236,10 @@ namespace Unity.QuickSearch
                     selectedItemLabel.normal.textColor = Color.white;
                     selectedItemDescription.normal.textColor = Color.white;
                 }
+
+                statusWheel = new GUIContent[12];
+                for (int i = 0; i < 12; i++)
+                    statusWheel[i] = EditorGUIUtility.IconContent("WaitSpin" + i.ToString("00"));
             }
 
             private const int itemRowPadding = 4;
@@ -514,21 +516,26 @@ namespace Unity.QuickSearch
             public static readonly GUIStyle prefButton = new GUIStyle("IconButton")
             {
                 fixedWidth = 16, fixedHeight = 16,
-                margin = new RectOffset(0, 0, 0, 2),
+                margin = new RectOffset(0, 2, 0, 2),
                 padding = new RectOffset(0, 0, 0, 0)
             };
 
             public static readonly GUIContent searchInProgressContent = new GUIContent(Icons.loading, "Open quick search preferences...");
-            public static readonly GUIStyle searchInProgressButton = new GUIStyle("IconButton")
+            public static readonly GUIStyle searchInProgressButton = new GUIStyle(prefButton)
             {
-                fixedWidth = 16,
-                fixedHeight = 16,
-                margin = new RectOffset(0, 0, 0, 2),
-                padding = new RectOffset(0, 0, 0, 0)
+                imagePosition = ImagePosition.ImageOnly,
+                alignment = TextAnchor.MiddleLeft,
+                contentOffset = new Vector2(-1, 0),
+                padding = new RectOffset(2, 2, 2, 2),
+                richText = false,
+                stretchHeight = false,
+                stretchWidth = false
             };
 
             public static readonly GUILayoutOption[] searchInProgressLayoutOptions = new[] { GUILayout.MaxWidth(searchInProgressButton.fixedWidth) };
             public static readonly GUIContent emptyContent = new GUIContent("", "No content");
+
+            public static readonly GUIContent[] statusWheel;
 
             private static Texture2D GenerateSolidColorTexture(Color fillColor)
             {
@@ -666,7 +673,7 @@ namespace Unity.QuickSearch
             var lastTokenStartPos = searchText.LastIndexOf(' ', Math.Max(0, te.cursorIndex - 1));
             var lastToken = lastTokenStartPos == -1 ? searchText : searchText.Substring(lastTokenStartPos + 1);
             var keywords = SearchService.GetKeywords(m_Context, lastToken)
-                .Where(k => !k.Equals(lastToken, StringComparison.InvariantCultureIgnoreCase)).ToArray();
+                .Where(k => !k.Equals(lastToken, StringComparison.OrdinalIgnoreCase)).ToArray();
             if (keywords.Length > 0)
             {
                 const int maxAutoCompleteCount = 16;
@@ -759,23 +766,17 @@ namespace Unity.QuickSearch
 
             if (AsyncSearchSession.SearchInProgress)
             {
-                var searchInProgressRect = EditorGUILayout.GetControlRect(false, Styles.searchInProgressButton.fixedHeight, Styles.searchInProgressButton, Styles.searchInProgressLayoutOptions);
-                var pivot = new Vector2(searchInProgressRect.xMin + searchInProgressRect.width * 0.5f, searchInProgressRect.yMin + searchInProgressRect.height * 0.5f);
-                var oldMatrix = GUI.matrix;
-                GUIUtility.RotateAroundPivot(m_CurrentSearchInProgressButtonRotation, pivot);
+                var searchInProgressRect = EditorGUILayout.GetControlRect(false, 
+                    Styles.searchInProgressButton.fixedHeight, Styles.searchInProgressButton, Styles.searchInProgressLayoutOptions);
 
-                GUI.DrawTexture(searchInProgressRect, Styles.searchInProgressContent.image);
-                GUI.matrix = oldMatrix;
-                m_CurrentSearchInProgressButtonRotation += k_SearchInProgressButtonRotationIncrement;
+                int frame = (int)Mathf.Repeat(Time.realtimeSinceStartup * 5, 11.99f);
+                GUI.Button(searchInProgressRect, Styles.statusWheel[frame], Styles.searchInProgressButton);
 
                 if (Event.current.type == EventType.MouseDown && searchInProgressRect.Contains(Event.current.mousePosition))
-                {
                     SettingsService.OpenUserPreferences(SearchSettings.settingsPreferencesKey);
-                }
             }
             else
             {
-                m_CurrentSearchInProgressButtonRotation = 0.0f;
                 if (GUILayout.Button(Styles.prefButtonContent, Styles.prefButton))
                     SettingsService.OpenUserPreferences(SearchSettings.settingsPreferencesKey);
             }
@@ -939,8 +940,8 @@ namespace Unity.QuickSearch
                 return;
 
             m_DelayedCurrentSelection = currentSelection;
-            EditorApplication.delayCall -= () => DelayTrackSelection();
-            EditorApplication.delayCall += () => DelayTrackSelection();
+            EditorApplication.delayCall -= DelayTrackSelection;
+            EditorApplication.delayCall += DelayTrackSelection;
         }
 
         private void UpdateFocusControlState()

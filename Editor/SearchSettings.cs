@@ -12,17 +12,20 @@ namespace Unity.QuickSearch
         public const string settingsPreferencesKey = "Preferences/Quick Search";
         public static bool trackSelection { get; private set; }
         public static bool fetchPreview { get; private set; }
+        public static bool useUberIndexing { get; private set; }
 
         static SearchSettings()
         {
             trackSelection = EditorPrefs.GetBool($"{k_KeyPrefix}.{nameof(trackSelection)}", true);
             fetchPreview = EditorPrefs.GetBool($"{k_KeyPrefix}.{nameof(fetchPreview)}", true);
+            useUberIndexing = EditorPrefs.GetBool($"{k_KeyPrefix}.{nameof(useUberIndexing)}", false);
         }
 
         private static void Save()
         {
             EditorPrefs.SetBool($"{k_KeyPrefix}.{nameof(trackSelection)}", trackSelection);
             EditorPrefs.SetBool($"{k_KeyPrefix}.{nameof(fetchPreview)}", fetchPreview);
+            EditorPrefs.SetBool($"{k_KeyPrefix}.{nameof(useUberIndexing)}", useUberIndexing);
         }
 
         [UsedImplicitly, SettingsProvider]
@@ -44,6 +47,7 @@ namespace Unity.QuickSearch
                             {
                                 trackSelection = EditorGUILayout.Toggle(Styles.trackSelectionContent, trackSelection);
                                 fetchPreview = EditorGUILayout.Toggle(Styles.fetchPreviewContent, fetchPreview);
+                                useUberIndexing = EditorGUILayout.Toggle(Styles.useUberIndexingContent, useUberIndexing);
                                 GUILayout.Space(10);
                                 DrawProviderSettings();
                             }
@@ -211,6 +215,9 @@ namespace Unity.QuickSearch
             public static GUIContent fetchPreviewContent = new GUIContent(
                 "Generate an asset preview thumbnail for found items",
                 "Fetching the preview of the items can consume more memory and make searches within very large project slower.");
+            public static GUIContent useUberIndexingContent = new GUIContent(
+                "Index all asset properties (Experimental and consume more resources)",
+                "This new indexer, indexes all asset properties, such as dependencies (i.e. dep:door), components (i.e. has:audio), size (i.e. size>=1000), etc.");
         }
     }
 }

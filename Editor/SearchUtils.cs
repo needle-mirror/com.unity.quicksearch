@@ -38,8 +38,10 @@ namespace Unity.QuickSearch
         {
             var nameTokens = entry.Split(entrySeparators).Distinct().ToArray();
             var scc = nameTokens.SelectMany(s => SplitCamelCase(s)).Where(s => s.Length > 0);
+            var fcc = scc.Aggregate("", (current, s) => current + s[0]);
             return Enumerable.Empty<string>()
-                             .Concat(scc)
+                             .Concat(scc.Where(s => s.Length > 1))
+                             .Concat(FindShiftLeftVariations(fcc))
                              .Where(s => s.Length > 0)
                              .Select(s => s.Substring(0, Math.Min(s.Length, maxIndexCharVariation)).ToLowerInvariant())
                              .Distinct();
@@ -52,7 +54,7 @@ namespace Unity.QuickSearch
             var scc = nameTokens.SelectMany(s => SplitCamelCase(s)).Where(s => s.Length > 0).ToArray();
             var fcc = scc.Aggregate("", (current, s) => current + s[0]);
             return Enumerable.Empty<string>()
-                             .Concat(scc)
+                             .Concat(scc.Where(s => s.Length > 1))
                              .Concat(new[] { Path.GetExtension(path).Replace(".", "") })
                              .Concat(FindShiftLeftVariations(fcc))
                              .Concat(nameTokens)

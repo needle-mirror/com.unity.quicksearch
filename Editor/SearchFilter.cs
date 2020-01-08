@@ -6,7 +6,7 @@ namespace Unity.QuickSearch
 {
     public class SearchFilter
     {
-        [DebuggerDisplay("{entry.name.displayName} expanded:{isExpanded}")]
+        [DebuggerDisplay("{name.displayName} expanded:{isExpanded}")]
         internal class ProviderDesc
         {
             public ProviderDesc(NameEntry name, SearchProvider provider)

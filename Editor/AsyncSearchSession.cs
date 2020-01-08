@@ -1,7 +1,9 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
 using UnityEditor;
+using UnityEngine.Assertions;
 
 namespace Unity.QuickSearch
 {
@@ -17,8 +19,9 @@ namespace Unity.QuickSearch
         public static event Action<IEnumerable<SearchItem>> asyncItemReceived;
 
         private const long k_MaxTimePerUpdate = 10; // milliseconds
+        private const int k_MaxStackDepth = 32;
 
-        private IEnumerator<SearchItem> m_ItemsIterator;
+        private Stack<IEnumerator> m_ItemsIterator = new Stack<IEnumerator>();
         private bool m_IsRunning = false;
         private long m_MaxFetchTimePerProviderMs;
 
@@ -49,17 +52,22 @@ namespace Unity.QuickSearch
         /// <summary>
         /// Hard reset an async search session.
         /// </summary>
-        /// <param name="itemEnumerator">The enumerator that will yield new search results.</param>
+        /// <param name="itemEnumerator">The enumerator that will yield new search results. This object can be an IEnumerator or IEnumerable</param>
         /// <param name="maxFetchTimePerProviderMs">The amount of time allowed to yield new results.</param>
         /// <remarks>Normally async search sessions are re-used per search provider.</remarks>
-        public void Reset(IEnumerator<SearchItem> itemEnumerator, long maxFetchTimePerProviderMs = k_MaxTimePerUpdate)
+        public void Reset(object itemEnumerator, long maxFetchTimePerProviderMs = k_MaxTimePerUpdate)
         {
             // Remove and add the event handler in case it was already removed.
             Stop();
             m_IsRunning = true;
             m_MaxFetchTimePerProviderMs = maxFetchTimePerProviderMs;
             ++s_RunningSessions;
-            m_ItemsIterator = itemEnumerator;
+            if (itemEnumerator is IEnumerable enumerable)
+                m_ItemsIterator.Push(enumerable.GetEnumerator());
+            else if (itemEnumerator is IEnumerator enumerator)
+                m_ItemsIterator.Push(enumerator);
+            else
+                throw new ArgumentException($"Parameter {nameof(itemEnumerator)} is not an IEnumerable or IEnumerator.", nameof(itemEnumerator));
             EditorApplication.update += OnUpdate;
         }
 
@@ -72,7 +80,7 @@ namespace Unity.QuickSearch
                 --s_RunningSessions;
             m_IsRunning = false;
             EditorApplication.update -= OnUpdate;
-            m_ItemsIterator = null;
+            m_ItemsIterator.Clear();
         }
 
         /// <summary>
@@ -84,23 +92,20 @@ namespace Unity.QuickSearch
         /// <returns>Returns true if there is still some results to fetch later or false if we've fetched everything remaining.</returns>
         public bool FetchSome(List<SearchItem> items, int quantity, bool doNotCountNull)
         {
-            if (m_ItemsIterator == null)
+            if (m_ItemsIterator.Count == 0)
                 return false;
 
             var atEnd = false;
             for (var i = 0; i < quantity && !atEnd; ++i)
             {
-                atEnd = !m_ItemsIterator.MoveNext();
-                if (!atEnd)
+                atEnd = !NextItem(out var item);
+                if (item == null)
                 {
-                    if (m_ItemsIterator.Current == null)
-                    {
-                        if (doNotCountNull)
-                            --i;
-                        continue;
-                    }
-                    items.Add(m_ItemsIterator.Current);
+                    if (doNotCountNull)
+                        --i;
+                    continue;
                 }
+                items.Add(item);
             }
 
             return !atEnd;
@@ -116,24 +121,21 @@ namespace Unity.QuickSearch
         /// <returns>Returns true if there is still some results to fetch later or false if we've fetched everything remaining.</returns>
         public bool FetchSome(List<SearchItem> items, int quantity, bool doNotCountNull, long maxFetchTimeMs)
         {
-            if (m_ItemsIterator == null)
+            if (m_ItemsIterator.Count == 0)
                 return false;
 
             var atEnd = false;
             var timeToFetch = Stopwatch.StartNew();
             for (var i = 0; i < quantity && !atEnd && timeToFetch.ElapsedMilliseconds < maxFetchTimeMs; ++i)
             {
-                atEnd = !m_ItemsIterator.MoveNext();
-                if (!atEnd)
+                atEnd = !NextItem(out var item);
+                if (item == null)
                 {
-                    if (m_ItemsIterator.Current == null)
-                    {
-                        if (doNotCountNull)
-                            --i;
-                        continue;
-                    }
-                    items.Add(m_ItemsIterator.Current);
+                    if (doNotCountNull)
+                        --i;
+                    continue;
                 }
+                items.Add(item);
             }
 
             return !atEnd;
@@ -147,19 +149,68 @@ namespace Unity.QuickSearch
         /// <returns>Returns true if there is still some results to fetch later or false if we've fetched everything remaining.</returns>
         public bool FetchSome(List<SearchItem> items, long maxFetchTimeMs)
         {
-            if (m_ItemsIterator == null)
+            if (m_ItemsIterator.Count == 0)
                 return false;
 
             var atEnd = false;
             var timeToFetch = Stopwatch.StartNew();
             while (!atEnd && timeToFetch.ElapsedMilliseconds < maxFetchTimeMs)
             {
-                atEnd = !m_ItemsIterator.MoveNext();
-                if (!atEnd && m_ItemsIterator.Current != null)
-                    items.Add(m_ItemsIterator.Current);
+                atEnd = !NextItem(out var item);
+                if (!atEnd && item != null)
+                    items.Add(item);
             }
 
             return !atEnd;
+        }
+
+        private bool NextItem(out SearchItem nextItem)
+        {
+            while (true)
+            {
+                var atEnd = false;
+                nextItem = null;
+
+                if (m_ItemsIterator.Count == 0)
+                {
+                    return false;
+                }
+
+                var currentIterator = m_ItemsIterator.Peek();
+                atEnd = !currentIterator.MoveNext();
+                if (atEnd)
+                {
+                    m_ItemsIterator.Pop();
+                    continue;
+                }
+
+                if (currentIterator.Current == null)
+                {
+                    nextItem = null;
+                }
+                else if (currentIterator.Current is SearchItem si)
+                    nextItem = si;
+                // Test IEnumerable before IEnumerator
+                else if (currentIterator.Current is IEnumerable enumerable)
+                {
+                    m_ItemsIterator.Push(enumerable.GetEnumerator());
+                    ValidateStack();
+                    continue;
+                }
+                else if (currentIterator.Current is IEnumerator enumerator)
+                {
+                    m_ItemsIterator.Push(enumerator);
+                    ValidateStack();
+                    continue;
+                }
+
+                return true;
+            }
+        }
+
+        private void ValidateStack()
+        {
+            Assert.IsFalse(m_ItemsIterator.Count > k_MaxStackDepth, "Possible stack overflow detected.");
         }
     }
 }

@@ -2,9 +2,11 @@
 using System;
 using System.Linq;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.IO;
 using System.Reflection;
 using System.Diagnostics;
+using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
 using JetBrains.Annotations;
@@ -72,12 +74,23 @@ namespace Unity.QuickSearch
             return preview;
         }
 
-        public static void FrameAssetFromPath(string path)
+        public static UnityEngine.Object SelectAssetFromPath(string path, bool ping = false)
         {
             var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(path);
             if (asset != null)
             {
                 Selection.activeObject = asset;
+                if (ping)
+                    EditorGUIUtility.PingObject(asset);
+            }
+            return asset;
+        }
+
+        public static void FrameAssetFromPath(string path)
+        {
+            var asset = SelectAssetFromPath(path);
+            if (asset != null)
+            {
                 EditorApplication.delayCall += () =>
                 {
                     EditorWindow.FocusWindowIfItsOpen(Utils.GetProjectBrowserWindowType());
@@ -520,6 +533,33 @@ namespace Unity.QuickSearch
             else
                 EditorApplication.delayCall += () => DelayCall(timeStart, seconds, callback);
         }
+
+        public static T ConvertValue<T>(string value)
+        {
+            var type = typeof(T);
+            var converter = TypeDescriptor.GetConverter(type);
+            if (converter.IsValid(value))
+            {
+                // ReSharper disable once AssignNullToNotNullAttribute
+                return (T)converter.ConvertFromString(null, CultureInfo.InvariantCulture, value);
+            }
+            return (T)Activator.CreateInstance(type);
+        }
+
+        public static bool TryConvertValue<T>(string value, out T convertedValue)
+        {
+            var type = typeof(T);
+            var converter = TypeDescriptor.GetConverter(type);
+            if (converter.IsValid(value))
+            {
+                // ReSharper disable once AssignNullToNotNullAttribute
+                convertedValue = (T)converter.ConvertFromString(null, CultureInfo.InvariantCulture, value);
+                return true;
+            }
+
+            convertedValue = default;
+            return false;
+        }
     }
 
     internal struct DebugTimer : IDisposable
@@ -545,7 +585,7 @@ namespace Unity.QuickSearch
             m_Timer.Stop();
             #if UNITY_2019_1_OR_NEWER
             if (!String.IsNullOrEmpty(m_Name))
-                Debug.LogFormat(LogType.Log, LogOption.NoStacktrace, null, $"{m_Name} took {timeMs:F1} ms");
+                Debug.LogFormat(LogType.Log, LogOption.NoStacktrace, null, $"{m_Name} took {timeMs:F2} ms");
             #else
             if (!String.IsNullOrEmpty(m_Name))
                 Debug.Log($"{m_Name} took {timeMs} ms");

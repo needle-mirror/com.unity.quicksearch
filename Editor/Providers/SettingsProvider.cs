@@ -13,19 +13,33 @@ namespace Unity.QuickSearch
         {
             private const string type = "settings";
             private const string displayName = "Settings";
-            private static string[] settingsPaths;
+
+            static class SettingsPaths
+            {
+                public readonly static string[] value;
+
+                static SettingsPaths()
+                {
+                    value = FetchSettingsProviders().Select(provider => provider.settingsPath).ToArray();
+                }
+
+                private static SettingsProvider[] FetchSettingsProviders()
+                {
+                    var type = typeof(SettingsService);
+                    var method = type.GetMethod("FetchSettingsProviders", BindingFlags.NonPublic | BindingFlags.Static);
+                    return (SettingsProvider[])method.Invoke(null, null);
+                }
+            }
 
             [UsedImplicitly, SearchItemProvider]
             private static SearchProvider CreateProvider()
             {
-                settingsPaths = FetchSettingsProviders().Select(provider => provider.settingsPath).ToArray();
-
                 return new SearchProvider(type, displayName)
                 {
                     filterId = "se:",
                     fetchItems = (context, items, provider) =>
                     {
-                        items.AddRange(settingsPaths
+                        items.AddRange(SettingsPaths.value
                                        .Where(path => SearchProvider.MatchSearchGroups(context, path))
                                        .Select(path => provider.CreateItem(path, null, path)));
                         return null;
@@ -53,13 +67,6 @@ namespace Unity.QuickSearch
                         }
                     }
                 };
-            }
-
-            private static SettingsProvider[] FetchSettingsProviders()
-            {
-                var type = typeof(SettingsService);
-                var method = type.GetMethod("FetchSettingsProviders", BindingFlags.NonPublic | BindingFlags.Static);
-                return (SettingsProvider[])method.Invoke(null, null);
             }
         }
     }

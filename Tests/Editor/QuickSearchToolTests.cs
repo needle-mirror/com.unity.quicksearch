@@ -48,6 +48,9 @@ namespace Unity.QuickSearch
                 var qsWindow = QuickSearch.ShowWindow();
                 yield return PrepareSearchTool(qsWindow);
 
+                yield return SendKeyCharacterEvent(qsWindow, 'p');
+                yield return SendKeyCharacterEvent(qsWindow, ':');
+
                 var queryString = "test 42";
                 foreach (var c in queryString)
                     yield return SendKeyCharacterEvent(qsWindow, c);
@@ -73,7 +76,7 @@ namespace Unity.QuickSearch
                 void OnEditorApplicationOnHierarchyChanged() => hierarchyChanged = true;
                 EditorApplication.hierarchyChanged += OnEditorApplicationOnHierarchyChanged;
 
-                var uniqueName = GUID.Generate().ToString();
+                var uniqueName = GUID.Generate().ToString().Substring(0, 8);
                 var go = new GameObject(uniqueName);
                 Assert.IsNotNull(go);
                 Assert.AreEqual(uniqueName, go.name);
@@ -86,7 +89,7 @@ namespace Unity.QuickSearch
                 var qsWindow = QuickSearch.ShowWindow();
                 yield return PrepareSearchTool(qsWindow);
 
-                var queryString = uniqueName.Substring(Random.Range(0, uniqueName.Length / 2 - 1), Math.Max(3, Random.Range(0, uniqueName.Length / 2 - 1)));
+                var queryString = uniqueName.Substring(0, Math.Max(3, Random.Range(0, uniqueName.Length - 1)));
                 Debug.Log($"Searching {queryString} in {uniqueName}");
 
                 yield return SendKeyCharacterEvent(qsWindow, 'h');

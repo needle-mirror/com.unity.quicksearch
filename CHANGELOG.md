@@ -1,15 +1,27 @@
-## [1.5.0-preview.2] - 2019-11-25
+## [1.5.0-preview.3] - 2020-01-09
+- [UX] You can now search scene objects with a given component using c:<component name>.
 - [UX] We've removed the dockable window mode of Quick Search since it wasn't playing nice with some loading and refreshing workflows and optimizations.
+- [UX] Update the quick search spinning wheel when async results are still being fetched.
 - [UX] Select search item on mouse up instead of mouse down.
 - [UX] fetchPreview of AssetStoreProvider uses the PurchaseInfo to get a bigger/more detailed preview.
+- [UX] Asset Store provider fetches multiple screenshots and populates the preview panel carousel with those.
 - [UX] Add selected search item preview panel.
 - [UX] Add Resource provider, which lets you search all resources loaded by Unity.
+- [UX] Add drag and drop support to the resource search provider.
 - [UX] Add documentation link to Help provider and version label.
 - [UX] Add Asset Store provider populating items with asset store package.
-- [FIX] Add support for digits when splitting camel cases of file names.
+- [UX] Add a new settins to enable the new asset indexer in the user preferences.
+- [UX] Add a new asset indexer that indexes many asset properties, such as dependencies, size, serialized properties, etc.
+- [UX] Add a carrousel to display images of asset store serach results.
 - [FIX] Only enable the search asset watcher once the quick search tool is used the first time.
+- [FIX] Add support for digits when splitting camel cases of file names.
 - [DOC] Quick Search Manual has been reviewed and edited.
+- [DOC] Document more APIs.
+- [DOC] Add some sample packages to Quick Search to distribute more search provider and query engine examples.
 - [API] Make Unity.QuickSearch.QuickSearch public to allow user to open quick search explicitly with specific context data.
+- [API] Improved the SearchIndexer API and performances
+- [API] Change the signature of `fetchItems` to return an object instead of an `IEnumerable<SearchItem>`. This item can be an `IEnumerable<SearchItem>` as before, or an `IEnumerator` to allow yield returns of `IEnumerator` or `IEnumerable`.
+- [API] Add the `QueryEngine` API.
 - [API] Add `QuickSearch.ShowWindow(float width, float height)` to allow opening Quick Search at any size.
 
 ## [1.4.1] - 2019-09-03

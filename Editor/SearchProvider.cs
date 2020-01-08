@@ -143,8 +143,7 @@ namespace Unity.QuickSearch
         /// <returns>Has a match occurred.</returns>
         public static bool MatchSearchGroups(SearchContext context, string content, bool useLowerTokens = false)
         {
-            return MatchSearchGroups(context.searchQuery,
-                                     useLowerTokens ? context.tokenizedSearchQueryLower : context.tokenizedSearchQuery, content, out _, out _,
+            return MatchSearchGroups(context.searchQuery, context.searchWords, content, out _, out _,
                                      useLowerTokens ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase);
         }
 
@@ -260,8 +259,11 @@ namespace Unity.QuickSearch
         /// <summary> Called when the selection changed and can be tracked.</summary>
         public Action<SearchItem, SearchContext> trackSelection;
         
-        /// <summary> MANDATORY: Handler to get items for a given search context.</summary>
-        public Func<SearchContext, List<SearchItem>, SearchProvider, IEnumerable<SearchItem>> fetchItems;
+        /// <summary> MANDATORY: Handler to get items for a given search context.
+        /// The return value is an object that can be of type IEnumerable or IEnumerator.
+        /// The enumeration of those objects should return SearchItems.
+        /// </summary>
+        public Func<SearchContext, List<SearchItem>, SearchProvider, object> fetchItems;
         
         /// <summary> Provider can return a list of words that will help the user complete his search query</summary>
         public Action<SearchContext, string, List<string>> fetchKeywords;

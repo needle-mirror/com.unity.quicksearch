@@ -50,7 +50,7 @@ namespace Unity.QuickSearch
                 // ex: https://answers.unity.com/search.html?f=&type=question&sort=relevance&q=Visual+scripting
                 var query = new List<Tuple<string, string>>
                 {
-                    Tuple.Create("type", "question"), Tuple.Create("sort", "relevance"), Tuple.Create("q", string.Join("+", context.tokenizedSearchQuery))
+                    Tuple.Create("type", "question"), Tuple.Create("sort", "relevance"), Tuple.Create("q", string.Join("+", context.searchWords))
                 };
                 SearchUtility.Goto(searchUrl, query);
             }
@@ -70,7 +70,7 @@ namespace Unity.QuickSearch
             internal static void Goto(SearchItem item, SearchContext context)
             {
                 // ex: https://docs.unity3d.com/Manual/30_search.html?q=Visual+Scripting
-                var query = new List<Tuple<string, string>> {Tuple.Create("q", string.Join("+", context.tokenizedSearchQuery))};
+                var query = new List<Tuple<string, string>> {Tuple.Create("q", string.Join("+", context.searchWords))};
                 SearchUtility.Goto(searchUrl, query);
             }
         }
@@ -89,7 +89,7 @@ namespace Unity.QuickSearch
             internal static void Goto(SearchItem item, SearchContext context)
             {
                 // ex: https://docs.unity3d.com/ScriptReference/30_search.html?q=Visual+Scripting
-                var query = new List<Tuple<string, string>> {Tuple.Create("q", string.Join("+", context.tokenizedSearchQuery))};
+                var query = new List<Tuple<string, string>> {Tuple.Create("q", string.Join("+", context.searchWords))};
                 SearchUtility.Goto(searchUrl, query);
             }
         }
