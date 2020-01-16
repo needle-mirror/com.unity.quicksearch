@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 
 namespace Unity.QuickSearch
 {
@@ -27,6 +28,11 @@ namespace Unity.QuickSearch
         }
 
         public FilterOperator AddHandler<TLhs, TRhs>(Func<TLhs, TRhs, bool> handler)
+        {
+            return AddHandler((TLhs l, TRhs r, StringComparison sc) => handler(l, r));
+        }
+
+        public FilterOperator AddHandler<TLhs, TRhs>(Func<TLhs, TRhs, StringComparison, bool> handler)
         {
             var operatorTypes = new FilterOperatorTypes(typeof(TLhs), typeof(TRhs));
             if (handlers.ContainsKey(operatorTypes))

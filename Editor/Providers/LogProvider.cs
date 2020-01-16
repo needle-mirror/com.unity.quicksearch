@@ -31,10 +31,12 @@ namespace Unity.QuickSearch
             [UsedImplicitly, SearchItemProvider]
             private static SearchProvider CreateProvider()
             {
+                var consoleLogPath = Application.consoleLogPath;
+                if (string.IsNullOrEmpty(consoleLogPath) || !File.Exists(consoleLogPath))
+                    return null;
+
                 Application.logMessageReceived -= HandleLog;
                 Application.logMessageReceived += HandleLog;
-
-                var consoleLogPath = Application.consoleLogPath;
                 var readConsoleLogThread = new Thread(() =>
                 {
                     using (var logStream = new FileStream(consoleLogPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))

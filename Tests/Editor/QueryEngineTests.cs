@@ -474,6 +474,67 @@ namespace Unity.QuickSearch
             Assert.Contains(data[2], filteredValues);
         }
 
+        [Test]
+        public void StringComparisons()
+        {
+            var data = new List<TestObject>
+            {
+                new TestObject { id = 1, name = "name1", active = false, state = TestObject.TestEnum.ValueA, value = 10.0f},
+                new TestObject { id = 2, name = "name2", active = true, state = TestObject.TestEnum.ValueB, value = 1000.0f},
+                new TestObject { id = 3, name = "Name With Upper Cases", active = true, state = TestObject.TestEnum.ValueC, value = 100.0f},
+            };
+            var query = m_QE.Parse("n:name");
+            ValidateNoErrors(query);
+
+            var filteredData = query.Apply(data).ToList();
+            Assert.IsNotEmpty(filteredData);
+            Assert.Contains(data[0], filteredData);
+            Assert.Contains(data[1], filteredData);
+            Assert.Contains(data[2], filteredData);
+
+            // Change the default string comparison options
+            m_QE.SetGlobalStringComparisonOptions(StringComparison.Ordinal);
+            query = m_QE.Parse("n:name");
+            ValidateNoErrors(query);
+
+            filteredData = query.Apply(data).ToList();
+            Assert.IsNotEmpty(filteredData);
+            Assert.Contains(data[0], filteredData);
+            Assert.Contains(data[1], filteredData);
+            Assert.IsFalse(filteredData.Contains(data[2]));
+
+            // Add a filter that overrides the default string comparison options
+            m_QE.AddFilter("name", o => ((TestObject)o).name, StringComparison.OrdinalIgnoreCase, new []{":", "=", "!="});
+            query = m_QE.Parse("name:name");
+            ValidateNoErrors(query);
+
+            filteredData = query.Apply(data).ToList();
+            Assert.IsNotEmpty(filteredData);
+            Assert.Contains(data[0], filteredData);
+            Assert.Contains(data[1], filteredData);
+            Assert.Contains(data[2], filteredData);
+
+            // Word matching should use the default string comparison options
+            query = m_QE.Parse("name");
+            ValidateNoErrors(query);
+
+            filteredData = query.Apply(data).ToList();
+            Assert.IsNotEmpty(filteredData);
+            Assert.Contains(data[0], filteredData);
+            Assert.Contains(data[1], filteredData);
+            Assert.IsFalse(filteredData.Contains(data[2]));
+
+            m_QE.SetGlobalStringComparisonOptions(StringComparison.OrdinalIgnoreCase);
+            query = m_QE.Parse("name");
+            ValidateNoErrors(query);
+
+            filteredData = query.Apply(data).ToList();
+            Assert.IsNotEmpty(filteredData);
+            Assert.Contains(data[0], filteredData);
+            Assert.Contains(data[1], filteredData);
+            Assert.Contains(data[2], filteredData);
+        }
+
         public static void ValidateNoErrors<T>(Query<T> query)
         {
             Assert.IsNotNull(query, "Query should not be null");

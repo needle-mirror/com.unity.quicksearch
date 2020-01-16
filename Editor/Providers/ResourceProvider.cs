@@ -6,44 +6,61 @@ using System.Text;
 using JetBrains.Annotations;
 using UnityEditor;
 using UnityEngine;
+using Object = UnityEngine.Object;
 
 namespace Unity.QuickSearch.Providers
 {
     [UsedImplicitly]
     static class ResourcesProvider
     {
-        private struct MatchOperation
+        private interface IMatchOperation
         {
-            public string name;
-            public string matchToken;
-            public Func<UnityEngine.Object, string, bool> matchQuery;
-            public Func<SearchContext, string, IEnumerable<string>> fetchKeywords;
+            Type filterType { get; }
+            string name { get; }
+            string matchToken { get; }
+            Func<SearchContext, string, IEnumerable<string>> fetchKeywords { get; }
+            Func<Object, string> matchWord { get; }
         }
 
-        // Type cache
-        #if UNITY_2019_2_OR_NEWER
-        private static readonly string[] typeFilter = TypeCache.GetTypesDerivedFrom<UnityEngine.Object>()
-            .Select(t => t.Name)
-            .Distinct()
-            .OrderBy(n => n).ToArray();
-        #else
-        private static readonly string[] typeFilter = {};
-        #endif
+        private struct MatchOperation<T> : IMatchOperation
+        {
+            public Type filterType => typeof(T);
+            public string name { get; set; }
+            public string matchToken { get; set; }
+            public Func<SearchContext, string, IEnumerable<string>> fetchKeywords { get; set; }
+            public Func<Object, T> getFilterData { get; set; }
+
+            public Func<Object, string> matchWord
+            {
+                get
+                {
+                    var tmpThis = this;
+                    return o => tmpThis.getFilterData(o).ToString();
+                }
+            }
+        }
 
         internal static string type = "res";
         internal static string displayName = "Resources";
 
-        // Match operations for specific subfilters
-        private static readonly List<MatchOperation> k_SubMatches = new List<MatchOperation>
+        // Match operations for specific sub-filters
+        private static readonly List<IMatchOperation> k_SubMatches = new List<IMatchOperation>
         {
-            new MatchOperation { name = "type", matchToken = "t", matchQuery = MatchByType, fetchKeywords = FetchTypeKeywords },
-            new MatchOperation { name = "name", matchToken = "n", matchQuery = MatchByName },
-            new MatchOperation { name = "id", matchToken = "id", matchQuery = MatchById },
-            new MatchOperation { name = "tag", matchToken = "tag", matchQuery = MatchByTag, fetchKeywords = FetchTagKeywords }
+            new MatchOperation<string> { name = "type", matchToken = "t", getFilterData = o => o.GetType().FullName},
+            new MatchOperation<string> { name = "name", matchToken = "n", getFilterData = o => o.name},
+            new MatchOperation<int> { name = "id", matchToken = "id", getFilterData = o => o.GetInstanceID()},
+            new MatchOperation<string> { name = "tag", matchToken = "tag", fetchKeywords = FetchTagKeywords, getFilterData = o =>
+            {
+                var go = o as GameObject;
+                return go?.tag ?? "";
+            }}
         };
 
+        // QueryEngine
+        static QueryEngine<Object> s_QueryEngine;
+
         // Descriptors for specific types of resources
-        static List<ResourceDescriptor> k_Descriptors = Assembly
+        static readonly List<ResourceDescriptor> k_Descriptors = Assembly
             .GetAssembly(typeof(ResourceDescriptor))
             .GetTypes().Where(t => typeof(ResourceDescriptor).IsAssignableFrom(t))
             .Select(t => t.GetConstructor(new Type[] { })?.Invoke(new object[] { }) as ResourceDescriptor)
@@ -62,8 +79,45 @@ namespace Unity.QuickSearch.Providers
                 fetchPreview = FetchPreview,
                 trackSelection = TrackSelection,
                 fetchKeywords = FetchKeywords,
-                startDrag = (item, context) => DragItem(item)
+                startDrag = (item, context) => DragItem(item),
+                onEnable = OnEnable
             };
+        }
+
+        static void OnEnable()
+        {
+            s_QueryEngine = new QueryEngine<Object>();
+
+            foreach (var matchOperation in k_SubMatches)
+            {
+                AddFilter(matchOperation);
+            }
+
+            s_QueryEngine.SetSearchDataCallback(DefaultSearchDataCallback);
+        }
+
+        static void AddFilter(IMatchOperation matchOperation)
+        {
+            var thisClassType = typeof(ResourcesProvider);
+            var method = thisClassType.GetMethod("AddTypedFilter", BindingFlags.NonPublic | BindingFlags.Static);
+            if (method == null)
+                throw new NullReferenceException("Cannot find method 'AddTypedFilter'");
+            var typedMethod = method.MakeGenericMethod(matchOperation.filterType);
+            typedMethod.Invoke(null, new object[] { matchOperation });
+        }
+
+        [UsedImplicitly]
+        static void AddTypedFilter<T>(IMatchOperation matchOperation)
+        {
+            var typedMatchOperation = (MatchOperation<T>)matchOperation;
+            s_QueryEngine.AddFilter(typedMatchOperation.matchToken, typedMatchOperation.getFilterData);
+        }
+
+        static string[] DefaultSearchDataCallback(Object data)
+        {
+            var go = data as GameObject;
+            var tag = go?.tag ?? "";
+            return new[] { data.GetType().FullName, data.name, data.GetInstanceID().ToString(), tag };
         }
 
         [UsedImplicitly, SearchActionsProvider]
@@ -71,43 +125,52 @@ namespace Unity.QuickSearch.Providers
         {
             return new[]
             {
-                new SearchAction(type, "select", null, "Select resource...")
-                {
-                    handler = (item, context) => TrackSelection(item, context)
-                }
+                new SearchAction(type, "select", null, "Select resource...") { handler = (item, context) => TrackSelection(item, context) },
+                #if UNITY_2020_1_OR_NEWER
+                new SearchAction(type, "inspect", null, "Open property editor...") { handler = (item, context) => OpenPropertyEditor(item) }
+                #endif
             };
         }
 
         private static IEnumerable<SearchItem> SearchItems(SearchContext context, SearchProvider provider)
         {
-            var subFilters = context.textFilters.Where(filter => filter.IndexOf(":", System.StringComparison.OrdinalIgnoreCase) > 0 && !filter.EndsWith(":", System.StringComparison.OrdinalIgnoreCase))
-                .Select(filter => filter.Split(':'));
-            var enabledSubFilters = k_SubMatches.Where(subMatch => subFilters.FirstOrDefault(filter => subMatch.matchToken == filter[0]) != null)
-                .Select(subMatch =>
-                {
-                    var filterQuery = subFilters.FirstOrDefault(filter => subMatch.matchToken == filter[0])?[1];
-                    return Tuple.Create(subMatch, filterQuery);
-                });
-
-            var focusedFilters = context.textFilters.Where(filter => filter.EndsWith(":", System.StringComparison.OrdinalIgnoreCase))
-                .Select(filter => filter.Substring(0, filter.Length - 1)).ToList();
-            var enabledFocusedFilters = k_SubMatches.Where(subMatch => focusedFilters.Count == 0 || focusedFilters.FirstOrDefault(filterToken => subMatch.matchToken == filterToken) != null).ToList();
-
-            var objs = Resources.FindObjectsOfTypeAll(typeof(UnityEngine.Object));
-            var filteredObjs = objs.Where(obj => enabledSubFilters.All(subFilter => subFilter.Item1.matchQuery(obj, subFilter.Item2)));
-            foreach (var obj in filteredObjs)
+            var focusedTokens = context.textFilters.Where(filter => filter.EndsWith(":", System.StringComparison.OrdinalIgnoreCase)).ToList();
+            var sanitizedSearchQuery = context.searchQuery;
+            foreach (var focusedFilter in focusedTokens)
             {
-                if (context.searchWords.All(query => enabledFocusedFilters.Any(matchOp => matchOp.matchQuery(obj, query))))
-                    yield return provider.CreateItem(obj.GetInstanceID().ToString(), $"{obj.name} [{obj.GetType()}] ({obj.GetInstanceID()})", null, null, obj.GetInstanceID());
-                else
-                    yield return null;
+                sanitizedSearchQuery = sanitizedSearchQuery.Replace(focusedFilter, "");
             }
+
+            if (focusedTokens.Count > 0)
+            {
+                var focusedFilters = focusedTokens.Select(token => token.Substring(0, token.Length - 1)).ToList();
+                var focusedMatchOperations = k_SubMatches.Where(subMatch => focusedFilters.Contains(subMatch.matchToken));
+                s_QueryEngine.SetSearchDataCallback(o =>
+                {
+                    return focusedMatchOperations.Select(matchOp => matchOp.matchWord(o));
+                });
+            }
+
+            var query = s_QueryEngine.Parse(sanitizedSearchQuery);
+            if (!query.valid)
+                yield break;
+
+            var allObjects = Resources.FindObjectsOfTypeAll(typeof(Object));
+            var filteredObjects = query.Apply(allObjects);
+
+            foreach (var obj in filteredObjects)
+            {
+                yield return provider.CreateItem(obj.GetInstanceID().ToString(), $"{obj.name} [{obj.GetType()}] ({obj.GetInstanceID()})", null, null, obj.GetInstanceID());
+            }
+
+            // Put back the default search callback
+            if (focusedTokens.Count > 0)
+                s_QueryEngine.SetSearchDataCallback(DefaultSearchDataCallback);
         }
 
         private static void DragItem(SearchItem item)
         {
-            var instanceID = Convert.ToInt32(item.id);
-            var obj = EditorUtility.InstanceIDToObject(instanceID);
+            var obj = GetItemObject(item);
             if (obj != null)
             {
                 DragAndDrop.PrepareStartDrag();
@@ -118,8 +181,7 @@ namespace Unity.QuickSearch.Providers
 
         private static string FetchDescription(SearchItem item, SearchContext context)
         {
-            var instanceID = Convert.ToInt32(item.id);
-            var obj = EditorUtility.InstanceIDToObject(instanceID);
+            var obj = GetItemObject(item);
             var sb = new StringBuilder();
             var matchingDescriptor = k_Descriptors.Where(descriptor => descriptor.Match(obj)).ToList();
             foreach (var descriptor in matchingDescriptor)
@@ -136,8 +198,7 @@ namespace Unity.QuickSearch.Providers
             if (item.thumbnail)
                 return item.thumbnail;
 
-            var instanceID = Convert.ToInt32(item.id);
-            var obj = EditorUtility.InstanceIDToObject(instanceID);
+            var obj = GetItemObject(item);
             var descriptor = k_Descriptors.FirstOrDefault(desc => desc.Match(obj));
             return descriptor == null ? Icons.quicksearch : descriptor.GetThumbnail(obj);
         }
@@ -147,18 +208,22 @@ namespace Unity.QuickSearch.Providers
             if (item.preview)
                 return item.preview;
 
-            var instanceID = Convert.ToInt32(item.id);
-            var obj = EditorUtility.InstanceIDToObject(instanceID);
+            var obj = GetItemObject(item);
             var descriptor = k_Descriptors.FirstOrDefault(desc => desc.Match(obj));
             return descriptor == null ? Icons.quicksearch : descriptor.GetPreview(obj, (int)size.x, (int)size.y);
         }
 
         private static void TrackSelection(SearchItem item, SearchContext context)
         {
-            var instanceID = Convert.ToInt32(item.id);
-            var obj = EditorUtility.InstanceIDToObject(instanceID);
+            var obj = GetItemObject(item);
             var descriptor = k_Descriptors.FirstOrDefault(desc => desc.Match(obj));
             descriptor?.TrackSelection(obj);
+        }
+
+        private static Object GetItemObject(SearchItem item)
+        {
+            var instanceID = Convert.ToInt32(item.id);
+            return EditorUtility.InstanceIDToObject(instanceID);
         }
 
         private static void FetchKeywords(SearchContext context, string lastToken, List<string> items)
@@ -168,42 +233,22 @@ namespace Unity.QuickSearch.Providers
                 return;
             var filterToken = lastToken.Substring(0, index);
             var matchOp = k_SubMatches.FirstOrDefault(subMatch => subMatch.matchToken == filterToken);
-            if (matchOp.fetchKeywords == null)
+            if (matchOp?.fetchKeywords == null)
                 return;
             items.AddRange(matchOp.fetchKeywords(context, lastToken).Select(k => $"{matchOp.matchToken}:{k}"));
-        }
-
-        private static bool MatchByType(UnityEngine.Object obj, string searchQuery)
-        {
-            var fullName = obj.GetType().FullName;
-            return fullName != null && fullName.IndexOf(searchQuery, StringComparison.OrdinalIgnoreCase) >= 0;
-        }
-
-        private static bool MatchByName(UnityEngine.Object obj, string searchQuery)
-        {
-            return obj.name.IndexOf(searchQuery, StringComparison.OrdinalIgnoreCase) >= 0;
-        }
-
-        private static bool MatchById(UnityEngine.Object obj, string searchQuery)
-        {
-            return obj.GetInstanceID().ToString().IndexOf(searchQuery, StringComparison.OrdinalIgnoreCase) >= 0;
-        }
-
-        private static bool MatchByTag(UnityEngine.Object obj, string searchQuery)
-        {
-            var go = obj as GameObject;
-            return go && go.tag.IndexOf(searchQuery, StringComparison.OrdinalIgnoreCase) >= 0;
-        }
-
-        private static IEnumerable<string> FetchTypeKeywords(SearchContext context, string lastToken)
-        {
-            return typeFilter;
         }
 
         private static IEnumerable<string> FetchTagKeywords(SearchContext context, string lastToken)
         {
             return UnityEditorInternal.InternalEditorUtility.tags;
         }
+
+        #if UNITY_2020_1_OR_NEWER
+        private static void OpenPropertyEditor(SearchItem item)
+        {
+            Utils.OpenPropertyEditor(GetItemObject(item));
+        }
+        #endif
     }
 }
 

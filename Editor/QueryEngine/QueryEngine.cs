@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Reflection;
 using System.Text.RegularExpressions;
@@ -221,48 +222,50 @@ namespace Unity.QuickSearch
 
         private List<Tuple<Regex, TokenConsumer>> m_TokenConsumers;
 
-        public Func<TData, string[]> searchDataCallback { get; private set; }
+        public Func<TData, IEnumerable<string>> searchDataCallback { get; private set; }
 
         public bool validateFilters { get; set; }
+
+        public StringComparison globalStringComparison { get; set; } = StringComparison.OrdinalIgnoreCase;
 
         public QueryEngineImpl()
         {
             // Default operators
             AddOperator(":", false)
-                .AddHandler((object ev, object fv) => ev.ToString().Contains(fv.ToString()))
-                .AddHandler((string ev, string fv) => ev.Contains(fv));
+                .AddHandler((object ev, object fv, StringComparison sc) => ev.ToString().IndexOf(fv.ToString(), sc) >= 0)
+                .AddHandler((string ev, string fv, StringComparison sc) => ev.IndexOf(fv, sc) >= 0);
             AddOperator("=", false)
                 .AddHandler((object ev, object fv) => ev.Equals(fv))
                 .AddHandler((int ev, int fv) => ev == fv)
                 .AddHandler((float ev, float fv) => Math.Abs(ev - fv) < Mathf.Epsilon)
                 .AddHandler((bool ev, bool fv) => ev == fv)
-                .AddHandler((string ev, string fv) => string.Equals(ev, fv, StringComparison.Ordinal));
+                .AddHandler((string ev, string fv, StringComparison sc) => string.Equals(ev, fv, sc));
             AddOperator("!=", false)
                 .AddHandler((object ev, object fv) => !ev.Equals(fv))
                 .AddHandler((int ev, int fv) => ev != fv)
                 .AddHandler((float ev, float fv) => Math.Abs(ev - fv) >= Mathf.Epsilon)
                 .AddHandler((bool ev, bool fv) => ev != fv)
-                .AddHandler((string ev, string fv) => !string.Equals(ev, fv, StringComparison.Ordinal));
+                .AddHandler((string ev, string fv, StringComparison sc) => !string.Equals(ev, fv, sc));
             AddOperator("<", false)
                 .AddHandler((object ev, object fv) => Comparer<object>.Default.Compare(ev, fv) < 0)
                 .AddHandler((int ev, int fv) => ev < fv)
                 .AddHandler((float ev, float fv) => ev < fv)
-                .AddHandler((string ev, string fv) => string.CompareOrdinal(ev, fv) < 0);
+                .AddHandler((string ev, string fv, StringComparison sc) => string.Compare(ev, fv, sc) < 0);
             AddOperator(">", false)
                 .AddHandler((object ev, object fv) => Comparer<object>.Default.Compare(ev, fv) > 0)
                 .AddHandler((int ev, int fv) => ev > fv)
                 .AddHandler((float ev, float fv) => ev > fv)
-                .AddHandler((string ev, string fv) => string.CompareOrdinal(ev, fv) > 0);
+                .AddHandler((string ev, string fv, StringComparison sc) => string.Compare(ev, fv, sc) > 0);
             AddOperator("<=", false)
                 .AddHandler((object ev, object fv) => Comparer<object>.Default.Compare(ev, fv) <= 0)
                 .AddHandler((int ev, int fv) => ev <= fv)
                 .AddHandler((float ev, float fv) => ev <= fv)
-                .AddHandler((string ev, string fv) => string.CompareOrdinal(ev, fv) <= 0);
+                .AddHandler((string ev, string fv, StringComparison sc) => string.Compare(ev, fv, sc) <= 0);
             AddOperator(">=", false)
                 .AddHandler((object ev, object fv) => Comparer<object>.Default.Compare(ev, fv) >= 0)
                 .AddHandler((int ev, int fv) => ev >= fv)
                 .AddHandler((float ev, float fv) => ev >= fv)
-                .AddHandler((string ev, string fv) => string.CompareOrdinal(ev, fv) >= 0);
+                .AddHandler((string ev, string fv, StringComparison sc) => string.Compare(ev, fv, sc) >= 0);
 
             BuildFilterRegex();
         }
@@ -310,7 +313,7 @@ namespace Unity.QuickSearch
             m_DefaultParamFilterHandler = handler;
         }
 
-        public void SetSearchDataCallback(Func<TData, string[]> getSearchDataCallback)
+        public void SetSearchDataCallback(Func<TData, IEnumerable<string>> getSearchDataCallback)
         {
             searchDataCallback = getSearchDataCallback;
         }
@@ -391,8 +394,14 @@ namespace Unity.QuickSearch
             return -1;
         }
 
-        private static int ConsumeWords(string text, int startIndex, Match match, List<IQueryNode> nodes, List<QueryError> errors, NodesToStringPosition nodesToStringPosition)
+        private int ConsumeWords(string text, int startIndex, Match match, List<IQueryNode> nodes, List<QueryError> errors, NodesToStringPosition nodesToStringPosition)
         {
+            if (searchDataCallback == null)
+            {
+                errors.Add(new QueryError(startIndex, match.Length, "Cannot use a search word without setting the search data callback."));
+                return -1;
+            }
+
             if (IsPhraseToken(match.Value) || IsWordToken(match.Value))
             {
                 var node = CreateWordExpressionNode(match.Value);
@@ -581,7 +590,7 @@ namespace Unity.QuickSearch
                 }
             }
 
-            IFilterOperationGenerator filterOperationGenerator;
+            IFilterOperationGenerator<TData> filterOperationGenerator;
 
             if (!filter.paramFilter)
             {
@@ -590,7 +599,7 @@ namespace Unity.QuickSearch
                     type = typeof(FilterResolverOperationGenerator<,>).MakeGenericType(typeof(TData), filter.type);
                 else
                     type = typeof(FilterOperationGenerator<,,>).MakeGenericType(typeof(TData), filter.type, filterValueType);
-                filterOperationGenerator = (IFilterOperationGenerator)Activator.CreateInstance(type, filter, op, filterValue, parseResult);
+                filterOperationGenerator = (IFilterOperationGenerator<TData>)Activator.CreateInstance(type, filter, op, filterValue, parseResult);
             }
             else
             {
@@ -599,10 +608,10 @@ namespace Unity.QuickSearch
                     type = typeof(FilterResolverOperationGenerator<,,>).MakeGenericType(typeof(TData), filter.paramType, filter.type);
                 else
                     type = typeof(FilterOperationGenerator<,,,>).MakeGenericType(typeof(TData), filter.paramType, filter.type, filterValueType);
-                filterOperationGenerator = (IFilterOperationGenerator)Activator.CreateInstance(type, filter, op, filterValue, filterParam, parseResult);
+                filterOperationGenerator = (IFilterOperationGenerator<TData>)Activator.CreateInstance(type, filter, op, filterValue, filterParam, parseResult);
             }
 
-            return new FilterNode(filterOperationGenerator.GenerateOperation(index + match.Groups[2].Index, errors));
+            return new FilterNode(filterOperationGenerator.GenerateOperation(index + match.Groups[2].Index, errors, this));
         }
 
         private static IQueryNode CreateWordExpressionNode(string token)
@@ -806,9 +815,14 @@ namespace Unity.QuickSearch
         }
 
         /// <summary>
+        /// Global string comparison options for word matching and filter handling (if not overridden by filter).
+        /// </summary>
+        public StringComparison globalStringComparison => m_Impl.globalStringComparison;
+
+        /// <summary>
         /// The callback used to get the data to match to the search words.
         /// </summary>
-        public Func<TData, string[]> searchDataCallback => m_Impl.searchDataCallback;
+        public Func<TData, IEnumerable<string>> searchDataCallback => m_Impl.searchDataCallback;
 
         /// <summary>
         /// Construct a new QueryEngine.
@@ -841,6 +855,20 @@ namespace Unity.QuickSearch
         }
 
         /// <summary>
+        /// Add a new custom filter.
+        /// </summary>
+        /// <typeparam name="TFilter">The type of the data that is compared by the filter.</typeparam>
+        /// <param name="token">The identifier of the filter. Typically what precedes the operator in a filter (i.e. "id" in "id>=2").</param>
+        /// <param name="getDataFunc">Callback used to get the object that is used in the filter. Takes an object of type TData and returns an object of type TFilter.</param>
+        /// <param name="stringComparison">String comparison options.</param>
+        /// <param name="supportedOperatorType">List of supported operator tokens. Null for all operators.</param>
+        public void AddFilter<TFilter>(string token, Func<TData, TFilter> getDataFunc, StringComparison stringComparison, string[] supportedOperatorType = null)
+        {
+            var filter = new Filter<TData, TFilter>(token, supportedOperatorType, getDataFunc, stringComparison);
+            m_Impl.AddFilter(filter);
+        }
+
+        /// <summary>
         /// Add a new custom filter function.
         /// </summary>
         /// <typeparam name="TParam">The type of the constant parameter passed to the function.</typeparam>
@@ -861,11 +889,42 @@ namespace Unity.QuickSearch
         /// <typeparam name="TFilter">The type of the data that is compared by the filter.</typeparam>
         /// <param name="token">The identifier of the filter. Typically what precedes the operator in a filter (i.e. "id" in "id>=2").</param>
         /// <param name="getDataFunc">Callback used to get the object that is used in the filter. Takes an object of type TData and TParam, and returns an object of type TFilter.</param>
+        /// <param name="stringComparison">String comparison options.</param>
+        /// <param name="supportedOperatorType">List of supported operator tokens. Null for all operators.</param>
+        public void AddFilter<TParam, TFilter>(string token, Func<TData, TParam, TFilter> getDataFunc, StringComparison stringComparison, string[] supportedOperatorType = null)
+        {
+            var filter = new Filter<TData, TParam, TFilter>(token, supportedOperatorType, getDataFunc, stringComparison);
+            m_Impl.AddFilter(filter);
+        }
+
+        /// <summary>
+        /// Add a new custom filter function.
+        /// </summary>
+        /// <typeparam name="TParam">The type of the constant parameter passed to the function.</typeparam>
+        /// <typeparam name="TFilter">The type of the data that is compared by the filter.</typeparam>
+        /// <param name="token">The identifier of the filter. Typically what precedes the operator in a filter (i.e. "id" in "id>=2").</param>
+        /// <param name="getDataFunc">Callback used to get the object that is used in the filter. Takes an object of type TData and TParam, and returns an object of type TFilter.</param>
         /// <param name="parameterTransformer">Callback used to convert a string to the type TParam. Used when parsing the query to convert what is passed to the function into the correct format.</param>
         /// <param name="supportedOperatorType">List of supported operator tokens. Null for all operators.</param>
         public void AddFilter<TParam, TFilter>(string token, Func<TData, TParam, TFilter> getDataFunc, Func<string, TParam> parameterTransformer, string[] supportedOperatorType = null)
         {
             var filter = new Filter<TData, TParam, TFilter>(token, supportedOperatorType, getDataFunc, parameterTransformer);
+            m_Impl.AddFilter(filter);
+        }
+
+        /// <summary>
+        /// Add a new custom filter function.
+        /// </summary>
+        /// <typeparam name="TParam">The type of the constant parameter passed to the function.</typeparam>
+        /// <typeparam name="TFilter">The type of the data that is compared by the filter.</typeparam>
+        /// <param name="token">The identifier of the filter. Typically what precedes the operator in a filter (i.e. "id" in "id>=2").</param>
+        /// <param name="getDataFunc">Callback used to get the object that is used in the filter. Takes an object of type TData and TParam, and returns an object of type TFilter.</param>
+        /// <param name="parameterTransformer">Callback used to convert a string to the type TParam. Used when parsing the query to convert what is passed to the function into the correct format.</param>
+        /// <param name="stringComparison">String comparison options.</param>
+        /// <param name="supportedOperatorType">List of supported operator tokens. Null for all operators.</param>
+        public void AddFilter<TParam, TFilter>(string token, Func<TData, TParam, TFilter> getDataFunc, Func<string, TParam> parameterTransformer, StringComparison stringComparison, string[] supportedOperatorType = null)
+        {
+            var filter = new Filter<TData, TParam, TFilter>(token, supportedOperatorType, getDataFunc, parameterTransformer, stringComparison);
             m_Impl.AddFilter(filter);
         }
 
@@ -935,10 +994,19 @@ namespace Unity.QuickSearch
         /// <summary>
         /// Set the callback to be used to fetch the data that will be matched against the search words.
         /// </summary>
-        /// <param name="getSearchDataCallback">Callback used to get the data to be matched against the search words. Takes an object of type TData and return an array of strings.</param>
-        public void SetSearchDataCallback(Func<TData, string[]> getSearchDataCallback)
+        /// <param name="getSearchDataCallback">Callback used to get the data to be matched against the search words. Takes an object of type TData and return an IEnumerable of strings.</param>
+        public void SetSearchDataCallback(Func<TData, IEnumerable<string>> getSearchDataCallback)
         {
             m_Impl.SetSearchDataCallback(getSearchDataCallback);
+        }
+
+        /// <summary>
+        /// Set global string comparison options. Used for word matching and filter handling (unless overridden by filter).
+        /// </summary>
+        /// <param name="stringComparison">String comparison options.</param>
+        public void SetGlobalStringComparisonOptions(StringComparison stringComparison)
+        {
+            m_Impl.globalStringComparison = stringComparison;
         }
 
         /// <summary>

@@ -63,7 +63,12 @@ namespace Unity.QuickSearch
                 {
                     var searchNode = node as SearchNode;
                     Assert.IsNotNull(searchNode);
-                    return o => m_Engine.searchDataCallback(o).Any(data => searchNode.exact ? data == searchNode.searchValue : data.Contains(searchNode.searchValue));
+                    Func<string, bool> matchWordFunc;
+                    if (searchNode.exact)
+                        matchWordFunc = s => s.Equals(searchNode.searchValue, m_Engine.globalStringComparison);
+                    else
+                        matchWordFunc = s => s.IndexOf(searchNode.searchValue, m_Engine.globalStringComparison) >= 0;
+                    return o => m_Engine.searchDataCallback(o).Any(data => matchWordFunc(data));
                 }
             }
 

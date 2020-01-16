@@ -14,6 +14,8 @@ namespace Unity.QuickSearch
         bool paramFilter { get; }
         Type paramType { get; }
         bool resolver { get; }
+        StringComparison stringComparison { get; }
+        bool overrideStringComparison { get; }
     }
 
     internal abstract class BaseFilter<TFilter> : IFilter
@@ -26,11 +28,24 @@ namespace Unity.QuickSearch
 
         public bool resolver { get; protected set; }
 
-        protected BaseFilter(string token, IEnumerable<string> supportedOperatorType)
+        public StringComparison stringComparison { get; }
+        public bool overrideStringComparison { get; }
+
+        protected BaseFilter(string token, IEnumerable<string> supportedOperatorTypes)
         {
             this.token = token;
-            supportedFilters = supportedOperatorType ?? new string[] { };
+            supportedFilters = supportedOperatorTypes ?? new string[] { };
             resolver = false;
+            overrideStringComparison = false;
+        }
+
+        protected BaseFilter(string token, IEnumerable<string> supportedOperatorTypes, StringComparison stringComparison)
+        {
+            this.token = token;
+            supportedFilters = supportedOperatorTypes ?? new string[] { };
+            resolver = false;
+            this.stringComparison = stringComparison;
+            overrideStringComparison = true;
         }
 
         public bool SupportsValue(string value)
@@ -47,6 +62,12 @@ namespace Unity.QuickSearch
 
         public Filter(string token, IEnumerable<string> supportedOperatorType, Func<TObject, TFilter> getDataCallback)
             : base(token, supportedOperatorType)
+        {
+            m_GetDataCallback = getDataCallback;
+        }
+
+        public Filter(string token, IEnumerable<string> supportedOperatorType, Func<TObject, TFilter> getDataCallback, StringComparison stringComparison)
+            : base(token, supportedOperatorType, stringComparison)
         {
             m_GetDataCallback = getDataCallback;
         }
@@ -86,8 +107,21 @@ namespace Unity.QuickSearch
             m_GetDataCallback = getDataCallback;
         }
 
+        public Filter(string token, IEnumerable<string> supportedOperatorType, Func<TObject, TParam, TFilter> getDataCallback, StringComparison stringComparison)
+            : base(token, supportedOperatorType, stringComparison)
+        {
+            m_GetDataCallback = getDataCallback;
+        }
+
         public Filter(string token, IEnumerable<string> supportedOperatorType, Func<TObject, TParam, TFilter> getDataCallback, Func<string, TParam> parameterTransformer)
             : base(token, supportedOperatorType)
+        {
+            m_GetDataCallback = getDataCallback;
+            m_ParameterTransformer = parameterTransformer;
+        }
+
+        public Filter(string token, IEnumerable<string> supportedOperatorType, Func<TObject, TParam, TFilter> getDataCallback, Func<string, TParam> parameterTransformer, StringComparison stringComparison)
+            : base(token, supportedOperatorType, stringComparison)
         {
             m_GetDataCallback = getDataCallback;
             m_ParameterTransformer = parameterTransformer;

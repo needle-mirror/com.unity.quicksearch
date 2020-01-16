@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 
 namespace Unity.QuickSearch
 {
@@ -13,12 +14,12 @@ namespace Unity.QuickSearch
         string ToString();
     }
 
-    internal interface IFilterOperationGenerator
+    internal interface IFilterOperationGenerator<TData>
     {
-        IFilterOperation GenerateOperation(int operatorIndex, List<QueryError> errors);
+        IFilterOperation GenerateOperation(int operatorIndex, List<QueryError> errors, QueryEngineImpl<TData> engine);
     }
 
-    internal class FilterOperationGenerator<TObject, TFilterVariable, TFilterConstant> : IFilterOperationGenerator
+    internal class FilterOperationGenerator<TObject, TFilterVariable, TFilterConstant> : IFilterOperationGenerator<TObject>
     {
         protected readonly Filter<TObject, TFilterVariable> m_Filter;
         protected readonly FilterOperator m_Operator;
@@ -33,36 +34,37 @@ namespace Unity.QuickSearch
             m_FilterValueParseResult = (ParseResult<TFilterConstant>)filterValueParseResult;
         }
 
-        public virtual IFilterOperation GenerateOperation(int operatorIndex, List<QueryError> errors)
+        public virtual IFilterOperation GenerateOperation(int operatorIndex, List<QueryError> errors, QueryEngineImpl<TObject> engine)
         {
             Func<TObject, bool> operation = o => false;
             var filterValue = m_FilterValueParseResult.parsedValue;
             var handlerTypedKey = new FilterOperatorTypes(typeof(TFilterVariable), typeof(TFilterConstant));
             var handlerGenericKey = new FilterOperatorTypes(typeof(object), typeof(object));
+            var stringComparisonOptions = m_Filter.overrideStringComparison ? m_Filter.stringComparison : engine.globalStringComparison;
 
             var error = "";
 
             if (m_Operator.handlers.ContainsKey(handlerTypedKey))
             {
-                if (!(m_Operator.handlers[handlerTypedKey] is Func<TFilterVariable, TFilterConstant, bool> handler))
+                if (!(m_Operator.handlers[handlerTypedKey] is Func<TFilterVariable, TFilterConstant, StringComparison, bool> handler))
                 {
                     error = $"Filter operator handler of type ({handlerTypedKey.leftHandSideType}, {handlerTypedKey.rightHandSideType}) could not be" +
                         $" converted to Func<{handlerTypedKey.leftHandSideType}, {handlerTypedKey.rightHandSideType}, bool>";
                     errors.Add(new QueryError(operatorIndex, error));
                 }
                 else
-                    operation = o => handler(m_Filter.GetData(o), filterValue);
+                    operation = o => handler(m_Filter.GetData(o), filterValue, stringComparisonOptions);
             }
             else if (m_Operator.handlers.ContainsKey(handlerGenericKey))
             {
-                if (!(m_Operator.handlers[handlerGenericKey] is Func<object, object, bool> handler))
+                if (!(m_Operator.handlers[handlerGenericKey] is Func<object, object, StringComparison, bool> handler))
                 {
                     error = $"Filter operator handler of type ({handlerGenericKey.leftHandSideType}, {handlerGenericKey.rightHandSideType}) could not be" +
                         $" converted to Func<{handlerGenericKey.leftHandSideType}, {handlerGenericKey.rightHandSideType}, bool>";
                     errors.Add(new QueryError(operatorIndex, error));
                 }
                 else
-                    operation = o => handler(m_Filter.GetData(o), filterValue);
+                    operation = o => handler(m_Filter.GetData(o), filterValue, stringComparisonOptions);
             }
             else
             {
@@ -85,7 +87,7 @@ namespace Unity.QuickSearch
             : base(filter, op, filterValue, filterValueParseResult)
         { }
 
-        public override IFilterOperation GenerateOperation(int operatorIndex, List<QueryError> errors)
+        public override IFilterOperation GenerateOperation(int operatorIndex, List<QueryError> errors, QueryEngineImpl<TObject> engine)
         {
             var filterValue = m_FilterValueParseResult.parsedValue;
             // ReSharper disable once ConvertToLocalFunction
@@ -95,7 +97,7 @@ namespace Unity.QuickSearch
         }
     }
 
-    internal class FilterOperationGenerator<TObject, TParam, TFilterVariable, TFilterConstant> : IFilterOperationGenerator
+    internal class FilterOperationGenerator<TObject, TParam, TFilterVariable, TFilterConstant> : IFilterOperationGenerator<TObject>
     {
         protected readonly Filter<TObject, TParam, TFilterVariable> m_Filter;
         protected readonly FilterOperator m_Operator;
@@ -112,36 +114,37 @@ namespace Unity.QuickSearch
             m_FilterValueParseResult = (ParseResult<TFilterConstant>)filterValueParseResult;
         }
 
-        public virtual IFilterOperation GenerateOperation(int operatorIndex, List<QueryError> errors)
+        public virtual IFilterOperation GenerateOperation(int operatorIndex, List<QueryError> errors, QueryEngineImpl<TObject> engine)
         {
             Func<TObject, TParam, bool> operation = (o, p) => false;
             var filterValue = m_FilterValueParseResult.parsedValue;
             var handlerTypedKey = new FilterOperatorTypes(typeof(TFilterVariable), typeof(TFilterConstant));
             var handlerGenericKey = new FilterOperatorTypes(typeof(object), typeof(object));
+            var stringComparisonOptions = m_Filter.overrideStringComparison ? m_Filter.stringComparison : engine.globalStringComparison;
 
             var error = "";
 
             if (m_Operator.handlers.ContainsKey(handlerTypedKey))
             {
-                if (!(m_Operator.handlers[handlerTypedKey] is Func<TFilterVariable, TFilterConstant, bool> handler))
+                if (!(m_Operator.handlers[handlerTypedKey] is Func<TFilterVariable, TFilterConstant, StringComparison, bool> handler))
                 {
                     error = $"Filter operator handler of type ({handlerTypedKey.leftHandSideType}, {handlerTypedKey.rightHandSideType}) could not be" +
                         $" converted to Func<{handlerTypedKey.leftHandSideType}, {handlerTypedKey.rightHandSideType}, bool>";
                     errors.Add(new QueryError(operatorIndex, error));
                 }
                 else
-                    operation = (o, p) => handler(m_Filter.GetData(o, p), filterValue);
+                    operation = (o, p) => handler(m_Filter.GetData(o, p), filterValue, stringComparisonOptions);
             }
             else if (m_Operator.handlers.ContainsKey(handlerGenericKey))
             {
-                if (!(m_Operator.handlers[handlerGenericKey] is Func<object, object, bool> handler))
+                if (!(m_Operator.handlers[handlerGenericKey] is Func<object, object, StringComparison, bool> handler))
                 {
                     error = $"Filter operator handler of type ({handlerGenericKey.leftHandSideType}, {handlerGenericKey.rightHandSideType}) could not be" +
                         $" converted to Func<{handlerGenericKey.leftHandSideType}, {handlerGenericKey.rightHandSideType}, bool>";
                     errors.Add(new QueryError(operatorIndex, error));
                 }
                 else
-                    operation = (o, p) => handler(m_Filter.GetData(o, p), filterValue);
+                    operation = (o, p) => handler(m_Filter.GetData(o, p), filterValue, stringComparisonOptions);
             }
             else
             {
@@ -164,7 +167,7 @@ namespace Unity.QuickSearch
             : base(filter, op, filterValue, paramValue, filterValueParseResult)
         { }
 
-        public override IFilterOperation GenerateOperation(int operatorIndex, List<QueryError> errors)
+        public override IFilterOperation GenerateOperation(int operatorIndex, List<QueryError> errors, QueryEngineImpl<TObject> engine)
         {
             var filterValue = m_FilterValueParseResult.parsedValue;
             // ReSharper disable once ConvertToLocalFunction

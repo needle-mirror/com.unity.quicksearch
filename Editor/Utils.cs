@@ -485,6 +485,21 @@ namespace Unity.QuickSearch
         }
 
         #if UNITY_2020_1_OR_NEWER
+
+        private static MethodInfo s_OpenPropertyEditorMethod;
+        internal static EditorWindow OpenPropertyEditor(UnityEngine.Object obj)
+        {
+            if (s_OpenPropertyEditorMethod == null)
+            {
+                Assembly assembly = typeof(UnityEditor.EditorWindow).Assembly;
+                var type = assembly.GetTypes().First(t => t.FullName == "UnityEditor.PropertyEditor");
+                s_OpenPropertyEditorMethod = type.GetMethod("OpenPropertyEditor", BindingFlags.NonPublic | BindingFlags.Static);
+                if (s_OpenPropertyEditorMethod == null)
+                    return null;
+            }
+            return (EditorWindow)s_OpenPropertyEditorMethod.Invoke(null, new object[] {obj, true});
+        }
+
         // TODO: Fix issue if PingUIElement is called more than once before delayCall is called, locking the window with the new style
         internal static void PingUIElement(VisualElement element, [CanBeNull] EditorWindow window)
         {
