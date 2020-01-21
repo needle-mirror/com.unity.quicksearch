@@ -1,4 +1,6 @@
-## [1.5.0-preview.5] - 2020-01-17
+# Changelog
+
+## [1.5.0-preview.6] - 2020-01-22
 - [UX] You can now search scene objects with a given component using c:<component name>.
 - [UX] We've removed the dockable window mode of Quick Search since it wasn't playing nice with some loading and refreshing workflows and optimizations.
 - [UX] Update the quick search spinning wheel when async results are still being fetched.
@@ -6,6 +8,7 @@
 - [UX] fetchPreview of AssetStoreProvider uses the PurchaseInfo to get a bigger/more detailed preview.
 - [UX] Change the Resources Provider to use the QueryEngine. Some behaviors may have changed.
 - [UX] Asset Store provider fetches multiple screenshots and populates the preview panel carousel with those.
+- [UX] Add UMPE quick search indexing to build the search index in another process.
 - [UX] Add selected search item preview panel.
 - [UX] Add Resource provider, which lets you search all resources loaded by Unity.
 - [UX] Add new Unity 2020.1 property editor support.
@@ -18,6 +21,7 @@
 - [FIX] Only enable the search asset watcher once the quick search tool is used the first time.
 - [FIX] Do not load the LogProvider if the application console log path is not valid.
 - [FIX] Add support for digits when splitting camel cases of file names.
+- [FIX] Prevent search callback errors when not validating queries.
 - [DOC] Quick Search Manual has been reviewed and edited.
 - [DOC] Document more APIs.
 - [DOC] Add some sample packages to Quick Search to distribute more search provider and query engine examples.

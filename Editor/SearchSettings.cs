@@ -1,5 +1,6 @@
 using System.Linq;
 using JetBrains.Annotations;
+using Unity.QuickSearch.Providers;
 using UnityEditor;
 using UnityEngine;
 
@@ -48,6 +49,14 @@ namespace Unity.QuickSearch
                                 trackSelection = EditorGUILayout.Toggle(Styles.trackSelectionContent, trackSelection);
                                 fetchPreview = EditorGUILayout.Toggle(Styles.fetchPreviewContent, fetchPreview);
                                 useUberIndexing = EditorGUILayout.Toggle(Styles.useUberIndexingContent, useUberIndexing);
+                                if (useUberIndexing)
+                                {
+                                    GUILayout.BeginHorizontal();
+                                    GUILayout.Space(420);
+                                    if (GUILayout.Button(Styles.rebuildIndexButtonContent, GUILayout.MaxWidth(100)))
+                                        ADBIndex.RebuildIndex();
+                                    GUILayout.EndHorizontal();
+                                }
                                 GUILayout.Space(10);
                                 DrawProviderSettings();
                             }
@@ -218,6 +227,7 @@ namespace Unity.QuickSearch
             public static GUIContent useUberIndexingContent = new GUIContent(
                 "Index all asset properties (Experimental and consume more resources)",
                 "This new indexer, indexes all asset properties, such as dependencies (i.e. dep:door), components (i.e. has:audio), size (i.e. size>=1000), etc.");
+            public static GUIContent rebuildIndexButtonContent = new GUIContent("Rebuild index");
         }
     }
 }

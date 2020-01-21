@@ -1,9 +1,5 @@
 //#define DEBUG_UBER_INDEXING
 
-#if UNITY_2020_2_OR_NEWER
-#define USE_ASYNC_PROGRESS
-#endif
-
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -17,6 +13,8 @@ namespace Unity.QuickSearch.Providers
     class AssetIndexer : SearchIndexer
     {
         internal const string k_IndexFilePath = "Library/quicksearch.uber.index";
+
+        public bool useFinishThread { get; set; } = true;
 
         #if DEBUG_UBER_INDEXING
         private readonly Dictionary<string, HashSet<string>> m_DebugStringTable = new Dictionary<string, HashSet<string>>();
@@ -37,17 +35,7 @@ namespace Unity.QuickSearch.Providers
             return SearchUtils.SplitFileEntryComponents(path, entrySeparators, minIndexCharVariation, maxIndexCharVariation);
         }
 
-        public override void Build()
-        {
-            if (LoadIndexFromDisk(null, true))
-                return;
-
-            #if USE_ASYNC_PROGRESS
-            Progress.RunTask("Building Über Index", null, BuildIndex, ProgressOptions.Sticky, -1);
-            #else
-            BuildIndex(-1);
-            #endif
-        }
+        public event Action<int, string, float, bool> reportProgress;
 
         public IEnumerable<SearchEntryResult> Search(string searchQuery)
         {
@@ -79,47 +67,44 @@ namespace Unity.QuickSearch.Providers
             }, null);
         }
 
-        #if USE_ASYNC_PROGRESS
-        private System.Collections.IEnumerator BuildIndex(int progressId, object userData)
-        #else
-        private void BuildIndex(int progressId, object userData = null)
-        #endif
+        public override void Build()
+        {
+            if (LoadIndexFromDisk(null, true))
+                return;
+
+            var it = BuildAsync(-1, null);
+            while (it.MoveNext())
+                ;
+        }
+
+        internal System.Collections.IEnumerator BuildAsync(int progressId, object userData = null)
         {
             var paths = AssetDatabase.GetAllAssetPaths();
             var pathIndex = 0;
             var pathCount = (float)paths.Length;
 
-            Start(true);
+            Start(clear: true);
 
             EditorApplication.LockReloadAssemblies();
             //AssetDatabase.StartAssetEditing();
             foreach (var path in paths)
             {
-                #if USE_ASYNC_PROGRESS
-                Progress.Report(progressId, pathIndex++ / pathCount, path);
-                #else
-                EditorUtility.DisplayProgressBar("Indexing...", path, pathIndex++ / pathCount);
-                #endif
-
+                var progressReport = pathIndex++ / pathCount;
+                reportProgress?.Invoke(progressId, path, progressReport, false);
                 IndexAsset(path, false);
-
-                #if USE_ASYNC_PROGRESS
                 yield return null;
-                #endif
             }
             //AssetDatabase.StopAssetEditing();
             EditorApplication.UnlockReloadAssemblies();
 
-            Finish(true);
+            Finish(useFinishThread);
             //Print();
 
-            #if USE_ASYNC_PROGRESS
             while (!IsReady())
                 yield return null;
-            yield return new ProgressReport(1f, $"Indexing Completed (Documents: {documentCount}, Indexes: {indexCount:n0})");
-            #else
-            EditorUtility.ClearProgressBar();
-            #endif
+
+            reportProgress?.Invoke(progressId, $"Indexing Completed (Documents: {documentCount}, Indexes: {indexCount:n0})", 1f, true);
+            yield return null;
         }
 
         private string[] GetComponents(string value, int documentIndex)

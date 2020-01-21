@@ -46,6 +46,13 @@ namespace Unity.QuickSearch.Providers
 
         private static readonly char[] k_InvalidSearchFileChars = Path.GetInvalidFileNameChars().Where(c => c != '*').ToArray();
 
+        [InitializeOnLoadMethod]
+        internal static void DelayInitializeUberIndex()
+        {
+            if (SearchSettings.useUberIndexing)
+                EditorApplication.delayCall += ADBIndex.Initialize;
+        }
+
         [UsedImplicitly, SearchItemProvider]
         internal static SearchProvider CreateProvider()
         {
@@ -119,6 +126,14 @@ namespace Unity.QuickSearch.Providers
             {
                 var adbIndex = ADBIndex.Get();
 
+                if (!adbIndex.IsReady())
+                {
+                    foreach (var assetEntry in AssetDatabase.FindAssets(searchQuery)
+                        .Select(AssetDatabase.GUIDToAssetPath)
+                        .Select(path => provider.CreateItem(path, Path.GetFileName(path))))
+                        yield return assetEntry;
+                }
+
                 // Search index
                 while (!adbIndex.IsReady())
                     yield return null;
@@ -174,7 +189,7 @@ namespace Unity.QuickSearch.Providers
             if (context.searchQuery.Contains('*'))
             {
                 var safeFilter = string.Join("_", context.searchQuery.Split(k_InvalidSearchFileChars));
-                var projectFiles = Directory.EnumerateFiles(Application.dataPath, safeFilter, SearchOption.AllDirectories);
+                var projectFiles = System.IO.Directory.EnumerateFiles(Application.dataPath, safeFilter, System.IO.SearchOption.AllDirectories);
                 projectFiles = projectFiles.Select(path => path.Replace(Application.dataPath, "Assets").Replace("\\", "/"));
                 foreach (var fileEntry in projectFiles.Select(path => provider.CreateItem(path, Path.GetFileName(path))))
                     yield return fileEntry;

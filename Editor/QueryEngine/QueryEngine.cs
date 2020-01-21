@@ -396,7 +396,7 @@ namespace Unity.QuickSearch
 
         private int ConsumeWords(string text, int startIndex, Match match, List<IQueryNode> nodes, List<QueryError> errors, NodesToStringPosition nodesToStringPosition)
         {
-            if (searchDataCallback == null)
+            if (validateFilters && searchDataCallback == null)
             {
                 errors.Add(new QueryError(startIndex, match.Length, "Cannot use a search word without setting the search data callback."));
                 return -1;

@@ -61,6 +61,8 @@ namespace Unity.QuickSearch
                 }
                 case QueryNodeType.Search:
                 {
+                    if (m_Engine.searchDataCallback == null)
+                        return o => false;
                     var searchNode = node as SearchNode;
                     Assert.IsNotNull(searchNode);
                     Func<string, bool> matchWordFunc;
