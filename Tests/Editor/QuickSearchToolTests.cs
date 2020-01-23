@@ -51,7 +51,7 @@ namespace Unity.QuickSearch
                 yield return SendKeyCharacterEvent(qsWindow, 'p');
                 yield return SendKeyCharacterEvent(qsWindow, ':');
 
-                var queryString = "test 42";
+                var queryString = "quick search tool tests";
                 foreach (var c in queryString)
                     yield return SendKeyCharacterEvent(qsWindow, c);
 
@@ -59,7 +59,7 @@ namespace Unity.QuickSearch
 
                 var results = qsWindow.Results.ToArray();
                 Assert.GreaterOrEqual(results.Length, 1);
-                Assert.IsTrue(results.Any(r => StripHTML(r.label).Contains("test_material_42")));
+                Assert.IsTrue(results.Any(r => StripHTML(r.label).Contains("QuickSearchToolTests")));
 
                 yield return SendKeyCharacterEvent(qsWindow, (char) 0, KeyCode.Escape);
             }
@@ -117,7 +117,7 @@ namespace Unity.QuickSearch
                 var qsWindow = QuickSearch.ShowWindow();
                 yield return PrepareSearchTool(qsWindow);
 
-                var queryString = "res: test_";
+                var queryString = "res: quick search tests";
                 foreach (var c in queryString)
                     yield return SendKeyCharacterEvent(qsWindow, c);
 
@@ -125,7 +125,7 @@ namespace Unity.QuickSearch
 
                 var results = qsWindow.Results.ToArray();
                 Assert.GreaterOrEqual(results.Length, 1);
-                Assert.IsTrue(results.Any(r => StripHTML(r.label).Contains("test_monobehavior")));
+                Assert.IsTrue(results.Any(r => StripHTML(r.label).Contains("QuickSearchToolTests")));
 
                 yield return SendKeyCharacterEvent(qsWindow, (char)0, KeyCode.Escape);
             }

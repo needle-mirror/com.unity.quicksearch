@@ -19,13 +19,5 @@ namespace Unity.QuickSearch
             var texture = Utils.FindTextureForType(typeof(Texture2D));
             Assert.IsNotNull(texture);
         }
-
-        [Test]
-        public void GetIconForObject()
-        {
-            var script = AssetDatabase.LoadAssetAtPath<MonoScript>($"{QuickSearch.packageFolderName}/Tests/Editor/Content/test_monobehavior.cs");
-            var icon = Utils.GetIconForObject(script);
-            Assert.IsNotNull(icon);
-        }
     }
 }

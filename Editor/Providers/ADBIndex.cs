@@ -87,7 +87,7 @@ namespace Unity.QuickSearch.Providers
                     case nameof(EventType.UmpIndexingStarted):
                     {
                         #if USE_ASYNC_PROGRESS_BAR
-                        s_UMPEProgressId = Progress.Start(k_ProgressTitle, null, ProgressOptions.Sticky);
+                        s_UMPEProgressId = Progress.Start(k_ProgressTitle, null, Progress.Options.Sticky);
                         #endif
                     } break;
                     case nameof(EventType.UmpIndexingProgress):
@@ -170,7 +170,7 @@ namespace Unity.QuickSearch.Providers
             {
                 s_GlobalIndexer.reportProgress += ReportProgress;
                 #if USE_ASYNC_PROGRESS_BAR
-                Progress.RunTask(k_ProgressTitle, null, s_GlobalIndexer.BuildAsync, ProgressOptions.Sticky, -1);
+                Progress.RunTask(k_ProgressTitle, null, s_GlobalIndexer.BuildAsync, Progress.Options.Sticky, -1);
                 #else
                 s_GlobalIndexer.Build();
                 #endif

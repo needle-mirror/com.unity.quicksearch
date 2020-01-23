@@ -117,7 +117,7 @@ namespace Unity.QuickSearch
 
     class SearchServiceTests
     {
-        const string k_TestFileName = "Packages/com.unity.quicksearch/Tests/Editor/Content/test_material_42.mat";
+        const string k_TestFileName = "Tests/Editor/Content/test_material_42.mat";
 
         [SetUp]
         public void EnableService()
@@ -151,7 +151,7 @@ namespace Unity.QuickSearch
             Assert.IsNotNull(foundItem.provider);
             Assert.IsNotNull(foundItem.provider.fetchDescription);
             var fetchedDescription = foundItem.provider.fetchDescription(foundItem, ctx);
-            Assert.AreEqual("Packages/com.unity.quicksearch/Tests/Editor/Content/test_material_42.mat (2.0 KB)", fetchedDescription);
+            Assert.IsTrue(fetchedDescription.Contains(k_TestFileName));
         }
 
         [UnityTest]
@@ -164,7 +164,7 @@ namespace Unity.QuickSearch
             Assert.IsNotEmpty(fetchedItems);
             var foundItem = fetchedItems.Find(item => item.label == Path.GetFileName(k_TestFileName));
             Assert.IsNotNull(foundItem);
-            Assert.AreEqual(foundItem.id, k_TestFileName);
+            Assert.IsTrue(foundItem.id.EndsWith(k_TestFileName));
         }
 
         [UnityTest]
@@ -177,7 +177,7 @@ namespace Unity.QuickSearch
             Assert.IsNotEmpty(fetchedItems);
             var foundItem = fetchedItems.Find(item => item.label == Path.GetFileName(k_TestFileName));
             Assert.IsNotNull(foundItem);
-            Assert.AreEqual(foundItem.id, k_TestFileName);
+            Assert.IsTrue(foundItem.id.EndsWith(k_TestFileName));
         }
 
         [UnityTest]

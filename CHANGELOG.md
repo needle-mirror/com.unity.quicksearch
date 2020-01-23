@@ -1,5 +1,8 @@
 # Changelog
 
+## [1.5.1] - 2020-01-24
+- [FIX] Fix Progress API usage.
+
 ## [1.5.0] - 2020-01-22
 - [UX] You can now search scene objects with a given component using c:<component name>.
 - [UX] We've removed the dockable window mode of Quick Search since it wasn't playing nice with some loading and refreshing workflows and optimizations.
