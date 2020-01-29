@@ -120,11 +120,7 @@ namespace Unity.QuickSearch.Providers
             {
                 var obj = ObjectFromItem(item);
                 if (obj != null)
-                {
-                    DragAndDrop.PrepareStartDrag();
-                    DragAndDrop.objectReferences = new[] { obj };
-                    DragAndDrop.StartDrag("Drag scene object");
-                }
+                    Utils.StartDrag(obj, item.label);
             };
 
             fetchGameObjects = FetchGameObjects;

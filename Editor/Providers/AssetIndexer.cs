@@ -25,7 +25,7 @@ namespace Unity.QuickSearch.Providers
         public AssetIndexer() : base("assets")
         {
             minIndexCharVariation = 2;
-            maxIndexCharVariation = 9;
+            maxIndexCharVariation = 12;
             getIndexFilePathHandler = basePath => k_IndexFilePath;
             getEntryComponentsHandler = GetEntryComponents;
         }
@@ -86,7 +86,6 @@ namespace Unity.QuickSearch.Providers
             Start(clear: true);
 
             EditorApplication.LockReloadAssemblies();
-            //AssetDatabase.StartAssetEditing();
             foreach (var path in paths)
             {
                 var progressReport = pathIndex++ / pathCount;
@@ -94,11 +93,9 @@ namespace Unity.QuickSearch.Providers
                 IndexAsset(path, false);
                 yield return null;
             }
-            //AssetDatabase.StopAssetEditing();
             EditorApplication.UnlockReloadAssemblies();
 
             Finish(useFinishThread);
-            //Print();
 
             while (!IsReady())
                 yield return null;
@@ -139,7 +136,7 @@ namespace Unity.QuickSearch.Providers
             try
             {
                 var fileName = Path.GetFileNameWithoutExtension(path).ToLowerInvariant();
-                AddWord(path, fileName, documentIndex, true);
+                AddWord(path, fileName, documentIndex, Math.Min(16, fileName.Length), true);
 
                 var mainAsset = AssetDatabase.LoadAssetAtPath<Object>(path);
                 if (!mainAsset)
@@ -212,12 +209,17 @@ namespace Unity.QuickSearch.Providers
             #endif
         }
 
-        private void AddWord(string path, string word, int documentIndex, bool exact = false)
+        private void AddWord(string path, string word, int documentIndex, int maxVariations, bool exact)
         {
             AddDebugMatch(path, word);
-            AddWord(word.ToLowerInvariant(), 0, documentIndex);
+            AddWord(word.ToLowerInvariant(), minIndexCharVariation, maxVariations, 0, documentIndex);
             if (exact)
                 AddExactWord(word.ToLowerInvariant(), 0, documentIndex);
+        }
+
+        private void AddWord(string path, string word, int documentIndex, bool exact = false)
+        {
+            AddWord(path, word, documentIndex, maxIndexCharVariation, exact);
         }
 
         private void AddProperty(string path, string name, string value, int documentIndex)

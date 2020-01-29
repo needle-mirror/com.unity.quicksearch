@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.5.2-preview.1] - 2020-01-30
+- [FIX] Fix Unity crash when dragging and dropping from quick search (1215420)
+- [Fix] Fix complete file name indexing (case 1214270)
+
 ## [1.5.1] - 2020-01-24
 - [FIX] Fix Progress API usage.
 

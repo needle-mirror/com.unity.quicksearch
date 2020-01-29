@@ -575,6 +575,17 @@ namespace Unity.QuickSearch
             convertedValue = default;
             return false;
         }
+
+        private static UnityEngine.Object s_LastDraggedObject;
+        internal static void StartDrag(UnityEngine.Object obj, string label = null)
+        {
+            s_LastDraggedObject = obj;
+            if (!s_LastDraggedObject)
+                return;
+            DragAndDrop.PrepareStartDrag();
+            DragAndDrop.objectReferences = new[] { s_LastDraggedObject };
+            DragAndDrop.StartDrag(label ?? s_LastDraggedObject.name);
+        }
     }
 
     internal struct DebugTimer : IDisposable

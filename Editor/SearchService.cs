@@ -655,7 +655,7 @@ namespace Unity.QuickSearch
             return value;
         }
 
-        private static void SaveFilters()
+        internal static void SaveFilters()
         {
             var filter = FilterToString();
             EditorPrefs.SetString(k_FilterPrefKey, filter);

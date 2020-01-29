@@ -171,12 +171,8 @@ namespace Unity.QuickSearch.Providers
         private static void DragItem(SearchItem item)
         {
             var obj = GetItemObject(item);
-            if (obj != null)
-            {
-                DragAndDrop.PrepareStartDrag();
-                DragAndDrop.objectReferences = new[] { obj };
-                DragAndDrop.StartDrag("Drag object");
-            }
+            if (obj)
+                Utils.StartDrag(obj, item.label);
         }
 
         private static string FetchDescription(SearchItem item, SearchContext context)

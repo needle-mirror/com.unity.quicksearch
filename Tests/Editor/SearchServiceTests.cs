@@ -119,11 +119,17 @@ namespace Unity.QuickSearch
     {
         const string k_TestFileName = "Tests/Editor/Content/test_material_42.mat";
 
+        private bool m_WasUsingNewIndex = false;
+
         [SetUp]
         public void EnableService()
         {
+            m_WasUsingNewIndex = SearchSettings.useUberIndexing;
+            SearchService.SaveFilters();
             SearchService.Enable(SearchContext.Empty);
             SearchService.Filter.ResetFilter(true);
+
+            SearchService.Providers.First(p => p.name.id == "store").active = false;
             SearchService.Providers.First(p => p.name.id == "packages").active = false;
         }
 
@@ -131,6 +137,8 @@ namespace Unity.QuickSearch
         public void DisableService()
         {
             SearchService.Disable(SearchContext.Empty);
+            SearchService.LoadFilters();
+            SearchSettings.useUberIndexing = m_WasUsingNewIndex;
         }
 
         [UnityTest]

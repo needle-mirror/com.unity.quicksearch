@@ -50,7 +50,10 @@ namespace Unity.QuickSearch.Providers
         internal static void DelayInitializeUberIndex()
         {
             if (SearchSettings.useUberIndexing)
+            {
+                EditorApplication.delayCall -= ADBIndex.Initialize;
                 EditorApplication.delayCall += ADBIndex.Initialize;
+            }
         }
 
         [UsedImplicitly, SearchItemProvider]
@@ -97,12 +100,8 @@ namespace Unity.QuickSearch.Providers
                 startDrag = (item, context) =>
                 {
                     var obj = AssetDatabase.LoadAssetAtPath<Object>(item.id);
-                    if (obj == null)
-                        return;
-
-                    DragAndDrop.PrepareStartDrag();
-                    DragAndDrop.objectReferences = new[] { obj };
-                    DragAndDrop.StartDrag(item.label);
+                    if (obj)
+                        Utils.StartDrag(obj, item.label);
                 },
                 trackSelection = (item, context) => Utils.PingAsset(item.id)
             };

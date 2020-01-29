@@ -376,6 +376,11 @@ namespace Unity.QuickSearch
             indexes.Add(new SearchIndexEntry(word.GetHashCode(), long.MaxValue, SearchIndexEntryType.Word, documentIndex, score));
         }
 
+        internal void AddWord(string word, int minVariations, int maxVariations, int score, int documentIndex)
+        {
+            AddWord(word, minVariations, maxVariations, score, documentIndex, m_BatchIndexes);
+        }
+
         internal void AddWord(string word, int minVariations, int maxVariations, int score, int documentIndex, List<SearchIndexEntry> indexes)
         {
             if (word == null || word.Length == 0)
@@ -428,6 +433,7 @@ namespace Unity.QuickSearch
         internal void AddProperty(string name, string value, int minVariations, int maxVariations, int score, int documentIndex, List<SearchIndexEntry> indexes)
         {
             var nameHash = name.GetHashCode();
+            var valueHash = value.GetHashCode();
             maxVariations = Math.Min(maxVariations, value.Length);
             if (ExcludeWordVariations(value))
                 minVariations = maxVariations = value.Length;
@@ -437,8 +443,12 @@ namespace Unity.QuickSearch
                 indexes.Add(new SearchIndexEntry(ss.GetHashCode(), nameHash, SearchIndexEntryType.Property, documentIndex, score + (maxVariations - c)));
             }
 
+            if (value.Length > maxVariations)
+                indexes.Add(new SearchIndexEntry(valueHash, nameHash, SearchIndexEntryType.Property, documentIndex, score-1));
+
+            // Add an exact match for property="match"
             nameHash = nameHash ^ name.Length.GetHashCode();
-            var valueHash = value.GetHashCode() ^ value.Length.GetHashCode();
+            valueHash = value.GetHashCode() ^ value.Length.GetHashCode();
             indexes.Add(new SearchIndexEntry(valueHash, nameHash, SearchIndexEntryType.Property, documentIndex, 0));
         }
 

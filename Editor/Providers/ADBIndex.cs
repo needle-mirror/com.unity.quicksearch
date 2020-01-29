@@ -212,7 +212,7 @@ namespace Unity.QuickSearch.Providers
         {
             if (System.IO.File.Exists(AssetIndexer.k_IndexFilePath))
                 System.IO.File.Delete(AssetIndexer.k_IndexFilePath);
-            #if UNITY_2020_1_OR_NEWER
+            #if UNITY_2019_3_OR_NEWER
             EditorUtility.RequestScriptReload();
             #else
             UnityEditorInternal.InternalEditorUtility.RequestScriptReload();

@@ -13,7 +13,7 @@ namespace Unity.QuickSearch
         public const string settingsPreferencesKey = "Preferences/Quick Search";
         public static bool trackSelection { get; private set; }
         public static bool fetchPreview { get; private set; }
-        public static bool useUberIndexing { get; private set; }
+        public static bool useUberIndexing { get; internal set; }
 
         static SearchSettings()
         {

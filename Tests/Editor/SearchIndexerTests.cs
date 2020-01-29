@@ -1,24 +1,60 @@
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using NUnit.Framework;
 using Unity.QuickSearch.Providers;
+using UnityEditor;
 using UnityEngine;
+using UnityEngine.TestTools;
 
 namespace Unity.QuickSearch
 {
     class SearchIndexerTests
     {
+        private bool m_WasUsingNewIndex = false;
         [SetUp]
         public void EnableService()
         {
+            SearchService.SaveFilters();
             SearchService.Enable(SearchContext.Empty);
-            SearchService.Filter.ResetFilter(true);
+            SearchService.Filter.ResetFilter(false);
+            SearchService.Filter.SetFilter(true, "asset");
+
+            m_WasUsingNewIndex = SearchSettings.useUberIndexing;
+            if (!SearchSettings.useUberIndexing)
+            {
+                EditorApplication.delayCall -= ADBIndex.Initialize;
+                EditorApplication.delayCall += ADBIndex.Initialize;
+                SearchSettings.useUberIndexing = true;
+            }
         }
 
         [TearDown]
         public void DisableService()
         {
             SearchService.Disable(SearchContext.Empty);
+            SearchService.LoadFilters();
+            SearchSettings.useUberIndexing = m_WasUsingNewIndex;
+        }
+
+        static string[] s_QueryVariations = new []
+        {
+            "p:test material 42",
+            "p:test_material_42",
+            "p:test_material"
+        };
+
+        [UnityTest]
+        public IEnumerator SearchCompleteFilenames([ValueSource(nameof(s_QueryVariations))] string query)
+        {
+            var ctx = new SearchContext { searchText = query };
+
+            var fetchedItems = SearchService.GetItems(ctx);
+            while (AsyncSearchSession.SearchInProgress)
+                yield return null;
+
+            Assert.IsNotEmpty(fetchedItems);
+            Assert.True(fetchedItems.Any(item => item.label == "test_material_42.mat"));
         }
 
         [Test]
