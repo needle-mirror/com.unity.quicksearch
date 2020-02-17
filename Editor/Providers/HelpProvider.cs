@@ -86,7 +86,6 @@ namespace Unity.QuickSearch
             static void BuildHelpItems(SearchProvider helpProvider)
             {
                 m_StaticItemToAction = new Dictionary<SearchItem, Action<SearchItem, SearchContext>>();
-
                 {
                     var helpItem = helpProvider.CreateItem("help_open_quicksearch_doc", "Open Quick Search Documentation");
                     helpItem.score = m_StaticItemToAction.Count;

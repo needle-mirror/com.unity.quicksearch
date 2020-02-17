@@ -7,7 +7,7 @@ namespace Unity.QuickSearch.Providers
     public class FileSearchIndexer : SearchIndexer, IDisposable
     {
         private const int k_MinIndexCharVariation = 2;
-        private const int k_MaxIndexCharVariation = 12;
+        private const int k_MaxIndexCharVariation = 16;
 
         public string type { get; }
 

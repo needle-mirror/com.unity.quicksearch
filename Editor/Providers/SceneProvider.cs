@@ -35,8 +35,7 @@ namespace Unity.QuickSearch.Providers
 
             subCategories = new List<NameEntry>
             {
-                new NameEntry("fuzzy", "fuzzy"),
-                new NameEntry("components", "components (c:)")
+                new NameEntry("fuzzy", "fuzzy")
             };
 
             isEnabledForContextualSearch = () =>
@@ -113,7 +112,7 @@ namespace Unity.QuickSearch.Providers
                 var assetPath = GetHierarchyAssetPath(obj, true);
                 if (String.IsNullOrEmpty(assetPath))
                     return item.thumbnail;
-                return AssetPreview.GetAssetPreview(obj) ?? Utils.GetAssetPreviewFromPath(assetPath, size, options);
+                return Utils.GetAssetPreviewFromPath(assetPath, size, options) ?? AssetPreview.GetAssetPreview(obj);
             };
 
             startDrag = (item, context) =>
@@ -139,7 +138,11 @@ namespace Unity.QuickSearch.Providers
                 {
                     var useFuzzySearch = context.IsFilterEnabled("fuzzy");
                     foreach (var o in m_GameObjects)
+                    {
+                        if (!o)
+                            continue;
                         yield return MatchItem(context, provider, o.GetInstanceID().ToString(), o.name, useFuzzySearch);
+                    }
                 }
             }
         }
@@ -153,12 +156,12 @@ namespace Unity.QuickSearch.Providers
                 if (m_BuildIndexEnumerator == null)
                 {
                     m_GameObjects = fetchGameObjects();
-                    m_Indexer = new SearchIndexer("scene");
+                    m_Indexer = new SearchIndexer("scene") { minIndexCharVariation = 2, maxIndexCharVariation = 16 };
                     m_BuildIndexEnumerator = BuildIndex(context, provider, m_GameObjects, m_Indexer);
                 }
 
-                yield return m_BuildIndexEnumerator;
                 yield return SearchFuzzy(context, provider);
+                yield return m_BuildIndexEnumerator;
 
                 // Indicate that we are still building the scene index.
                 while (!m_Indexer.IsReady())
@@ -209,70 +212,69 @@ namespace Unity.QuickSearch.Providers
 
         private static IEnumerable<string> SplitWords(string path, char[] entrySeparators, int maxIndexCharVariation)
         {
-            var nameTokens = path.Split(entrySeparators).Reverse().ToArray();
-            var scc = nameTokens.SelectMany(s => SearchUtils.SplitCamelCase(s)).Where(s => s.Length > 0);
-            return nameTokens.Concat(scc)
+            var nameTokens = path.Split(entrySeparators).Where(p => !String.IsNullOrEmpty(p) && p.Length > 2).Reverse();
+            return nameTokens
                       .Select(s => s.Substring(0, Math.Min(s.Length, maxIndexCharVariation)).ToLowerInvariant())
                       .Distinct();
+        }
+
+        private static string CleanName(string s)
+        {
+            return s.Replace("(", "").Replace(")", "");
         }
 
         private IEnumerator BuildIndex(SearchContext context, SearchProvider provider, GameObject[] objects, SearchIndexer indexer)
         {
             #if DEBUG_TIMING
-            using (new DebugTimer("Build scene index"))
+            using (new DebugTimer($"Build scene index ({objects.Length})"))
             #endif
             {
                 var useFuzzySearch = context.IsFilterEnabled("fuzzy");
-                var indexComponents = context.IsFilterEnabled("components");
 
                 indexer.Start();
                 for (int i = 0; i < objects.Length; ++i)
                 {
                     var gameObject = objects[i];
                     var id = objects[i].GetInstanceID();
-                    var name = gameObject.name;
-                    var path = GetTransformPath(gameObject.transform);
-                    var keywords = buildKeywordComponents(objects[i]);
+                    var name = CleanName(gameObject.name);
+                    var path = CleanName(GetTransformPath(gameObject.transform));
 
                     var documentId = id.ToString();
                     int docIndex = indexer.AddDocument(documentId, false);
 
                     int scoreIndex = 1;
-                    foreach (var word in SearchUtils.SplitEntryComponents(name, indexer.entrySeparators, 2, 12))
-                        indexer.AddWord(word, scoreIndex++, docIndex);
-                    foreach (var word in SplitWords(path, indexer.entrySeparators, 8))
-                        indexer.AddWord(word, scoreIndex++, docIndex);
+                    var parts =  SearchUtils.SplitEntryComponents(name, indexer.entrySeparators, 2, indexer.maxIndexCharVariation)
+                                     .Concat(SplitWords(path, indexer.entrySeparators, indexer.maxIndexCharVariation))
+                                     .Distinct().Take(10).ToArray();
+                    //UnityEngine.Debug.LogFormat(LogType.Log, LogOption.NoStacktrace, gameObject, $"{path} (<b>{parts.Length}</b>) = {String.Join(",", parts)}");
+                    foreach (var word in parts)
+                        indexer.AddWord(word, indexer.minIndexCharVariation, indexer.maxIndexCharVariation, scoreIndex++, docIndex);
 
                     name = name.ToLowerInvariant();
-                    indexer.AddWord(name, name.Length, 0, docIndex);
-                    indexer.AddExactWord(name.ToLowerInvariant(), 0, docIndex);
+                    indexer.AddExactWord(name, 0, docIndex);
+                    if (name.Length > indexer.maxIndexCharVariation)
+                        indexer.AddWord(name, indexer.maxIndexCharVariation+1, name.Length, 1, docIndex);
 
-                    var ptype = PrefabUtility.GetPrefabAssetType(gameObject);
-                    var pstatus = PrefabUtility.GetPrefabInstanceStatus(gameObject);
-
-                    if (ptype != PrefabAssetType.NotAPrefab)
-                        indexer.AddProperty("prefab", ptype.ToString().ToLowerInvariant(), 30, docIndex);
-                    if (pstatus != PrefabInstanceStatus.NotAPrefab)
-                        indexer.AddProperty("prefab", pstatus.ToString().ToLowerInvariant(), 30, docIndex);
-
+                    var keywords = buildKeywordComponents(objects[i]);
                     if (keywords != null)
                     {
                         foreach (var keyword in keywords)
-                            foreach (var word in SplitWords(keyword, indexer.entrySeparators, 8))
+                            foreach (var word in SplitWords(keyword, indexer.entrySeparators, indexer.maxIndexCharVariation))
                                 indexer.AddWord(word, scoreIndex++, docIndex);
                     }
 
-                    if (indexComponents)
-                    {
-                        var gocs = gameObject.GetComponents<Component>();
-                        for (int componentIndex = 1; componentIndex < gocs.Length; ++componentIndex)
-                        {
-                            var c = gocs[componentIndex];
-                            if (!c || c.hideFlags == HideFlags.HideInInspector)
-                                continue;
+                    var ptype = PrefabUtility.GetPrefabAssetType(gameObject);
+                    if (ptype != PrefabAssetType.NotAPrefab)
+                        indexer.AddProperty("t", "prefab", 6, 6, 30, docIndex);
 
-                            indexer.AddProperty("c", c.GetType().Name.ToLowerInvariant(), 2, docIndex);
-                        }
+                    var gocs = gameObject.GetComponents<Component>();
+                    for (int componentIndex = 1; componentIndex < gocs.Length; ++componentIndex)
+                    {
+                        var c = gocs[componentIndex];
+                        if (!c || c.hideFlags.HasFlag(HideFlags.HideInInspector))
+                            continue;
+
+                        indexer.AddProperty("t", c.GetType().Name.ToLowerInvariant(), 40 + componentIndex, docIndex);
                     }
 
                     // While we are building the scene, lets search for objects name

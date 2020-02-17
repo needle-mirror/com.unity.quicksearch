@@ -475,36 +475,33 @@ namespace Unity.QuickSearch
 
         private static bool FetchProviders()
         {
-            
-                Providers = Utils.GetAllMethodsWithAttribute<SearchItemProviderAttribute>().Select(methodInfo =>
+            Providers = Utils.GetAllMethodsWithAttribute<SearchItemProviderAttribute>().Select(methodInfo =>
+            {
+                try
                 {
-                    try
+                    SearchProvider fetchedProvider = null;
+                    using (var fetchLoadTimer = new DebugTimer(null))
                     {
-                        SearchProvider fetchedProvider = null;
-                        using (var fetchLoadTimer = new DebugTimer(null))
-                        {
-                            fetchedProvider = methodInfo.Invoke(null, null) as SearchProvider;
-                            if (fetchedProvider == null) 
-                                return null;
+                        fetchedProvider = methodInfo.Invoke(null, null) as SearchProvider;
+                        if (fetchedProvider == null) 
+                            return null;
 
-                            fetchedProvider.loadTime = fetchLoadTimer.timeMs;
+                        fetchedProvider.loadTime = fetchLoadTimer.timeMs;
 
-                            // Load per provider user settings
-                            fetchedProvider.active = EditorPrefs.GetBool($"{prefKey}.{fetchedProvider.name.id}.active", fetchedProvider.active);
-                            fetchedProvider.priority = EditorPrefs.GetInt($"{prefKey}.{fetchedProvider.name.id}.priority", fetchedProvider.priority);
-                        }
-                        return fetchedProvider;
+                        // Load per provider user settings
+                        fetchedProvider.active = EditorPrefs.GetBool($"{prefKey}.{fetchedProvider.name.id}.active", fetchedProvider.active);
+                        fetchedProvider.priority = EditorPrefs.GetInt($"{prefKey}.{fetchedProvider.name.id}.priority", fetchedProvider.priority);
                     }
-                    catch (Exception ex)
-                    {
-                        UnityEngine.Debug.LogException(ex);
-                        return null;
-                    }
-                }).Where(provider => provider != null).ToList();
+                    return fetchedProvider;
+                }
+                catch (Exception ex)
+                {
+                    UnityEngine.Debug.LogException(ex);
+                    return null;
+                }
+            }).Where(provider => provider != null).ToList();
 
-                RefreshProviders();
-            
-
+            RefreshProviders();
             return true;
         }
 

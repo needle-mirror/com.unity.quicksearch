@@ -108,6 +108,11 @@ namespace Unity.QuickSearch
             if (SearchService.IsRecent(id))
                 score = Math.Min(k_RecentUserScore, score);
 
+            #if false // Debug sorting
+            description = $"DEBUG: id={id} - label={label} - description={description} - thumbnail={thumbnail} - data={data}";
+            label = $"{label ?? id} ({score})";
+            #endif
+
             return new SearchItem(id)
             {
                 score = score,

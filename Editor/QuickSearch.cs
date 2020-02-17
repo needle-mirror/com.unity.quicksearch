@@ -219,6 +219,7 @@ namespace Unity.QuickSearch
         private double m_RequestRepaintAfterTime = 0;
         private double m_NextBlinkTime = 0;
         private bool m_PrepareDrag;
+        private Vector3 m_DragStartPosition;
         private string m_CycledSearch;
         private bool m_ShowFilterWindow = false;
         private SearchAnalytics.SearchEvent m_CurrentSearchEvent;
@@ -669,11 +670,17 @@ namespace Unity.QuickSearch
             if (cursorPosition == 0)
                 return;
 
+            if (m_AutoCompleting && Event.current.type == EventType.MouseDown && !m_AutoCompleteRect.Contains(Event.current.mousePosition))
+            {
+                m_DiscardAutoComplete = true;
+                m_AutoCompleting = false;
+                return;
+            }
+
             var searchText = m_Context.searchText;
             var lastTokenStartPos = searchText.LastIndexOf(' ', Math.Max(0, te.cursorIndex - 1));
             var lastToken = lastTokenStartPos == -1 ? searchText : searchText.Substring(lastTokenStartPos + 1);
-            var keywords = SearchService.GetKeywords(m_Context, lastToken)
-                .Where(k => !k.Equals(lastToken, StringComparison.OrdinalIgnoreCase)).ToArray();
+            var keywords = SearchService.GetKeywords(m_Context, lastToken).Where(k => !k.Equals(lastToken, StringComparison.OrdinalIgnoreCase)).ToArray();
             if (keywords.Length > 0)
             {
                 const int maxAutoCompleteCount = 16;
@@ -692,7 +699,7 @@ namespace Unity.QuickSearch
                     m_AutoCompleteRect.x = Math.Min(position.width - m_AutoCompleteRect.width - 25, m_AutoCompleteRect.x);
                 }
 
-                var autoFill = TextFieldAutoComplete(m_AutoCompleteRect, lastToken, keywords, maxAutoCompleteCount, 0.4f);
+                var autoFill = TextFieldAutoComplete(ref m_AutoCompleteRect, lastToken, keywords, maxAutoCompleteCount, 0.1f);
                 if (autoFill == null)
                 {
                     // No more results
@@ -701,13 +708,16 @@ namespace Unity.QuickSearch
                 }
                 else if (autoFill != lastToken)
                 {
-                    m_AutoCompleting = false;
-                    m_DiscardAutoComplete = true;
                     var regex = new Regex(Regex.Escape(lastToken), RegexOptions.IgnoreCase);
                     autoFill = regex.Replace(autoFill, "");
                     m_Context.searchText = m_Context.searchText.Insert(cursorPosition, autoFill);
                     Refresh();
-                    nextFrame += () => te.MoveToStartOfNextWord();
+                    nextFrame += () => 
+                    {
+                        m_AutoCompleting = false;
+                        m_DiscardAutoComplete = true;
+                        te.MoveToStartOfNextWord();
+                    };
                 }
                 else
                     m_AutoCompleting = true;
@@ -1089,6 +1099,7 @@ namespace Unity.QuickSearch
                 {
                     if (m_AutoCompleting)
                     {
+                        m_AutoCompleting = false;
                         m_DiscardAutoComplete = true;
                         Event.current.Use();
                     }
@@ -1123,20 +1134,42 @@ namespace Unity.QuickSearch
                 s_FocusedWindow.Focus();
             Close();
         }
+        
+        private void HandleMouseDown()
+        {
+            m_PrepareDrag = true;
+            m_DragStartPosition = Event.current.mousePosition;
+
+            if (m_AutoCompleting && !m_AutoCompleteRect.Contains(GetScrollViewOffsetedMousePosition()))
+            {
+                m_AutoCompleting = false;
+                m_DiscardAutoComplete = true;
+            }
+        }
+        
+        private bool IsDragFinishedFarEnough(Event evt)
+        {
+            return evt.type == EventType.DragExited && Vector2.Distance(m_DragStartPosition, evt.mousePosition) < 3;
+        }
+
+        private Vector2 GetScrollViewOffsetedMousePosition()
+        {
+            return Event.current.mousePosition + new Vector2(m_ScrollViewOffset.x, m_ScrollViewOffset.height - m_ScrollPosition.y);
+        }
 
         private void HandleItemEvents(int itemTotalCount, SearchContext context)
         {
-            if (m_AutoCompleting && m_AutoCompleteRect.Contains(Event.current.mousePosition))
-                return;
-
             if (Event.current.type == EventType.MouseDown && Event.current.button == 0)
             {
                 var clickedItemIndex = (int)(Event.current.mousePosition.y / Styles.itemRowHeight);
                 if (clickedItemIndex >= 0 && clickedItemIndex < itemTotalCount)
-                    m_PrepareDrag = true;
+                    HandleMouseDown();
             }
-            else if (Event.current.type == EventType.MouseUp)
+            else if (Event.current.type == EventType.MouseUp || IsDragFinishedFarEnough(Event.current))
             {
+                if (m_AutoCompleting && m_AutoCompleteRect.Contains(GetScrollViewOffsetedMousePosition()))
+                    return;
+
                 var clickedItemIndex = (int)(Event.current.mousePosition.y / Styles.itemRowHeight);
                 if (clickedItemIndex >= 0 && clickedItemIndex < itemTotalCount)
                 {
@@ -1174,6 +1207,9 @@ namespace Unity.QuickSearch
                         }
                     }
                 }
+
+                m_PrepareDrag = false;
+                DragAndDrop.PrepareStartDrag(); // Reset drag content
             }
             else if (Event.current.type == EventType.MouseDrag && m_PrepareDrag)
             {
@@ -1196,11 +1232,6 @@ namespace Unity.QuickSearch
                         #endif
                     }
                 }
-            }
-            else if (Event.current.type == EventType.MouseUp)
-            {
-                m_PrepareDrag = false;
-                DragAndDrop.PrepareStartDrag(); // Reset drag content
             }
         }
 
@@ -1747,25 +1778,25 @@ namespace Unity.QuickSearch
         private int m_AutoCompleteMaxIndex = 0;
         private string m_AutoCompleteLastInput;
         private List<string> m_CacheCheckList = null;
-        private string TextFieldAutoComplete(Rect position, string input, string[] source, int maxShownCount = 5, float levenshteinDistance = 0.5f)
+        private string TextFieldAutoComplete(ref Rect area, string input, string[] source, int maxShownCount = 5, float levenshteinDistance = 0.5f)
         {
             if (input.Length <= 0)
                 return input;
 
             string rst = input;
-            if (m_AutoCompleteLastInput != input) // another field.
+            if (m_AutoCompleteLastInput != input)
             {
                 // Update cache
                 m_AutoCompleteLastInput = input;
 
-                List<string> uniqueSrc = new List<string>(new HashSet<string>(source)); // remove duplicate
+                List<string> uniqueSrc = new List<string>(new HashSet<string>(source));
                 int srcCnt = uniqueSrc.Count;
                 m_CacheCheckList = new List<string>(System.Math.Min(maxShownCount, srcCnt)); // optimize memory alloc
 
                 // Start with - slow
                 for (int i = 0; i < srcCnt && m_CacheCheckList.Count < maxShownCount; i++)
                 {
-                    if (uniqueSrc[i].ToLower().StartsWith(input.ToLower()))
+                    if (uniqueSrc[i].StartsWith(input, StringComparison.OrdinalIgnoreCase))
                     {
                         m_CacheCheckList.Add(uniqueSrc[i]);
                         uniqueSrc.RemoveAt(i);
@@ -1779,7 +1810,7 @@ namespace Unity.QuickSearch
                 {
                     for (int i = 0; i < srcCnt && m_CacheCheckList.Count < maxShownCount; i++)
                     {
-                        if (uniqueSrc[i].ToLower().Contains(input.ToLower()))
+                        if (uniqueSrc[i].IndexOf(input, StringComparison.OrdinalIgnoreCase) != -1)
                         {
                             m_CacheCheckList.Add(uniqueSrc[i]);
                             uniqueSrc.RemoveAt(i);
@@ -1795,10 +1826,9 @@ namespace Unity.QuickSearch
                     m_CacheCheckList.Count < maxShownCount) // have some empty space for matching.
                 {
                     levenshteinDistance = Mathf.Clamp01(levenshteinDistance);
-                    string keywords = input.ToLower();
                     for (int i = 0; i < srcCnt && m_CacheCheckList.Count < maxShownCount; i++)
                     {
-                        int distance = Utils.LevenshteinDistance(uniqueSrc[i], keywords, caseSensitive: false);
+                        int distance = Utils.LevenshteinDistance(uniqueSrc[i], input, caseSensitive: false);
                         bool closeEnough = (int)(levenshteinDistance * uniqueSrc[i].Length) > distance;
                         if (closeEnough)
                         {
@@ -1819,7 +1849,6 @@ namespace Unity.QuickSearch
             {
                 int cnt = m_CacheCheckList.Count;
                 float height = cnt * EditorStyles.toolbarDropDown.fixedHeight;
-                Rect area = position;
                 area = new Rect(area.x, area.y, area.width, height);
                 GUI.depth -= 10;
                 GUI.BeginClip(area);

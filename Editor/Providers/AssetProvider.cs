@@ -214,6 +214,9 @@ namespace Unity.QuickSearch.Providers
         {
             if (AssetDatabase.IsValidFolder(assetPath))
                 return assetPath;
+            var fi = new FileInfo(assetPath);
+            if (!fi.Exists)
+                return "File does not exist anymore.";
             var fileSize = new FileInfo(assetPath).Length;
             return $"{assetPath} ({EditorUtility.FormatBytes(fileSize)})";
         }

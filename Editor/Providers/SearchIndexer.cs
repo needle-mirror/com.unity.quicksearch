@@ -285,7 +285,7 @@ namespace Unity.QuickSearch
 
             m_Documents = new List<string>();
             m_Indexes = new SearchIndexEntry[0];
-            m_IndexTempFilePath = FileUtil.GetUniqueTempPathInProject();
+            m_IndexTempFilePath = Path.GetTempFileName();
         }
 
         public virtual void Build()
@@ -430,11 +430,18 @@ namespace Unity.QuickSearch
             return false;
         }
 
+        internal void AddProperty(string name, string value, int minVariations, int maxVariations, int score, int documentIndex)
+        {
+            AddProperty(name, value, minVariations, maxVariations, score, documentIndex, m_BatchIndexes);
+        }
+
         internal void AddProperty(string name, string value, int minVariations, int maxVariations, int score, int documentIndex, List<SearchIndexEntry> indexes)
         {
             var nameHash = name.GetHashCode();
             var valueHash = value.GetHashCode();
             maxVariations = Math.Min(maxVariations, value.Length);
+            if (minVariations > value.Length)
+                minVariations = value.Length;
             if (ExcludeWordVariations(value))
                 minVariations = maxVariations = value.Length;
             for (int c = Math.Min(minVariations, maxVariations); c <= maxVariations; ++c)
@@ -449,7 +456,7 @@ namespace Unity.QuickSearch
             // Add an exact match for property="match"
             nameHash = nameHash ^ name.Length.GetHashCode();
             valueHash = value.GetHashCode() ^ value.Length.GetHashCode();
-            indexes.Add(new SearchIndexEntry(valueHash, nameHash, SearchIndexEntryType.Property, documentIndex, 0));
+            indexes.Add(new SearchIndexEntry(valueHash, nameHash, SearchIndexEntryType.Property, documentIndex, score));
         }
 
         internal void AddProperty(string key, double value, int documentIndex, List<SearchIndexEntry> indexes)

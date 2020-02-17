@@ -99,10 +99,10 @@ namespace Unity.QuickSearch
 
         private static bool IsAsset(Object obj)
         {
-            return AssetDatabase.IsForeignAsset(obj) ||
+            return obj && (AssetDatabase.IsForeignAsset(obj) ||
                 AssetDatabase.IsMainAsset(obj) ||
                 AssetDatabase.IsNativeAsset(obj) ||
-                AssetDatabase.IsSubAsset(obj);
+                AssetDatabase.IsSubAsset(obj));
         }
     }
 

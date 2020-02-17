@@ -53,11 +53,14 @@ namespace Unity.QuickSearch.Providers
             s_RemovedItems = s_RemovedItems.Concat(removed).Distinct().ToArray();
             s_MovedItems = s_MovedItems.Concat(moved).Distinct().ToArray();
 
-            RaiseContentRefreshed();
+            if (s_UpdatedItems.Length > 0 || s_RemovedItems.Length > 0 || s_MovedItems.Length > 0)
+                RaiseContentRefreshed();
         }
 
         private static void RaiseContentRefreshed()
         {
+            EditorApplication.delayCall -= RaiseContentRefreshed;
+
             var currentTime = EditorApplication.timeSinceStartup;
             if (s_BatchStartTime != 0 && currentTime - s_BatchStartTime > 0.5)
             {
@@ -72,7 +75,6 @@ namespace Unity.QuickSearch.Providers
             {
                 if (s_BatchStartTime == 0)
                     s_BatchStartTime = currentTime;
-                EditorApplication.delayCall -= RaiseContentRefreshed;
                 EditorApplication.delayCall += RaiseContentRefreshed;
             }
         }

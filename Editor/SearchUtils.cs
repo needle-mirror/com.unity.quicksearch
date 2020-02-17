@@ -36,15 +36,13 @@ namespace Unity.QuickSearch
 
         public static IEnumerable<string> SplitEntryComponents(string entry, char[] entrySeparators, int minIndexCharVariation, int maxIndexCharVariation)
         {
-            var nameTokens = entry.Split(entrySeparators).Distinct().ToArray();
+            var nameTokens = entry.Split(entrySeparators).Distinct();
             var scc = nameTokens.SelectMany(s => SplitCamelCase(s)).Where(s => s.Length > 0);
             var fcc = scc.Aggregate("", (current, s) => current + s[0]);
-            return Enumerable.Empty<string>()
-                             .Concat(scc.Where(s => s.Length > 1))
-                             .Concat(FindShiftLeftVariations(fcc))
-                             .Where(s => s.Length > 0)
-                             .Select(s => s.Substring(0, Math.Min(s.Length, maxIndexCharVariation)).ToLowerInvariant())
-                             .Distinct();
+            return new []{ fcc, entry }.Concat(scc.Where(s => s.Length > 1))
+                                .Where(s => s.Length > 0)
+                                .Select(s => s.Substring(0, Math.Min(s.Length, maxIndexCharVariation)).ToLowerInvariant())
+                                .Distinct();
         }
 
         public static IEnumerable<string> SplitFileEntryComponents(string path, char[] entrySeparators, int minIndexCharVariation, int maxIndexCharVariation)
