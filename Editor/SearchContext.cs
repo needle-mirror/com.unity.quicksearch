@@ -67,6 +67,11 @@ namespace Unity.QuickSearch
         public bool wantsMore { get; internal set; }
 
         /// <summary>
+        /// Indicates that the search results should be filter for this type.
+        /// </summary>
+        internal Type filterType { get; set; }
+
+        /// <summary>
         /// Indicates if the current search tries to execute a specific action on the search results.
         /// </summary>
         public bool isActionQuery { get; internal set; }

@@ -157,4 +157,4 @@ namespace Unity.QuickSearch.Providers
         }
     }
 }
-#endif  //UNITY_2019_3_OR_NEWER
+#endif  //UNITY_2020_1_OR_NEWER

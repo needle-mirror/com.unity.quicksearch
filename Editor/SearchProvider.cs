@@ -22,7 +22,7 @@ namespace Unity.QuickSearch
         Preview2D = 1,
 
         /// <summary>
-        /// Indicates that the provider should generte a 3D preview.
+        /// Indicates that the provider should generate a 3D preview.
         /// </summary>
         Preview3D = 1 << 1,
 
@@ -32,7 +32,7 @@ namespace Unity.QuickSearch
         Normal    = 1 << 10,
 
         /// <summary>
-        /// Indicates that the preview resolution should be higner than 256x256.
+        /// Indicates that the preview resolution should be higher than 256x256.
         /// </summary>
         Large     = 1 << 11
     }
@@ -48,10 +48,11 @@ namespace Unity.QuickSearch
         /// </summary>
         /// <param name="id"></param>
         /// <param name="displayName"></param>
-        public NameEntry(string id, string displayName = null)
+        public NameEntry(string id, string displayName = null, bool enabled = true)
         {
             this.id = id;
             this.displayName = displayName ?? id;
+            this.isEnabled = enabled;
         }
 
         /// <summary> Unique name for an object </summary>
@@ -60,9 +61,7 @@ namespace Unity.QuickSearch
         /// <summary> Display name (use by UI) </summary>
         public string displayName;
 
-        /// <summary>
-        /// Indicates if the entry is enabled
-        /// </summary>
+        /// <summary>Indicates if the entry is enabled</summary>
         public bool isEnabled;
     }
 
@@ -285,8 +284,11 @@ namespace Unity.QuickSearch
         /// <summary> Hint to sort the Provider. Affect the order of search results and the order in which provider are shown in the FilterWindow.</summary>
         public int priority;
         
-        /// <summary> Called when quicksearch is invoked in "contextual mode". If you return true it means the provider is enabled for this search context.</summary>
+        /// <summary> Called when quick search is invoked in "contextual mode". If you return true it means the provider is enabled for this search context.</summary>
         public Func<bool> isEnabledForContextualSearch;
+
+        /// <summary> Returns any valid Unity object held by the search item.</summary>
+        internal Func<SearchItem, Type, UnityEngine.Object> toObject;
 
         // INTERNAL
         internal List<SearchAction> actions;

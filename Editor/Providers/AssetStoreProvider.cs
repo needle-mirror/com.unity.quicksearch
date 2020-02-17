@@ -239,9 +239,7 @@ namespace Unity.QuickSearch.Providers
         private static bool s_StartPurchaseRequest;
         private static List<PurchaseInfo> s_Purchases = new List<PurchaseInfo>();
         internal static HashSet<string> purchasePackageIds;
-        #if UNITY_2019_3_OR_NEWER
         private static string s_PackagesKey;
-        #endif
         private static string s_AuthCode;
         private static AccessToken s_AccessTokenData;
         private static TokenInfo s_TokenInfo;
@@ -400,9 +398,7 @@ namespace Unity.QuickSearch.Providers
 
         static void OnEnable()
         {
-            #if UNITY_2019_3_OR_NEWER
             CheckPurchases();
-            #endif
         }
 
         static object s_UnityConnectInstance = null;
@@ -421,14 +417,9 @@ namespace Unity.QuickSearch.Providers
 
         static bool HasAccessToken()
         {
-            #if UNITY_2019_3_OR_NEWER
             return !String.IsNullOrEmpty(GetConnectAccessToken());
-            #else
-            return false;
-            #endif
         }
 
-        #if UNITY_2019_3_OR_NEWER
         static string GetConnectAccessToken()
         {
             //UnityConnect.instance.GetAccessToken()
@@ -468,7 +459,6 @@ namespace Unity.QuickSearch.Providers
                 }
             });
         }
-        #endif
 
         [UsedImplicitly, SearchItemProvider]
         internal static SearchProvider CreateProvider()
@@ -482,9 +472,7 @@ namespace Unity.QuickSearch.Providers
                 #endif
                 filterId = "store:",
                 onEnable = OnEnable,
-                #if UNITY_2019_3_OR_NEWER
                 showDetails = true,
-                #endif
                 fetchItems = (context, items, provider) => SearchStore(context, provider),
                 fetchThumbnail = (item, context) => FetchImage(((AssetDocument)item.data).icon, false, s_Previews),
                 fetchPreview = (item, context, size, options) => 
@@ -493,7 +481,6 @@ namespace Unity.QuickSearch.Providers
                         return null;
 
                     var doc = (AssetDocument)item.data;
-                    #if UNITY_2019_3_OR_NEWER
                     if (s_PackagesKey != null)
                     {
                         if (doc.productDetail == null)
@@ -512,7 +499,6 @@ namespace Unity.QuickSearch.Providers
                             return null;
                         }
                     }
-                    #endif
 
                     if (doc.productDetail?.images.Length > 0)
                         return FetchImage(doc.images, true, s_Previews);
@@ -521,10 +507,6 @@ namespace Unity.QuickSearch.Providers
                         return FetchImage(doc.key_images, true, s_Previews);
 
                     return FetchImage(doc.icon, true, s_Previews);
-                },
-                fetchKeywords = (context, lastToken, items) =>
-                {
-                    items.AddRange(k_QueryParams.Select(QueryParam => QueryParam.keyword));
                 }
             };
         }
@@ -596,12 +578,9 @@ namespace Unity.QuickSearch.Providers
         {
             var doc = (AssetDocument)item.data;
             SearchUtility.Goto(doc.url);
-            #if UNITY_2019_3_OR_NEWER
             CheckPurchases();
-            #endif
         }
 
-        #if UNITY_2019_3_OR_NEWER
         static string GetPackagesKey()
         {
             // We want to do this:
@@ -612,7 +591,6 @@ namespace Unity.QuickSearch.Providers
             var packageKey = (string)getConfigUrl.Invoke(instance, new[] { packmanKey });
             return packageKey;
         }
-        #endif
 
         #if UNITY_2020_1_OR_NEWER
         static void OpenPackageManager(string packageName)
@@ -866,9 +844,7 @@ namespace Unity.QuickSearch.Providers
             form.AddField("grant_type", "authorization_code");
             form.AddField("code", authCode);
             form.AddField("client_id", "packman");
-            #if UNITY_2019_3_OR_NEWER
             form.AddField("client_secret", s_PackagesKey);
-            #endif
             form.AddField("redirect_uri", "packman://unity");
             var request = UnityWebRequest.Post(url, form);
             var asyncOp = request.SendWebRequest();

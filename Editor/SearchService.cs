@@ -22,33 +22,6 @@ namespace Unity.QuickSearch
     }
 
     /// <summary>
-    /// Search view interface used by the search context to execute a few UI operations.
-    /// </summary>
-    public interface ISearchView
-    {
-        /// <summary>
-        /// Sets the search query text.
-        /// </summary>
-        /// <param name="searchText">Text to be displayed in the search view.</param>
-        void SetSearchText(string searchText);
-
-        /// <summary>
-        /// Open the associated filter window.
-        /// </summary>
-        void PopFilterWindow();
-
-        /// <summary>
-        /// Make sure the search is now focused.
-        /// </summary>
-        void Focus();
-
-        /// <summary>
-        /// Triggers a refresh of the search view, re-fetching all the search items from enabled search providers.
-        /// </summary>
-        void Refresh();
-    }
-
-    /// <summary>
     /// Principal Quick Search API to initiate searches and fetch results.
     /// </summary>
     public static class SearchService
@@ -164,6 +137,18 @@ namespace Unity.QuickSearch
         }
 
         /// <summary>
+        /// Activate or deactivate a search provider. 
+        /// Call Refresh after this to take effect on the next search.
+        /// </summary>
+        /// <param name="providerId">Provider id to activate or deactivate</param>
+        /// <param name="active">Activation state</param>
+        public static void SetActive(string providerId, bool active = true)
+        {
+            EditorPrefs.SetBool($"{prefKey}.{providerId}.active", active);
+            Providers.First(p => p.name.id == providerId).active = active;
+        }
+
+        /// <summary>
         /// Clears everything and reloads all search providers.
         /// </summary>
         /// <remarks>Use with care. Useful for unit tests.</remarks>
@@ -230,19 +215,46 @@ namespace Unity.QuickSearch
             if (context.isActionQuery || OverrideFilter.filteredProviders.Count > 0)
                 return GetItems(context, OverrideFilter);
 
-            if (string.IsNullOrEmpty(context.searchText))
+            if (string.IsNullOrEmpty(context.searchText) && !context.wantsMore)
                 return new List<SearchItem>(0);
 
             return GetItems(context, Filter);
         }
 
         /// <summary>
+        /// Initiate a search with a specific provider and return all search items matching the search context. This search is synchronous.
+        /// </summary>
+        /// <param name="context">The current search context.</param>
+        /// <param name="provider">The search provider.</param>
+        /// <returns>A list of search items matching the search query.</returns>
+        public static List<SearchItem> GetItems(SearchContext context, SearchProvider provider)
+        {
+            // Stop all search sessions every time there is a new search.
+            StopAllAsyncSearchSessions();
+
+            PrepareSearch(context);
+
+            var items = new List<SearchItem>();
+            context.categories = context.categories ?? provider.subCategories;
+            var iterator = provider.fetchItems(context, items, provider);
+            var stackedEnumerator = new StackedEnumerator<SearchItem>(iterator);
+            while (stackedEnumerator.MoveNext())
+            {
+                if (stackedEnumerator.Current != null)
+                    items.Add(stackedEnumerator.Current);
+            }
+
+            return items;
+        }
+
+        /// <summary>
         /// Setup the search service before initiating a search session. A search session can be composed of many searches (different words, etc.)
         /// </summary>
         /// <param name="context">The search context to be initialized.</param>
-        public static void Enable(SearchContext context)
+        public static void Enable(SearchContext context, bool loadSessionSettings = false)
         {
-            LoadSessionSettings();
+            if (loadSessionSettings)
+                LoadSessionSettings();
             PrepareSearch(context);
             foreach (var provider in Providers.Where(p => p.active))
             {
@@ -664,7 +676,7 @@ namespace Unity.QuickSearch
             SaveSessionSetting(k_RecentsPrefKey, Utils.JsonSerialize(s_UserScores.Skip(s_UserScores.Count - 40).ToArray()));
         }
 
-        private static void StopAllAsyncSearchSessions()
+        internal static void StopAllAsyncSearchSessions()
         {
             foreach (var searchSession in s_SearchSessions)
             {

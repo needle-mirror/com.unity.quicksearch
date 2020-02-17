@@ -21,13 +21,8 @@ namespace Unity.QuickSearch
             public static readonly GUIContent prefButtonContent = new GUIContent(Icons.settings, "Open quick search preferences...");
             public static readonly GUIStyle prefButton = new GUIStyle("IconButton")
             {
-                #if UNITY_2019_3_OR_NEWER
                 fixedWidth = 16, fixedHeight = 16, 
                 margin = new RectOffset(2, 2, 2, 2)
-                #else
-                fixedWidth = 20, fixedHeight = 20, 
-                margin = new RectOffset(2, 2, 2, 0)
-                #endif
             };
 
             public static readonly GUIStyle filterTimeLabel = new GUIStyle(EditorStyles.miniLabel)
@@ -35,11 +30,7 @@ namespace Unity.QuickSearch
                 name = "quick-search-filter-time-label",
                 fixedWidth = 50,
                 alignment = TextAnchor.MiddleRight,
-                #if UNITY_2019_1_OR_NEWER
                 margin = new RectOffset(0, 0, 1, 1),
-                #else
-                margin = new RectOffset(0, 0, 2, 1),
-                #endif
                 fontSize = Math.Max(filterHeader.fontSize - 2, 9),
                 fontStyle = FontStyle.Italic,
                 normal = new GUIStyleState { textColor = EditorStyles.helpBox.normal.textColor }
@@ -56,18 +47,8 @@ namespace Unity.QuickSearch
 
             public static readonly GUIStyle filterEntry = new GUIStyle(EditorStyles.label) { name = "quick-search-filter-entry" };
             public static readonly GUIStyle panelBorder = new GUIStyle("grey_border") { name = "quick-search-filter-panel-border" };
-            public static readonly GUIStyle filterExpanded = new GUIStyle("IN Foldout")
-            {
-                margin = new RectOffset(2, 1, 2, 0)
-            };
-            public static readonly GUIStyle separator = new GUIStyle("sv_iconselector_sep")
-            {
-                #if UNITY_2019_3_OR_NEWER
-                margin = new RectOffset(1, 1, 4, 0)
-                #else
-                margin = new RectOffset(1, 1, 0, 0)
-                #endif
-            };
+            public static readonly GUIStyle filterExpanded = new GUIStyle("IN Foldout") { margin = new RectOffset(2, 1, 2, 0) };
+            public static readonly GUIStyle separator = new GUIStyle("sv_iconselector_sep") { margin = new RectOffset(1, 1, 4, 0) };
 
             public static float foldoutIndent = filterExpanded.fixedWidth + 6;
         }

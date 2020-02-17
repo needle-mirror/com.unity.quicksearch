@@ -4,12 +4,9 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
 using UnityEditor;
-using UnityEditor.Experimental.SceneManagement;
 using UnityEditor.ShortcutManagement;
 using UnityEngine;
-using UnityEngine.SceneManagement;
 
 namespace Unity.QuickSearch.Providers
 {
@@ -18,29 +15,20 @@ namespace Unity.QuickSearch.Providers
     {
         protected Func<GameObject[]> fetchGameObjects { get; set; }
         protected Func<GameObject, string[]> buildKeywordComponents { get; set; }
-
-        private SearchIndexer m_Indexer { get; set; }
-        private GameObject[] m_GameObjects = null;
-        private IEnumerator m_BuildIndexEnumerator = null;
         protected bool m_HierarchyChanged = true;
-        private static List<int> s_FuzzyMatches = new List<int>();
-        private static readonly Stack<StringBuilder> _SbPool = new Stack<StringBuilder>();
+
+        private GameObject[] m_GameObjects = null;
+        private SceneQueryEngine m_SceneQueryEngine { get; set; }
 
         public SceneProvider(string providerId, string filterId, string displayName)
             : base(providerId, displayName)
         {
             priority = 50;
             this.filterId = filterId;
-            this.showDetails = true;
-
-            subCategories = new List<NameEntry>
-            {
-                new NameEntry("fuzzy", "fuzzy")
-            };
 
             isEnabledForContextualSearch = () =>
-                QuickSearch.IsFocusedWindowTypeName("SceneView") ||
-                QuickSearch.IsFocusedWindowTypeName("SceneHierarchyWindow");
+                Utils.IsFocusedWindowTypeName("SceneView") ||
+                Utils.IsFocusedWindowTypeName("SceneHierarchyWindow");
 
             EditorApplication.hierarchyChanged += () => m_HierarchyChanged = true;
 
@@ -48,7 +36,8 @@ namespace Unity.QuickSearch.Providers
             {
                 if (m_HierarchyChanged)
                 {
-                    m_BuildIndexEnumerator = null;
+                    m_GameObjects = fetchGameObjects();
+                    m_SceneQueryEngine = new SceneQueryEngine(m_GameObjects);
                     m_HierarchyChanged = false;
                 }
             };
@@ -58,6 +47,8 @@ namespace Unity.QuickSearch.Providers
                 // Only track changes that occurs when Quick Search is not active.
                 m_HierarchyChanged = false;
             };
+
+            toObject = (item, type) => ObjectFromItem(item);
 
             fetchItems = (context, items, provider) => SearchItems(context, provider);
 
@@ -70,20 +61,27 @@ namespace Unity.QuickSearch.Providers
                 if (!go)
                     return item.id;
 
-                var transformPath = GetTransformPath(go.transform);
-                var components = go.GetComponents<Component>();
-                if (components.Length > 2 && components[1] && components[components.Length-1])
-                    item.label = $"{transformPath} ({components[1].GetType().Name}..{components[components.Length-1].GetType().Name})";
-                else if (components.Length > 1 && components[1])
-                    item.label = $"{transformPath} ({components[1].GetType().Name})";
-                else
-                    item.label = $"{transformPath} ({item.id})";
+                if (context.searchView.displayMode == DisplayMode.List)
+                {
+                    var transformPath = SearchUtils.GetTransformPath(go.transform);
+                    var components = go.GetComponents<Component>();
+                    if (components.Length > 2 && components[1] && components[components.Length - 1])
+                        item.label = $"{transformPath} ({components[1].GetType().Name}..{components[components.Length - 1].GetType().Name})";
+                    else if (components.Length > 1 && components[1])
+                        item.label = $"{transformPath} ({components[1].GetType().Name})";
+                    else
+                        item.label = $"{transformPath} ({item.id})";
 
-                long score = 1;
-                List<int> matches = new List<int>();
-                var sq = CleanString(context.searchQuery);
-                if (FuzzySearch.FuzzyMatch(sq, CleanString(item.label), ref score, matches))
-                    item.label = RichTextFormatter.FormatSuggestionTitle(item.label, matches);
+                    long score = 1;
+                    List<int> matches = new List<int>();
+                    var sq = Utils.CleanString(context.searchQuery);
+                    if (FuzzySearch.FuzzyMatch(sq, Utils.CleanString(item.label), ref score, matches))
+                        item.label = RichTextFormatter.FormatSuggestionTitle(item.label, matches);
+                }
+                else
+                {
+                    item.label = go.name;
+                }
 
                 return item.label;
             };
@@ -91,7 +89,7 @@ namespace Unity.QuickSearch.Providers
             fetchDescription = (item, context) =>
             {
                 var go = ObjectFromItem(item);
-                return (item.description = GetHierarchyPath(go));
+                return (item.description = SearchUtils.GetHierarchyPath(go));
             };
 
             fetchThumbnail = (item, context) =>
@@ -109,10 +107,24 @@ namespace Unity.QuickSearch.Providers
                 if (obj == null)
                     return item.thumbnail;
 
-                var assetPath = GetHierarchyAssetPath(obj, true);
+                var sr = obj.GetComponent<SpriteRenderer>();
+                if (sr && sr.sprite && sr.sprite.texture)
+                    return sr.sprite.texture;
+
+                #if PACKAGE_UGUI
+                var uii = obj.GetComponent<UnityEngine.UI.Image>();
+                if (uii && uii.mainTexture is Texture2D uiit)
+                    return uiit;
+                #endif
+
+                var preview = AssetPreview.GetAssetPreview(obj);
+                if (preview)
+                    return preview;
+
+                var assetPath = SearchUtils.GetHierarchyAssetPath(obj, true);
                 if (String.IsNullOrEmpty(assetPath))
                     return item.thumbnail;
-                return Utils.GetAssetPreviewFromPath(assetPath, size, options) ?? AssetPreview.GetAssetPreview(obj);
+                return Utils.GetAssetPreviewFromPath(assetPath, size, options);
             };
 
             startDrag = (item, context) =>
@@ -122,29 +134,10 @@ namespace Unity.QuickSearch.Providers
                     Utils.StartDrag(obj, item.label);
             };
 
-            fetchGameObjects = FetchGameObjects;
-            buildKeywordComponents = o => null;
-
             trackSelection = (item, context) => PingItem(item);
-        }
 
-        private IEnumerator SearchFuzzy(SearchContext context, SearchProvider provider)
-        {
-            if (context.searchWords.Length > 0 && context.searchPhrase.Length > 2)
-            {
-                #if DEBUG_TIMING
-                using (new DebugTimer($"Fuzzy search ({context.searchPhrase})"))
-                #endif
-                {
-                    var useFuzzySearch = context.IsFilterEnabled("fuzzy");
-                    foreach (var o in m_GameObjects)
-                    {
-                        if (!o)
-                            continue;
-                        yield return MatchItem(context, provider, o.GetInstanceID().ToString(), o.name, useFuzzySearch);
-                    }
-                }
-            }
+            fetchGameObjects = SceneQueryEngine.FetchGameObjects;
+            buildKeywordComponents = SceneQueryEngine.BuildKeywordComponents;
         }
 
         private IEnumerator SearchItems(SearchContext context, SearchProvider provider)
@@ -153,151 +146,19 @@ namespace Unity.QuickSearch.Providers
             using (new DebugTimer($"Search scene ({context.searchQuery})"))
             #endif
             {
-                if (m_BuildIndexEnumerator == null)
+                yield return m_SceneQueryEngine.Search(context.searchQuery).Select(gameObject => 
                 {
-                    m_GameObjects = fetchGameObjects();
-                    m_Indexer = new SearchIndexer("scene") { minIndexCharVariation = 2, maxIndexCharVariation = 16 };
-                    m_BuildIndexEnumerator = BuildIndex(context, provider, m_GameObjects, m_Indexer);
-                }
-
-                yield return SearchFuzzy(context, provider);
-                yield return m_BuildIndexEnumerator;
-
-                // Indicate that we are still building the scene index.
-                while (!m_Indexer.IsReady())
-                    yield return null;
-
-                yield return SearchIndex(context, provider, m_Indexer);
-            }
-        }
-
-        private IEnumerable<SearchItem> SearchIndex(SearchContext context, SearchProvider provider, SearchIndexer indexer)
-        {
-            #if DEBUG_TIMING
-            using (new DebugTimer($"Search index ({context.searchQuery})"))
-            #endif
-            {
-                return indexer.SearchTerms(context.searchQuery).Select(r =>
-                {
-                    var gameObjectId = Convert.ToInt32(r.path);
-                    var gameObject = EditorUtility.InstanceIDToObject(gameObjectId) as GameObject;
                     if (!gameObject)
                         return null;
-                    return AddResult(provider, r.path, r.score, false);
+                    return AddResult(provider, gameObject.GetInstanceID().ToString(), 0, false);
                 });
-            }
-        }
 
-        protected GameObject[] FetchGameObjects()
-        {
-            var prefabStage = PrefabStageUtility.GetCurrentPrefabStage();
-            if (prefabStage != null)
-                return SceneModeUtility.GetObjects(new[] { prefabStage.prefabContentsRoot }, true);
-            
-            var goRoots = new List<UnityEngine.Object>();
-            for (int i = 0; i < SceneManager.sceneCount; ++i)
-            {
-                var scene = SceneManager.GetSceneAt(i);
-                if (!scene.IsValid() || !scene.isLoaded)
-                    continue;
-
-                var sceneRootObjects = scene.GetRootGameObjects();
-                if (sceneRootObjects != null && sceneRootObjects.Length > 0)
-                    goRoots.AddRange(sceneRootObjects);
-            }
-
-            return SceneModeUtility.GetObjects(goRoots.ToArray(), true)
-                .Where(o => !o.hideFlags.HasFlag(HideFlags.HideInHierarchy)).ToArray();
-        }
-
-        private static IEnumerable<string> SplitWords(string path, char[] entrySeparators, int maxIndexCharVariation)
-        {
-            var nameTokens = path.Split(entrySeparators).Where(p => !String.IsNullOrEmpty(p) && p.Length > 2).Reverse();
-            return nameTokens
-                      .Select(s => s.Substring(0, Math.Min(s.Length, maxIndexCharVariation)).ToLowerInvariant())
-                      .Distinct();
-        }
-
-        private static string CleanName(string s)
-        {
-            return s.Replace("(", "").Replace(")", "");
-        }
-
-        private IEnumerator BuildIndex(SearchContext context, SearchProvider provider, GameObject[] objects, SearchIndexer indexer)
-        {
-            #if DEBUG_TIMING
-            using (new DebugTimer($"Build scene index ({objects.Length})"))
-            #endif
-            {
-                var useFuzzySearch = context.IsFilterEnabled("fuzzy");
-
-                indexer.Start();
-                for (int i = 0; i < objects.Length; ++i)
+                if (context.wantsMore && context.filterType != null && String.IsNullOrEmpty(context.searchQuery))
                 {
-                    var gameObject = objects[i];
-                    var id = objects[i].GetInstanceID();
-                    var name = CleanName(gameObject.name);
-                    var path = CleanName(GetTransformPath(gameObject.transform));
-
-                    var documentId = id.ToString();
-                    int docIndex = indexer.AddDocument(documentId, false);
-
-                    int scoreIndex = 1;
-                    var parts =  SearchUtils.SplitEntryComponents(name, indexer.entrySeparators, 2, indexer.maxIndexCharVariation)
-                                     .Concat(SplitWords(path, indexer.entrySeparators, indexer.maxIndexCharVariation))
-                                     .Distinct().Take(10).ToArray();
-                    //UnityEngine.Debug.LogFormat(LogType.Log, LogOption.NoStacktrace, gameObject, $"{path} (<b>{parts.Length}</b>) = {String.Join(",", parts)}");
-                    foreach (var word in parts)
-                        indexer.AddWord(word, indexer.minIndexCharVariation, indexer.maxIndexCharVariation, scoreIndex++, docIndex);
-
-                    name = name.ToLowerInvariant();
-                    indexer.AddExactWord(name, 0, docIndex);
-                    if (name.Length > indexer.maxIndexCharVariation)
-                        indexer.AddWord(name, indexer.maxIndexCharVariation+1, name.Length, 1, docIndex);
-
-                    var keywords = buildKeywordComponents(objects[i]);
-                    if (keywords != null)
-                    {
-                        foreach (var keyword in keywords)
-                            foreach (var word in SplitWords(keyword, indexer.entrySeparators, indexer.maxIndexCharVariation))
-                                indexer.AddWord(word, scoreIndex++, docIndex);
-                    }
-
-                    var ptype = PrefabUtility.GetPrefabAssetType(gameObject);
-                    if (ptype != PrefabAssetType.NotAPrefab)
-                        indexer.AddProperty("t", "prefab", 6, 6, 30, docIndex);
-
-                    var gocs = gameObject.GetComponents<Component>();
-                    for (int componentIndex = 1; componentIndex < gocs.Length; ++componentIndex)
-                    {
-                        var c = gocs[componentIndex];
-                        if (!c || c.hideFlags.HasFlag(HideFlags.HideInInspector))
-                            continue;
-
-                        indexer.AddProperty("t", c.GetType().Name.ToLowerInvariant(), 40 + componentIndex, docIndex);
-                    }
-
-                    // While we are building the scene, lets search for objects name
-                    yield return MatchItem(context, provider, documentId, name, useFuzzySearch);
+                    yield return GameObject.FindObjectsOfType(context.filterType)
+                        .Select(go => AddResult(provider, go.GetInstanceID().ToString(), 999, false));
                 }
-
-                indexer.Finish(true);
             }
-        }
-
-        private static SearchItem MatchItem(SearchContext context, SearchProvider provider, string id, string name, bool useFuzzySearch)
-        {
-            if (context.searchPhrase.Length > 2)
-            {
-                long score = 99;
-                bool foundMatch = !useFuzzySearch
-                    ? MatchSearchGroups(context, name, false)
-                    : FuzzySearch.FuzzyMatch(context.searchPhrase, name, ref score, s_FuzzyMatches);
-                if (foundMatch)
-                    return AddResult(provider, id, (~(int)score) + 10000, useFuzzySearch);
-            }
-
-            return null;
         }
 
         private static SearchItem AddResult(SearchProvider provider, string id, int score, bool useFuzzySearch)
@@ -316,18 +177,6 @@ namespace Unity.QuickSearch.Providers
                 | SearchItemDescriptionFormat.RightToLeft
                 | (useFuzzySearch ? SearchItemDescriptionFormat.FuzzyHighlight : SearchItemDescriptionFormat.Highlight);
             return item;
-        }
-
-        private static string CleanString(string s)
-        {
-            var sb = s.ToCharArray();
-            for (int c = 0; c < s.Length; ++c)
-            {
-                var ch = s[c];
-                if (ch == '_' || ch == '.' || ch == '-' || ch == '/')
-                    sb[c] = ' ';
-            }
-            return new string(sb).ToLowerInvariant();
         }
 
         private static UnityEngine.Object PingItem(SearchItem item)
@@ -353,112 +202,6 @@ namespace Unity.QuickSearch.Providers
             return obj;
         }
 
-        private static string GetTransformPath(Transform tform)
-        {
-            if (tform.parent == null)
-                return "/" + tform.name;
-            return GetTransformPath(tform.parent) + "/" + tform.name;
-        }
-
-        public static string GetHierarchyPath(GameObject gameObject, bool includeScene = true)
-        {
-            if (gameObject == null)
-                return String.Empty;
-
-            StringBuilder sb;
-            if (_SbPool.Count > 0)
-            {
-                sb = _SbPool.Pop();
-                sb.Clear();
-            }
-            else
-            {
-                sb = new StringBuilder(200);
-            }
-
-            try
-            {
-                if (includeScene)
-                {
-                    var sceneName = gameObject.scene.name;
-                    if (sceneName == string.Empty)
-                    {
-                        #if UNITY_2018_3_OR_NEWER
-                        var prefabStage = PrefabStageUtility.GetPrefabStage(gameObject);
-                        if (prefabStage != null)
-                        {
-                            sceneName = "Prefab Stage";
-                        }
-                        else
-                        #endif
-                        {
-                            sceneName = "Unsaved Scene";
-                        }
-                    }
-
-                    sb.Append("<b>" + sceneName + "</b>");
-                }
-
-                sb.Append(GetTransformPath(gameObject.transform));
-
-                #if false
-                bool isPrefab;
-                #if UNITY_2018_3_OR_NEWER
-                isPrefab = PrefabUtility.GetPrefabAssetType(gameObject.gameObject) != PrefabAssetType.NotAPrefab;
-                #else
-                isPrefab = UnityEditor.PrefabUtility.GetPrefabType(o) == UnityEditor.PrefabType.Prefab;
-                #endif
-                var assetPath = string.Empty;
-                if (isPrefab)
-                {
-                    #if UNITY_2018_3_OR_NEWER
-                    assetPath = PrefabUtility.GetPrefabAssetPathOfNearestInstanceRoot(gameObject);
-                    #else
-                    assetPath = AssetDatabase.GetAssetPath(gameObject);
-                    #endif
-                    sb.Append(" (" + System.IO.Path.GetFileName(assetPath) + ")");
-                }
-                #endif
-
-                var path = sb.ToString();
-                sb.Clear();
-                return path;
-            }
-            finally
-            {
-                _SbPool.Push(sb);
-            }
-        }
-
-        public static string GetHierarchyAssetPath(GameObject gameObject, bool prefabOnly = false)
-        {
-            if (gameObject == null)
-                return String.Empty;
-
-            bool isPrefab;
-            #if UNITY_2018_3_OR_NEWER
-            isPrefab = PrefabUtility.GetPrefabAssetType(gameObject.gameObject) != PrefabAssetType.NotAPrefab;
-            #else
-            isPrefab = UnityEditor.PrefabUtility.GetPrefabType(o) == UnityEditor.PrefabType.Prefab;
-            #endif
-
-            var assetPath = string.Empty;
-            if (isPrefab)
-            {
-                #if UNITY_2018_3_OR_NEWER
-                assetPath = PrefabUtility.GetPrefabAssetPathOfNearestInstanceRoot(gameObject);
-                #else
-                assetPath = AssetDatabase.GetAssetPath(gameObject);
-                #endif
-                return assetPath;
-            }
-
-            if (prefabOnly)
-                return null;
-
-            return gameObject.scene.path;
-        }
-
         public static IEnumerable<SearchAction> CreateActionHandlers(string providerId)
         {
             return new SearchAction[]
@@ -481,7 +224,7 @@ namespace Unity.QuickSearch.Providers
                         if (pingedObject != null)
                         {
                             var go = pingedObject as GameObject;
-                            var assetPath = GetHierarchyAssetPath(go);
+                            var assetPath = SearchUtils.GetHierarchyAssetPath(go);
                             if (!String.IsNullOrEmpty(assetPath))
                                 Utils.FrameAssetFromPath(assetPath);
                             else
@@ -509,12 +252,10 @@ namespace Unity.QuickSearch.Providers
             return SceneProvider.CreateActionHandlers(k_DefaultProviderId);
         }
 
-        #if UNITY_2019_1_OR_NEWER
         [UsedImplicitly, Shortcut("Help/Quick Search/Scene")]
         private static void OpenQuickSearch()
         {
             QuickSearch.OpenWithContextualProvider(k_DefaultProviderId);
         }
-        #endif
     }
 }

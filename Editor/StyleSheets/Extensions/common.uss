@@ -16,7 +16,6 @@
 
 .quick-search-item-selected-background {
     -unity-enable-hovering: --enable-style-hovering;
-
     background-color: --theme-line-selection-background-color-focus;
 }
 
@@ -27,4 +26,10 @@
 .quick-search-border,
 .quick-search-filter-panel-border, .quick-search-preview-panel-border {
     border: --theme-window-border;
+}
+
+.quick-search-selected-item-grid-background {
+   -unity-enable-hovering: --enable-style-hovering;
+    background-color: --theme-line-selection-background-color-focus;
+	border-radius: 4px;
 }

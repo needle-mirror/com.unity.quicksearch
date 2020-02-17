@@ -53,6 +53,36 @@ namespace Unity.QuickSearch
             id = _id;
         }
 
+        /// <summary>
+        /// Fetch and format label.
+        /// </summary>
+        /// <param name="context">Any search context for the item provider.</param>
+        /// <param name="stripHTML">True if any HTML tags should be dropped.</param>
+        /// <returns>The search item label</returns>
+        public string GetLabel(SearchContext context, bool stripHTML = false)
+        {
+            if (label == null)
+                label = provider?.fetchLabel?.Invoke(this, context);
+            if (!stripHTML)
+                return label;
+            return Utils.StripHTML(label);
+        }
+
+        /// <summary>
+        /// Fetch and format description
+        /// </summary>
+        /// <param name="context">Any search context for the item provider.</param>
+        /// <param name="stripHTML">True if any HTML tags should be dropped.</param>
+        /// <returns>The search item description</returns>
+        public string GetDescription(SearchContext context, bool stripHTML = false)
+        {
+            if (description == null)
+                description = provider?.fetchDescription?.Invoke(this, context);
+            if (!stripHTML)
+                return description;
+            return Utils.StripHTML(description);
+        }
+
         public bool Equals(SearchItem x, SearchItem y)
         {
             return x.id == y.id;

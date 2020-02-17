@@ -1,12 +1,16 @@
 # Changelog
 
-## [1.5.2-preview.2] - 2020-02-18
-- [FIX] Improve scene provider performances
+## [1.6.0-preview.1] - 2020-02-18
+- [UX] New scene provider filtering (added support for: id:<string>, path:<string/string> size:<number>, layer:<number>, tag:<string>, t:<type>, is:[visible|hidden|leaf|root|child])
+- [UX] Add the ability to fetch items on a specific provider.
+- [UX] Add support to override the default object picker using Quick Search
+- [UX] Add support for multiple asset indexes.
+- [UX] Add Search Engines for the upcoming Search API from Unity.
+- [UX] Add grid view support to display search results in a grid of thumbnails.
 - [FIX] Fix Unity crash when dragging and dropping from quick search (1215420)
-- [Fix] Fix complete file name indexing (case 1214270)
-
-## [1.5.1] - 2020-01-24
 - [FIX] Fix Progress API usage.
+- [Fix] Fix complete file name indexing (case 1214270)
+- [DOC] Quick Search 1.6 and higher will require Unity 2019.3 and higher.
 
 ## [1.5.0] - 2020-01-22
 - [UX] You can now search scene objects with a given component using c:<component name>.

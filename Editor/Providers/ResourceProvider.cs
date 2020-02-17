@@ -73,6 +73,7 @@ namespace Unity.QuickSearch.Providers
             {
                 filterId = "res:",
                 fetchItems = (context, items, provider) => SearchItems(context, provider),
+                toObject = (item, type) => GetItemObject(item),
                 isExplicitProvider = true,
                 fetchDescription = FetchDescription,
                 fetchThumbnail = FetchThumbnail,

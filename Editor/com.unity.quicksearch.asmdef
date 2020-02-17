@@ -1,7 +1,8 @@
 {
     "name": "com.unity.quicksearch",
-    "references": [],
-    "optionalUnityReferences": [],
+    "references": [
+        "GUID:343deaaf83e0cee4ca978e7df0b80d21"
+    ],
     "includePlatforms": [
         "Editor"
     ],
@@ -11,5 +12,12 @@
     "precompiledReferences": [],
     "autoReferenced": true,
     "defineConstraints": [],
-    "versionDefines": []
+    "versionDefines": [
+        {
+            "name": "com.unity.ugui",
+            "expression": "1.0.0",
+            "define": "PACKAGE_UGUI"
+        }
+    ],
+    "noEngineReferences": false
 }

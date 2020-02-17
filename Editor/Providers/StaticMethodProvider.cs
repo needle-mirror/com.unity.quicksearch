@@ -74,11 +74,7 @@ namespace Unity.QuickSearch
                 if (result == null)
                     return;
 
-                #if UNITY_2019_1_OR_NEWER
                 Debug.LogFormat(LogType.Log, LogOption.NoStacktrace, result as UnityEngine.Object, result.ToString());
-                #else
-                Debug.Log(result.ToString());
-                #endif
             }
 
             [UsedImplicitly, SearchActionsProvider]

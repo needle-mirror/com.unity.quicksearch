@@ -1,11 +1,9 @@
-// #define QUICKSEARCH_DEBUG
 using System;
 using System.Linq;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.IO;
 using System.Reflection;
-using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
@@ -16,10 +14,6 @@ using Debug = UnityEngine.Debug;
 
 #if UNITY_2020_1_OR_NEWER
 using UnityEngine.UIElements;
-#endif
-
-#if QUICKSEARCH_DEBUG
-using UnityEditorInternal;
 #endif
 
 [assembly: InternalsVisibleTo("com.unity.quicksearch.tests")]
@@ -61,7 +55,7 @@ namespace Unity.QuickSearch
 
         public static Texture2D GetAssetPreviewFromPath(string path, Vector2 previewSize, FetchPreviewOptions previewOptions)
         {
-            var obj = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(path);
+            var obj = AssetDatabase.LoadAssetAtPath<Texture2D>(path) ?? AssetDatabase.LoadMainAssetAtPath(path);
             if (obj == null)
                 return null;
             var preview = AssetPreview.GetAssetPreview(obj);
@@ -117,22 +111,7 @@ namespace Unity.QuickSearch
 
         internal static Type[] GetAllDerivedTypes(this AppDomain aAppDomain, Type aType)
         {
-            #if UNITY_2019_2_OR_NEWER
             return TypeCache.GetTypesDerivedFrom(aType).ToArray();
-            #else
-            var result = new List<Type>();
-            var assemblies = aAppDomain.GetAssemblies();
-            foreach (var assembly in assemblies)
-            {
-                var types = assembly.GetLoadableTypes();
-                foreach (var type in types)
-                {
-                    if (type.IsSubclassOf(aType))
-                        result.Add(type);
-                }
-            }
-            return result.ToArray();
-            #endif
         }
 
         internal static string FormatProviderList(IEnumerable<SearchProvider> providers, bool fullTimingInfo = false)
@@ -164,9 +143,6 @@ namespace Unity.QuickSearch
             {
                 if (IsIgnoredAssembly(assembly.GetName()))
                     continue;
-                #if QUICKSEARCH_DEBUG
-                var countBefore = result.Count;
-                #endif
                 var types = assembly.GetLoadableTypes();
                 foreach (var type in types)
                 {
@@ -186,9 +162,6 @@ namespace Unity.QuickSearch
                             result.Add(m);
                     }
                 }
-                #if QUICKSEARCH_DEBUG
-                Debug.Log($"{result.Count - countBefore} - {assembly.GetName()}");
-                #endif
             }
             return result.ToArray();
         }
@@ -242,15 +215,7 @@ namespace Unity.QuickSearch
 
         internal static IEnumerable<MethodInfo> GetAllMethodsWithAttribute<T>(BindingFlags bindingFlags = BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic) where T : System.Attribute
         {
-            #if UNITY_2019_2_OR_NEWER
             return TypeCache.GetMethodsWithAttribute<T>();
-            #else
-            Assembly assembly = typeof(Selection).Assembly;
-            var managerType = assembly.GetTypes().First(t => t.Name == "EditorAssemblies");
-            var method = managerType.GetMethod("Internal_GetAllMethodsWithAttribute", BindingFlags.NonPublic | BindingFlags.Static);
-            var arguments = new object[] { typeof(T), bindingFlags };
-            return ((method.Invoke(null, arguments) as object[]) ?? throw new InvalidOperationException()).Cast<MethodInfo>();
-            #endif
         }
 
         internal static Rect GetMainWindowCenteredPosition(Vector2 size)
@@ -290,16 +255,8 @@ namespace Unity.QuickSearch
             var managerType = assembly.GetTypes().First(t => t.Name == "Json");
             var method = managerType.GetMethod("Serialize", BindingFlags.Public | BindingFlags.Static);
             var jsonString = "";
-            if (UnityVersion.IsVersionGreaterOrEqual(2019, 1, UnityVersion.ParseBuild("0a10")))
-            {
-                var arguments = new object[] { obj, false, "  " };
-                jsonString = method.Invoke(null, arguments) as string;
-            }
-            else
-            {
-                var arguments = new object[] { obj };
-                jsonString = method.Invoke(null, arguments) as string;
-            }
+            var arguments = new object[] { obj, false, "  " };
+            jsonString = method.Invoke(null, arguments) as string;
             return jsonString;
         }
 
@@ -315,7 +272,6 @@ namespace Unity.QuickSearch
         private static MethodInfo s_GetNumCharactersThatFitWithinWidthMethod;
         internal static int GetNumCharactersThatFitWithinWidth(GUIStyle style, string text, float width)
         {
-            #if UNITY_2019_1_OR_NEWER
             if (s_GetNumCharactersThatFitWithinWidthMethod == null)
             {
                 var kType = typeof(GUIStyle);
@@ -323,10 +279,6 @@ namespace Unity.QuickSearch
             }
             var arguments = new object[] { text, width };
             return (int)s_GetNumCharactersThatFitWithinWidthMethod.Invoke(style, arguments);
-            #else
-            style.CalcMinMaxWidth(new GUIContent(text), out var minWidth, out _);
-            return (int)(width / (minWidth / text.Length)) - 3;
-            #endif
         }
 
         private static MethodInfo s_GetPackagesPathsMethod;
@@ -384,11 +336,7 @@ namespace Unity.QuickSearch
 
         internal static bool IsDeveloperMode()
         {
-            #if QUICKSEARCH_DEBUG
-            return true;
-            #else
             return Directory.Exists($"{QuickSearch.packageFolderName}/.git");
-            #endif
         }
 
         public static int LevenshteinDistance<T>(IEnumerable<T> lhs, IEnumerable<T> rhs) where T : System.IEquatable<T>
@@ -586,214 +534,80 @@ namespace Unity.QuickSearch
             DragAndDrop.objectReferences = new[] { s_LastDraggedObject };
             DragAndDrop.StartDrag(label ?? s_LastDraggedObject.name);
         }
-    }
 
-    internal struct DebugTimer : IDisposable
-    {
-        private bool m_Disposed;
-        private string m_Name;
-        private Stopwatch m_Timer;
-
-        public double timeMs => m_Timer.Elapsed.TotalMilliseconds;
-
-        public DebugTimer(string name)
+        private static MethodInfo s_GetFieldInfoFromProperty;
+        internal static FieldInfo GetFieldInfoFromProperty(SerializedProperty property, out Type requiredType)
         {
-            m_Disposed = false;
-            m_Name = name;
-            m_Timer = Stopwatch.StartNew();
-        }
-
-        public void Dispose()
-        {
-            if (m_Disposed)
-                return;
-            m_Disposed = true;
-            m_Timer.Stop();
-            #if UNITY_2019_1_OR_NEWER
-            if (!String.IsNullOrEmpty(m_Name))
-                Debug.LogFormat(LogType.Log, LogOption.NoStacktrace, null, $"{m_Name} took {timeMs:F2} ms");
-            #else
-            if (!String.IsNullOrEmpty(m_Name))
-                Debug.Log($"{m_Name} took {timeMs} ms");
-            #endif
-        }
-    }
-
-    internal static class TryConvert
-    {
-        public static bool ToBool(string value, bool defaultValue = false)
-        {
-            try
+            requiredType = null;
+            if (s_GetFieldInfoFromProperty == null)
             {
-                return Convert.ToBoolean(value);
+                Assembly assembly = typeof(UnityEditor.SerializedProperty).Assembly;
+                var type = assembly.GetTypes().First(t => t.FullName == "UnityEditor.ScriptAttributeUtility");
+                s_GetFieldInfoFromProperty = type.GetMethod("GetFieldInfoFromProperty", BindingFlags.NonPublic | BindingFlags.Static);
+                if (s_GetFieldInfoFromProperty == null)
+                    return null;
             }
-            catch(Exception)
+            object[] parameters = new object[]{ property, null };
+            var fi = (FieldInfo)s_GetFieldInfoFromProperty.Invoke(null, parameters);
+            requiredType = parameters[1] as Type;
+            return fi;
+        }
+
+        public static void LogProperties(SerializedObject so, bool includeChildren = true)
+        {
+            so.Update();
+            SerializedProperty propertyLogger = so.GetIterator();
+            while (true)
             {
-                return defaultValue;
+                Debug.LogFormat(LogType.Log, LogOption.NoStacktrace, so.targetObject, $"{propertyLogger.propertyPath} [{propertyLogger.type}]");
+                if (!propertyLogger.Next(includeChildren)) 
+                    break;
             }
         }
 
-        public static float ToFloat(string value, float defaultValue = 0f)
+        public static Type GetTypeFromName(string typeName)
         {
-            try
-            {
-                return Convert.ToSingle(value);
-            }
-            catch (Exception)
-            {
-                return defaultValue;
-            }
+            return TypeCache.GetTypesDerivedFrom<UnityEngine.Object>().FirstOrDefault(t => t.Name == typeName) ?? typeof(UnityEngine.Object);
         }
 
-        public static int ToInt(string value, int defaultValue = 0)
+        public static string StripHTML(string input)
         {
-            try
-            {
-                return Convert.ToInt32(value);
-            }
-            catch (Exception)
-            {
-                return defaultValue;
-            }
-        }
-    }
-
-    #if UNITY_EDITOR
-    [InitializeOnLoad]
-    #endif
-    internal static class UnityVersion
-    {
-        enum Candidate
-        {
-            Dev = 0,
-            Alpha = 1 << 8,
-            Beta = 1 << 16,
-            Final = 1 << 24
+            return Regex.Replace(input, "<.*?>", String.Empty);
         }
 
-        static UnityVersion()
+        /// <summary>
+        /// Converts a search item into any valid UnityEngine.Object if possible.
+        /// </summary>
+        /// <param name="item">Item to be converted</param>
+        /// <param name="filterType">The object should be converted in this type if possible.</param>
+        /// <returns></returns>
+        public static UnityEngine.Object ToObject(SearchItem item, Type filterType)
         {
-            var version = Application.unityVersion.Split('.');
-
-            if (version.Length < 2)
-            {
-                Console.WriteLine("Could not parse current Unity version '" + Application.unityVersion + "'; not enough version elements.");
-                return;
-            }
-
-            if (int.TryParse(version[0], out Major) == false)
-            {
-                Console.WriteLine("Could not parse major part '" + version[0] + "' of Unity version '" + Application.unityVersion + "'.");
-            }
-
-            if (int.TryParse(version[1], out Minor) == false)
-            {
-                Console.WriteLine("Could not parse minor part '" + version[1] + "' of Unity version '" + Application.unityVersion + "'.");
-            }
-
-            if (version.Length >= 3)
-            {
-                try
-                {
-                    Build = ParseBuild(version[2]);
-                }
-                catch
-                {
-                    Console.WriteLine("Could not parse minor part '" + version[1] + "' of Unity version '" + Application.unityVersion + "'.");
-                }
-            }
-
-            #if QUICKSEARCH_DEBUG
-            Debug.Log($"Unity {Major}.{Minor}.{Build}");
-            #endif
+            if (item == null || item.provider == null)
+                return null;
+            return item.provider.toObject?.Invoke(item, filterType);
         }
 
-        public static int ParseBuild(string build)
+        /// <summary>
+        /// Checks if the previously focused window used to open quick search is of a given type.
+        /// </summary>
+        /// <param name="focusWindowName">Class name of the window to be verified.</param>
+        /// <returns>True if the class name matches the quick search opener window class name.</returns>
+        public static bool IsFocusedWindowTypeName(string focusWindowName)
         {
-            var rev = 0;
-            if (build.Contains("a"))
-                rev = (int)Candidate.Alpha;
-            else if (build.Contains("b"))
-                rev = (int)Candidate.Beta;
-            if (build.Contains("f"))
-                rev = (int)Candidate.Final;
-            var tags = build.Split('a', 'b', 'f', 'p', 'x');
-            if (tags.Length == 2)
-            {
-                rev += Convert.ToInt32(tags[0], 10) << 4;
-                rev += Convert.ToInt32(tags[1], 10);
-            }
-            return rev;
+            return EditorWindow.focusedWindow != null && EditorWindow.focusedWindow.GetType().ToString().EndsWith("." + focusWindowName);
         }
 
-        [UsedImplicitly, RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
-        private static void EnsureLoaded()
+        internal static string CleanString(string s)
         {
-            // This method ensures that this type has been initialized before any loading of objects occurs.
-            // If this isn't done, the static constructor may be invoked at an illegal time that is not
-            // allowed by Unity. During scene deserialization, off the main thread, is an example.
-        }
-
-        public static bool IsVersionGreaterOrEqual(int major, int minor)
-        {
-            if (Major > major)
-                return true;
-            if (Major == major)
+            var sb = s.ToCharArray();
+            for (int c = 0; c < s.Length; ++c)
             {
-                if (Minor >= minor)
-                    return true;
+                var ch = s[c];
+                if (ch == '_' || ch == '.' || ch == '-' || ch == '/')
+                    sb[c] = ' ';
             }
-
-            return false;
-        }
-
-        public static bool IsVersionGreaterOrEqual(int major, int minor, int build)
-        {
-            if (Major > major)
-                return true;
-            if (Major == major)
-            {
-                if (Minor > minor)
-                    return true;
-
-                if (Minor == minor)
-                {
-                    if (Build >= build)
-                        return true;
-                }
-            }
-
-            return false;
-        }
-
-        public static readonly int Major;
-        public static readonly int Minor;
-        public static readonly int Build;
-    }
-
-    internal struct BlinkCursorScope : IDisposable
-    {
-        private bool changed;
-        private Color oldCursorColor;
-
-        public BlinkCursorScope(bool blink, Color blinkColor)
-        {
-            changed = false;
-            oldCursorColor = Color.white;
-            if (blink)
-            {
-                oldCursorColor = GUI.skin.settings.cursorColor;
-                GUI.skin.settings.cursorColor = blinkColor;
-                changed = true;
-            }
-        }
-
-        public void Dispose()
-        {
-            if (changed)
-            {
-                GUI.skin.settings.cursorColor = oldCursorColor;
-            }
+            return new string(sb).ToLowerInvariant();
         }
     }
 }

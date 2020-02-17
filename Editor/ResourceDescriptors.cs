@@ -155,7 +155,7 @@ namespace Unity.QuickSearch
             AddSeparatorIfNeeded(sb);
             var go = obj as GameObject;
             if (go.scene.IsValid())
-                sb.AppendFormat("{0} ({1})", SceneProvider.GetHierarchyPath(go), go.tag);
+                sb.AppendFormat("{0} ({1})", SearchUtils.GetHierarchyPath(go), go.tag);
             else
                 sb.Append(go.tag);
             return true;
@@ -163,7 +163,7 @@ namespace Unity.QuickSearch
 
         public override Texture2D GetThumbnail(Object obj)
         {
-            var assetPath = SceneProvider.GetHierarchyAssetPath(obj as GameObject, true);
+            var assetPath = SearchUtils.GetHierarchyAssetPath(obj as GameObject, true);
             if (String.IsNullOrEmpty(assetPath))
                 return Utils.GetThumbnailForGameObject(obj as GameObject);
             return AssetPreview.GetAssetPreview(obj) ?? Utils.GetAssetPreviewFromPath(assetPath, new Vector2(64, 64), FetchPreviewOptions.Preview2D);
@@ -210,13 +210,10 @@ namespace Unity.QuickSearch
                     sb.Append($"{tex.width}x{tex.height}");
                     break;
             }
-            #if UNITY_2019_1_OR_NEWER
             sb.AppendFormat(" {0}", tex.graphicsFormat);
-            #endif
             return true;
         }
 
-        #if UNITY_2019_1_OR_NEWER
         public override Texture2D GetPreview(Object obj, int width, int height)
         {
             var texture = obj as Texture;
@@ -250,7 +247,6 @@ namespace Unity.QuickSearch
 
             return copy;
         }
-        #endif
     }
 
     #if UNITY_2020_1_OR_NEWER

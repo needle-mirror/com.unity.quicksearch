@@ -1,8 +1,10 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
 using System.Threading;
 using UnityEditor;
@@ -19,6 +21,8 @@ namespace Unity.QuickSearch
         GreaterOrEqual,
         Less,
         LessOrEqual,
+
+        Document,
         None
     }
 
@@ -40,27 +44,26 @@ namespace Unity.QuickSearch
     [DebuggerDisplay("{type} - K:{key}|{number} - C:{crc} - I:{index}")]
     readonly struct SearchIndexEntry : IEquatable<SearchIndexEntry>
     {
-
         // 1- Initial format
         // 2- Added score to words
         // 3- Save base name in entry paths
         // 4- Added entry types
-        internal const int Version = 0x4242E000 | 0x004;
+        // 5- Added indexing tags
+        // 6- Revert indexes back to 32 bits instead of 64 bits.
+        internal const int version = 0x4242E000 | 0x006;
 
-        public readonly long key;   // value hash
-        public readonly long crc;   // value correction code (can be length, property key hash, etc.)
-        public readonly int _type;  // Type of the index entry
-        public readonly int index;
+        public readonly long key;                   // Value hash
+        public readonly int crc;                    // Value correction code (can be length, property key hash, etc.)
+        public readonly SearchIndexEntryType type;  // Type of the index entry
+        public readonly int index;                  // Index of documents in the documents array
         public readonly int score;
         public readonly double number;
 
-        public SearchIndexEntryType type => (SearchIndexEntryType)_type;
-
-        public SearchIndexEntry(long _key, long _crc, SearchIndexEntryType type, int _index = -1, int _score = int.MaxValue)
+        public SearchIndexEntry(long _key, int _crc, SearchIndexEntryType _type, int _index = -1, int _score = int.MaxValue)
         {
             key = _key;
             crc = _crc;
-            _type = (int)type;
+            type = _type;
             index = _index;
             score = _score;
             number = BitConverter.Int64BitsToDouble(key);
@@ -70,7 +73,7 @@ namespace Unity.QuickSearch
         {
             unchecked
             {
-                return key.GetHashCode() ^ crc.GetHashCode() ^ _type.GetHashCode() ^ index.GetHashCode();
+                return key.GetHashCode() ^ crc.GetHashCode() ^ type.GetHashCode() ^ index.GetHashCode();
             }
         }
 
@@ -81,123 +84,153 @@ namespace Unity.QuickSearch
 
         public bool Equals(SearchIndexEntry other)
         {
-            return key == other.key && crc == other.crc && _type == other._type && index == other.index;
+            return key == other.key && crc == other.crc && type == other.type && index == other.index;
         }
     }
 
-    [DebuggerDisplay("{index} ({score})")]
-    readonly struct SearchPatternMatch : IEquatable<SearchPatternMatch>
+    [DebuggerDisplay("{id}[{index}] ({score})")]
+    public readonly struct SearchResult : IEquatable<SearchResult>, IComparable<SearchResult>
     {
-        public SearchPatternMatch(int _i, int _s)
-        {
-            index = _i;
-            score = _s;
-        }
-
-        public override int GetHashCode()
-        {
-            return index.GetHashCode();
-        }
-
-        public override bool Equals(object other)
-        {
-            return other is SearchPatternMatch l && Equals(l);
-        }
-
-        public bool Equals(SearchPatternMatch other)
-        {
-            return other.index == index;
-        }
-
-        public readonly int index;
-        public readonly int score;
-    }
-
-    class SearchIndexComparer : IComparer<SearchIndexEntry>, IEqualityComparer<SearchIndexEntry>
-    {
-        const double EPSILON = 0.0000000000001;
-
-        public SearchIndexOperator op { get; private set; }
-
-        public SearchIndexComparer(SearchIndexOperator op = SearchIndexOperator.Contains)
-        {
-            this.op = op;
-        }
-
-        public int Compare(SearchIndexEntry item1, SearchIndexEntry item2)
-        {
-            var c = item1._type.CompareTo(item2._type);
-            if (c != 0)
-                return c;
-            c = item1.crc.CompareTo(item2.crc);
-            if (c != 0)
-                return c;
-
-            if (item1._type == (int)SearchIndexEntryType.Number)
-            {
-                double eps = 0.0;
-                if (op == SearchIndexOperator.Less)
-                    eps = -EPSILON;
-                else if (op == SearchIndexOperator.Greater)
-                    eps = EPSILON;
-                c = item1.number.CompareTo(item2.number + eps);
-            }
-            else
-                c = item1.key.CompareTo(item2.key);
-            if (c != 0)
-                return c;
-
-            if (item2.score == int.MaxValue)
-                return 0;
-            return item1.score.CompareTo(item2.score);
-        }
-
-        public bool Equals(SearchIndexEntry x, SearchIndexEntry y)
-        {
-            return x.Equals(y);
-        }
-
-        public int GetHashCode(SearchIndexEntry obj)
-        {
-            return obj.GetHashCode();
-        }
-    }
-
-    [DebuggerDisplay("{path} ({score})")]
-    public readonly struct SearchEntryResult : IEquatable<SearchEntryResult>
-    {
-        public readonly string path;
+        public readonly string id;
         public readonly int index;
         public readonly int score;
 
-        public SearchEntryResult(string document, int documentIndex, int score)
+        public SearchResult(string id, int index, int score)
         {
-            path = document;
-            index = documentIndex;
+            this.id = id;
+            this.index = index;
             this.score = score;
         }
 
-        public bool Equals(SearchEntryResult other)
+        public SearchResult(int index)
         {
-            return index == other.index && path == other.path;
+            this.id = null;
+            this.score = 0;
+            this.index = index;
+        }
+
+        public SearchResult(int index, int score)
+        {
+            this.id = null;
+            this.index = index;
+            this.score = score;
+        }
+
+        internal SearchResult(in SearchIndexEntry entry)
+        {
+            this.id = null;
+            this.index = entry.index;
+            this.score = entry.score;
+        }
+
+        public bool Equals(SearchResult other)
+        {
+            return index == other.index;
         }
 
         public override int GetHashCode()
         {
             unchecked
             {
-                return index.GetHashCode() ^ path.GetHashCode();
+                return index.GetHashCode();
             }
         }
 
         public override bool Equals(object other)
         {
-            return other is SearchEntryResult l && Equals(l);
+            return other is SearchResult l && Equals(l);
+        }
+
+        public int CompareTo(SearchResult other)
+        {
+            return index.CompareTo(other.index);
+        }
+    }
+
+    class SearchResultCollection : ICollection<SearchResult>
+    {
+        private HashSet<SearchResult> m_Set;
+
+        public int Count => m_Set.Count;
+        public bool IsReadOnly => false;
+
+        public SearchResultCollection()
+        {
+            m_Set = new HashSet<SearchResult>();
+        }
+
+        public SearchResultCollection(IEnumerable<SearchResult> inset)
+        {
+            m_Set = new HashSet<SearchResult>(inset);
+        }
+
+        public void Add(SearchResult item)
+        {
+            #if !USE_SORTED_SET
+            m_Set.Add(item);
+            #else // If using SortedSet eventually
+            var foundSet = m_Set.GetViewBetween(item, item);
+            if (foundSet.Count == 0)
+                m_Set.Add(item);
+            else
+            {
+                if (item.score < foundSet.First().score)
+                {
+                    m_Set.Remove(item);
+                    m_Set.Add(item);
+                }
+            }
+            #endif
+        }
+
+        public void Clear()
+        {
+            m_Set.Clear();
+        }
+
+        public bool Contains(SearchResult item)
+        {
+            return m_Set.Contains(item);
+        }
+
+        public bool TryGetValue(ref SearchResult item)
+        {
+            #if USE_SORTED_SET
+            var foundSet = m_Set.GetViewBetween(item, item);
+            if (foundSet.Count == 0)
+                return false;
+            var fItem = foundSet.First();
+            if (fItem.score < item.score)
+                item = fItem;
+            return true;
+            #else
+            return true;
+            #endif
+        }
+
+        public void CopyTo(SearchResult[] array, int arrayIndex)
+        {
+            m_Set.CopyTo(array, arrayIndex);
+        }
+
+        public bool Remove(SearchResult item)
+        {
+            return m_Set.Remove(item);
+        }
+
+        public IEnumerator<SearchResult> GetEnumerator()
+        {
+            return m_Set.GetEnumerator();
+        }
+
+        IEnumerator IEnumerable.GetEnumerator()
+        {
+            return m_Set.GetEnumerator();
         }
     }
 
     [DebuggerDisplay("{baseName} ({basePath})")]
-    public struct SearchIndexerRoot
+    public readonly struct SearchIndexerRoot
     {
         public readonly string basePath;
         public readonly string baseName;
@@ -216,6 +249,7 @@ namespace Unity.QuickSearch
         public int maxIndexCharVariation { get; set; } = 8;
         public char[] entrySeparators { get; set; } = SearchUtils.entrySeparators;
 
+        internal int keywordCount => m_Keywords.Count;
         internal int documentCount => m_Documents.Count;
         internal int indexCount
         {
@@ -233,20 +267,23 @@ namespace Unity.QuickSearch
             }
         }
 
+        internal IEnumerable<string> GetKeywords() { lock(this) return m_Keywords; }
+        internal IEnumerable<string> GetDocuments() { lock(this) return m_Documents; }
+
         internal Dictionary<int, int> patternMatchCount { get; set; } = new Dictionary<int, int>();
 
-        // Handler used to skip some entries. 
+        // Handler used to skip some entries.
         public Func<string, bool> skipEntryHandler { get; set; }
-            
+
         // Handler used to specify where the index database file should be saved. If the handler returns null, the database won't be saved at all.
         public Func<string, string> getIndexFilePathHandler { get; set; }
-            
+
         // Handler used to parse and split the search query text into words. The tokens needs to be split similarly to how getEntryComponentsHandler was specified.
         public Func<string, string[]> getQueryTokensHandler { get; set; }
 
         // Handler used to split into words the entries. The order of the words matter. Words at the beginning of the array have a lower score (lower the better)
         public Func<string, int, IEnumerable<string>> getEntryComponentsHandler { get; set; }
-            
+
         // Handler used to fetch all the entries under a given root.
         public Func<SearchIndexerRoot, IEnumerable<string>> enumerateRootEntriesHandler { get; set; }
 
@@ -259,6 +296,7 @@ namespace Unity.QuickSearch
         // Final documents and entries when the index is ready.
         private List<string> m_Documents;
         private SearchIndexEntry[] m_Indexes;
+        protected HashSet<string> m_Keywords;
 
         // Temporary documents and entries while the index is being built (i.e. Start/Finish).
         private List<SearchIndexEntry> m_BatchIndexes;
@@ -283,6 +321,7 @@ namespace Unity.QuickSearch
             enumerateRootEntriesHandler = r => throw new Exception("You need to specify the root entries enumerator");
             getQueryTokensHandler = ParseQuery;
 
+            m_Keywords = new HashSet<string>();
             m_Documents = new List<string>();
             m_Indexes = new SearchIndexEntry[0];
             m_IndexTempFilePath = Path.GetTempFileName();
@@ -373,7 +412,7 @@ namespace Unity.QuickSearch
 
         internal void AddExactWord(string word, int score, int documentIndex, List<SearchIndexEntry> indexes)
         {
-            indexes.Add(new SearchIndexEntry(word.GetHashCode(), long.MaxValue, SearchIndexEntryType.Word, documentIndex, score));
+            indexes.Add(new SearchIndexEntry(word.GetHashCode(), int.MaxValue, SearchIndexEntryType.Word, documentIndex, score));
         }
 
         internal void AddWord(string word, int minVariations, int maxVariations, int score, int documentIndex)
@@ -408,19 +447,9 @@ namespace Unity.QuickSearch
                 indexes.Add(new SearchIndexEntry(word.GetHashCode(), word.Length, SearchIndexEntryType.Word, documentIndex, score-1));
         }
 
-        internal void AddProperty(string key, string value, int documentIndex)
+        internal void AddNumber(string key, double value, int score, int documentIndex)
         {
-            AddProperty(key, value, minIndexCharVariation, maxIndexCharVariation, 0, documentIndex, m_BatchIndexes);
-        }
-
-        internal void AddProperty(string key, string value, int score, int documentIndex)
-        {
-            AddProperty(key, value, minIndexCharVariation, maxIndexCharVariation, score, documentIndex, m_BatchIndexes);
-        }
-
-        internal void AddProperty(string key, double value, int documentIndex)
-        {
-            AddProperty(key, value, documentIndex, m_BatchIndexes);
+            AddNumber(key, value, score, documentIndex, m_BatchIndexes);
         }
 
         private bool ExcludeWordVariations(string word)
@@ -430,12 +459,22 @@ namespace Unity.QuickSearch
             return false;
         }
 
-        internal void AddProperty(string name, string value, int minVariations, int maxVariations, int score, int documentIndex)
+        internal void AddProperty(string key, string value, int documentIndex, bool saveKeyword)
         {
-            AddProperty(name, value, minVariations, maxVariations, score, documentIndex, m_BatchIndexes);
+            AddProperty(key, value, minIndexCharVariation, maxIndexCharVariation, 0, documentIndex, m_BatchIndexes, saveKeyword);
         }
 
-        internal void AddProperty(string name, string value, int minVariations, int maxVariations, int score, int documentIndex, List<SearchIndexEntry> indexes)
+        internal void AddProperty(string key, string value, int score, int documentIndex, bool saveKeyword)
+        {
+            AddProperty(key, value, minIndexCharVariation, maxIndexCharVariation, score, documentIndex, m_BatchIndexes, saveKeyword);
+        }
+
+        internal void AddProperty(string name, string value, int minVariations, int maxVariations, int score, int documentIndex, bool saveKeyword)
+        {
+            AddProperty(name, value, minVariations, maxVariations, score, documentIndex, m_BatchIndexes, saveKeyword);
+        }
+
+        internal void AddProperty(string name, string value, int minVariations, int maxVariations, int score, int documentIndex, List<SearchIndexEntry> indexes, bool saveKeyword)
         {
             var nameHash = name.GetHashCode();
             var valueHash = value.GetHashCode();
@@ -457,13 +496,18 @@ namespace Unity.QuickSearch
             nameHash = nameHash ^ name.Length.GetHashCode();
             valueHash = value.GetHashCode() ^ value.Length.GetHashCode();
             indexes.Add(new SearchIndexEntry(valueHash, nameHash, SearchIndexEntryType.Property, documentIndex, score));
+
+            if (saveKeyword)
+                m_Keywords.Add($"{name}:{value}");
         }
 
-        internal void AddProperty(string key, double value, int documentIndex, List<SearchIndexEntry> indexes)
+        internal void AddNumber(string key, double value, int score, int documentIndex, List<SearchIndexEntry> indexes)
         {
             var keyHash = key.GetHashCode();
             var longNumber = BitConverter.DoubleToInt64Bits(value);
-            indexes.Add(new SearchIndexEntry(longNumber, keyHash, SearchIndexEntryType.Number, documentIndex, 0));
+            indexes.Add(new SearchIndexEntry(longNumber, keyHash, SearchIndexEntryType.Number, documentIndex, score));
+
+            m_Keywords.Add($"{key}:");
         }
 
         internal void Start(bool clear = false)
@@ -479,6 +523,7 @@ namespace Unity.QuickSearch
 
                 if (clear)
                 {
+                    m_Keywords.Clear();
                     m_Documents.Clear();
                     m_Indexes = new SearchIndexEntry[0];
                 }
@@ -537,7 +582,7 @@ namespace Unity.QuickSearch
             #if UNITY_2020_1_OR_NEWER
             foreach (var i in m_Indexes)
             {
-                UnityEngine.Debug.LogFormat(UnityEngine.LogType.Log, UnityEngine.LogOption.NoStacktrace, null, 
+                UnityEngine.Debug.LogFormat(UnityEngine.LogType.Log, UnityEngine.LogOption.NoStacktrace, null,
                     $"{i.type} - {i.crc} - {i.key} - {i.index} - {i.score}");
             }
             #endif
@@ -548,34 +593,34 @@ namespace Unity.QuickSearch
             return m_IndexReady;
         }
 
-        private IEnumerable<SearchPatternMatch> SearchWord(string word, SearchIndexOperator op, int maxScore, HashSet<int> documentIndexes, int patternMatchLimit)
+        private IEnumerable<SearchResult> SearchWord(string word, SearchIndexOperator op, int maxScore, SearchResultCollection subset, int patternMatchLimit)
         {
             var comparer = new SearchIndexComparer(op);
-            long crc = word.Length;
+            int crc = word.Length;
             if (op == SearchIndexOperator.Equal)
-                crc = long.MaxValue;
-            return SearchIndexes(word.GetHashCode(), crc, SearchIndexEntryType.Word, maxScore, comparer, documentIndexes, patternMatchLimit);
+                crc = int.MaxValue;
+            return SearchIndexes(word.GetHashCode(), crc, SearchIndexEntryType.Word, maxScore, comparer, subset, patternMatchLimit);
         }
 
-        private IEnumerable<SearchPatternMatch> ExcludeWord(string word, SearchIndexOperator op, HashSet<int> inset)
+        private IEnumerable<SearchResult> ExcludeWord(string word, SearchIndexOperator op, SearchResultCollection subset)
         {
-            if (inset == null)
-                inset = GetAllDocumentIndexesSet();
+            if (subset == null)
+                subset = GetAllDocumentIndexesSet();
 
-            var includedDocumentIndexes = new HashSet<int>(SearchWord(word, op, int.MaxValue, null, int.MaxValue).Select(m => m.index));
-            return inset.Where(d => !includedDocumentIndexes.Contains(d)).Select(d => new SearchPatternMatch(d, 0));
+            var includedDocumentIndexes = new SearchResultCollection(SearchWord(word, op, int.MaxValue, null, int.MaxValue));
+            return subset.Where(d => !includedDocumentIndexes.Contains(d));
         }
 
-        private IEnumerable<SearchPatternMatch> ExcludeProperty(string name, string value, SearchIndexOperator op, int maxScore, HashSet<int> inset, int limit)
+        private IEnumerable<SearchResult> ExcludeProperty(string name, string value, SearchIndexOperator op, int maxScore, SearchResultCollection subset, int limit)
         {
-            if (inset == null)
-                inset = GetAllDocumentIndexesSet();
+            if (subset == null)
+                subset = GetAllDocumentIndexesSet();
 
-            var includedDocumentIndexes = new HashSet<int>(SearchProperty(name, value, op, int.MaxValue, null, int.MaxValue).Select(m => m.index));
-            return inset.Where(d => !includedDocumentIndexes.Contains(d)).Select(d => new SearchPatternMatch(d, 0));
+            var includedDocumentIndexes = new SearchResultCollection(SearchProperty(name, value, op, int.MaxValue, null, int.MaxValue));
+            return subset.Where(d => !includedDocumentIndexes.Contains(d));
         }
 
-        private IEnumerable<SearchPatternMatch> SearchProperty(string name, string value, SearchIndexOperator op, int maxScore, HashSet<int> documentIndexes, int patternMatchLimit)
+        private IEnumerable<SearchResult> SearchProperty(string name, string value, SearchIndexOperator op, int maxScore, SearchResultCollection subset, int patternMatchLimit)
         {
             var comparer = new SearchIndexComparer(op);
             var valueHash = value.GetHashCode();
@@ -586,41 +631,41 @@ namespace Unity.QuickSearch
                 valueHash ^= value.Length.GetHashCode();
             }
 
-            return SearchIndexes(valueHash, nameHash, SearchIndexEntryType.Property, maxScore, comparer, documentIndexes, patternMatchLimit);
+            return SearchIndexes(valueHash, nameHash, SearchIndexEntryType.Property, maxScore, comparer, subset, patternMatchLimit);
         }
 
-        private HashSet<int> m_AllDocumentIndexes;
-        private HashSet<int> GetAllDocumentIndexesSet()
+        private SearchResultCollection m_AllDocumentIndexes;
+        private SearchResultCollection GetAllDocumentIndexesSet()
         {
             if (m_AllDocumentIndexes != null)
                 return m_AllDocumentIndexes;
-            m_AllDocumentIndexes = new HashSet<int>();
+            m_AllDocumentIndexes = new SearchResultCollection();
             for (int i = 0; i < documentCount; ++i)
-                m_AllDocumentIndexes.Add(i);
+                m_AllDocumentIndexes.Add(new SearchResult(i, 0));
             return m_AllDocumentIndexes;
         }
 
-        private IEnumerable<SearchPatternMatch> ExcludeNumber(string name, double number, SearchIndexOperator op, HashSet<int> inset)
+        private IEnumerable<SearchResult> ExcludeNumber(string name, double number, SearchIndexOperator op, SearchResultCollection subset)
         {
-            if (inset == null)
-                inset = GetAllDocumentIndexesSet();
+            if (subset == null)
+                subset = GetAllDocumentIndexesSet();
 
-            var includedDocumentIndexes = new HashSet<int>(SearchNumber(name, number, op, int.MaxValue, null).Select(m => m.index));
-            return inset.Where(d => !includedDocumentIndexes.Contains(d)).Select(d => new SearchPatternMatch(d, 0));
+            var includedDocumentIndexes = new SearchResultCollection(SearchNumber(name, number, op, int.MaxValue, null).Select(m => new SearchResult(m.index, m.score)));
+            return subset.Where(d => !includedDocumentIndexes.Contains(d));
         }
 
-        private IEnumerable<SearchPatternMatch> SearchNumber(string key, double value, SearchIndexOperator op, int maxScore, HashSet<int> documentIndexes)
+        private IEnumerable<SearchResult> SearchNumber(string key, double value, SearchIndexOperator op, int maxScore, SearchResultCollection subset)
         {
             var wiec = new SearchIndexComparer(op);
-            return SearchIndexes(BitConverter.DoubleToInt64Bits(value), key.GetHashCode(), SearchIndexEntryType.Number, maxScore, wiec, documentIndexes);
+            return SearchIndexes(BitConverter.DoubleToInt64Bits(value), key.GetHashCode(), SearchIndexEntryType.Number, maxScore, wiec, subset);
         }
 
-        public IEnumerable<SearchEntryResult> Search(string query, int maxScore = int.MaxValue, int patternMatchLimit = 2999)
+        public IEnumerable<SearchResult> Search(string query, int maxScore = int.MaxValue, int patternMatchLimit = 2999)
         {
             //using (new DebugTimer($"Search Index ({query})"))
             {
                 if (!m_IndexReady)
-                    return Enumerable.Empty<SearchEntryResult>();
+                    return Enumerable.Empty<SearchResult>();
 
                 var tokens = getQueryTokensHandler(query);
                 Array.Sort(tokens, SortTokensByPatternMatches);
@@ -629,44 +674,45 @@ namespace Unity.QuickSearch
                 var patterns = tokens.Select(p => p.GetHashCode()).ToArray();
 
                 if (patterns.Length == 0)
-                    return Enumerable.Empty<SearchEntryResult>();
+                    return Enumerable.Empty<SearchResult>();
 
                 var wiec = new SearchIndexComparer();
-                var entryIndexes = new HashSet<int>();
                 lock (this)
                 {
-                    var remains = SearchIndexes(patterns[0], lengths[0], SearchIndexEntryType.Word, maxScore, wiec, entryIndexes, patternMatchLimit).ToList();
+                    var remains = SearchIndexes(patterns[0], lengths[0], SearchIndexEntryType.Word, maxScore, wiec, null, patternMatchLimit).ToList();
                     patternMatchCount[patterns[0]] = remains.Count;
 
                     if (remains.Count == 0)
-                        return Enumerable.Empty<SearchEntryResult>();
+                        return Enumerable.Empty<SearchResult>();
 
                     for (int i = 1; i < patterns.Length; ++i)
                     {
-                        var newMatches = SearchIndexes(patterns[i], lengths[i], SearchIndexEntryType.Word, maxScore, wiec, entryIndexes).ToArray();
-                        IntersectPatternMatches(remains, newMatches);
+                        var subset = new SearchResultCollection(remains);
+                        remains = SearchIndexes(patterns[i], lengths[i], SearchIndexEntryType.Word, maxScore, wiec, subset, patternMatchLimit).ToList();
+                        if (remains.Count == 0)
+                            break;
                     }
 
-                    return remains.Select(fi => new SearchEntryResult(m_Documents[fi.index], fi.index, fi.score));
+                    return remains.Select(fi => new SearchResult(m_Documents[fi.index], fi.index, fi.score));
                 }
             }
         }
 
         readonly char[] k_OpCharacters = new char[] { ':', '=', '<', '>', '!' };
-        public IEnumerable<SearchEntryResult> SearchTerms(string query, int maxScore = int.MaxValue, int patternMatchLimit = 2999)
+        public IEnumerable<SearchResult> SearchTerms(string query, int maxScore = int.MaxValue, int patternMatchLimit = 2999)
         {
             if (!m_IndexReady)
-                return Enumerable.Empty<SearchEntryResult>();
+                return Enumerable.Empty<SearchResult>();
 
             var tokens = getQueryTokensHandler(query);
             if (tokens.Length == 0)
-                return Enumerable.Empty<SearchEntryResult>();
+                return Enumerable.Empty<SearchResult>();
             Array.Sort(tokens, SortTokensByPatternMatches);
 
             //using (new DebugTimer($"Search Terms ({String.Join(", ", tokens)})"))
             {
-                var documentIndexes = tokens.Length > 1 ? new HashSet<int>() : null;
-                var results = new List<SearchPatternMatch>();
+                SearchResultCollection subset = null;
+                var results = new List<SearchResult>();
 
                 lock (this)
                 {
@@ -676,7 +722,6 @@ namespace Unity.QuickSearch
                         if (token.Length < minIndexCharVariation)
                             continue;
 
-                        IEnumerable<SearchPatternMatch> matches = null;
                         var opEndSepPos = token.LastIndexOfAny(k_OpCharacters);
                         if (opEndSepPos > 0)
                         {
@@ -705,9 +750,9 @@ namespace Unity.QuickSearch
 
                             double number;
                             if (double.TryParse(value, out number))
-                                matches = SearchNumber(name, number, op, maxScore, documentIndexes);
+                                results = SearchNumber(name, number, op, maxScore, subset).ToList();
                             else
-                                matches = SearchProperty(name, value, op, maxScore, documentIndexes, patternMatchLimit);
+                                results = SearchProperty(name, value, op, maxScore, subset, patternMatchLimit).ToList();
                         }
                         else
                         {
@@ -720,26 +765,24 @@ namespace Unity.QuickSearch
                                 op = SearchIndexOperator.Equal;
                             }
 
-                            matches = SearchWord(word, op, maxScore, documentIndexes, patternMatchLimit);
+                            results = SearchWord(word, op, maxScore, subset, patternMatchLimit).ToList();
                         }
 
                         if (tokenIndex == 0 && results.Count == 0)
-                        {
-                            results = matches.ToList();
                             patternMatchCount[token.GetHashCode()] = results.Count;
-                        }
-                        else
-                            IntersectPatternMatches(results, matches.ToArray());
+
+                        if (subset == null)
+                            subset = new SearchResultCollection(results);
                     }
                 }
 
-                return results.Select(r => new SearchEntryResult(m_Documents[r.index], r.index, r.score));
+                return results.Select(r => new SearchResult(m_Documents[r.index], r.index, r.score));
             }
-        } 
+        }
 
-        internal IEnumerable<SearchEntryResult> SearchTerm(
+        internal IEnumerable<SearchResult> SearchTerm(
             string name, object value, SearchIndexOperator op, bool exclude,
-            int maxScore = int.MaxValue, HashSet<int> documentIndexes = null, int limit = int.MaxValue)
+            int maxScore = int.MaxValue, SearchResultCollection subset = null, int limit = int.MaxValue)
         {
             if (op == SearchIndexOperator.NotEqual)
             {
@@ -747,7 +790,7 @@ namespace Unity.QuickSearch
                 op = SearchIndexOperator.Equal;
             }
 
-            IEnumerable<SearchPatternMatch> matches = null;
+            IEnumerable<SearchResult> matches = null;
             if (!String.IsNullOrEmpty(name))
             {
                 name = name.ToLowerInvariant();
@@ -757,7 +800,7 @@ namespace Unity.QuickSearch
                 if (value is double)
                 {
                     number = (double)value;
-                    matches = SearchNumber(name, number, op, maxScore, documentIndexes);
+                    matches = SearchNumber(name, number, op, maxScore, subset);
                 }
                 else if (value is string)
                 {
@@ -765,16 +808,16 @@ namespace Unity.QuickSearch
                     if (double.TryParse(valueString, out number))
                     {
                         if (!exclude && op != SearchIndexOperator.NotEqual)
-                            matches = SearchNumber(name, number, op, maxScore, documentIndexes);
+                            matches = SearchNumber(name, number, op, maxScore, subset);
                         else
-                            matches = ExcludeNumber(name, number, op, documentIndexes);
+                            matches = ExcludeNumber(name, number, op, subset);
                     }
                     else
                     {
                         if (!exclude)
-                            matches = SearchProperty(name, valueString.ToLowerInvariant(), op, maxScore, documentIndexes, limit);
+                            matches = SearchProperty(name, valueString.ToLowerInvariant(), op, maxScore, subset, limit);
                         else
-                            matches = ExcludeProperty(name, valueString.ToLowerInvariant(), op, maxScore, documentIndexes, limit);
+                            matches = ExcludeProperty(name, valueString.ToLowerInvariant(), op, maxScore, subset, limit);
                     }
                 }
                 else
@@ -784,16 +827,16 @@ namespace Unity.QuickSearch
             {
                 // Search word
                 if (!exclude)
-                    matches = SearchWord((string)value, op, maxScore, documentIndexes, limit);
+                    matches = SearchWord((string)value, op, maxScore, subset, limit);
                 else
-                    matches = ExcludeWord((string)value, op, documentIndexes);
+                    matches = ExcludeWord((string)value, op, subset);
             }
             else
                 throw new ArgumentException($"word value must be a string", nameof(value));
 
             if (matches == null)
                 return null;
-            return matches.Select(r => new SearchEntryResult(m_Documents[r.index], r.index, r.score));
+            return matches.Select(r => new SearchResult(m_Documents[r.index], r.index, r.score));
         }
 
         private int SortTokensByPatternMatches(string item1, string item2)
@@ -801,45 +844,24 @@ namespace Unity.QuickSearch
             patternMatchCount.TryGetValue(item1.GetHashCode(), out var item1PatternMatchCount);
             patternMatchCount.TryGetValue(item2.GetHashCode(), out var item2PatternMatchCount);
             var c = item1PatternMatchCount.CompareTo(item2PatternMatchCount);
-            if (c != 0) 
+            if (c != 0)
                 return c;
-            return item1.Length.CompareTo(item2.Length) * -1;
+            return item1.Length.CompareTo(item2.Length);
         }
 
-        private void IntersectPatternMatches(IList<SearchPatternMatch> remains, SearchPatternMatch[] newMatches)
+        public void Write(Stream stream, string tag)
         {
-            for (int r = remains.Count - 1; r >= 0; r--)
+            using (var indexWriter = new BinaryWriter(stream))
             {
-                bool intersects = false;
-                foreach (var m in newMatches)
-                {
-                    if (remains[r].index == m.index)
-                    {
-                        intersects = true;
-                        remains[r] = new SearchPatternMatch(m.index, Math.Min(remains[r].score, m.score));
-                    }
-                }
+                indexWriter.Write(SearchIndexEntry.version);
+                indexWriter.Write(tag);
 
-                if (!intersects)
-                    remains.RemoveAt(r);
-            }
-        }
-
-        private void SaveIndexToDisk(string basePath)
-        {
-            var indexFilePath = getIndexFilePathHandler(basePath);
-            if (String.IsNullOrEmpty(indexFilePath))
-                return;
-
-            using (var indexStream = new FileStream(m_IndexTempFilePath, FileMode.Create, FileAccess.Write, FileShare.None))
-            using (var indexWriter = new BinaryWriter(indexStream))
-            {
-                indexWriter.Write(SearchIndexEntry.Version);
-                indexWriter.Write(basePath);
-
+                // Entries
                 indexWriter.Write(m_Documents.Count);
                 foreach (var p in m_Documents)
                     indexWriter.Write(p);
+
+                // Indexes
                 indexWriter.Write(m_Indexes.Length);
                 foreach (var p in m_Indexes)
                 {
@@ -849,20 +871,44 @@ namespace Unity.QuickSearch
                     indexWriter.Write(p.index);
                     indexWriter.Write(p.score);
                 }
+
+                // Keywords
+                indexWriter.Write(m_Keywords.Count);
+                foreach (var t in m_Keywords)
+                    indexWriter.Write(t);
             }
+        }
+
+        public byte[] SaveBytes()
+        {
+            using (var memoryStream = new MemoryStream())
+            {
+                Write(memoryStream, "memory");
+                return memoryStream.ToArray();
+            }
+        }
+
+        private void SaveIndexToDisk(string basePath)
+        {
+            var indexFilePath = getIndexFilePathHandler(basePath);
+            if (String.IsNullOrEmpty(indexFilePath))
+                return;
+
+            using (var fileStream = new FileStream(m_IndexTempFilePath, FileMode.Create, FileAccess.Write, FileShare.None))
+                Write(fileStream, basePath);
 
             try
             {
-                if (File.Exists(indexFilePath))
-                    File.Delete(indexFilePath);
-            }
-            catch (IOException)
-            {
-                // ignore file index persistence operation, since it is not critical and will redone later.
-            }
+                try
+                {
+                    if (File.Exists(indexFilePath))
+                        File.Delete(indexFilePath);
+                }
+                catch (IOException)
+                {
+                    // ignore file index persistence operation, since it is not critical and will redone later.
+                }
 
-            try
-            {
                 File.Move(m_IndexTempFilePath, indexFilePath);
             }
             catch (IOException)
@@ -871,43 +917,67 @@ namespace Unity.QuickSearch
             }
         }
 
+        public bool Read(Stream stream, bool checkVersionOnly)
+        {
+            using (var indexReader = new BinaryReader(stream))
+            {
+                int version = indexReader.ReadInt32();
+                if (version != SearchIndexEntry.version)
+                    return false;
+
+                if (checkVersionOnly)
+                    return true;
+
+                indexReader.ReadString(); // Skip
+
+                // Entries
+                var elementCount = indexReader.ReadInt32();
+                var documents = new string[elementCount];
+                for (int i = 0; i < elementCount; ++i)
+                    documents[i] = indexReader.ReadString();
+
+                // Indexes
+                elementCount = indexReader.ReadInt32();
+                var indexes = new List<SearchIndexEntry>(elementCount);
+                for (int i = 0; i < elementCount; ++i)
+                {
+                    var key = indexReader.ReadInt64();
+                    var crc = indexReader.ReadInt32();
+                    var type = (SearchIndexEntryType)indexReader.ReadInt32();
+                    var index = indexReader.ReadInt32();
+                    var score = indexReader.ReadInt32();
+                    indexes.Add(new SearchIndexEntry(key, crc, type, index, score));
+                }
+
+                // Keywords
+                elementCount = indexReader.ReadInt32();
+                var keywords = new string[elementCount];
+                for (int i = 0; i < elementCount; ++i)
+                    keywords[i] = indexReader.ReadString();
+
+                // No need to sort the index, it is already sorted in the file stream.
+                lock (this)
+                {
+                    ApplyIndexes(documents, indexes.ToArray());
+                    m_Keywords = new HashSet<string>(keywords);
+                }
+
+                return true;
+            }
+        }
+
+        public bool LoadBytes(byte[] bytes, bool checkVersionOnly = false)
+        {
+            using (var memoryStream = new MemoryStream(bytes))
+                return Read(memoryStream, checkVersionOnly);
+        }
+
         internal bool ReadIndexFromDisk(string indexFilePath, bool checkVersionOnly = false)
         {
             lock (this)
             {
-                using (var indexStream = new FileStream(indexFilePath, FileMode.Open, FileAccess.Read, FileShare.Read))
-                using (var indexReader = new BinaryReader(indexStream))
-                {
-                    int version = indexReader.ReadInt32();
-                    if (version != SearchIndexEntry.Version)
-                        return false;
-
-                    if (checkVersionOnly)
-                        return true;
-
-                    //using (new DebugTimer($"Reading index {indexFilePath}"))
-                    {
-                        indexReader.ReadString(); // Skip
-                        var elementCount = indexReader.ReadInt32();
-                        var documents = new string[elementCount];
-                        for (int i = 0; i < elementCount; ++i)
-                            documents[i] = indexReader.ReadString();
-                        elementCount = indexReader.ReadInt32();
-                        var indexes = new List<SearchIndexEntry>(elementCount);
-                        for (int i = 0; i < elementCount; ++i)
-                        {
-                            var key = indexReader.ReadInt64();
-                            var crc = indexReader.ReadInt64();
-                            var type = (SearchIndexEntryType)indexReader.ReadInt32();
-                            var index = indexReader.ReadInt32();
-                            var score = indexReader.ReadInt32();
-                            indexes.Add(new SearchIndexEntry(key, crc, type, index, score));
-                        }
-
-                        // No need to sort the index, it is already sorted in the file stream.
-                        ApplyIndexes(documents, indexes.ToArray());
-                    }
-                }
+                using (var fileStream = new FileStream(indexFilePath, FileMode.Open, FileAccess.Read, FileShare.Read))
+                    Read(fileStream, checkVersionOnly);
             }
 
             return true;
@@ -981,7 +1051,7 @@ namespace Unity.QuickSearch
 
             lock (this)
                 LoadIndexFromDisk(roots[0].basePath);
-                
+
             int entryStart = 0;
             var documents = new List<string>();
             var wordIndexes = new List<SearchIndexEntry>();
@@ -1043,6 +1113,7 @@ namespace Unity.QuickSearch
             }
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private bool NumberCompare(SearchIndexOperator op, double d1, double d2)
         {
             if (op == SearchIndexOperator.Equal)
@@ -1058,10 +1129,11 @@ namespace Unity.QuickSearch
             if (op == SearchIndexOperator.LessOrEqual)
                 return d1 <= d2;
 
-            throw new NotImplementedException($"Search index compare strategy {op} for number not defined.");
+            return false;
+            //throw new NotImplementedException($"Search index compare strategy {op} for number not defined.");
         }
 
-        private bool Rewind(int foundIndex, SearchIndexEntry term, SearchIndexOperator op)
+        private bool Rewind(int foundIndex, in SearchIndexEntry term, SearchIndexOperator op)
         {
             if (foundIndex <= 0)
                 return false;
@@ -1076,9 +1148,9 @@ namespace Unity.QuickSearch
             return prevEntry.key == term.key;
         }
 
-        private bool Advance(int foundIndex, SearchIndexEntry term, SearchIndexOperator op)
+        private bool Advance(int foundIndex, in SearchIndexEntry term, SearchIndexOperator op)
         {
-            if (foundIndex < 0 || foundIndex >= m_Indexes.Length || 
+            if (foundIndex < 0 || foundIndex >= m_Indexes.Length ||
                     m_Indexes[foundIndex].crc != term.crc || m_Indexes[foundIndex].type != term.type)
                 return false;
 
@@ -1088,7 +1160,8 @@ namespace Unity.QuickSearch
             return m_Indexes[foundIndex].key == term.key;
         }
 
-        private bool Lower(ref int foundIndex, SearchIndexEntry term, SearchIndexOperator op)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private bool Lower(ref int foundIndex, in SearchIndexEntry term, SearchIndexOperator op)
         {
             if (op == SearchIndexOperator.Less || op == SearchIndexOperator.LessOrEqual)
             {
@@ -1106,7 +1179,8 @@ namespace Unity.QuickSearch
             }
         }
 
-        private bool Upper(ref int foundIndex, SearchIndexEntry term, SearchIndexOperator op)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private bool Upper(ref int foundIndex, in SearchIndexEntry term, SearchIndexOperator op)
         {
             if (op == SearchIndexOperator.Less || op == SearchIndexOperator.LessOrEqual)
             {
@@ -1119,6 +1193,7 @@ namespace Unity.QuickSearch
             return Advance(++foundIndex, term, op);
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private bool IsIndexValid(int foundIndex, long crc, SearchIndexEntryType type)
         {
             return foundIndex >= 0 && foundIndex < m_Indexes.Length && m_Indexes[foundIndex].crc == crc && m_Indexes[foundIndex].type == type;
@@ -1140,7 +1215,7 @@ namespace Unity.QuickSearch
             public static IndexRange Invalid = new IndexRange(-1, -1);
         }
 
-        private IndexRange FindRange(SearchIndexEntry term, SearchIndexComparer comparer)
+        private IndexRange FindRange(in SearchIndexEntry term, SearchIndexComparer comparer)
         {
             // Find a first match in the sorted indexes.
             int foundIndex = Array.BinarySearch(m_Indexes, term, comparer);
@@ -1172,9 +1247,9 @@ namespace Unity.QuickSearch
         readonly struct RangeSet : IEquatable<RangeSet>
         {
             public readonly SearchIndexEntryType type;
-            public readonly long crc;
+            public readonly int crc;
 
-            public RangeSet(SearchIndexEntryType type, long crc)
+            public RangeSet(SearchIndexEntryType type, int crc)
             {
                 this.type = type;
                 this.crc = crc;
@@ -1185,7 +1260,7 @@ namespace Unity.QuickSearch
             public bool Equals(RangeSet other) => type == other.type && crc == other.crc;
         }
 
-        private IndexRange FindTypeRange(int hitIndex, SearchIndexEntry term)
+        private IndexRange FindTypeRange(int hitIndex, in SearchIndexEntry term)
         {
             if (term.type == SearchIndexEntryType.Word)
             {
@@ -1228,14 +1303,14 @@ namespace Unity.QuickSearch
                 m_FixedRanges[rangeSet] = range;
                 return range;
             }
-            
+
             return IndexRange.Invalid;
         }
 
-        private IEnumerable<SearchPatternMatch> SearchRange(
-                int foundIndex, SearchIndexEntry term, 
+        private IEnumerable<SearchResult> SearchRange(
+                int foundIndex, in SearchIndexEntry term,
                 int maxScore, SearchIndexComparer comparer,
-                HashSet<int> entryIndexes, int limit)
+                SearchResultCollection subset, int limit)
         {
             if (foundIndex < 0 && comparer.op != SearchIndexOperator.Contains && comparer.op != SearchIndexOperator.Equal)
             {
@@ -1244,30 +1319,31 @@ namespace Unity.QuickSearch
             }
 
             if (!IsIndexValid(foundIndex, term.crc, term.type))
-                return Enumerable.Empty<SearchPatternMatch>();
+                return Enumerable.Empty<SearchResult>();
 
             // Rewind to first element
             while (Lower(ref foundIndex, term, comparer.op))
                 ;
 
             if (!IsIndexValid(foundIndex, term.crc, term.type))
-                return Enumerable.Empty<SearchPatternMatch>();
+                return Enumerable.Empty<SearchResult>();
 
-            var matches = new List<SearchPatternMatch>();
-            bool findAll = entryIndexes == null || entryIndexes.Count == 0;
+            var matches = new List<SearchResult>();
+            bool findAll = subset == null;
             do
             {
-                var indexEntry = m_Indexes[foundIndex];
-                bool intersects = findAll || entryIndexes.Contains(indexEntry.index);
+                var indexEntry = new SearchResult(m_Indexes[foundIndex]);
+                #if USE_SORTED_SET
+                bool intersects = findAll || (subset.Contains(indexEntry) && subset.TryGetValue(ref indexEntry));
+                #else
+                bool intersects = findAll || subset.Contains(indexEntry);
+                #endif
                 if (intersects && indexEntry.score < maxScore)
                 {
-                    if (findAll && entryIndexes != null)
-                        entryIndexes.Add(indexEntry.index);
-
                     if (term.type == SearchIndexEntryType.Number)
-                        matches.Add(new SearchPatternMatch(indexEntry.index, indexEntry.score + (int)Math.Abs(term.number - indexEntry.number)));
+                        matches.Add(new SearchResult(indexEntry.index, indexEntry.score + (int)Math.Abs(term.number - m_Indexes[foundIndex].number)));
                     else
-                        matches.Add(new SearchPatternMatch(indexEntry.index, indexEntry.score));
+                        matches.Add(new SearchResult(indexEntry.index, indexEntry.score));
 
                     if (matches.Count >= limit)
                         return matches;
@@ -1279,13 +1355,17 @@ namespace Unity.QuickSearch
             return matches;
         }
 
-        private IEnumerable<SearchPatternMatch> SearchIndexes(
-                long key, long crc, SearchIndexEntryType type, int maxScore, 
-                SearchIndexComparer comparer, HashSet<int> entryIndexes, int limit = int.MaxValue)
+        private IEnumerable<SearchResult> SearchIndexes(
+                long key, int crc, SearchIndexEntryType type, int maxScore,
+                SearchIndexComparer comparer, SearchResultCollection subset, int limit = int.MaxValue)
         {
+            if (subset != null && subset.Count == 0)
+                return Enumerable.Empty<SearchResult>();
+
             // Find a first match in the sorted indexes.
-            int foundIndex = Array.BinarySearch(m_Indexes, new SearchIndexEntry(key, crc, type), comparer);
-            return SearchRange(foundIndex, new SearchIndexEntry(key, crc, type), maxScore, comparer, entryIndexes, limit);
+            var matchKey = new SearchIndexEntry(key, crc, type);
+            int foundIndex = Array.BinarySearch(m_Indexes, matchKey, comparer);
+            return SearchRange(foundIndex, matchKey, maxScore, comparer, subset, limit);
         }
 
         protected void UpdateIndexWithNewContent(string[] updated, string[] removed, string[] moved)
@@ -1334,7 +1414,64 @@ namespace Unity.QuickSearch
         }
     }
 
-    class SearchIndexerQuery : SearchIndexerQuery<SearchEntryResult> {}
+    class SearchIndexComparer : IComparer<SearchIndexEntry>, IEqualityComparer<SearchIndexEntry>
+    {
+        const double EPSILON = 0.0000000000001;
+
+        public SearchIndexOperator op { get; private set; }
+
+        public SearchIndexComparer(SearchIndexOperator op = SearchIndexOperator.Contains)
+        {
+            this.op = op;
+        }
+
+        public int Compare(SearchIndexEntry item1, SearchIndexEntry item2)
+        {
+            var c = item1.type.CompareTo(item2.type);
+            if (c != 0)
+                return c;
+            c = item1.crc.CompareTo(item2.crc);
+            if (c != 0)
+                return c;
+
+            if (item1.type == SearchIndexEntryType.Number)
+            {
+                double eps = 0.0;
+                if (op == SearchIndexOperator.Less)
+                    eps = -EPSILON;
+                else if (op == SearchIndexOperator.Greater)
+                    eps = EPSILON;
+                c = item1.number.CompareTo(item2.number + eps);
+            }
+            else
+                c = item1.key.CompareTo(item2.key);
+            if (c != 0)
+                return c;
+
+            if (op == SearchIndexOperator.Document)
+            {
+                c = item1.index.CompareTo(item2.index);
+                if (c != 0)
+                    return c;
+            }
+
+            if (item2.score == int.MaxValue)
+                return 0;
+            return item1.score.CompareTo(item2.score);
+        }
+
+        public bool Equals(SearchIndexEntry x, SearchIndexEntry y)
+        {
+            return x.Equals(y);
+        }
+
+        public int GetHashCode(SearchIndexEntry obj)
+        {
+            return obj.GetHashCode();
+        }
+    }
+
+    class SearchIndexerQuery : SearchIndexerQuery<SearchResult> {}
 
     class SearchIndexerQuery<T> : IQueryHandler<T, SearchIndexerQuery<T>.EvalHandler, object>
     {
@@ -1385,13 +1522,14 @@ namespace Unity.QuickSearch
                 return new EvalResult(true, results);
             }
 
-            public static void Print(EvalHandlerArgs args, IEnumerable<T> results = null, HashSet<int> subset = null, double elapsedTime = -1)
+            public static void Print(EvalHandlerArgs args, IEnumerable<T> results = null, SearchResultCollection subset = null, double elapsedTime = -1)
             {
                 var combineString = GetCombineString(args.andSet, args.orSet);
                 var elapsedTimeString = "";
                 if (elapsedTime > 0)
                     elapsedTimeString = $"{elapsedTime:F2} ms";
-                UnityEngine.Debug.Log($"Eval -> {combineString} | op:{args.op,14} | exclude:{args.exclude,7} | " +
+                UnityEngine.Debug.LogFormat(UnityEngine.LogType.Log, UnityEngine.LogOption.None, null,
+                    $"Eval -> {combineString} | op:{args.op,14} | exclude:{args.exclude,7} | " +
                     $"[{args.name,4}, {args.value,8}] | i:{GetAddress(args.andSet)} | a:{GetAddress(args.orSet)} | " +
                     $"h:{GetAddress(subset)} | results:{GetAddress(results)} | " + elapsedTimeString);
             }

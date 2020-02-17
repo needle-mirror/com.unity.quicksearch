@@ -1,3 +1,4 @@
+using System.IO;
 using System.Linq;
 using JetBrains.Annotations;
 using Unity.QuickSearch.Providers;
@@ -6,27 +7,48 @@ using UnityEngine;
 
 namespace Unity.QuickSearch
 {
+    internal enum SearchAssetIndexing
+    {
+        NoIndexing,
+        Files,
+        Complete
+    }
+
     internal static class SearchSettings
     {
         private const string k_KeyPrefix = "quicksearch";
+        private const string k_RootIndexPath = "Assets/Assets.index";
 
         public const string settingsPreferencesKey = "Preferences/Quick Search";
         public static bool trackSelection { get; private set; }
         public static bool fetchPreview { get; private set; }
-        public static bool useUberIndexing { get; internal set; }
+        public static SearchAssetIndexing assetIndexing { get; internal set; }
+        
+        public static float itemIconSize
+        {
+            get
+            {
+                return EditorPrefs.GetFloat($"{k_KeyPrefix}.{nameof(itemIconSize)}", 0);
+            }
+            
+            set
+            {
+                EditorPrefs.SetFloat($"{k_KeyPrefix}.{nameof(itemIconSize)}", value);
+            }
+        }
 
         static SearchSettings()
         {
             trackSelection = EditorPrefs.GetBool($"{k_KeyPrefix}.{nameof(trackSelection)}", true);
             fetchPreview = EditorPrefs.GetBool($"{k_KeyPrefix}.{nameof(fetchPreview)}", true);
-            useUberIndexing = EditorPrefs.GetBool($"{k_KeyPrefix}.{nameof(useUberIndexing)}", false);
+            assetIndexing = (SearchAssetIndexing)EditorPrefs.GetInt($"{k_KeyPrefix}.{nameof(assetIndexing)}", (int)SearchAssetIndexing.Files);
         }
 
         private static void Save()
         {
             EditorPrefs.SetBool($"{k_KeyPrefix}.{nameof(trackSelection)}", trackSelection);
             EditorPrefs.SetBool($"{k_KeyPrefix}.{nameof(fetchPreview)}", fetchPreview);
-            EditorPrefs.SetBool($"{k_KeyPrefix}.{nameof(useUberIndexing)}", useUberIndexing);
+            EditorPrefs.SetInt($"{k_KeyPrefix}.{nameof(assetIndexing)}", (int)assetIndexing);
         }
 
         [UsedImplicitly, SettingsProvider]
@@ -37,7 +59,7 @@ namespace Unity.QuickSearch
                 keywords = new[] { "quick", "omni", "search" },
                 guiHandler = searchContext =>
                 {
-                    EditorGUIUtility.labelWidth = 500;
+                    EditorGUIUtility.labelWidth = 350;
                     GUILayout.BeginHorizontal();
                     {
                         GUILayout.Space(10);
@@ -48,15 +70,15 @@ namespace Unity.QuickSearch
                             {
                                 trackSelection = EditorGUILayout.Toggle(Styles.trackSelectionContent, trackSelection);
                                 fetchPreview = EditorGUILayout.Toggle(Styles.fetchPreviewContent, fetchPreview);
-                                useUberIndexing = EditorGUILayout.Toggle(Styles.useUberIndexingContent, useUberIndexing);
-                                if (useUberIndexing)
+                                GUILayout.BeginHorizontal();
+                                assetIndexing = (SearchAssetIndexing)EditorGUILayout.EnumPopup(Styles.assetIndexingLabel, assetIndexing, GUILayout.MaxWidth(450f));
+                                if (assetIndexing == SearchAssetIndexing.Complete && !File.Exists(k_RootIndexPath))
                                 {
-                                    GUILayout.BeginHorizontal();
-                                    GUILayout.Space(420);
-                                    if (GUILayout.Button(Styles.rebuildIndexButtonContent, GUILayout.MaxWidth(100)))
-                                        ADBIndex.RebuildIndex();
-                                    GUILayout.EndHorizontal();
+                                    GUILayout.Space(10);
+                                    if (GUILayout.Button(Styles.createRootIndexButtonContent, GUILayout.MaxWidth(100)))
+                                        CreateRootIndex();
                                 }
+                                GUILayout.EndHorizontal();
                                 GUILayout.Space(10);
                                 DrawProviderSettings();
                             }
@@ -188,19 +210,23 @@ namespace Unity.QuickSearch
             }
         }
 
+        #if DEBUG_INDEXING
+        [MenuItem("Quick Search/Create Root Index")]
+        #endif
+        internal static void CreateRootIndex()
+        {
+            File.Copy($"{QuickSearch.packageFolderName}/Templates/Asset.index.template", k_RootIndexPath);
+            AssetDatabase.ImportAsset(k_RootIndexPath, ImportAssetOptions.ForceSynchronousImport);
+        }
+
         static class Styles
         {
             public static GUIStyle priorityButton = new GUIStyle("Button")
             {
                 fixedHeight = 20,
                 fixedWidth = 20,
-                #if UNITY_2019_3_OR_NEWER
                 fontSize = 14,
                 padding = new RectOffset(0, 0, 0, 4),
-                #else
-                fontSize = 16,
-                padding = new RectOffset(0, 0, 0, 2),
-                #endif
                 margin = new RectOffset(1, 1, 1, 1),
                 alignment = TextAnchor.MiddleCenter,
                 richText = true
@@ -224,10 +250,10 @@ namespace Unity.QuickSearch
             public static GUIContent fetchPreviewContent = new GUIContent(
                 "Generate an asset preview thumbnail for found items",
                 "Fetching the preview of the items can consume more memory and make searches within very large project slower.");
-            public static GUIContent useUberIndexingContent = new GUIContent(
-                "Index all asset properties (Experimental and consume more resources)",
-                "This new indexer, indexes all asset properties, such as dependencies (i.e. dep:door), components (i.e. has:audio), size (i.e. size>=1000), etc.");
-            public static GUIContent rebuildIndexButtonContent = new GUIContent("Rebuild index");
+            public static GUIContent assetIndexingLabel = new GUIContent(
+                "Asset indexing mode",
+                "");
+            public static GUIContent createRootIndexButtonContent = new GUIContent("Create index");
         }
     }
 }

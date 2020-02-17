@@ -35,11 +35,7 @@ namespace Unity.QuickSearch
 
                     onEnable = () =>
                     {
-                        #if UNITY_2019_1_OR_NEWER
                         shortcutIds = ShortcutManager.instance.GetAvailableShortcutIds().ToArray();
-                        #else
-                        shortcutIds = new string[0];
-                        #endif
                     },
 
                     onDisable = () =>
@@ -74,7 +70,6 @@ namespace Unity.QuickSearch
 
             private static string GetMenuDescription(string menuName)
             {
-                #if UNITY_2019_1_OR_NEWER
                 var sm = ShortcutManager.instance;
                 if (sm == null)
                     return menuName;
@@ -91,9 +86,6 @@ namespace Unity.QuickSearch
                     return menuName;
 
                 return $"{menuName} ({shortcutBinding.ToString()})";
-                #else
-                return menuName;
-                #endif
             }
 
             [UsedImplicitly, SearchActionsProvider]
@@ -112,13 +104,12 @@ namespace Unity.QuickSearch
                 };
             }
 
-            #if UNITY_2019_1_OR_NEWER
             [UsedImplicitly, Shortcut("Help/Quick Search/Menu", KeyCode.M, ShortcutModifiers.Alt | ShortcutModifiers.Shift)]
             private static void OpenQuickSearch()
             {
-                QuickSearch.OpenWithContextualProvider(type);
+                var qs = QuickSearch.OpenWithContextualProvider(type);
+                qs.itemIconSize = 0; // Open in list view bu default.
             }
-            #endif
 
             private static void GetMenuInfo(List<string> outItemNames, List<string> outItemDefaultShortcuts)
             {

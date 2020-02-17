@@ -2,13 +2,19 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Text.RegularExpressions;
+using UnityEditor;
+using UnityEditor.Experimental.SceneManagement;
+using UnityEngine;
 
 namespace Unity.QuickSearch
 {
     public static class SearchUtils
     {
         public static readonly char[] entrySeparators = { '/', ' ', '_', '-', '.' };
+
+        private static readonly Stack<StringBuilder> _SbPool = new Stack<StringBuilder>();
 
         public static string[] FindShiftLeftVariations(string word)
         {
@@ -24,6 +30,7 @@ namespace Unity.QuickSearch
 
             return variations.ToArray();
         }
+        
         /// <summary>
         /// Tokenize a string each Capital letter.
         /// </summary>
@@ -60,6 +67,73 @@ namespace Unity.QuickSearch
                              .Where(s => s.Length > 0)
                              .Select(s => s.Substring(0, Math.Min(s.Length, maxIndexCharVariation)).ToLowerInvariant())
                              .Distinct();
+        }
+
+        public static string GetTransformPath(Transform tform)
+        {
+            if (tform.parent == null)
+                return "/" + tform.name;
+            return GetTransformPath(tform.parent) + "/" + tform.name;
+        }
+
+        public static string GetHierarchyPath(GameObject gameObject, bool includeScene = true)
+        {
+            if (gameObject == null)
+                return String.Empty;
+
+            StringBuilder sb;
+            if (_SbPool.Count > 0)
+            {
+                sb = _SbPool.Pop();
+                sb.Clear();
+            }
+            else
+            {
+                sb = new StringBuilder(200);
+            }
+
+            try
+            {
+                if (includeScene)
+                {
+                    var sceneName = gameObject.scene.name;
+                    if (sceneName == string.Empty)
+                    {
+                        var prefabStage = PrefabStageUtility.GetPrefabStage(gameObject);
+                        if (prefabStage != null)
+                            sceneName = "Prefab Stage";
+                        else
+                            sceneName = "Unsaved Scene";
+                    }
+
+                    sb.Append("<b>" + sceneName + "</b>");
+                }
+
+                sb.Append(GetTransformPath(gameObject.transform));
+
+                var path = sb.ToString();
+                sb.Clear();
+                return path;
+            }
+            finally
+            {
+                _SbPool.Push(sb);
+            }
+        }
+
+        public static string GetHierarchyAssetPath(GameObject gameObject, bool prefabOnly = false)
+        {
+            if (gameObject == null)
+                return String.Empty;
+
+            bool isPrefab = PrefabUtility.GetPrefabAssetType(gameObject.gameObject) != PrefabAssetType.NotAPrefab;
+            if (isPrefab)
+                return PrefabUtility.GetPrefabAssetPathOfNearestInstanceRoot(gameObject);
+
+            if (prefabOnly)
+                return null;
+
+            return gameObject.scene.path;
         }
     }
 }

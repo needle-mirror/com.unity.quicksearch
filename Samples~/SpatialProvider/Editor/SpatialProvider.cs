@@ -209,14 +209,12 @@ public static class SpatialProvider
                 var sceneName = gameObject.scene.name;
                 if (sceneName == string.Empty)
                 {
-#if UNITY_2018_3_OR_NEWER
                     var prefabStage = PrefabStageUtility.GetPrefabStage(gameObject);
                     if (prefabStage != null)
                     {
                         sceneName = "Prefab Stage";
                     }
                     else
-#endif
                     {
                         sceneName = "Unsaved Scene";
                     }
@@ -226,25 +224,6 @@ public static class SpatialProvider
             }
 
             sb.Append(GetTransformPath(gameObject.transform));
-
-#if false
-                bool isPrefab;
-#if UNITY_2018_3_OR_NEWER
-                isPrefab = PrefabUtility.GetPrefabAssetType(gameObject.gameObject) != PrefabAssetType.NotAPrefab;
-#else
-                isPrefab = UnityEditor.PrefabUtility.GetPrefabType(o) == UnityEditor.PrefabType.Prefab;
-#endif
-                var assetPath = string.Empty;
-                if (isPrefab)
-                {
-#if UNITY_2018_3_OR_NEWER
-                    assetPath = PrefabUtility.GetPrefabAssetPathOfNearestInstanceRoot(gameObject);
-#else
-                    assetPath = AssetDatabase.GetAssetPath(gameObject);
-#endif
-                    sb.Append(" (" + System.IO.Path.GetFileName(assetPath) + ")");
-                }
-#endif
 
             var path = sb.ToString();
             sb.Clear();
@@ -261,23 +240,10 @@ public static class SpatialProvider
         if (gameObject == null)
             return String.Empty;
 
-        bool isPrefab;
-#if UNITY_2018_3_OR_NEWER
-        isPrefab = PrefabUtility.GetPrefabAssetType(gameObject.gameObject) != PrefabAssetType.NotAPrefab;
-#else
-            isPrefab = UnityEditor.PrefabUtility.GetPrefabType(o) == UnityEditor.PrefabType.Prefab;
-#endif
-
+        bool isPrefab = PrefabUtility.GetPrefabAssetType(gameObject.gameObject) != PrefabAssetType.NotAPrefab;
         var assetPath = string.Empty;
         if (isPrefab)
-        {
-#if UNITY_2018_3_OR_NEWER
-            assetPath = PrefabUtility.GetPrefabAssetPathOfNearestInstanceRoot(gameObject);
-#else
-                assetPath = AssetDatabase.GetAssetPath(gameObject);
-#endif
-            return assetPath;
-        }
+            return PrefabUtility.GetPrefabAssetPathOfNearestInstanceRoot(gameObject);
 
         if (prefabOnly)
             return null;
