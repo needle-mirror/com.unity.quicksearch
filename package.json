@@ -1,8 +1,8 @@
 {
   "name": "com.unity.quicksearch",
   "displayName": "Quick Search",
-  "version": "1.5.2-preview.2",
-  "unity": "2018.3",
+  "version": "1.5.2",
+  "unity": "2018.4",
   "keywords": [
     "unity",
     "editor",
@@ -24,10 +24,10 @@
   },
   "dependencies": {},
   "repository": {
-    "footprint": "738eb5ac2eebc7833b2a3ed226f696dd6a71c41c",
+    "footprint": "3783348d44a4671a37f043721f3bff4d305bb2bb",
     "type": "git",
     "url": "https://github.cds.internal.unity3d.com/unity/com.unity.quicksearch.git",
-    "revision": "37c48d3eefd487e2d0d63d9d1e1a036596d53fbd"
+    "revision": "5eccff8afb1f061fc87cb951214c7fd1f721d629"
   },
   "samples": [
     {
