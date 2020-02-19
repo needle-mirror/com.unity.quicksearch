@@ -1,4 +1,8 @@
 #if UNITY_2020_2_OR_NEWER
+//#define USE_SEARCH_ENGINE_API // << Enable this when the Search API gets merged in latest 2020.2
+#endif
+
+#if USE_SEARCH_ENGINE_API
 using System;
 using System.Collections.Generic;
 using System.Linq;

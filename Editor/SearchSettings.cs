@@ -142,9 +142,9 @@ namespace Unity.QuickSearch
                         SearchService.SetDefaultAction(p.name.id, p.actions[newDefaultAction].Id);
                         GUI.changed = true;
                     }
-                    GUILayout.Space(10);
                 }
 
+                GUILayout.FlexibleSpace();
                 GUILayout.EndHorizontal();
             }
 

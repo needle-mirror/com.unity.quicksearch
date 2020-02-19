@@ -1,4 +1,7 @@
-﻿// #define QUICKSEARCH_DEBUG
+﻿#if UNITY_2020_1_OR_NEWER
+#define USE_ASSET_STORE_PROVIDER
+#endif
+// #define QUICKSEARCH_DEBUG
 using System.Collections.Generic;
 using UnityEngine;
 using System;
@@ -10,6 +13,8 @@ using System.Reflection;
 using System.Runtime.CompilerServices;
 using UnityEditor;
 using Debug = UnityEngine.Debug;
+
+#if USE_ASSET_STORE_PROVIDER
 
 namespace Unity.QuickSearch.Providers
 {
@@ -244,9 +249,7 @@ namespace Unity.QuickSearch.Providers
         private static AccessToken s_AccessTokenData;
         private static TokenInfo s_TokenInfo;
         private static UserInfo s_UserInfo;
-        #if UNITY_2020_1_OR_NEWER
         private static Action<string> s_OpenPackageManager;
-        #endif
 
         private static readonly List<QueryParam> k_QueryParams = new List<QueryParam>
         {
@@ -283,19 +286,19 @@ namespace Unity.QuickSearch.Providers
             while (!rao.isDone)
                 yield return null;
 
-            StoreSearchResponse response;
-            // using (new DebugTimer("Parse response"))
-            {
-                var saneJsonStr = webRequest.downloadHandler.text.Replace("name_en-US\"", "name_en_US\"");
-                response = JsonUtility.FromJson<StoreSearchResponse>(saneJsonStr);
-            }
-
-            if (!string.IsNullOrEmpty(webRequest.error))
+            if (webRequest.result != UnityWebRequest.Result.Success)
             {
                 Debug.Log($"Asset store request error: {webRequest.error}");
             }
             else
             {
+                StoreSearchResponse response;
+                // using (new DebugTimer("Parse response"))
+                {
+                    var saneJsonStr = webRequest.downloadHandler.text.Replace("name_en-US\"", "name_en_US\"");
+                    response = JsonUtility.FromJson<StoreSearchResponse>(saneJsonStr);
+                }
+
                 if (response.responseHeader.status != 0)
                 {
                     if (response.error != null)
@@ -475,7 +478,7 @@ namespace Unity.QuickSearch.Providers
                 showDetails = true,
                 fetchItems = (context, items, provider) => SearchStore(context, provider),
                 fetchThumbnail = (item, context) => FetchImage(((AssetDocument)item.data).icon, false, s_Previews),
-                fetchPreview = (item, context, size, options) => 
+                fetchPreview = (item, context, size, options) =>
                 {
                     if (!options.HasFlag(FetchPreviewOptions.Large))
                         return null;
@@ -547,7 +550,6 @@ namespace Unity.QuickSearch.Providers
         {
             return new[]
             {
-                #if UNITY_2020_1_OR_NEWER
                 new SearchAction("store", "open", null, "Open item")
                 {
                     handler = (item, context) =>
@@ -563,7 +565,6 @@ namespace Unity.QuickSearch.Providers
                         }
                     }
                 },
-                #endif
                 new SearchAction("store", "browse", null, "Browse item")
                 {
                     handler = (item, context) =>
@@ -592,7 +593,6 @@ namespace Unity.QuickSearch.Providers
             return packageKey;
         }
 
-        #if UNITY_2020_1_OR_NEWER
         static void OpenPackageManager(string packageName)
         {
             if (s_OpenPackageManager == null)
@@ -610,7 +610,6 @@ namespace Unity.QuickSearch.Providers
 
             s_OpenPackageManager(packageName);
         }
-        #endif
 
         static void GetAuthCode(Action<string, Exception> done)
         {
@@ -635,7 +634,7 @@ namespace Unity.QuickSearch.Providers
         static double GetEpochSeconds()
         {
             return (DateTime.UtcNow - new DateTime(1970, 1, 1)).TotalSeconds;
-        } 
+        }
 
         static bool IsTokenValid(double expirationStart, long expiresIn)
         {
@@ -658,7 +657,7 @@ namespace Unity.QuickSearch.Providers
                     done(null, exception.ToString());
                     return;
                 }
-                RequestAccessToken(authCode, (accessTokenData, error) => 
+                RequestAccessToken(authCode, (accessTokenData, error) =>
                 {
                     if (accessTokenData == null)
                     {
@@ -688,7 +687,7 @@ namespace Unity.QuickSearch.Providers
                     done(null, error);
                     return;
                 }
-                RequestAccessTokenInfo(accessTokenData.access_token, (tokenInfo, tokenInfoError) => 
+                RequestAccessTokenInfo(accessTokenData.access_token, (tokenInfo, tokenInfoError) =>
                 {
                     s_TokenInfo = tokenInfo;
                     s_TokenInfo.expiration = long.Parse(s_TokenInfo.expires_in);
@@ -712,7 +711,7 @@ namespace Unity.QuickSearch.Providers
                     done(null, error);
                     return;
                 }
-                RequestUserInfo(accessTokenInfo.access_token, accessTokenInfo.sub, (userInfo, userInfoError) => 
+                RequestUserInfo(accessTokenInfo.access_token, accessTokenInfo.sub, (userInfo, userInfoError) =>
                 {
                     s_UserInfo = userInfo;
                     done(userInfo, userInfoError);
@@ -804,7 +803,7 @@ namespace Unity.QuickSearch.Providers
             var asyncOp = request.SendWebRequest();
             asyncOp.completed += op =>
             {
-                if (request.isHttpError || request.isNetworkError)
+                if (request.result != UnityWebRequest.Result.Success)
                 {
                     done(null, request.error);
                 }
@@ -824,7 +823,7 @@ namespace Unity.QuickSearch.Providers
             var asyncOp = request.SendWebRequest();
             asyncOp.completed += op =>
             {
-                if (request.isHttpError || request.isNetworkError)
+                if (request.result != UnityWebRequest.Result.Success)
                 {
                     done(null, request.error);
                 }
@@ -850,7 +849,7 @@ namespace Unity.QuickSearch.Providers
             var asyncOp = request.SendWebRequest();
             asyncOp.completed += op =>
             {
-                if (request.isHttpError || request.isNetworkError)
+                if (request.result != UnityWebRequest.Result.Success)
                 {
                     done(null, request.error);
                 }
@@ -870,7 +869,7 @@ namespace Unity.QuickSearch.Providers
             var asyncOp = request.SendWebRequest();
             asyncOp.completed += op =>
             {
-                if (request.isHttpError || request.isNetworkError)
+                if (request.result != UnityWebRequest.Result.Success)
                 {
                     done(null, request.error);
                 }
@@ -892,7 +891,7 @@ namespace Unity.QuickSearch.Providers
             var asyncOp = request.SendWebRequest();
             asyncOp.completed += op =>
             {
-                if (request.isHttpError || request.isNetworkError)
+                if (request.result != UnityWebRequest.Result.Success)
                 {
                     done(null, request.error);
                 }
@@ -914,7 +913,7 @@ namespace Unity.QuickSearch.Providers
             var asyncOp = request.SendWebRequest();
             asyncOp.completed += op =>
             {
-                if (request.isHttpError || request.isNetworkError)
+                if (request.result != UnityWebRequest.Result.Success)
                 {
                     done(null, request.error);
                 }
@@ -1015,3 +1014,5 @@ namespace Unity.QuickSearch.Providers
         #endif
     }
 }
+
+#endif

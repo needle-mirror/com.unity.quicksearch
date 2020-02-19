@@ -214,7 +214,7 @@ namespace Unity.QuickSearch
         private static readonly Regex k_PhraseRx = new Regex("\\G!?\\\".*?\\\"");
         private static readonly Regex k_GroupStartRx = new Regex("\\G\\(");
         private Regex m_FilterRx = new Regex("\\G([\\w]+)([:><=!]+)(\\\".*?\\\"|[\\S]+)");
-        private static readonly Regex k_WordRx = new Regex("\\G!?[\\w]+");
+        private static readonly Regex k_WordRx = new Regex("\\G!?\\S+");
         private static readonly Regex k_EmptySpaceRx = new Regex("\\G\\s+");
         private static readonly Regex k_CombiningTokenRx = new Regex("(\\Gand\\b)|(\\Gor\\b)|(\\Gnot\\b)|(\\G-)");
 
@@ -754,6 +754,7 @@ namespace Unity.QuickSearch
             var filterRx = $"\\G([\\w]+)(\\([^\\(\\)]+\\))?({string.Join("|", sortedOperators)}+)(\\\".*?\\\"|[\\S]+)";
             m_FilterRx = new Regex(filterRx, RegexOptions.Compiled);
 
+            // The order of regex in this list is important. Keep it like that unless you know what you are doing!
             m_TokenConsumers = new List<Tuple<Regex, TokenConsumer>>
             {
                 Tuple.Create<Regex, TokenConsumer>(k_EmptySpaceRx, ConsumeEmpty),

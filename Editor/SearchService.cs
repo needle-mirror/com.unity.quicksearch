@@ -144,8 +144,11 @@ namespace Unity.QuickSearch
         /// <param name="active">Activation state</param>
         public static void SetActive(string providerId, bool active = true)
         {
+            var provider = Providers.FirstOrDefault(p => p.name.id == providerId);
+            if (provider == null)
+                return;
             EditorPrefs.SetBool($"{prefKey}.{providerId}.active", active);
-            Providers.First(p => p.name.id == providerId).active = active;
+            provider.active = active;
         }
 
         /// <summary>
