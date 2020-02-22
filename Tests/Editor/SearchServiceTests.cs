@@ -122,13 +122,14 @@ namespace Unity.QuickSearch
         private bool m_WasUsingNewIndex = false;
 
 
-        static void SetProviderActive(string providerId, bool isActive)
+        internal static void SetProviderActive(string providerId, bool isActive)
         {
             var provider = SearchService.Providers.FirstOrDefault(p => p.name.id == providerId);
             if (provider != null)
             {
                 provider.active = isActive;
             }
+            SearchService.Filter.SetFilter(isActive, providerId);
         }
 
         [SetUp]
@@ -138,7 +139,6 @@ namespace Unity.QuickSearch
             SearchService.SaveFilters();
             SearchService.Enable(SearchContext.Empty);
             SearchService.Filter.ResetFilter(true);
-
             SetProviderActive("store", false);
             SetProviderActive("packages", false);
         }
@@ -254,8 +254,10 @@ namespace Unity.QuickSearch
         [SetUp]
         public void EnableService()
         {
-            SearchService.Enable(SearchContext.Empty);
             SearchService.Filter.ResetFilter(true);
+            SearchServiceTests.SetProviderActive("store", false);
+            SearchServiceTests.SetProviderActive("packages", false);
+            SearchService.Enable(SearchContext.Empty);
         }
 
         [TearDown]

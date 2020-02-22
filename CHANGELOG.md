@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.5.3] - 2020-02-23
+- [FIX] Increase word character variation indexing to 32.
+- [FIX] Ensure package and store search providers are not enabled while runnign tests.
+
 ## [1.5.2] - 2020-02-20
 - [FIX] The asset store provider will only be available for 2020.1 and newer.
 - [FIX] Improve scene provider performances

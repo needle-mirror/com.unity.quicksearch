@@ -17,9 +17,10 @@ namespace Unity.QuickSearch
         [SetUp]
         public void EnableService()
         {
-            SearchService.Enable(SearchContext.Empty);
             SearchService.Filter.ResetFilter(true);
-            SearchService.Providers.First(p => p.name.id == "packages").active = false;
+            SearchServiceTests.SetProviderActive("store", false);
+            SearchServiceTests.SetProviderActive("packages", false);
+            SearchService.Enable(SearchContext.Empty);
         }
 
         [TearDown]
