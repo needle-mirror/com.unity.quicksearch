@@ -2,7 +2,7 @@
   "roots": ["Assets"],
   "directories": false,
   "includes": [],
-  "excludes": ["Temp/"],
+  "excludes": ["Temp/", "External/", "_INTERNAL_/"],
   "options": {
     "fstats": true,
     "types": true,

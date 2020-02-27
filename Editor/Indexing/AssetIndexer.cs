@@ -16,7 +16,7 @@ namespace Unity.QuickSearch.Providers
         public bool fstats = true;
         public bool types = true;
         public bool properties = false;
-        public bool dependencies = true;
+        public bool dependencies = false;
         public bool nestedObjects = false;
     }
 
@@ -40,7 +40,6 @@ namespace Unity.QuickSearch.Providers
     class AssetIndexer : SearchIndexer
     {
         public string name { get; private set; }
-        public bool useFinishThread { get; set; } = true;
         public AssetIndexerSettings settings { get; private set; }
 
         private static readonly string[] k_FieldNamesNoKeywords = {"name", "text"};
@@ -52,7 +51,7 @@ namespace Unity.QuickSearch.Providers
         private readonly QueryEngine<SearchResult> m_QueryEngine = new QueryEngine<SearchResult>(validateFilters: false);
         private static Dictionary<string, Query<SearchResult, SearchIndexerQuery<SearchResult>.EvalHandler, object>> s_QueryPool = new Dictionary<string, Query<SearchResult, SearchIndexerQuery<SearchResult>.EvalHandler, object>>();
 
-        public AssetIndexer(string name, AssetIndexerSettings settings) 
+        public AssetIndexer(string name, AssetIndexerSettings settings)
             : base(name ?? "assets")
         {
             this.name = name;
@@ -212,8 +211,7 @@ namespace Unity.QuickSearch.Providers
             }
             EditorApplication.UnlockReloadAssemblies();
 
-            Finish(useFinishThread);
-
+            Finish(() => {});
             while (!IsReady())
                 yield return null;
 
@@ -273,7 +271,7 @@ namespace Unity.QuickSearch.Providers
                 if (settings.options.properties || settings.options.types)
                 {
                     bool wasLoaded = AssetDatabase.IsMainAssetAtPathLoaded(path);
-                    var assetObjects = settings.options.nestedObjects ? AssetDatabase.LoadAllAssetsAtPath(path) 
+                    var assetObjects = settings.options.nestedObjects ? AssetDatabase.LoadAllAssetsAtPath(path)
                                             : new Object[] { AssetDatabase.LoadMainAssetAtPath(path) };
                     foreach (var mainAsset in assetObjects)
                     {
@@ -401,7 +399,7 @@ namespace Unity.QuickSearch.Providers
             #if DEBUG_INDEXING
             if (!m_DebugStringTable.ContainsKey(path))
                 return null;
-                
+
             return String.Join(" ", m_DebugStringTable[path].ToArray());
             #else
             return null;

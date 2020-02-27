@@ -20,6 +20,7 @@ namespace Unity.QuickSearch
         private const string k_RootIndexPath = "Assets/Assets.index";
 
         public const string settingsPreferencesKey = "Preferences/Quick Search";
+        const string k_DefaultActionPrefKey = SearchService.prefKey + ".defaultactions.";
         public static bool trackSelection { get; private set; }
         public static bool fetchPreview { get; private set; }
         public static SearchAssetIndexing assetIndexing { get; internal set; }
@@ -139,7 +140,7 @@ namespace Unity.QuickSearch
                     var newDefaultAction = EditorGUILayout.Popup(0, items, GUILayout.ExpandWidth(true));
                     if (EditorGUI.EndChangeCheck())
                     {
-                        SearchService.SetDefaultAction(p.name.id, p.actions[newDefaultAction].Id);
+                        SetDefaultAction(p.name.id, p.actions[newDefaultAction].Id);
                         GUI.changed = true;
                     }
                 }
@@ -208,6 +209,44 @@ namespace Unity.QuickSearch
                 EditorPrefs.SetInt($"{k_KeyPrefix}.{provider.name.id}.priority", provider.priority);
                 break;
             }
+        }
+
+        private static void SetDefaultAction(string providerId, string actionId)
+        {
+            if (string.IsNullOrEmpty(providerId) || string.IsNullOrEmpty(actionId))
+                return;
+
+            EditorPrefs.SetString(k_DefaultActionPrefKey + providerId, actionId);
+            SortActionsPriority();
+        }
+
+        internal static void SortActionsPriority()
+        {
+            foreach (var searchProvider in SearchService.Providers)
+                SortActionsPriority(searchProvider);
+        }
+
+        private static void SortActionsPriority(SearchProvider searchProvider)
+        {
+            if (searchProvider.actions.Count == 1)
+                return;
+
+            var defaultActionId = EditorPrefs.GetString(k_DefaultActionPrefKey + searchProvider.name.id);
+            if (string.IsNullOrEmpty(defaultActionId))
+                return;
+            if (searchProvider.actions.Count == 0 || defaultActionId == searchProvider.actions[0].Id)
+                return;
+
+            searchProvider.actions.Sort((action1, action2) =>
+            {
+                if (action1.Id == defaultActionId)
+                    return -1;
+
+                if (action2.Id == defaultActionId)
+                    return 1;
+
+                return 0;
+            });
         }
 
         #if DEBUG_INDEXING

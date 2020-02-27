@@ -1,35 +1,30 @@
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using UnityEditor;
-using UnityEngine.Assertions;
 
 namespace Unity.QuickSearch
 {
     /// <summary>
-    /// An async search session tracks all incoming items found by search provider that weren't returned right away after the search was initiated.
+    /// An async search session tracks all incoming items found by a search provider that weren't returned right away after the search was initiated.
     /// </summary>
     class AsyncSearchSession
     {
         /// <summary>
         /// This event is used to receive any async search result.
         /// </summary>
-        /// <remarks>It is usually used by a search view to append additional search results to a UI list.</remarks>
-        public static event Action<IEnumerable<SearchItem>> asyncItemReceived;
+        public event Action<IEnumerable<SearchItem>> asyncItemReceived;
 
         private const long k_MaxTimePerUpdate = 10; // milliseconds
 
         private StackedEnumerator<SearchItem> m_ItemsEnumerator = new StackedEnumerator<SearchItem>();
-        private bool m_IsRunning = false;
         private long m_MaxFetchTimePerProviderMs;
 
-        private static int s_RunningSessions = 0;
-
         /// <summary>
-        /// Checks if there is any active async search sessions.
+        /// Checks if this async search session is active.
         /// </summary>
-        public static bool SearchInProgress => s_RunningSessions > 0;
+        public bool searchInProgress { get; set; } = false;
 
         /// <summary>
         /// Called when the system is ready to process any new async results.
@@ -58,9 +53,8 @@ namespace Unity.QuickSearch
         {
             // Remove and add the event handler in case it was already removed.
             Stop();
-            m_IsRunning = true;
+            searchInProgress = true;
             m_MaxFetchTimePerProviderMs = maxFetchTimePerProviderMs;
-            ++s_RunningSessions;
             m_ItemsEnumerator = new StackedEnumerator<SearchItem>(itemEnumerator);
             EditorApplication.update += OnUpdate;
         }
@@ -70,9 +64,7 @@ namespace Unity.QuickSearch
         /// </summary>
         public void Stop()
         {
-            if (m_IsRunning)
-                --s_RunningSessions;
-            m_IsRunning = false;
+            searchInProgress = false;
             EditorApplication.update -= OnUpdate;
             m_ItemsEnumerator.Clear();
         }
@@ -156,6 +148,69 @@ namespace Unity.QuickSearch
             }
 
             return !atEnd;
+        }
+    }
+
+    /// <summary>
+    /// A MultiProviderAsyncSearchSession holds all the providers' async search sessions.
+    /// </summary>
+    class MultiProviderAsyncSearchSession
+    {
+        private Dictionary<string, AsyncSearchSession> m_SearchSessions = new Dictionary<string, AsyncSearchSession>();
+
+        /// <summary>
+        /// This event is used to receive any async search result.
+        /// </summary>
+        public event Action<IEnumerable<SearchItem>> asyncItemReceived;
+
+        /// <summary>
+        /// Checks if any of the providers' async search are active.
+        /// </summary>
+        public bool searchInProgress => m_SearchSessions.Any(session => session.Value.searchInProgress);
+
+        /// <summary>
+        /// Returns the specified provider's async search session.
+        /// </summary>
+        /// <param name="providerId"></param>
+        /// <returns>The provider's async search session.</returns>
+        public AsyncSearchSession GetProviderSession(string providerId)
+        {
+            if (!m_SearchSessions.TryGetValue(providerId, out var session))
+            {
+                session = new AsyncSearchSession();
+                session.asyncItemReceived += OnProviderAsyncItemReceived;
+                m_SearchSessions.Add(providerId, session);
+            }
+
+            return session;
+        }
+
+        private void OnProviderAsyncItemReceived(IEnumerable<SearchItem> obj)
+        {
+            asyncItemReceived?.Invoke(obj);
+        }
+
+        /// <summary>
+        /// Stops all active async search sessions held by this MultiProviderAsyncSearchSession.
+        /// </summary>
+        public void StopAllAsyncSearchSessions()
+        {
+            foreach (var searchSession in m_SearchSessions)
+            {
+                searchSession.Value.Stop();
+            }
+        }
+
+        /// <summary>
+        /// Clears all async search sessions held by this MultiProviderAsyncSearchSession.
+        /// </summary>
+        public void Clear()
+        {
+            foreach (var searchSession in m_SearchSessions)
+            {
+                searchSession.Value.asyncItemReceived -= OnProviderAsyncItemReceived;
+            }
+            m_SearchSessions.Clear();
         }
     }
 }

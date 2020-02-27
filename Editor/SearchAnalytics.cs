@@ -207,9 +207,9 @@ namespace Unity.QuickSearch
             SendEvent(category, category.ToString(), name, message, description, duration);
         }
 
-        public static void SendSearchEvent(SearchEvent evt)
+        public static void SendSearchEvent(SearchEvent evt, SearchContext searchContext, SearchFilter searchFilter)
         {
-            evt.useOverrideFilter = SearchService.OverrideFilter.filteredProviders.Count > 0;
+            evt.useOverrideFilter = searchContext.filterId != null;
             evt.isDeveloperMode = Utils.IsDeveloperMode();
             evt.preferences = new PreferenceData()
             {
@@ -217,15 +217,13 @@ namespace Unity.QuickSearch
                 useDockableWindow = false,
                 trackSelection = SearchSettings.trackSelection
             };
-            
-            var providers = evt.useOverrideFilter ? SearchService.OverrideFilter.filteredProviders : SearchService.Providers;
-            var filter = evt.useOverrideFilter ? SearchService.OverrideFilter: SearchService.Filter;
 
+            var providers = searchContext.providers;
             evt.providerDatas = providers.Select(provider => new ProviderData()
             {
                 id = provider.name.id,
                 avgTime = (long)provider.avgTime,
-                isEnabled = filter.IsEnabled(provider.name.id),
+                isEnabled = evt.useOverrideFilter ? true : searchFilter.IsEnabled(provider.name.id),
                 custom = ""
             }).ToArray();
 
@@ -268,9 +266,9 @@ namespace Unity.QuickSearch
             {
                 case AnalyticsResult.Ok:
                     {
-#if QUICKSEARCH_ANALYTICS_LOGGING
-                    Debug.Log($"QuickSearch: Registered event: {eventName}");
-#endif
+                        #if QUICKSEARCH_ANALYTICS_LOGGING
+                        Debug.Log($"QuickSearch: Registered event: {eventName}");
+                        #endif
                         return true;
                     }
                 case AnalyticsResult.TooManyRequests:

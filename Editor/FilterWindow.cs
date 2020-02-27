@@ -52,15 +52,21 @@ namespace Unity.QuickSearch
 
             public static float foldoutIndent = filterExpanded.fixedWidth + 6;
         }
+        static SearchFilter s_SearchFilter;
 
-        public ISearchView searchView;
-
+        private ISearchView m_SearchView;
         private Vector2 m_ScrollPos;
-        private List<SearchFilter.ProviderDesc> initialProviders;
+        private List<SearchFilter.ProviderDesc> m_Providers;
         private int m_ToggleFilterFocusIndex = 1;
         private int m_ToggleFilterNextIndex = 0;
         private int m_ToggleFilterCount = 0;
         private int m_ExpandToggleIndex = -1;
+
+        internal SearchFilter filter
+        {
+            get;
+            private set;
+        }
 
         internal static double s_CloseTime;
         internal static bool canShow
@@ -73,33 +79,41 @@ namespace Unity.QuickSearch
             }
         }
 
-        public static bool ShowAtPosition(ISearchView quickSearchTool, Rect rect)
+        public static bool ShowAtPosition(ISearchView quickSearchTool, SearchFilter filter, Rect rect)
         {
             var screenPos = GUIUtility.GUIToScreenPoint(new Vector2(rect.x, rect.y));
             var screenRect = new Rect(screenPos, rect.size);
+
+            s_SearchFilter = filter;
             var filterWindow = ScriptableObject.CreateInstance<FilterWindow>();
-            filterWindow.searchView = quickSearchTool;
+            filterWindow.m_SearchView = quickSearchTool;
             filterWindow.ShowAsDropDown(screenRect, Styles.windowSize);
+            s_SearchFilter = null;
             return true;
         }
 
         [UsedImplicitly]
         internal void OnEnable()
         {
-            if (SearchService.Filter.allActive)
-                initialProviders = SearchService.Filter.providerFilters.ToList();
+            if (s_SearchFilter != null)
+            {
+                filter = s_SearchFilter;
+                m_Providers = filter.providerDescriptors.ToList();
+            }
             else
-                initialProviders = SearchService.Filter.providerFilters.Where(p => p.name.isEnabled).ToList();
+            {
+                throw new Exception("Opening Filter Window with not filter");
+            }
         }
 
         [UsedImplicitly]
         internal void OnDestroy()
         {
             s_CloseTime = EditorApplication.timeSinceStartup;
-            if (SearchService.Filter.providerFilters.All(desc => !desc.name.isEnabled))
+            if (filter.providerDescriptors.All(desc => !desc.name.isEnabled))
             {
                 Debug.LogWarning("All filters are disabled. Loading last used filters.");
-                SearchService.LoadGlobalSettings();
+                m_SearchView.LoadGlobalSettings();
             }
         }
 
@@ -109,8 +123,8 @@ namespace Unity.QuickSearch
             if (Event.current.type == EventType.KeyDown && Event.current.keyCode == KeyCode.Escape)
             {
                 Close();
-                if (searchView != null)
-                    searchView.Focus();
+                if (m_SearchView != null)
+                    m_SearchView.Focus();
                 return;
             }
 
@@ -124,11 +138,9 @@ namespace Unity.QuickSearch
 
             m_ScrollPos = GUILayout.BeginScrollView(m_ScrollPos);
              
-            foreach (var providerDesc in initialProviders.OrderBy(f => f.priority))
+            foreach (var providerDesc in m_Providers.Where(p => !p.provider.isExplicitProvider).OrderBy(f => f.priority))
             {
                 DrawSectionHeader(providerDesc);
-                if (providerDesc.isExpanded)
-                    DrawSubCategories(providerDesc);
             }
 
             m_ToggleFilterCount = m_ToggleFilterNextIndex;
@@ -144,7 +156,6 @@ namespace Unity.QuickSearch
         {
             if (Event.current.type == EventType.KeyDown && Event.current.keyCode == KeyCode.UpArrow)
             {
-
                 m_ToggleFilterFocusIndex = Math.Max(0, m_ToggleFilterFocusIndex-1);
                 Event.current.Use();
             }
@@ -162,7 +173,7 @@ namespace Unity.QuickSearch
             GUI.FocusControl($"Box_{m_ToggleFilterFocusIndex}");
         }
 
-        private static void DrawExplicitProviders()
+        private void DrawExplicitProviders()
         {
             GUILayout.BeginHorizontal();
             GUILayout.Label(new GUIContent("Special Search Providers", null, "Providers only available if specified explicitly"), Styles.filterHeader);
@@ -170,7 +181,7 @@ namespace Unity.QuickSearch
             GUILayout.EndHorizontal();
             GUILayout.Label(GUIContent.none, Styles.separator);
 
-            foreach (var provider in SearchService.Providers.Where(p => p.active && p.isExplicitProvider).OrderBy(p => p.priority))
+            foreach (var provider in m_Providers.Where(p => p.provider.isExplicitProvider).OrderBy(p => p.priority).Select(p => p.provider))
             {
                 GUILayout.BeginHorizontal();
                 GUILayout.Space(Styles.foldoutIndent);
@@ -188,15 +199,9 @@ namespace Unity.QuickSearch
             GUILayout.FlexibleSpace();
             EditorGUI.BeginChangeCheck();
             GUI.SetNextControlName($"Box_{m_ToggleFilterNextIndex++}");
-            bool isEnabled = GUILayout.Toggle(SearchService.Filter.providerFilters.All(p => p.name.isEnabled), "", Styles.headerFilterToggle, GUILayout.ExpandWidth(false));
+            bool isEnabled = GUILayout.Toggle(filter.providerDescriptors.All(p => p.name.isEnabled), "", Styles.headerFilterToggle, GUILayout.ExpandWidth(false));
             if (EditorGUI.EndChangeCheck())
-            {
-                foreach (var provider in SearchService.Filter.providerFilters)
-                {
-                    SearchService.Filter.SetFilter(isEnabled, provider.name.id);
-                }
-                searchView.Refresh();
-            }
+                filter.ResetFilter(isEnabled);
 
             GUILayout.EndHorizontal();
         }
@@ -205,26 +210,7 @@ namespace Unity.QuickSearch
         {
             GUILayout.BeginHorizontal();
 
-            if (desc.categories.Count > 0)
-            {
-                EditorGUI.BeginChangeCheck();
-                if (m_ExpandToggleIndex == m_ToggleFilterNextIndex && 
-                    (Event.current.type == EventType.Repaint || Event.current.type == EventType.Layout))
-                {
-                    desc.isExpanded = !desc.isExpanded;
-                    GUI.changed = true;
-                    m_ExpandToggleIndex = -1;
-                }
-                bool isExpanded = GUILayout.Toggle(desc.isExpanded, "", Styles.filterExpanded);
-                if (EditorGUI.EndChangeCheck())
-                {
-                    SearchService.Filter.SetExpanded(isExpanded, desc.name.id);
-                }
-            }
-            else
-            {
-                GUILayout.Space(Styles.foldoutIndent);
-            }
+            GUILayout.Space(Styles.foldoutIndent);
 
             GUILayout.Label(GetProviderLabelContent(desc.provider, desc.name.displayName), Styles.filterHeader);
             GUILayout.FlexibleSpace();
@@ -246,10 +232,7 @@ namespace Unity.QuickSearch
             GUI.SetNextControlName($"Box_{m_ToggleFilterNextIndex++}");
             bool isEnabled = GUILayout.Toggle(desc.name.isEnabled, "", Styles.filterToggle, GUILayout.ExpandWidth(false));
             if (EditorGUI.EndChangeCheck())
-            {
-                SearchService.Filter.SetFilter(isEnabled, desc.name.id);
-                searchView.Refresh();
-            }
+                filter.SetFilter(isEnabled, desc.name.id);
 
             GUILayout.EndHorizontal();
         }
@@ -265,28 +248,6 @@ namespace Unity.QuickSearch
                 tooltip = $"Type \"{provider.filterId}\" to search ONLY for {provider.name.displayName}";
             }
             return new GUIContent(displayName, null, tooltip);
-        }
-
-        private void DrawSubCategories(SearchFilter.ProviderDesc desc)
-        {
-            foreach (var cat in desc.categories)
-            {
-                GUILayout.BeginHorizontal();
-                GUILayout.Space(Styles.foldoutIndent + 5);
-                GUILayout.Label(cat.displayName, Styles.filterEntry);
-                GUILayout.FlexibleSpace();
-
-                EditorGUI.BeginChangeCheck();
-                GUI.SetNextControlName($"Box_{m_ToggleFilterNextIndex++}");
-                bool isEnabled = GUILayout.Toggle(cat.isEnabled, "", Styles.filterToggle);
-                if (EditorGUI.EndChangeCheck())
-                {
-                    SearchService.Filter.SetFilter(isEnabled, desc.name.id, cat.id);
-                    searchView.Refresh();
-                }
-
-                GUILayout.EndHorizontal();
-            }
         }
     }
 }

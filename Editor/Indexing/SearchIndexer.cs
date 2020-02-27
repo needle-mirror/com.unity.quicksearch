@@ -530,50 +530,50 @@ namespace Unity.QuickSearch
             }
         }
 
-        internal void Finish(bool useThread = false, string[] removedDocuments = null)
+        internal void Finish(Action threadCompletedCallback, string[] removedDocuments = null)
         {
-            if(useThread)
+            m_ThreadAborted = false;
+            m_IndexerThread = new Thread(() =>
             {
-                m_ThreadAborted = false;
-                m_IndexerThread = new Thread(() =>
+                try
                 {
-                    try
+                    using (new IndexerThreadScope(AbortIndexing))
                     {
-                        using (new IndexerThreadScope(AbortIndexing))
-                            Finish(false, removedDocuments);
+                        Finish(removedDocuments);
+                        Dispatcher.Enqueue(threadCompletedCallback);
                     }
-                    catch (ThreadAbortException)
-                    {
-                        m_ThreadAborted = true;
-                        Thread.ResetAbort();
-                    }
-                });
-                m_IndexerThread.Start();
-            }
-            else
-            {
-                lock (this)
-                {
-                    var shouldRemoveDocuments = removedDocuments != null && removedDocuments.Length > 0;
-                    if (shouldRemoveDocuments)
-                    {
-                        var removedDocIndexes = new HashSet<int>();
-                        foreach (var rd in removedDocuments)
-                        {
-                            var di = m_Documents.FindIndex(d => d == rd);
-                            if (di > -1)
-                                removedDocIndexes.Add(di);
-                        }
-                        m_BatchIndexes.AddRange(m_Indexes.Where(e => !removedDocIndexes.Contains(e.index)));
-                    }
-                    else
-                    {
-                        m_BatchIndexes.AddRange(m_Indexes);
-                    }
-                    UpdateIndexes(m_Documents, m_BatchIndexes, roots[0].basePath);
-                    m_BatchIndexes.Clear();
-                    //UnityEngine.Debug.Log($"Indexing Completed (Documents: {documentCount}, Indexes: {indexCount:n0})");
                 }
+                catch (ThreadAbortException)
+                {
+                    m_ThreadAborted = true;
+                    Thread.ResetAbort();
+                }
+            });
+            m_IndexerThread.Start();
+        }
+
+        internal void Finish(string[] removedDocuments = null)
+        {
+            lock (this)
+            {
+                var shouldRemoveDocuments = removedDocuments != null && removedDocuments.Length > 0;
+                if (shouldRemoveDocuments)
+                {
+                    var removedDocIndexes = new HashSet<int>();
+                    foreach (var rd in removedDocuments)
+                    {
+                        var di = m_Documents.FindIndex(d => d == rd);
+                        if (di > -1)
+                            removedDocIndexes.Add(di);
+                    }
+                    m_BatchIndexes.AddRange(m_Indexes.Where(e => !removedDocIndexes.Contains(e.index)));
+                }
+                else
+                {
+                    m_BatchIndexes.AddRange(m_Indexes);
+                }
+                UpdateIndexes(m_Documents, m_BatchIndexes, roots[0].basePath);
+                m_BatchIndexes.Clear();
             }
         }
 
@@ -1378,7 +1378,7 @@ namespace Unity.QuickSearch
                     var documentIndex = AddDocument(id, true);
                     FetchEntries(id, documentIndex, m_BatchIndexes, 0);
                 }
-                Finish(true, removed);
+                Finish(() => {}, removed);
             }
         }
 

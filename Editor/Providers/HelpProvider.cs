@@ -29,8 +29,7 @@ namespace Unity.QuickSearch
                         if (m_StaticItemToAction == null)
                             BuildHelpItems(provider);
 
-                        var dynamicItems = GetRecentSearchItems(provider);
-                        var helpItems = m_StaticItemToAction.Keys.Concat(dynamicItems);
+                        var helpItems = m_StaticItemToAction.Keys;
 
                         if (string.IsNullOrEmpty(context.searchQuery) || string.IsNullOrWhiteSpace(context.searchQuery))
                         {
@@ -46,10 +45,10 @@ namespace Unity.QuickSearch
                 return helpProvider;
             }
 
-            static IEnumerable<SearchItem> GetRecentSearchItems(SearchProvider provider)
+            static IEnumerable<SearchItem> GetRecentSearchItems(SearchProvider provider, IEnumerable<string> recentSearches)
             {
                 int recentIndex = 0;
-                return SearchService.s_RecentSearches
+                return recentSearches
                     .Where(search => !string.IsNullOrEmpty(search) && !string.IsNullOrWhiteSpace(search))
                     .Select(search =>
                     {

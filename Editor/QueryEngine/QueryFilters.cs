@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
-using System.Globalization;
 
 namespace Unity.QuickSearch
 {
@@ -16,6 +15,7 @@ namespace Unity.QuickSearch
         bool resolver { get; }
         StringComparison stringComparison { get; }
         bool overrideStringComparison { get; }
+        IFilterOperation GenerateOperation(FilterOperationGeneratorData data, int operatorIndex, List<QueryError> errors);
     }
 
     internal abstract class BaseFilter<TFilter> : IFilter
@@ -31,19 +31,19 @@ namespace Unity.QuickSearch
         public StringComparison stringComparison { get; }
         public bool overrideStringComparison { get; }
 
-        protected BaseFilter(string token, IEnumerable<string> supportedOperatorTypes)
+        protected BaseFilter(string token, IEnumerable<string> supportedOperatorTypes, bool resolver)
         {
             this.token = token;
             supportedFilters = supportedOperatorTypes ?? new string[] { };
-            resolver = false;
+            this.resolver = resolver;
             overrideStringComparison = false;
         }
 
-        protected BaseFilter(string token, IEnumerable<string> supportedOperatorTypes, StringComparison stringComparison)
+        protected BaseFilter(string token, IEnumerable<string> supportedOperatorTypes, bool resolver, StringComparison stringComparison)
         {
             this.token = token;
             supportedFilters = supportedOperatorTypes ?? new string[] { };
-            resolver = false;
+            this.resolver = resolver;
             this.stringComparison = stringComparison;
             overrideStringComparison = true;
         }
@@ -53,101 +53,114 @@ namespace Unity.QuickSearch
             var converter = TypeDescriptor.GetConverter(type);
             return converter.IsValid(value);
         }
+
+        public abstract IFilterOperation GenerateOperation(FilterOperationGeneratorData data, int operatorIndex, List<QueryError> errors);
     }
 
-    internal class Filter<TObject, TFilter> : BaseFilter<TFilter>
+    internal class Filter<TData, TFilter> : BaseFilter<TFilter>
     {
-        private Func<TObject, TFilter> m_GetDataCallback;
-        private Func<TObject, string, TFilter, bool> m_FilterResolver;
+        private Func<TData, TFilter> m_GetDataCallback;
+        private Func<TData, string, TFilter, bool> m_FilterResolver;
 
-        public Filter(string token, IEnumerable<string> supportedOperatorType, Func<TObject, TFilter> getDataCallback)
-            : base(token, supportedOperatorType)
+        public Filter(string token, IEnumerable<string> supportedOperatorType, Func<TData, TFilter> getDataCallback)
+            : base(token, supportedOperatorType, false)
         {
             m_GetDataCallback = getDataCallback;
         }
 
-        public Filter(string token, IEnumerable<string> supportedOperatorType, Func<TObject, TFilter> getDataCallback, StringComparison stringComparison)
-            : base(token, supportedOperatorType, stringComparison)
+        public Filter(string token, IEnumerable<string> supportedOperatorType, Func<TData, TFilter> getDataCallback, StringComparison stringComparison)
+            : base(token, supportedOperatorType, false, stringComparison)
         {
             m_GetDataCallback = getDataCallback;
         }
 
-        public Filter(string token, IEnumerable<string> supportedOperatorType, Func<TObject, string, TFilter, bool> resolver)
-            : base(token, supportedOperatorType)
+        public Filter(string token, IEnumerable<string> supportedOperatorType, Func<TData, string, TFilter, bool> resolver)
+            : base(token, supportedOperatorType, true)
         {
             m_FilterResolver = resolver;
-            this.resolver = true;
         }
 
-        public TFilter GetData(TObject o)
+        public TFilter GetData(TData o)
         {
             return m_GetDataCallback(o);
         }
 
-        public bool Resolve(TObject data, FilterOperator op, TFilter value)
+        public bool Resolve(TData data, FilterOperator op, TFilter value)
         {
             if (!resolver)
                 return false;
             return m_FilterResolver(data, op.token, value);
         }
+
+        public override IFilterOperation GenerateOperation(FilterOperationGeneratorData data, int operatorIndex, List<QueryError> errors)
+        {
+            if (resolver)
+            {
+                var filterValue = ((ParseResult<TFilter>)data.filterValueParseResult).parsedValue;
+
+                // ReSharper disable once ConvertToLocalFunction
+                Func<TData, bool> operation = o => Resolve(o, data.op, filterValue);
+                return new FilterOperation<TData, TFilter>(this, data.op, data.filterValue, operation);
+            }
+            else
+                return data.generator.GenerateOperation(data, this, operatorIndex, errors);
+        }
     }
 
-    internal class Filter<TObject, TParam, TFilter> : BaseFilter<TFilter>
+    internal class Filter<TData, TParam, TFilter> : BaseFilter<TFilter>
     {
         public override bool paramFilter => true;
         public override Type paramType => typeof(TParam);
 
-        private Func<TObject, TParam, TFilter> m_GetDataCallback;
-        private Func<TObject, TParam, string, TFilter, bool> m_FilterResolver;
+        private Func<TData, TParam, TFilter> m_GetDataCallback;
+        private Func<TData, TParam, string, TFilter, bool> m_FilterResolver;
         private Func<string, TParam> m_ParameterTransformer;
 
-        public Filter(string token, IEnumerable<string> supportedOperatorType, Func<TObject, TParam, TFilter> getDataCallback)
-            : base(token, supportedOperatorType)
+        public Filter(string token, IEnumerable<string> supportedOperatorType, Func<TData, TParam, TFilter> getDataCallback)
+            : base(token, supportedOperatorType, false)
         {
             m_GetDataCallback = getDataCallback;
         }
 
-        public Filter(string token, IEnumerable<string> supportedOperatorType, Func<TObject, TParam, TFilter> getDataCallback, StringComparison stringComparison)
-            : base(token, supportedOperatorType, stringComparison)
+        public Filter(string token, IEnumerable<string> supportedOperatorType, Func<TData, TParam, TFilter> getDataCallback, StringComparison stringComparison)
+            : base(token, supportedOperatorType, false, stringComparison)
         {
             m_GetDataCallback = getDataCallback;
         }
 
-        public Filter(string token, IEnumerable<string> supportedOperatorType, Func<TObject, TParam, TFilter> getDataCallback, Func<string, TParam> parameterTransformer)
-            : base(token, supportedOperatorType)
-        {
-            m_GetDataCallback = getDataCallback;
-            m_ParameterTransformer = parameterTransformer;
-        }
-
-        public Filter(string token, IEnumerable<string> supportedOperatorType, Func<TObject, TParam, TFilter> getDataCallback, Func<string, TParam> parameterTransformer, StringComparison stringComparison)
-            : base(token, supportedOperatorType, stringComparison)
+        public Filter(string token, IEnumerable<string> supportedOperatorType, Func<TData, TParam, TFilter> getDataCallback, Func<string, TParam> parameterTransformer)
+            : base(token, supportedOperatorType, false)
         {
             m_GetDataCallback = getDataCallback;
             m_ParameterTransformer = parameterTransformer;
         }
 
-        public Filter(string token, IEnumerable<string> supportedOperatorType, Func<TObject, TParam, string, TFilter, bool> resolver)
-            : base(token, supportedOperatorType)
+        public Filter(string token, IEnumerable<string> supportedOperatorType, Func<TData, TParam, TFilter> getDataCallback, Func<string, TParam> parameterTransformer, StringComparison stringComparison)
+            : base(token, supportedOperatorType, false, stringComparison)
+        {
+            m_GetDataCallback = getDataCallback;
+            m_ParameterTransformer = parameterTransformer;
+        }
+
+        public Filter(string token, IEnumerable<string> supportedOperatorType, Func<TData, TParam, string, TFilter, bool> resolver)
+            : base(token, supportedOperatorType, true)
         {
             m_FilterResolver = resolver;
-            this.resolver = true;
         }
 
-        public Filter(string token, IEnumerable<string> supportedOperatorType, Func<TObject, TParam, string, TFilter, bool> resolver, Func<string, TParam> parameterTransformer)
-            : base(token, supportedOperatorType)
+        public Filter(string token, IEnumerable<string> supportedOperatorType, Func<TData, TParam, string, TFilter, bool> resolver, Func<string, TParam> parameterTransformer)
+            : base(token, supportedOperatorType, true)
         {
             m_FilterResolver = resolver;
             m_ParameterTransformer = parameterTransformer;
-            this.resolver = true;
         }
 
-        public TFilter GetData(TObject o, TParam p)
+        public TFilter GetData(TData o, TParam p)
         {
             return m_GetDataCallback(o, p);
         }
 
-        public bool Resolve(TObject data, TParam param, FilterOperator op, TFilter value)
+        public bool Resolve(TData data, TParam param, FilterOperator op, TFilter value)
         {
             if (!resolver)
                 return false;
@@ -161,18 +174,32 @@ namespace Unity.QuickSearch
 
             return Utils.ConvertValue<TParam>(param);
         }
+
+        public override IFilterOperation GenerateOperation(FilterOperationGeneratorData data, int operatorIndex, List<QueryError> errors)
+        {
+            if (resolver)
+            {
+                var filterValue = ((ParseResult<TFilter>)data.filterValueParseResult).parsedValue;
+                // ReSharper disable once ConvertToLocalFunction
+                Func<TData, TParam, bool> operation = (o, param) => Resolve(o, param, data.op, filterValue);
+
+                return new FilterOperation<TData, TParam, TFilter>(this, data.op, data.filterValue, data.paramValue, operation);
+            }
+            else
+                return data.generator.GenerateOperation(data, this, operatorIndex, errors);
+        }
     }
 
-    internal class DefaultFilter<TObject> : Filter<TObject, string>
+    internal class DefaultFilter<TData> : Filter<TData, string>
     {
-        public DefaultFilter(string token, Func<TObject, string, string, string, bool> handler)
+        public DefaultFilter(string token, Func<TData, string, string, string, bool> handler)
             : base(token, null, (o, op, value) => handler(o, token, op, value))
         { }
     }
 
-    internal class DefaultParamFilter<TObject> : Filter<TObject, string, string>
+    internal class DefaultParamFilter<TData> : Filter<TData, string, string>
     {
-        public DefaultParamFilter(string token, Func<TObject, string, string, string, string, bool> handler)
+        public DefaultParamFilter(string token, Func<TData, string, string, string, string, bool> handler)
             : base(token, null, (o, param, op, value) => handler(o, token, param, op, value))
         { }
     }

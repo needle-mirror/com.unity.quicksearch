@@ -1,102 +1,66 @@
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Security.Cryptography;
+using UnityEditor;
 
 namespace Unity.QuickSearch
 {
     public class SearchFilter
     {
-        [DebuggerDisplay("{name.displayName} expanded:{isExpanded}")]
+        private List<SearchProvider> m_Providers;
+
+        [DebuggerDisplay("{name.displayName} enabled:{name.isEnabled}")]
         internal class ProviderDesc
         {
             public ProviderDesc(NameEntry name, SearchProvider provider)
             {
                 this.name = name;
-                categories = new List<NameEntry>();
-                isExpanded = false;
                 this.provider = provider;
             }
 
             public int priority => provider.priority;
 
             public NameEntry name;
-            public bool isExpanded;
-            public List<NameEntry> categories;
             public SearchProvider provider;
         }
+        internal IEnumerable<ProviderDesc> providerDescriptors { get; private set; }
 
-        public bool allActive { get; internal set; }
+        public event Action filterChanged;
 
-        internal List<SearchProvider> filteredProviders;
-        internal List<ProviderDesc> providerFilters;
+        public IEnumerable<SearchProvider> filteredProviders { get; private set; }
 
-        private List<SearchProvider> m_Providers;
-        public List<SearchProvider> Providers
-        {
-            get => m_Providers;
-
-            set
-            {
-                m_Providers = value;
-                providerFilters.Clear();
-                filteredProviders.Clear();
-                foreach (var provider in m_Providers.Where(p => p.active))
-                {
-                    var providerFilter = new ProviderDesc(new NameEntry(provider.name.id, GetProviderNameWithFilter(provider)), provider);
-                    providerFilters.Add(providerFilter);
-                    foreach (var subCategory in provider.subCategories)
-                    {
-                        providerFilter.categories.Add(subCategory);
-                    }
-                }
-                UpdateFilteredProviders();
-            }
-        }
-
-        public SearchFilter()
+        public SearchFilter(IEnumerable<SearchProvider> filterProviders)
         {
             filteredProviders = new List<SearchProvider>();
-            providerFilters = new List<ProviderDesc>();
-        }
+            m_Providers = filterProviders.ToList();
 
-        public void ResetFilter(bool enableAll, bool preserveSubFilters = false)
-        {
-            allActive = enableAll;
-            foreach (var providerDesc in providerFilters)
-                SetFilterInternal(enableAll, providerDesc.name.id, null, preserveSubFilters);
+            providerDescriptors = m_Providers.Where(p => p.active)
+                .Select(provider => new ProviderDesc(new NameEntry(provider.name.id, GetProviderNameWithFilter(provider)), provider)).ToList();
+
             UpdateFilteredProviders();
         }
 
-        public void SetFilter(bool isEnabled, string providerId, string subCategory = null, bool preserveSubFilters = false)
+        public void ResetFilter(bool enableAll)
         {
-            if (SetFilterInternal(isEnabled, providerId, subCategory, preserveSubFilters))
+            foreach (var providerDesc in providerDescriptors)
+                SetFilterInternal(enableAll, providerDesc.name.id);
+            UpdateFilteredProviders();
+        }
+
+        public void SetFilter(bool isEnabled, string providerId)
+        {
+            if (SetFilterInternal(isEnabled, providerId) != null)
                 UpdateFilteredProviders();
         }
 
-        public void SetExpanded(bool isExpanded, string providerId)
+        public bool IsEnabled(string providerId)
         {
-            var providerDesc = providerFilters.Find(pd => pd.name.id == providerId);
-            if (providerDesc != null)
-            {
-                providerDesc.isExpanded = isExpanded;
-            }
-        }
-
-        public bool IsEnabled(string providerId, string subCategory = null)
-        {
-            var desc = providerFilters.Find(pd => pd.name.id == providerId);
+            var desc = providerDescriptors.FirstOrDefault(pd => pd.name.id == providerId);
             if (desc != null)
             {
-                if (subCategory == null)
-                {
-                    return desc.name.isEnabled;
-                }
-
-                foreach (var cat in desc.categories)
-                {
-                    if (cat.id == subCategory)
-                        return cat.isEnabled;
-                }
+                return desc.name.isEnabled;
             }
 
             return false;
@@ -107,43 +71,81 @@ namespace Unity.QuickSearch
             return string.IsNullOrEmpty(provider.filterId) ? provider.name.displayName : provider.name.displayName + " (" + provider.filterId + ")";
         }
 
-        public List<NameEntry> GetSubCategories(SearchProvider provider)
-        {
-            var desc = providerFilters.Find(pd => pd.name.id == provider.name.id);
-            return desc?.categories;
-        }
-
         internal void UpdateFilteredProviders()
         {
-            filteredProviders = Providers.Where(p => IsEnabled(p.name.id)).ToList();
+            var updatedFiltered = m_Providers.Where(p => IsEnabled(p.name.id)).ToList();
+            if (!filteredProviders.SequenceEqual(updatedFiltered))
+            {
+                filteredProviders = updatedFiltered;
+                filterChanged?.Invoke();
+            }
         }
 
-        internal bool SetFilterInternal(bool isEnabled, string providerId, string subCategory = null, bool preserveSubFilters = false)
+        internal ProviderDesc SetFilterInternal(bool isEnabled, string providerId)
         {
-            var providerDesc = providerFilters.Find(pd => pd.name.id == providerId);
-            if (providerDesc == null) 
-                return false;
-
-            if (subCategory == null)
+            var providerDesc = providerDescriptors.FirstOrDefault(pd => pd.name.id == providerId);
+            if (providerDesc != null)
             {
                 providerDesc.name.isEnabled = isEnabled;
-                if (preserveSubFilters) 
-                    return true;
-
-                foreach (var cat in providerDesc.categories)
-                    cat.isEnabled = isEnabled;
             }
-            else
+            return providerDesc;
+        }
+
+        internal static bool LoadFilters(SearchFilter filter, string prefKey)
+        {
+            var filtersStr = EditorPrefs.GetString(prefKey, null);
+
+            return Deserialize(filter, filtersStr);
+        }
+
+        internal static void SaveFilters(SearchFilter filter, string prefKey)
+        {
+            var filterStr = Serialize(filter);
+            EditorPrefs.SetString(prefKey, filterStr);
+        }
+
+        internal static string Serialize(SearchFilter filter)
+        {
+            var filters = new List<object>();
+            foreach (var providerDesc in filter.providerDescriptors)
             {
-                foreach (var cat in providerDesc.categories)
+                var filterDict = new Dictionary<string, object>
                 {
-                    if (cat.id == subCategory)
+                    ["providerId"] = providerDesc.name.id,
+                    ["isEnabled"] = providerDesc.name.isEnabled
+                };
+                filters.Add(filterDict);
+            }
+
+            return Utils.JsonSerialize(filters);
+        }
+
+        internal static bool Deserialize(SearchFilter filter, string filtersStr)
+        {
+            try
+            {
+                filter.ResetFilter(true);
+                if (!string.IsNullOrEmpty(filtersStr))
+                {
+                    var filters = Utils.JsonDeserialize(filtersStr) as List<object>;
+                    foreach (var filterObj in filters)
                     {
-                        cat.isEnabled = isEnabled;
-                        if (isEnabled)
-                            providerDesc.name.isEnabled = true;
+                        var filterJson = filterObj as Dictionary<string, object>;
+                        if (filterJson == null)
+                            continue;
+
+                        var providerId = filterJson["providerId"] as string;
+                        var desc = filter.SetFilterInternal(filterJson["isEnabled"].ToString() == "True", providerId);
+                        if (desc == null)
+                            continue;
                     }
                 }
+
+                filter.UpdateFilteredProviders();
+            }
+            catch (Exception)
+            {
+                return false;
             }
 
             return true;

@@ -61,7 +61,7 @@ namespace Unity.QuickSearch.Providers
                 if (!go)
                     return item.id;
 
-                if (context.searchView.displayMode == DisplayMode.List)
+                if (context.searchView == null || context.searchView.displayMode == DisplayMode.List)
                 {
                     var transformPath = SearchUtils.GetTransformPath(go.transform);
                     var components = go.GetComponents<Component>();

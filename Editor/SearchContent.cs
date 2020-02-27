@@ -23,7 +23,7 @@ namespace Unity.QuickSearch
                 content.image = thumbnail;
             }
 
-            SearchService.Wrap(s_GUIContentPoolIndex + 1, s_GUIContentPool.Length);
+            Utils.Wrap(s_GUIContentPoolIndex + 1, s_GUIContentPool.Length);
             return content;
         }
 

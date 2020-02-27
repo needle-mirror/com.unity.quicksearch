@@ -50,17 +50,8 @@ namespace Unity.QuickSearch.Providers
                 filterId = "p:",
                 showDetails = SearchSettings.fetchPreview,
 
-                subCategories = new List<NameEntry>()
-                {
-                    new NameEntry("guid", "guid"),
-                    new NameEntry("packages", "packages")
-                },
-
                 onEnable = () =>
                 {
-                    AssetPostprocessorIndexer.contentRefreshed -= TrackAssetIndexChanges;
-                    AssetPostprocessorIndexer.contentRefreshed += TrackAssetIndexChanges;
-
                     if (SearchSettings.assetIndexing == SearchAssetIndexing.Files && fileIndexer == null)
                     {
                         var packageRoots = Utils.GetPackagesPaths().Select(p => new SearchIndexerRoot(Path.GetFullPath(p).Replace('\\', '/'), p));
@@ -71,6 +62,9 @@ namespace Unity.QuickSearch.Providers
                     else if (SearchSettings.assetIndexing == SearchAssetIndexing.Complete && assetIndexes == null)
                     {
                         assetIndexes = ADBIndex.Enumerate().ToList();
+                        foreach (var db in assetIndexes)
+                            db.IncrementalUpdate();
+                        AssetPostprocessorIndexer.contentRefreshed += TrackAssetIndexChanges;
                     }
                 },
 
@@ -107,8 +101,8 @@ namespace Unity.QuickSearch.Providers
         private static IEnumerator SearchAssets(SearchContext context, SearchProvider provider)
         {
             var searchQuery = context.searchQuery;
-            var searchGuids = context.categories.Any(c => c.id == "guid" && c.isEnabled);
-            var searchPackages = context.categories.Any(c => c.id == "packages" && c.isEnabled);
+            const bool searchGuids = true;
+            const bool searchPackages = true;
 
             // Search by GUIDs
             if (searchGuids)
@@ -140,12 +134,6 @@ namespace Unity.QuickSearch.Providers
             }
             else
             {
-                if (!searchPackages)
-                {
-                    if (!searchQuery.Contains("a:assets"))
-                        searchQuery = "a:assets " + searchQuery;
-                }
-
                 foreach (var assetEntry in AssetDatabase.FindAssets(searchQuery).Select(AssetDatabase.GUIDToAssetPath).Select(path => provider.CreateItem(path, Path.GetFileName(path))))
                     yield return assetEntry;
             }

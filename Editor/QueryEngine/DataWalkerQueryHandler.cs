@@ -66,10 +66,13 @@ namespace Unity.QuickSearch
                     var searchNode = node as SearchNode;
                     Assert.IsNotNull(searchNode);
                     Func<string, bool> matchWordFunc;
+                    var stringComparison = m_Engine.globalStringComparison;
+                    if (m_Engine.searchDataOverridesStringComparison)
+                        stringComparison = m_Engine.searchDataStringComparison;
                     if (searchNode.exact)
-                        matchWordFunc = s => s.Equals(searchNode.searchValue, m_Engine.globalStringComparison);
+                        matchWordFunc = s => s.Equals(searchNode.searchValue, stringComparison);
                     else
-                        matchWordFunc = s => s.IndexOf(searchNode.searchValue, m_Engine.globalStringComparison) >= 0;
+                        matchWordFunc = s => s.IndexOf(searchNode.searchValue, stringComparison) >= 0;
                     return o => m_Engine.searchDataCallback(o).Any(data => matchWordFunc(data));
                 }
             }

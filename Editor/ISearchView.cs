@@ -59,5 +59,10 @@ namespace Unity.QuickSearch
         /// Triggers a refresh of the search view, re-fetching all the search items from enabled search providers.
         /// </summary>
         void Refresh();
+
+        /// <summary>
+        /// Load all global Window preferences. Will reset the filters according to what is saved in preferences.
+        /// </summary>
+        void LoadGlobalSettings();
     }
 }

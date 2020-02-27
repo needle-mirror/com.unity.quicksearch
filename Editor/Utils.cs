@@ -2,6 +2,7 @@ using System;
 using System.Linq;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.IO;
 using System.Reflection;
 using System.Globalization;
@@ -31,6 +32,28 @@ namespace Unity.QuickSearch
         private static Type[] GetAllEditorWindowTypes()
         {
             return GetAllDerivedTypes(AppDomain.CurrentDomain, typeof(EditorWindow));
+        }
+
+        public static void OpenInBrowser(string baseUrl, List<Tuple<string, string>> query = null)
+        {
+            var url = baseUrl;
+
+            if (query != null)
+            {
+                url += "?";
+                for (var i = 0; i < query.Count; ++i)
+                {
+                    var item = query[i];
+                    url += item.Item1 + "=" + item.Item2;
+                    if (i < query.Count - 1)
+                    {
+                        url += "&";
+                    }
+                }
+            }
+
+            var uri = new Uri(url);
+            Process.Start(uri.AbsoluteUri);
         }
 
         internal static Type GetProjectBrowserWindowType()
@@ -66,6 +89,11 @@ namespace Unity.QuickSearch
                     preview = largePreview;
             }
             return preview;
+        }
+
+        internal static int Wrap(int index, int n)
+        {
+            return ((index % n) + n) % n;
         }
 
         public static UnityEngine.Object SelectAssetFromPath(string path, bool ping = false)
@@ -513,15 +541,17 @@ namespace Unity.QuickSearch
         {
             var type = typeof(T);
             var converter = TypeDescriptor.GetConverter(type);
-            if (converter.IsValid(value))
+            try
             {
                 // ReSharper disable once AssignNullToNotNullAttribute
                 convertedValue = (T)converter.ConvertFromString(null, CultureInfo.InvariantCulture, value);
                 return true;
             }
-
-            convertedValue = default;
-            return false;
+            catch
+            {
+                convertedValue = default;
+                return false;
+            }
         }
 
         private static UnityEngine.Object s_LastDraggedObject;

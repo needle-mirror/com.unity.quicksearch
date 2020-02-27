@@ -1,26 +1,105 @@
-//#define QUICKSEARCH_DEBUG
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Linq;
-using System.Text.RegularExpressions;
-using JetBrains.Annotations;
-using UnityEditor;
-using UnityEditor.ShortcutManagement;
-using UnityEngine;
-using Debug = UnityEngine.Debug;
-
-#if QUICKSEARCH_DEBUG
-using UnityEngine.Profiling;
-#endif
 
 namespace Unity.QuickSearch
 {
     using ItemsById = SortedDictionary<string, SearchItem>;
     using ItemsByScore = SortedDictionary<int, SortedDictionary<string, SearchItem>>;
     using ItemsByProvider = SortedDictionary<int, SortedDictionary<int, SortedDictionary<string, SearchItem>>>;
-    internal class SearchList : IEnumerable<SearchItem>
+
+    /// <summary>
+    /// A search list represents a collection of search results that is filled
+    /// </summary>
+    public interface ISearchList : ICollection<SearchItem>, IDisposable
+    {
+        /// <summary>
+        /// Indicates if the search request is still running and might return more results asynchronously.
+        /// </summary>
+        bool pending { get; }
+
+        /// <summary>
+        /// Any valid search context that is used to track async search request. It can be null.
+        /// </summary>
+        SearchContext context { get; }
+
+        /// <summary>
+        /// Yields search item until the search query is finished. 
+        /// Nullified items can be returned while the search request is pending.
+        /// </summary>
+        /// <returns>List of search items. Items can be null and must be discarded</returns>
+        IEnumerable<SearchItem> Fetch();
+
+        /// <summary>
+        /// Add new items to the search list.
+        /// </summary>
+        /// <param name="items">List of items to be added</param>
+        void AddItems(IEnumerable<SearchItem> items);
+
+        /// <summary>
+        /// Insert new search items in the current list.
+        /// </summary>
+        /// <param name="index">Index where the items should be inserted.</param>
+        /// <param name="items">Items to be inserted.</param>
+        void InsertRange(int index, IEnumerable<SearchItem> items);
+    }
+
+    abstract class BaseSearchList : IDisposable
+    {
+        private bool m_Disposed = false;
+
+        public SearchContext context { get; private set; }
+
+        public bool pending
+        {
+            get
+            {
+                if (context == null)
+                    return false;
+                return context.searchInProgress;
+            }
+        }
+
+        public BaseSearchList()
+        {
+            context = null;
+        }
+
+        public BaseSearchList(SearchContext searchContext)
+        {
+            context = searchContext;
+            context.asyncItemReceived += OnAsyncItemsReceived;
+        }
+
+        public void Dispose()
+        {
+            Dispose(true);
+        }
+
+        public abstract void AddItems(IEnumerable<SearchItem> items);
+
+        protected virtual void Dispose(bool disposing)
+        {
+            if (!m_Disposed)
+            {
+                if (disposing)
+                {
+                    if (context != null)
+                        context.asyncItemReceived -= OnAsyncItemsReceived;
+                }
+
+                m_Disposed = true;
+            }
+        }
+
+        private void OnAsyncItemsReceived(IEnumerable<SearchItem> items)
+        {
+            AddItems(items);
+        }
+    }
+
+    class SortedSearchList : BaseSearchList, ISearchList
     {
         private class IdComparer : Comparer<string>
         {
@@ -32,22 +111,26 @@ namespace Unity.QuickSearch
 
         private ItemsByProvider m_Data = new ItemsByProvider();
         private Dictionary<string, Tuple<int, int>> m_LUT = new Dictionary<string, Tuple<int, int>>();
-
         private bool m_TemporaryUnordered = false;
         private List<SearchItem> m_UnorderedItems = new List<SearchItem>();
 
         public int Count { get; private set; }
-
+        public bool IsReadOnly => true;
         public SearchItem this[int index] => this.ElementAt(index);
+        
+        public SortedSearchList(SearchContext searchContext) : base(searchContext)
+        {
+            Clear();
+        }
 
-        public SearchList(IEnumerable<SearchItem> items)
+        public SortedSearchList(IEnumerable<SearchItem> items)
         {
             FromEnumerable(items);
         }
 
-        public static implicit operator SearchList(List<SearchItem> items)
+        public static implicit operator SortedSearchList(List<SearchItem> items)
         {
-            return new SearchList(items);
+            return new SortedSearchList(items);
         }
 
         public void FromEnumerable(IEnumerable<SearchItem> items)
@@ -56,7 +139,23 @@ namespace Unity.QuickSearch
             AddItems(items);
         }
 
-        public void AddItems(IEnumerable<SearchItem> items)
+        public IEnumerable<SearchItem> Fetch()
+        {
+            if (context == null)
+                throw new Exception("Fetch can only be used if the search list was created with a search context.");
+
+            while (context.searchInProgress)
+                yield return null;
+
+            var it = GetEnumerator();
+            while (it.MoveNext())
+            {
+                if (it.Current != null)
+                    yield return it.Current;
+            }
+        }
+
+        public override void AddItems(IEnumerable<SearchItem> items)
         {
             foreach (var item in items)
             {
@@ -163,6 +262,141 @@ namespace Unity.QuickSearch
             var tempList = items.ToList();
             m_UnorderedItems.InsertRange(index, tempList);
             Count += tempList.Count;
+        }
+
+        public void Add(SearchItem item)
+        {
+            AddItems(new [] {item});
+        }
+
+        public void CopyTo(SearchItem[] array, int arrayIndex)
+        {
+            int i = arrayIndex;
+            var it = GetEnumerator();
+            while (it.MoveNext())
+                array[i++] = it.Current;
+        }
+
+        public bool Contains(SearchItem item)
+        {
+            if (m_TemporaryUnordered)
+            {
+                if (m_UnorderedItems.Contains(item))
+                    return true;
+            }
+
+            foreach (var itemsByPriority in m_Data)
+            {
+                foreach (var itemsByScore in itemsByPriority.Value)
+                {
+                    if (itemsByScore.Value.ContainsValue(item))
+                        return true;
+                }
+            }
+
+            return false;
+        }
+
+        public bool Remove(SearchItem item)
+        {
+            bool removed = false;
+            if (m_TemporaryUnordered)
+                removed = m_UnorderedItems.Remove(item);
+
+            foreach (var itemsByPriority in m_Data)
+            {
+                foreach (var itemsByScore in itemsByPriority.Value)
+                {
+                    if (itemsByScore.Value.Remove(item.id))
+                        return true;
+                }
+            }
+
+            return removed;
+        }
+    }
+
+    internal class AsyncSearchList : BaseSearchList, ISearchList
+    {
+        private readonly List<SearchItem> m_UnorderedItems;
+
+        public int Count => m_UnorderedItems.Count;
+        public bool IsReadOnly => true;
+
+        public AsyncSearchList(SearchContext searchContext) : base(searchContext)
+        {
+            m_UnorderedItems = new List<SearchItem>();
+        }
+
+        public void Add(SearchItem item)
+        {
+            m_UnorderedItems.Add(item);
+        }
+
+        public override void AddItems(IEnumerable<SearchItem> items)
+        {
+            m_UnorderedItems.AddRange(items);
+        }
+
+        public void Clear()
+        {
+            m_UnorderedItems.Clear();
+        }
+
+        public bool Contains(SearchItem item)
+        {
+            return m_UnorderedItems.Contains(item);
+        }
+
+        public void CopyTo(SearchItem[] array, int arrayIndex)
+        {
+            m_UnorderedItems.CopyTo(array, arrayIndex);
+        }
+
+        public IEnumerable<SearchItem> Fetch()
+        {
+            if (context == null)
+                throw new Exception("Fetch can only be used if the search list was created with a search context.");
+
+            int i = 0;
+            var nextCount = m_UnorderedItems.Count;
+            for (; i < nextCount; ++i)
+                yield return m_UnorderedItems[i];
+
+            while (context.searchInProgress)
+            {
+                if (nextCount < m_UnorderedItems.Count)
+                {
+                    nextCount = m_UnorderedItems.Count;
+                    for (; i < nextCount; ++i)
+                        yield return m_UnorderedItems[i];
+                }
+                else
+                    yield return null; // Wait for more items...
+            }
+
+            for (; i < m_UnorderedItems.Count; ++i)
+                yield return m_UnorderedItems[i];
+        }
+
+        public IEnumerator<SearchItem> GetEnumerator()
+        {
+            return Fetch().GetEnumerator();
+        }
+
+        public void InsertRange(int index, IEnumerable<SearchItem> items)
+        {
+            m_UnorderedItems.InsertRange(index, items);
+        }
+
+        public bool Remove(SearchItem item)
+        {
+            return m_UnorderedItems.Remove(item);
+        }
+
+        IEnumerator IEnumerable.GetEnumerator()
+        {
+            return GetEnumerator();
         }
     }
 }

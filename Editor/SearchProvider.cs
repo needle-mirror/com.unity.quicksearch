@@ -73,21 +73,49 @@ namespace Unity.QuickSearch
     {
         internal const int k_RecentUserScore = -99;
 
-        public SearchProvider(string id, string displayName = null)
+        public SearchProvider(string id)
+            : this(id, null, (Func<SearchContext, List<SearchItem>, SearchProvider, object>)null)
         {
+        }
+
+        public SearchProvider(string id, string displayName)
+            : this(id, displayName, (Func<SearchContext, List<SearchItem>, SearchProvider, object>)null)
+        {
+        }
+
+        public SearchProvider(string id, Func<SearchContext, List<SearchItem>, SearchProvider, object> fetchItemsHandler)
+            : this(id, null, fetchItemsHandler)
+        {
+        }
+
+        public SearchProvider(string id, Func<SearchContext, SearchProvider, object> fetchItemsHandler)
+            : this(id, null, (context, items, provider) => fetchItemsHandler(context, provider))
+        {
+        }
+
+        public SearchProvider(string id, string displayName, Func<SearchContext, SearchProvider, object> fetchItemsHandler)
+            : this(id, displayName, (context, items, provider) => fetchItemsHandler(context, provider))
+        {
+        }
+
+        public SearchProvider(string id, string displayName, Func<SearchContext, List<SearchItem>, SearchProvider, object> fetchItemsHandler)
+        {
+            if (String.IsNullOrEmpty(id))
+                throw new ArgumentException("provider id must be non-empty", nameof(id));
+
             active = true;
             name = new NameEntry(id, displayName);
             actions = new List<SearchAction>();
-            fetchItems = (context, items, provider) => null;
+            fetchItems = fetchItemsHandler ?? ((context, items, provider) => null);
             fetchThumbnail = (item, context) => item.thumbnail ?? Icons.quicksearch;
             fetchPreview = null;
             fetchLabel = (item, context) => item.label ?? item.id ?? String.Empty;
             fetchDescription = (item, context) => item.description ?? String.Empty;
-            subCategories = new List<NameEntry>();
             priority = 100;
             fetchTimes = new double[10];
             fetchTimeWriteIndex = 0;
             showDetails = false;
+            filterId = $"{id}:";
         }
 
         /// <summary>
@@ -102,11 +130,6 @@ namespace Unity.QuickSearch
         /// <returns>The newly created search item attached to the current search provider.</returns>
         public SearchItem CreateItem(string id, int score, string label, string description, Texture2D thumbnail, object data)
         {
-            // If the user searched that item recently,
-            // let give it a good score so it gets sorted first.
-            if (SearchService.IsRecent(id))
-                score = Math.Min(k_RecentUserScore, score);
-
             #if false // Debug sorting
             description = $"DEBUG: id={id} - label={label} - description={description} - thumbnail={thumbnail} - data={data}";
             label = $"{label ?? id} ({score})";
@@ -154,7 +177,7 @@ namespace Unity.QuickSearch
         internal void RecordFetchTime(double t)
         {
             fetchTimes[fetchTimeWriteIndex] = t;
-            fetchTimeWriteIndex = SearchService.Wrap(fetchTimeWriteIndex + 1, fetchTimes.Length);
+            fetchTimeWriteIndex = Utils.Wrap(fetchTimeWriteIndex + 1, fetchTimes.Length);
         }
 
         private static bool MatchSearchGroups(string searchContext, string[] tokens, string content, out int startIndex, out int endIndex, StringComparison sc = StringComparison.OrdinalIgnoreCase)
@@ -271,9 +294,6 @@ namespace Unity.QuickSearch
         
         /// <summary> Provider can return a list of words that will help the user complete his search query</summary>
         public Action<SearchContext, string, List<string>> fetchKeywords;
-        
-        /// <summary> List of subfilters that will be visible in the FilterWindow for a given SearchProvider (see AssetProvider for an example).</summary>
-        public List<NameEntry> subCategories;
         
         /// <summary> Called when the QuickSearchWindow is opened. Allow the Provider to perform some caching.</summary>
         public Action onEnable;

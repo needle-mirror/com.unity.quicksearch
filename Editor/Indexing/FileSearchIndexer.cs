@@ -22,7 +22,6 @@ namespace Unity.QuickSearch.Providers
             getEntryComponentsHandler = (e, i) => SearchUtils.SplitFileEntryComponents(e, entrySeparators, k_MinIndexCharVariation, k_MaxIndexCharVariation);
             enumerateRootEntriesHandler = EnumerateAssetPaths;
 
-            AssetPostprocessorIndexer.Enable();
             AssetPostprocessorIndexer.contentRefreshed += UpdateIndexWithNewContent;
         }
 

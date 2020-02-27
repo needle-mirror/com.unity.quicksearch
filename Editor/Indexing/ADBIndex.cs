@@ -1,8 +1,11 @@
 //#define DEBUG_INDEXING
+#if UNITY_2020_1_OR_NEWER
+#define ENABLE_ASYNC_INCREMENTAL_UPDATES
+#endif
 
 using System;
+using System.Collections;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using UnityEditor;
 using UnityEngine;
@@ -17,7 +20,6 @@ namespace Unity.QuickSearch.Providers
         [SerializeField] public AssetIndexerSettings settings;
         [SerializeField, HideInInspector] public byte[] bytes;
 
-        [NonSerialized] public bool initialized = false;
         public AssetIndexer index { get; internal set; }
 
         internal static Dictionary<string, byte[]> incrementalIndexCache = new Dictionary<string, byte[]>();
@@ -25,14 +27,13 @@ namespace Unity.QuickSearch.Providers
         [System.Diagnostics.Conditional("DEBUG_INDEXING")]
         internal void Log(string callName, params string[] args)
         {
-            Debug.Log($"({GetInstanceID()}) ADBIndex[{name}].{callName}[{string.Join(",", args)}]({bytes?.Length}, {index?.documentCount})");
+            Debug.Log($"({GetInstanceID()}) ADBIndex[<b>{name}</b>].<b>{callName}</b>[{string.Join(",", args)}]({bytes?.Length}, {index?.documentCount})");
         }
 
         internal void OnEnable()
         {
             Log("OnEnable");
 
-            initialized = false;
             index = new AssetIndexer(name, settings);
             if (bytes == null)
                 bytes = new byte[0];
@@ -59,9 +60,6 @@ namespace Unity.QuickSearch.Providers
         private void Setup()
         {
             Log("Setup");
-            initialized = true;
-            AssetPostprocessorIndexer.Enable();
-            AssetPostprocessorIndexer.contentRefreshed -= OnContentRefreshed;
             AssetPostprocessorIndexer.contentRefreshed += OnContentRefreshed;
         }
 
@@ -69,15 +67,61 @@ namespace Unity.QuickSearch.Providers
         {
             if (!this || settings.disabled)
                 return;
-            var modifiedSet = updated.Concat(moved).Distinct().Where(p => !index.SkipEntry(p, true)).ToArray();
-            if (modifiedSet.Length > 0 || removed.Length > 0)
+            var changeset = new AssetIndexChangeSet(updated, removed, moved, p => !index.SkipEntry(p, true));
+            if (!changeset.empty)
             {
-                Log("OnContentRefreshed", modifiedSet);
+                Log("OnContentRefreshed", changeset.all.ToArray());
 
-                index.Start();
-                foreach (var path in modifiedSet)
-                    index.IndexAsset(path, true);
-                index.Finish(false, removed);
+                #if ENABLE_ASYNC_INCREMENTAL_UPDATES
+                Progress.RunTask($"Updating {index.name} index...", null, IncrementalUpdate, Progress.Options.None, -1, changeset);
+                #else
+                var it = IncrementalUpdate(-1, changeset);
+                while (it.MoveNext())
+                    ;
+                #endif
+            }
+        }
+
+        internal void IncrementalUpdate()
+        {
+            var changeset = AssetPostprocessorIndexer.GetDiff(p => !index.SkipEntry(p, true));
+            if (!changeset.empty)
+            {
+                Log($"IncrementalUpdate", changeset.all.ToArray());
+                IncrementalUpdate(changeset);
+            }
+        }
+
+        internal void IncrementalUpdate(AssetIndexChangeSet changeset)
+        {
+            var it = IncrementalUpdate(-1, changeset);
+            while (it.MoveNext())
+                ;
+        }
+
+        private IEnumerator IncrementalUpdate(int progressId, object userData)
+        {
+            var set = (AssetIndexChangeSet)userData;
+            #if ENABLE_ASYNC_INCREMENTAL_UPDATES
+            var pathIndex = 0;
+            var pathCount = (float)set.updated.Length;
+            #endif
+            index.Start();
+            foreach (var path in set.updated)
+            {
+                #if ENABLE_ASYNC_INCREMENTAL_UPDATES
+                if (progressId != -1)
+                {
+                    var progressReport = pathIndex++ / pathCount;
+                    Progress.Report(progressId, progressReport, path);
+                }
+                #endif
+                index.IndexAsset(path, true);
+                yield return null;
+            }
+
+            index.Finish(() =>
+            {
                 bytes = index.SaveBytes();
                 EditorUtility.SetDirty(this);
 
@@ -88,13 +132,12 @@ namespace Unity.QuickSearch.Providers
                     incrementalIndexCache[sourceAssetPath] = bytes;
                     AssetDatabase.ImportAsset(sourceAssetPath, ImportAssetOptions.Default);
                 }
-            }
-                
+            }, set.removed);
         }
 
         public static IEnumerable<ADBIndex> Enumerate()
         {
-            return AssetDatabase.FindAssets("t:ADBIndex").Select(AssetDatabase.GUIDToAssetPath)
+            return AssetDatabase.FindAssets("t:ADBIndex a:all").Select(AssetDatabase.GUIDToAssetPath)
                 .Select(path => AssetDatabase.LoadAssetAtPath<ADBIndex>(path))
                 .Where(db => db != null && db.index != null && !db.settings.disabled)
                 .Select(db => { db.Log("Enumerate"); return db; });

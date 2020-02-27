@@ -578,7 +578,7 @@ namespace Unity.QuickSearch.Providers
         static void BrowseAssetStoreItem(SearchItem item)
         {
             var doc = (AssetDocument)item.data;
-            SearchUtility.Goto(doc.url);
+            Utils.OpenInBrowser(doc.url);
             CheckPurchases();
         }
 

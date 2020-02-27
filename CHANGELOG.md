@@ -1,18 +1,26 @@
 # Changelog
 
-## [1.6.0-preview.2] - 2020-02-20
+## [1.6.0-preview.3] - 2020-02-28
+- [UX] Remove search provider sub categories. It simplifies the search view filter window.
 - [UX] New scene provider filtering (added support for: id:<string>, path:<string/string> size:<number>, layer:<number>, tag:<string>, t:<type>, is:[visible|hidden|leaf|root|child])
 - [UX] Add the ability to fetch items on a specific provider.
 - [UX] Add support to override the default object picker using Quick Search
 - [UX] Add support for multiple asset indexes.
 - [UX] Add Search Engines for the upcoming Search API from Unity.
+- [UX] Add scene property filtering support (i.e. `t:light2d p(intensity)>=0.5`)
 - [UX] Add grid view support to display search results in a grid of thumbnails.
 - [FIX] The asset store provider will only be available for 2020.1 and newer.
+- [FIX] Support any characters in word searches.
 - [FIX] Fix Unity crash when dragging and dropping from quick search (1215420)
 - [FIX] Fix Progress API usage.
-- [Fix] Fix complete file name indexing (case 1214270)
-- [Fix] Support any characters in word searches.
+- [FIX] Fix complete file name indexing (case 1214270)
+- [FIX] Add better support for startup incremental update.
 - [DOC] Quick Search 1.6 and higher will require Unity 2019.3 and higher.
+- [API] You can now override the string comparison options for word/phrase matching with the `QueryEngine`.
+- [API] Refactor SearchService to extract all the QuickSearch Window related stuff. Everything is driven by search context.
+- [API] Multiple simultaneous calls to SearchService.GetItems can now be done with different search contexts.
+- [API] Improved the build time of a QueryEngine search query.
+- [API] Allow removal of filters on the QueryEngine.
 
 ## [1.5.2] - 2020-02-18
 - [FIX] Improve scene provider performances

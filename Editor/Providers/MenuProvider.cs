@@ -108,7 +108,7 @@ namespace Unity.QuickSearch
             private static void OpenQuickSearch()
             {
                 var qs = QuickSearch.OpenWithContextualProvider(type);
-                qs.itemIconSize = 0; // Open in list view bu default.
+                qs.itemIconSize = 0; // Open in list view by default.
             }
 
             private static void GetMenuInfo(List<string> outItemNames, List<string> outItemDefaultShortcuts)

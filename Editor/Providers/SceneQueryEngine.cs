@@ -1,8 +1,9 @@
-//#define DEBUG_TIMING
+//#define QUICKSEARCH_DEBUG
 using JetBrains.Annotations;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.RegularExpressions;
 using UnityEditor;
 using UnityEditor.Experimental.SceneManagement;
 using UnityEngine;
@@ -14,13 +15,33 @@ namespace Unity.QuickSearch.Providers
     public class SceneQueryEngine
     {
         private readonly GameObject[] m_GameObjects;
-        private Dictionary<int, GOD> m_GODS = new Dictionary<int, GOD>();
+        private readonly Dictionary<int, GOD> m_GODS = new Dictionary<int, GOD>();
         private readonly QueryEngine<GameObject> m_QueryEngine = new QueryEngine<GameObject>(true);
-
-        public static readonly string[] none = new string[0];
-        public static readonly char[] entrySeparators = { '/', ' ', '_', '-', '.' };
+        
+        private static readonly string[] none = new string[0];
+        private static readonly char[] entrySeparators = { '/', ' ', '_', '-', '.' };
+        private static readonly Regex s_RangeRx = new Regex(@"\[(-?[\d\.]+)[,](-?[\d\.]+)\s*\]");
 
         public Func<GameObject, string[]> buildKeywordComponents { get; set; }
+
+        class PropertyRange
+        {
+            public float min { get; private set; }
+            public float max { get; private set; }
+
+            public PropertyRange(float min, float max)
+            {
+                this.min = min;
+                this.max = max;
+            }
+
+            public bool Contains(float f)
+            {
+                if (f >= min && f <= max)
+                    return true;
+                return false;
+            }
+        }
 
         class GOD
         {
@@ -47,16 +68,66 @@ namespace Unity.QuickSearch.Providers
             m_QueryEngine.AddFilter("size", GetSize);
             m_QueryEngine.AddFilter<string>("is", OnIsFilter, new []{":"});
             m_QueryEngine.AddFilter<string>("t", OnTypeFilter, new []{"=", ":"});
-            m_QueryEngine.SetSearchDataCallback(OnSearchData);
-            m_QueryEngine.SetGlobalStringComparisonOptions(StringComparison.Ordinal);
+
+            m_QueryEngine.AddFilter("p", OnPropertyFilter, s => s, StringComparison.OrdinalIgnoreCase);
+
+            m_QueryEngine.AddOperatorHandler(":", (object v, PropertyRange range) => PropertyRangeCompare(v, range, (f, r) => r.Contains(f)));
+            m_QueryEngine.AddOperatorHandler("=", (object v, PropertyRange range) => PropertyRangeCompare(v, range, (f, r) => r.Contains(f)));
+            m_QueryEngine.AddOperatorHandler("!=", (object v, PropertyRange range) => PropertyRangeCompare(v, range, (f, r) => !r.Contains(f)));
+            m_QueryEngine.AddOperatorHandler("<=", (object v, PropertyRange range) => PropertyRangeCompare(v, range, (f, r) => f <= r.max));
+            m_QueryEngine.AddOperatorHandler("<", (object v, PropertyRange range) => PropertyRangeCompare(v, range, (f, r) => f < r.min));
+            m_QueryEngine.AddOperatorHandler(">", (object v, PropertyRange range) => PropertyRangeCompare(v, range, (f, r) => f > r.max));
+            m_QueryEngine.AddOperatorHandler(">=", (object v, PropertyRange range) => PropertyRangeCompare(v, range, (f, r) => f >= r.min));
+
+            m_QueryEngine.AddTypeParser(arg =>
+            {
+                if (arg.Length > 0 && arg.Last() == ']')
+                {
+                    var rangeMatches = s_RangeRx.Matches(arg);
+                    if (rangeMatches.Count == 1 && rangeMatches[0].Groups.Count == 3)
+                    {
+                        var rg = rangeMatches[0].Groups;
+                        if (float.TryParse(rg[1].Value, out var min) && float.TryParse(rg[2].Value, out var max))
+                            return new ParseResult<PropertyRange>(true, new PropertyRange(min, max));
+                    }
+                }
+
+                return ParseResult<PropertyRange>.none;
+            });
+
+            m_QueryEngine.AddTypeParser(arg =>
+            {
+                if (float.TryParse(arg, out var f))
+                    return new ParseResult<object>(true, f);
+
+                if (arg == "true") return new ParseResult<object>(true, true);
+                if (arg == "false") return new ParseResult<object>(true, false);
+
+                return new ParseResult<object>(true, arg);
+            });
+
+            m_QueryEngine.SetSearchDataCallback(OnSearchData, StringComparison.Ordinal);
+        }
+
+        private bool PropertyRangeCompare(object v, PropertyRange range, Func<float, PropertyRange, bool> comparer)
+        {
+            if (v is float f)
+                return comparer(f, range);
+            return false;
         }
 
         public IEnumerable<GameObject> Search(string searchQuery)
         {
             var query = m_QueryEngine.Parse(searchQuery);
             if (!query.valid)
+            {
+                #if QUICKSEARCH_DEBUG
+                foreach (var err in query.errors)
+                    Debug.LogWarning($"Invalid search query. {err.reason} ({err.index},{err.length})");
+                #endif
                 return Enumerable.Empty<GameObject>();
-            return query.Apply(m_GameObjects);//.ToList();
+            }
+            return query.Apply(m_GameObjects.Where(g => g));//.ToList();
         }
 
         public static GameObject[] FetchGameObjects()
@@ -184,6 +255,84 @@ namespace Unity.QuickSearch.Providers
             }
 
             return false;
+        }
+
+        private object FindPropertyValue(UnityEngine.Object obj, string propertyName)
+        {
+            using (var so = new SerializedObject(obj))
+            {
+                //Utils.LogProperties(so);
+                var property = so.FindProperty(propertyName) ?? so.FindProperty($"m_{propertyName}");
+                if (property != null)
+                    return ConvertPropertyValue(property);
+                property = so.GetIterator();
+                var next = property.Next(true);
+                while (next)
+                {
+                    if (property.name.LastIndexOf(propertyName, StringComparison.OrdinalIgnoreCase) != -1)
+                        return ConvertPropertyValue(property);
+                    next = property.Next(false);
+                }
+            }
+
+            return null;
+        }
+
+        private static string HexConverter(Color c)
+        {
+            return "#" + Mathf.RoundToInt(c.r * 255f).ToString("X2") + Mathf.RoundToInt(c.g * 255f).ToString("X2") + Mathf.RoundToInt(c.b * 255f).ToString("X2");
+        }
+
+        private object ConvertPropertyValue(SerializedProperty sp)
+        {
+            switch (sp.propertyType)
+            {
+                case SerializedPropertyType.Integer: return (float)sp.intValue;
+                case SerializedPropertyType.Boolean: return sp.boolValue;
+                case SerializedPropertyType.Float: return sp.floatValue;
+                case SerializedPropertyType.String: return sp.stringValue;
+                case SerializedPropertyType.Enum: return sp.enumNames[sp.enumValueIndex];
+                case SerializedPropertyType.ObjectReference: return sp.objectReferenceValue?.name;
+                case SerializedPropertyType.Bounds: return sp.boundsValue.size.magnitude;
+                case SerializedPropertyType.BoundsInt: return sp.boundsIntValue.size.magnitude;
+                case SerializedPropertyType.Rect: return sp.rectValue.size.magnitude;
+                case SerializedPropertyType.Color: return HexConverter(sp.colorValue);
+                case SerializedPropertyType.Generic: break;
+                case SerializedPropertyType.LayerMask: break;
+                case SerializedPropertyType.Vector2: break;
+                case SerializedPropertyType.Vector3: break;
+                case SerializedPropertyType.Vector4: break;
+                case SerializedPropertyType.ArraySize: break;
+                case SerializedPropertyType.Character: break;
+                case SerializedPropertyType.AnimationCurve: break;
+                case SerializedPropertyType.Gradient: break;
+                case SerializedPropertyType.Quaternion: break;
+                case SerializedPropertyType.ExposedReference: break;
+                case SerializedPropertyType.FixedBufferSize: break;
+                case SerializedPropertyType.Vector2Int: break;
+                case SerializedPropertyType.Vector3Int: break;
+                case SerializedPropertyType.RectInt: break;
+                
+                case SerializedPropertyType.ManagedReference: break;
+            }
+
+            return null;
+        }
+
+        private object OnPropertyFilter(GameObject go, string param)
+        {
+            var gocs = go.GetComponents<Component>();
+            for (int componentIndex = 1; componentIndex < gocs.Length; ++componentIndex)
+            {
+                var c = gocs[componentIndex];
+                if (!c || c.hideFlags.HasFlag(HideFlags.HideInInspector))
+                    continue;
+
+                var value = FindPropertyValue(c, param);
+                if (value != null)
+                    return value;
+            }
+            return null;
         }
 
         bool OnTypeFilter(GameObject go, string op, string value)

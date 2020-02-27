@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using NUnit.Framework;
 
 namespace Unity.QuickSearch
 {
@@ -14,170 +15,92 @@ namespace Unity.QuickSearch
         string ToString();
     }
 
-    internal interface IFilterOperationGenerator<TData>
+    internal struct FilterOperationGeneratorData
     {
-        IFilterOperation GenerateOperation(int operatorIndex, List<QueryError> errors, QueryEngineImpl<TData> engine);
+        public FilterOperator op;
+        public string filterValue;
+        public string paramValue;
+        public IParseResult filterValueParseResult;
+        public StringComparison globalStringComparison;
+        public IFilterOperationGenerator generator;
     }
 
-    internal class FilterOperationGenerator<TObject, TFilterVariable, TFilterConstant> : IFilterOperationGenerator<TObject>
+    internal interface IFilterOperationGenerator
     {
-        protected readonly Filter<TObject, TFilterVariable> m_Filter;
-        protected readonly FilterOperator m_Operator;
-        protected readonly string m_FilterValue;
-        protected readonly ParseResult<TFilterConstant> m_FilterValueParseResult;
+        IFilterOperation GenerateOperation<TData, TFilterLhs>(FilterOperationGeneratorData data, Filter<TData, TFilterLhs> filter, int operatorIndex, List<QueryError> errors);
+        IFilterOperation GenerateOperation<TData, TParam, TFilterLhs>(FilterOperationGeneratorData data, Filter<TData, TParam, TFilterLhs> filter, int operatorIndex, List<QueryError> errors);
+    }
 
-        public FilterOperationGenerator(Filter<TObject, TFilterVariable> filter, FilterOperator op, string filterValue, IParseResult filterValueParseResult)
+    internal class FilterOperationGenerator<TFilterRhs> : IFilterOperationGenerator
+    {
+        public IFilterOperation GenerateOperation<TData, TFilterLhs>(FilterOperationGeneratorData data, Filter<TData, TFilterLhs> filter, int operatorIndex, List<QueryError> errors)
         {
-            m_Filter = filter;
-            m_Operator = op;
-            m_FilterValue = filterValue;
-            m_FilterValueParseResult = (ParseResult<TFilterConstant>)filterValueParseResult;
-        }
+            var filterValue = ((ParseResult<TFilterRhs>)data.filterValueParseResult).parsedValue;
+            var stringComparisonOptions = filter.overrideStringComparison ? filter.stringComparison : data.globalStringComparison;
+            Func<TData, bool> operation = o => false;
 
-        public virtual IFilterOperation GenerateOperation(int operatorIndex, List<QueryError> errors, QueryEngineImpl<TObject> engine)
-        {
-            Func<TObject, bool> operation = o => false;
-            var filterValue = m_FilterValueParseResult.parsedValue;
-            var handlerTypedKey = new FilterOperatorTypes(typeof(TFilterVariable), typeof(TFilterConstant));
-            var handlerGenericKey = new FilterOperatorTypes(typeof(object), typeof(object));
-            var stringComparisonOptions = m_Filter.overrideStringComparison ? m_Filter.stringComparison : engine.globalStringComparison;
-
-            var error = "";
-
-            if (m_Operator.handlers.ContainsKey(handlerTypedKey))
+            var handlerFound = false;
+            var typedHandler = data.op.GetHandler<TFilterLhs, TFilterRhs>();
+            if (typedHandler != null)
             {
-                if (!(m_Operator.handlers[handlerTypedKey] is Func<TFilterVariable, TFilterConstant, StringComparison, bool> handler))
+                operation = o => typedHandler(filter.GetData(o), filterValue, stringComparisonOptions);
+                handlerFound = true;
+            }
+
+            if (!handlerFound)
+            {
+                var genericHandler = data.op.GetHandler<object, object>();
+                if (genericHandler != null)
                 {
-                    error = $"Filter operator handler of type ({handlerTypedKey.leftHandSideType}, {handlerTypedKey.rightHandSideType}) could not be" +
-                        $" converted to Func<{handlerTypedKey.leftHandSideType}, {handlerTypedKey.rightHandSideType}, bool>";
-                    errors.Add(new QueryError(operatorIndex, error));
+                    operation = o => genericHandler(filter.GetData(o), filterValue, stringComparisonOptions);
+                    handlerFound = true;
                 }
-                else
-                    operation = o => handler(m_Filter.GetData(o), filterValue, stringComparisonOptions);
             }
-            else if (m_Operator.handlers.ContainsKey(handlerGenericKey))
+
+            if (!handlerFound)
             {
-                if (!(m_Operator.handlers[handlerGenericKey] is Func<object, object, StringComparison, bool> handler))
+                var error = $"No handler of type ({typeof(TFilterLhs)}, {typeof(TFilterRhs)}) or (object, object) found for operator {data.op.token}";
+                errors.Add(new QueryError(operatorIndex, data.op.token.Length, error));
+            }
+
+            return new FilterOperation<TData, TFilterLhs>(filter, data.op, data.filterValue, operation);
+        }
+
+        public IFilterOperation GenerateOperation<TData, TParam, TFilterLhs>(FilterOperationGeneratorData data, Filter<TData, TParam, TFilterLhs> filter, int operatorIndex, List<QueryError> errors)
+        {
+            Func<TData, TParam, bool> operation = (o, p) => false;
+            var filterValue = ((ParseResult<TFilterRhs>)data.filterValueParseResult).parsedValue;
+            var stringComparisonOptions = filter.overrideStringComparison ? filter.stringComparison : data.globalStringComparison;
+
+            var handlerFound = false;
+            var typedHandler = data.op.GetHandler<TFilterLhs, TFilterRhs>();
+            if (typedHandler != null)
+            {
+                operation = (o, p) => typedHandler(filter.GetData(o, p), filterValue, stringComparisonOptions);
+                handlerFound = true;
+            }
+
+            if (!handlerFound)
+            {
+                var genericHandler = data.op.GetHandler<object, object>();
+                if (genericHandler != null)
                 {
-                    error = $"Filter operator handler of type ({handlerGenericKey.leftHandSideType}, {handlerGenericKey.rightHandSideType}) could not be" +
-                        $" converted to Func<{handlerGenericKey.leftHandSideType}, {handlerGenericKey.rightHandSideType}, bool>";
-                    errors.Add(new QueryError(operatorIndex, error));
+                    operation = (o, p) => genericHandler(filter.GetData(o, p), filterValue, stringComparisonOptions);
+                    handlerFound = true;
                 }
-                else
-                    operation = o => handler(m_Filter.GetData(o), filterValue, stringComparisonOptions);
             }
-            else
+
+            if (!handlerFound)
             {
-                error = $"No handler of type ({typeof(TFilterVariable)}, {typeof(TFilterConstant)}) or (object, object) found for operator {m_Operator.token}";
+                var error = $"No handler of type ({typeof(TFilterLhs)}, {typeof(TFilterRhs)}) or (object, object) found for operator {data.op.token}";
+                errors.Add(new QueryError(operatorIndex, data.op.token.Length, error));
             }
 
-
-            if (!string.IsNullOrEmpty(error))
-            {
-                errors.Add(new QueryError(operatorIndex, m_Operator.token.Length, error));
-            }
-
-            return new FilterOperation<TObject, TFilterVariable>(m_Filter, m_Operator, m_FilterValue, operation);
+            return new FilterOperation<TData, TParam, TFilterLhs>(filter, data.op, data.filterValue, data.paramValue, operation);
         }
     }
 
-    internal class FilterResolverOperationGenerator<TObject, TFilterVariable> : FilterOperationGenerator<TObject, TFilterVariable, TFilterVariable>
-    {
-        public FilterResolverOperationGenerator(Filter<TObject, TFilterVariable> filter, FilterOperator op, string filterValue, IParseResult filterValueParseResult)
-            : base(filter, op, filterValue, filterValueParseResult)
-        { }
-
-        public override IFilterOperation GenerateOperation(int operatorIndex, List<QueryError> errors, QueryEngineImpl<TObject> engine)
-        {
-            var filterValue = m_FilterValueParseResult.parsedValue;
-            // ReSharper disable once ConvertToLocalFunction
-            Func<TObject, bool> operation = o => m_Filter.Resolve(o, m_Operator, filterValue);
-
-            return new FilterOperation<TObject, TFilterVariable>(m_Filter, m_Operator, m_FilterValue, operation);
-        }
-    }
-
-    internal class FilterOperationGenerator<TObject, TParam, TFilterVariable, TFilterConstant> : IFilterOperationGenerator<TObject>
-    {
-        protected readonly Filter<TObject, TParam, TFilterVariable> m_Filter;
-        protected readonly FilterOperator m_Operator;
-        protected readonly string m_FilterValue;
-        protected readonly string m_ParamValue;
-        protected readonly ParseResult<TFilterConstant> m_FilterValueParseResult;
-
-        public FilterOperationGenerator(Filter<TObject, TParam, TFilterVariable> filter, FilterOperator op, string filterValue, string paramValue, IParseResult filterValueParseResult)
-        {
-            m_Filter = filter;
-            m_Operator = op;
-            m_FilterValue = filterValue;
-            m_ParamValue = paramValue;
-            m_FilterValueParseResult = (ParseResult<TFilterConstant>)filterValueParseResult;
-        }
-
-        public virtual IFilterOperation GenerateOperation(int operatorIndex, List<QueryError> errors, QueryEngineImpl<TObject> engine)
-        {
-            Func<TObject, TParam, bool> operation = (o, p) => false;
-            var filterValue = m_FilterValueParseResult.parsedValue;
-            var handlerTypedKey = new FilterOperatorTypes(typeof(TFilterVariable), typeof(TFilterConstant));
-            var handlerGenericKey = new FilterOperatorTypes(typeof(object), typeof(object));
-            var stringComparisonOptions = m_Filter.overrideStringComparison ? m_Filter.stringComparison : engine.globalStringComparison;
-
-            var error = "";
-
-            if (m_Operator.handlers.ContainsKey(handlerTypedKey))
-            {
-                if (!(m_Operator.handlers[handlerTypedKey] is Func<TFilterVariable, TFilterConstant, StringComparison, bool> handler))
-                {
-                    error = $"Filter operator handler of type ({handlerTypedKey.leftHandSideType}, {handlerTypedKey.rightHandSideType}) could not be" +
-                        $" converted to Func<{handlerTypedKey.leftHandSideType}, {handlerTypedKey.rightHandSideType}, bool>";
-                    errors.Add(new QueryError(operatorIndex, error));
-                }
-                else
-                    operation = (o, p) => handler(m_Filter.GetData(o, p), filterValue, stringComparisonOptions);
-            }
-            else if (m_Operator.handlers.ContainsKey(handlerGenericKey))
-            {
-                if (!(m_Operator.handlers[handlerGenericKey] is Func<object, object, StringComparison, bool> handler))
-                {
-                    error = $"Filter operator handler of type ({handlerGenericKey.leftHandSideType}, {handlerGenericKey.rightHandSideType}) could not be" +
-                        $" converted to Func<{handlerGenericKey.leftHandSideType}, {handlerGenericKey.rightHandSideType}, bool>";
-                    errors.Add(new QueryError(operatorIndex, error));
-                }
-                else
-                    operation = (o, p) => handler(m_Filter.GetData(o, p), filterValue, stringComparisonOptions);
-            }
-            else
-            {
-                error = $"No handler of type ({typeof(TFilterVariable)}, {typeof(TFilterConstant)}) or (object, object) found for operator {m_Operator.token}";
-            }
-
-
-            if (!string.IsNullOrEmpty(error))
-            {
-                errors.Add(new QueryError(operatorIndex, m_Operator.token.Length, error));
-            }
-
-            return new FilterOperation<TObject, TParam, TFilterVariable>(m_Filter, m_Operator, m_FilterValue, m_ParamValue, operation);
-        }
-    }
-
-    internal class FilterResolverOperationGenerator<TObject, TParam, TFilterVariable> : FilterOperationGenerator<TObject, TParam, TFilterVariable, TFilterVariable>
-    {
-        public FilterResolverOperationGenerator(Filter<TObject, TParam, TFilterVariable> filter, FilterOperator op, string filterValue, string paramValue, IParseResult filterValueParseResult)
-            : base(filter, op, filterValue, paramValue, filterValueParseResult)
-        { }
-
-        public override IFilterOperation GenerateOperation(int operatorIndex, List<QueryError> errors, QueryEngineImpl<TObject> engine)
-        {
-            var filterValue = m_FilterValueParseResult.parsedValue;
-            // ReSharper disable once ConvertToLocalFunction
-            Func<TObject, TParam, bool> operation = (o, param) => m_Filter.Resolve(o, param, m_Operator, filterValue);
-
-            return new FilterOperation<TObject, TParam, TFilterVariable>(m_Filter, m_Operator, m_FilterValue, m_ParamValue, operation);
-        }
-    }
-
-    internal abstract class BaseFilterOperation<TObject> : IFilterOperation
+    internal abstract class BaseFilterOperation<TData> : IFilterOperation
     {
         public string filterName => filter.token;
         public string filterValue { get; }
@@ -192,7 +115,7 @@ namespace Unity.QuickSearch
             this.filterValue = filterValue;
         }
 
-        public abstract bool Match(TObject obj);
+        public abstract bool Match(TData obj);
 
         public new virtual string ToString()
         {
@@ -200,32 +123,39 @@ namespace Unity.QuickSearch
         }
     }
 
-    internal class FilterOperation<TObject, TFilterVariable> : BaseFilterOperation<TObject>
+    internal class FilterOperation<TData, TFilterLhs> : BaseFilterOperation<TData>
     {
-        public Func<TObject, bool> operation { get; }
+        public Func<TData, bool> operation { get; }
 
-        public FilterOperation(Filter<TObject, TFilterVariable> filter, FilterOperator filterOperator, string filterValue, Func<TObject, bool> operation)
+        public FilterOperation(Filter<TData, TFilterLhs> filter, FilterOperator filterOperator, string filterValue, Func<TData, bool> operation)
             : base(filter, filterOperator, filterValue)
         {
             this.operation = operation;
         }
 
-        public override bool Match(TObject obj)
+        public override bool Match(TData obj)
         {
-            return operation(obj);
+            try
+            {
+                return operation(obj);
+            }
+            catch (Exception ex)
+            {
+                throw new Exception($"{ex.Message}: Failed to execute {filterOperator} handler with {obj} and {filterValue}\r\n{ex.StackTrace}");
+            }
         }
     }
 
-    internal class FilterOperation<TObject, TParam, TFilter> : BaseFilterOperation<TObject>
+    internal class FilterOperation<TData, TParam, TFilterLhs> : BaseFilterOperation<TData>
     {
         private string m_ParamValue;
 
-        public Func<TObject, TParam, bool> operation { get; }
+        public Func<TData, TParam, bool> operation { get; }
         public TParam param { get; }
 
         public override string filterParams => m_ParamValue;
 
-        public FilterOperation(Filter<TObject, TParam, TFilter> filter, FilterOperator filterOperator, string filterValue, Func<TObject, TParam, bool> operation)
+        public FilterOperation(Filter<TData, TParam, TFilterLhs> filter, FilterOperator filterOperator, string filterValue, Func<TData, TParam, bool> operation)
             : base(filter, filterOperator, filterValue)
         {
             this.operation = operation;
@@ -233,7 +163,7 @@ namespace Unity.QuickSearch
             param = default;
         }
 
-        public FilterOperation(Filter<TObject, TParam, TFilter> filter, FilterOperator filterOperator, string filterValue, string paramValue, Func<TObject, TParam, bool> operation)
+        public FilterOperation(Filter<TData, TParam, TFilterLhs> filter, FilterOperator filterOperator, string filterValue, string paramValue, Func<TData, TParam, bool> operation)
             : base(filter, filterOperator, filterValue)
         {
             this.operation = operation;
@@ -241,9 +171,16 @@ namespace Unity.QuickSearch
             param = string.IsNullOrEmpty(paramValue) ? default : filter.TransformParameter(paramValue);
         }
 
-        public override bool Match(TObject obj)
+        public override bool Match(TData obj)
         {
-            return operation(obj, param);
+            try
+            {
+                return operation(obj, param);
+            }
+            catch (Exception ex)
+            {
+                throw new Exception($"{ex.Message}: Failed to execute {filterOperator} handler with {obj} and {filterValue}\r\n{ex.StackTrace}");
+            }
         }
 
         public override string ToString()

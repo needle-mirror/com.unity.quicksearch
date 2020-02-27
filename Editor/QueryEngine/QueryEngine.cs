@@ -20,15 +20,26 @@ namespace Unity.QuickSearch
         bool success { get; }
     }
 
-    internal readonly struct TypeParser
+    internal interface ITypeParser
     {
-        public readonly Type type;
-        public readonly Delegate parser;
+        Type type { get; }
+        IParseResult Parse(string value);
+    }
 
-        public TypeParser(Type type, Delegate parser)
+    internal readonly struct TypeParser<T> : ITypeParser
+    {
+        private readonly Func<string, ParseResult<T>> m_Parser;
+
+        public Type type => typeof(T);
+
+        public TypeParser(Func<string, ParseResult<T>> parser)
         {
-            this.type = type;
-            this.parser = parser;
+            m_Parser = parser;
+        }
+
+        public IParseResult Parse(string value)
+        {
+            return m_Parser(value);
         }
     }
 
@@ -58,6 +69,8 @@ namespace Unity.QuickSearch
             this.success = success;
             this.parsedValue = value;
         }
+
+        public static readonly ParseResult<T> none = new ParseResult<T>(false, default(T));
     }
 
     /// <summary>
@@ -202,25 +215,49 @@ namespace Unity.QuickSearch
         }
     }
 
-    internal sealed class QueryEngineImpl<TData>
+    internal interface IQueryEngineImplementation
     {
-        private List<IFilter> m_Filters = new List<IFilter>();
+        void AddFilterOperationGenerator<T>();
+    }
+
+    internal sealed class QueryEngineImpl<TData> : IQueryEngineImplementation
+    {
+        private Dictionary<string, IFilter> m_Filters = new Dictionary<string, IFilter>();
         private Func<TData, string, string, string, bool> m_DefaultFilterHandler;
         private Func<TData, string, string, string, string, bool> m_DefaultParamFilterHandler;
         private Dictionary<string, FilterOperator> m_FilterOperators = new Dictionary<string, FilterOperator>();
-        private List<TypeParser> m_TypeParsers = new List<TypeParser>();
+        private List<ITypeParser> m_TypeParsers = new List<ITypeParser>();
+        Dictionary<Type, ITypeParser> m_DefaultTypeParsers = new Dictionary<Type, ITypeParser>();
+        Dictionary<Type, IFilterOperationGenerator> m_FilterOperationGenerators = new Dictionary<Type, IFilterOperationGenerator>();
 
         // To match a regex at a specific index, use \\G and Match(input, startIndex)
         private static readonly Regex k_PhraseRx = new Regex("\\G!?\\\".*?\\\"");
-        private static readonly Regex k_GroupStartRx = new Regex("\\G\\(");
         private Regex m_FilterRx = new Regex("\\G([\\w]+)([:><=!]+)(\\\".*?\\\"|[\\S]+)");
         private static readonly Regex k_WordRx = new Regex("\\G!?\\S+");
-        private static readonly Regex k_EmptySpaceRx = new Regex("\\G\\s+");
-        private static readonly Regex k_CombiningTokenRx = new Regex("(\\Gand\\b)|(\\Gor\\b)|(\\Gnot\\b)|(\\G-)");
 
-        private delegate int TokenConsumer(string text, int tokenIndexStart, Match regexMatch, List<IQueryNode> nodes, List<QueryError> errors, NodesToStringPosition nodesToStringPosition);
+        private static readonly HashSet<char> k_WhiteSpaceChars = new HashSet<char>(" \f\n\r\t\v");
+        private static readonly Dictionary<string, Func<IQueryNode>> k_CombiningTokenGenerators = new Dictionary<string, Func<IQueryNode>>
+        {
+            {"and", () => new AndNode()},
+            {"or", () => new OrNode()},
+            {"not", () => new NotNode()},
+            {"-", () => new NotNode()}
+        };
 
-        private List<Tuple<Regex, TokenConsumer>> m_TokenConsumers;
+        enum DefaultOperator
+        {
+            Contains,
+            Equal,
+            NotEqual,
+            Greater,
+            GreaterOrEqual,
+            Less,
+            LessOrEqual
+        }
+
+        private delegate int TokenConsumer(string text, int tokenIndexStart, int tokenEndIndex, List<IQueryNode> nodes, List<QueryError> errors, NodesToStringPosition nodesToStringPosition, out bool matched);
+
+        private List<TokenConsumer> m_TokenConsumers;
 
         public Func<TData, IEnumerable<string>> searchDataCallback { get; private set; }
 
@@ -228,51 +265,120 @@ namespace Unity.QuickSearch
 
         public StringComparison globalStringComparison { get; set; } = StringComparison.OrdinalIgnoreCase;
 
+        public StringComparison searchDataStringComparison { get; private set; } = StringComparison.OrdinalIgnoreCase;
+        public bool searchDataOverridesGlobalStringComparison { get; private set; }
+
         public QueryEngineImpl()
         {
             // Default operators
             AddOperator(":", false)
-                .AddHandler((object ev, object fv, StringComparison sc) => ev.ToString().IndexOf(fv.ToString(), sc) >= 0)
-                .AddHandler((string ev, string fv, StringComparison sc) => ev.IndexOf(fv, sc) >= 0);
+                .AddHandler((object ev, object fv, StringComparison sc) => CompareObjects(ev, fv, sc, DefaultOperator.Contains, ":"))
+                .AddHandler((string ev, string fv, StringComparison sc) => ev?.IndexOf(fv, sc) >= 0)
+                .AddHandler((int ev, int fv, StringComparison sc) => ev.ToString().IndexOf(fv.ToString(), sc) != -1)
+                .AddHandler((float ev, float fv, StringComparison sc) => ev.ToString().IndexOf(fv.ToString(), sc) != -1);
             AddOperator("=", false)
-                .AddHandler((object ev, object fv) => ev.Equals(fv))
+                .AddHandler((object ev, object fv, StringComparison sc) => CompareObjects(ev, fv, sc, DefaultOperator.Equal, "="))
                 .AddHandler((int ev, int fv) => ev == fv)
                 .AddHandler((float ev, float fv) => Math.Abs(ev - fv) < Mathf.Epsilon)
                 .AddHandler((bool ev, bool fv) => ev == fv)
                 .AddHandler((string ev, string fv, StringComparison sc) => string.Equals(ev, fv, sc));
             AddOperator("!=", false)
-                .AddHandler((object ev, object fv) => !ev.Equals(fv))
+                .AddHandler((object ev, object fv, StringComparison sc) => CompareObjects(ev, fv, sc, DefaultOperator.NotEqual, "!="))
                 .AddHandler((int ev, int fv) => ev != fv)
                 .AddHandler((float ev, float fv) => Math.Abs(ev - fv) >= Mathf.Epsilon)
                 .AddHandler((bool ev, bool fv) => ev != fv)
                 .AddHandler((string ev, string fv, StringComparison sc) => !string.Equals(ev, fv, sc));
             AddOperator("<", false)
-                .AddHandler((object ev, object fv) => Comparer<object>.Default.Compare(ev, fv) < 0)
+                .AddHandler((object ev, object fv, StringComparison sc) => CompareObjects(ev, fv, sc, DefaultOperator.Less, "<"))
                 .AddHandler((int ev, int fv) => ev < fv)
                 .AddHandler((float ev, float fv) => ev < fv)
                 .AddHandler((string ev, string fv, StringComparison sc) => string.Compare(ev, fv, sc) < 0);
             AddOperator(">", false)
-                .AddHandler((object ev, object fv) => Comparer<object>.Default.Compare(ev, fv) > 0)
+                .AddHandler((object ev, object fv, StringComparison sc) => CompareObjects(ev, fv, sc, DefaultOperator.Greater, ">"))
                 .AddHandler((int ev, int fv) => ev > fv)
                 .AddHandler((float ev, float fv) => ev > fv)
                 .AddHandler((string ev, string fv, StringComparison sc) => string.Compare(ev, fv, sc) > 0);
             AddOperator("<=", false)
-                .AddHandler((object ev, object fv) => Comparer<object>.Default.Compare(ev, fv) <= 0)
+                .AddHandler((object ev, object fv, StringComparison sc) => CompareObjects(ev, fv, sc, DefaultOperator.LessOrEqual, "<="))
                 .AddHandler((int ev, int fv) => ev <= fv)
                 .AddHandler((float ev, float fv) => ev <= fv)
                 .AddHandler((string ev, string fv, StringComparison sc) => string.Compare(ev, fv, sc) <= 0);
             AddOperator(">=", false)
-                .AddHandler((object ev, object fv) => Comparer<object>.Default.Compare(ev, fv) >= 0)
+                .AddHandler((object ev, object fv, StringComparison sc) => CompareObjects(ev, fv, sc, DefaultOperator.GreaterOrEqual, ">="))
                 .AddHandler((int ev, int fv) => ev >= fv)
                 .AddHandler((float ev, float fv) => ev >= fv)
                 .AddHandler((string ev, string fv, StringComparison sc) => string.Compare(ev, fv, sc) >= 0);
 
             BuildFilterRegex();
+            BuildDefaultTypeParsers();
         }
 
-        public void AddFilter(IFilter filter)
+        private bool CompareObjects(object ev, object fv, StringComparison sc, DefaultOperator op, string opToken)
         {
-            m_Filters.Add(filter);
+            if (ev == null || fv == null)
+                return false;
+
+            var evt = ev.GetType();
+            var fvt = fv.GetType();
+
+            if (m_FilterOperators.TryGetValue(opToken, out var operators))
+            {
+                var opHandler = operators.handlers.FirstOrDefault(kvp => kvp.Key.leftHandSideType == evt && kvp.Key.rightHandSideType == fvt);
+                if (opHandler.Value != null)
+                    return (bool)opHandler.Value.DynamicInvoke(new object[] { ev, fv, sc });
+            }
+
+            if (evt != fvt)
+                return false;
+
+            if (ev is string evs && fv is string fvs)
+            {
+                switch (op)
+                {
+                    case DefaultOperator.Contains: return evs.IndexOf(fvs, sc) != -1;
+                    case DefaultOperator.Equal: return evs.Equals(fvs, sc);
+                    case DefaultOperator.NotEqual: return !evs.Equals(fvs, sc);
+                    case DefaultOperator.Greater: return string.Compare(evs, fvs, sc) > 0;
+                    case DefaultOperator.GreaterOrEqual: return string.Compare(evs, fvs, sc) >= 0;
+                    case DefaultOperator.Less: return string.Compare(evs, fvs, sc) < 0;
+                    case DefaultOperator.LessOrEqual: return string.Compare(evs, fvs, sc) <= 0;
+                }
+
+                return false;
+            }
+
+            switch (op)
+            {
+                case DefaultOperator.Contains: return ev?.ToString().IndexOf(fv?.ToString(), sc) >= 0;
+                case DefaultOperator.Equal: return ev?.Equals(fv) ?? false;
+                case DefaultOperator.NotEqual: return !ev?.Equals(fv) ?? false;
+                case DefaultOperator.Greater: return Comparer<object>.Default.Compare(ev, fv) > 0;
+                case DefaultOperator.GreaterOrEqual: return Comparer<object>.Default.Compare(ev, fv) >= 0;
+                case DefaultOperator.Less: return Comparer<object>.Default.Compare(ev, fv) < 0;
+                case DefaultOperator.LessOrEqual: return Comparer<object>.Default.Compare(ev, fv) <= 0;
+            }
+
+            return false;
+        }
+
+        public void AddFilter(string token, IFilter filter)
+        {
+            if (m_Filters.ContainsKey(token))
+            {
+                Debug.LogWarning($"A filter for \"{token}\" already exists. Please remove it first before adding a new one.");
+                return;
+            }
+            m_Filters.Add(token, filter);
+        }
+
+        public void RemoveFilter(string token)
+        {
+            if (!m_Filters.ContainsKey(token))
+            {
+                Debug.LogWarning($"No filter found for \"{token}\".");
+                return;
+            }
+            m_Filters.Remove(token);
         }
 
         public FilterOperator AddOperator(string op)
@@ -284,7 +390,7 @@ namespace Unity.QuickSearch
         {
             if (m_FilterOperators.ContainsKey(op))
                 return m_FilterOperators[op];
-            var filterOperator = new FilterOperator(op);
+            var filterOperator = new FilterOperator(op, this);
             m_FilterOperators.Add(op, filterOperator);
             if (rebuildFilterRegex)
                 BuildFilterRegex();
@@ -301,6 +407,12 @@ namespace Unity.QuickSearch
             if (!m_FilterOperators.ContainsKey(op))
                 return;
             m_FilterOperators[op].AddHandler(handler);
+
+            // Enums are user defined but still simple enough to generate a parse function for them.
+            if (typeof(TRhs).IsEnum && !m_DefaultTypeParsers.ContainsKey(typeof(TRhs)))
+            {
+                AddDefaultEnumTypeParser<TRhs>();
+            }
         }
 
         public void SetDefaultFilter(Func<TData, string, string, string, bool> handler)
@@ -316,34 +428,42 @@ namespace Unity.QuickSearch
         public void SetSearchDataCallback(Func<TData, IEnumerable<string>> getSearchDataCallback)
         {
             searchDataCallback = getSearchDataCallback;
+            // Remove the override flag in case it was already set.
+            searchDataOverridesGlobalStringComparison = false;
+        }
+
+        public void SetSearchDataCallback(Func<TData, IEnumerable<string>> getSearchDataCallback, StringComparison stringComparison)
+        {
+            SetSearchDataCallback(getSearchDataCallback);
+            searchDataStringComparison = stringComparison;
+            searchDataOverridesGlobalStringComparison = true;
         }
 
         public void AddTypeParser<TFilterConstant>(Func<string, ParseResult<TFilterConstant>> parser)
         {
-            m_TypeParsers.Add(new TypeParser(typeof(TFilterConstant), parser));
+            m_TypeParsers.Add(new TypeParser<TFilterConstant>(parser));
+            AddFilterOperationGenerator<TFilterConstant>();
         }
 
-        internal IQueryNode BuildExpressionGraph(string text, int stringIndex, int endIndex, List<QueryError> errors, NodesToStringPosition nodesToStringPosition)
+        internal IQueryNode BuildExpressionGraph(string text, int startIndex, int endIndex, List<QueryError> errors, NodesToStringPosition nodesToStringPosition)
         {
             var expressionNodes = new List<IQueryNode>();
-            var index = stringIndex;
+            var index = startIndex;
             while (index < endIndex)
             {
                 var matched = false;
                 foreach (var tokenConsumer in m_TokenConsumers)
                 {
-                    var match = tokenConsumer.Item1.Match(text, index, endIndex - index);
-                    if (match.Success)
+                    var consumed = tokenConsumer(text, index, endIndex, expressionNodes, errors, nodesToStringPosition, out var consumerMatched);
+                    if (!consumerMatched)
+                        continue;
+                    if (consumed == -1)
                     {
-                        var consumed = tokenConsumer.Item2(text, index, match, expressionNodes, errors, nodesToStringPosition);
-                        if (consumed == -1)
-                        {
-                            return null;
-                        }
-                        index += consumed;
-                        matched = true;
-                        break;
+                        return null;
                     }
+                    index += consumed;
+                    matched = true;
+                    break;
                 }
 
                 if (!matched)
@@ -359,66 +479,108 @@ namespace Unity.QuickSearch
             return rootNode;
         }
 
-        private static int ConsumeEmpty(string text, int startIndex, Match match, List<IQueryNode> nodes, List<QueryError> errors, NodesToStringPosition nodesToStringPosition)
+        private static int ConsumeEmpty(string text, int startIndex, int endIndex, List<IQueryNode> nodes, List<QueryError> errors, NodesToStringPosition nodesToStringPosition, out bool matched)
         {
+            var currentIndex = startIndex;
+            var lengthMatched = 0;
+            matched = false;
+            while (currentIndex < endIndex && IsWhiteSpaceChar(text[currentIndex]))
+            {
+                ++currentIndex;
+                ++lengthMatched;
+                matched = true;
+            }
+            return lengthMatched;
+        }
+
+        private static bool IsWhiteSpaceChar(char c)
+        {
+            return k_WhiteSpaceChars.Contains(c);
+        }
+
+        private static int ConsumeCombiningToken(string text, int startIndex, int endIndex, List<IQueryNode> nodes, List<QueryError> errors, NodesToStringPosition nodesToStringPosition, out bool matched)
+        {
+            var totalUsableLength = endIndex - startIndex;
+
+            foreach (var combiningTokenKVP in k_CombiningTokenGenerators)
+            {
+                var combiningToken = combiningTokenKVP.Key;
+                var tokenLength = combiningToken.Length;
+                if (tokenLength > totalUsableLength)
+                    continue;
+
+                var stringView = text.GetStringView(startIndex, startIndex + tokenLength);
+                if (stringView == combiningToken)
+                {
+                    matched = true;
+                    var newNode = combiningTokenKVP.Value();
+                    nodesToStringPosition.Add(newNode, new Tuple<int, int>(startIndex, stringView.Length));
+                    nodes.Add(newNode);
+                    return stringView.Length;
+                }
+            }
+
+            matched = false;
+            return -1;
+        }
+
+        private int ConsumeFilter(string text, int startIndex, int endIndex, List<IQueryNode> nodes, List<QueryError> errors, NodesToStringPosition nodesToStringPosition, out bool matched)
+        {
+            var match = m_FilterRx.Match(text, startIndex, endIndex - startIndex);
+            if (!match.Success)
+            {
+                matched = false;
+                return -1;
+            }
+
+            matched = true;
+            var node = CreateFilterToken(match.Value, match, startIndex, errors);
+            if (node != null)
+            {
+                nodesToStringPosition.Add(node, new Tuple<int, int>(startIndex, match.Length));
+                nodes.Add(node);
+            }
+
             return match.Length;
         }
 
-        private static int ConsumeCombiningToken(string text, int startIndex, Match match, List<IQueryNode> nodes, List<QueryError> errors, NodesToStringPosition nodesToStringPosition)
+        private int ConsumeWords(string text, int startIndex, int endIndex, List<IQueryNode> nodes, List<QueryError> errors, NodesToStringPosition nodesToStringPosition, out bool matched)
         {
-            if (IsCombiningToken(match.Value))
+            var match = k_PhraseRx.Match(text, startIndex, endIndex - startIndex);
+            if (!match.Success)
+                match = k_WordRx.Match(text, startIndex, endIndex - startIndex);
+            if (!match.Success)
             {
-                var newNode = CreateCombiningNode(match.Value);
-                nodes.Add(newNode);
-                nodesToStringPosition.Add(newNode, new Tuple<int, int>(startIndex, match.Length));
-                return match.Length;
+                matched = false;
+                return -1;
             }
 
-            return -1;
-        }
-
-        private int ConsumeFilter(string text, int startIndex, Match match, List<IQueryNode> nodes, List<QueryError> errors, NodesToStringPosition nodesToStringPosition)
-        {
-            if (IsFilterToken(match.Value))
-            {
-                var node = CreateFilterToken(match.Value, startIndex, errors);
-                if (node != null)
-                {
-                    nodesToStringPosition.Add(node, new Tuple<int, int>(startIndex, match.Length));
-                    nodes.Add(node);
-                }
-
-                return match.Length;
-            }
-
-            return -1;
-        }
-
-        private int ConsumeWords(string text, int startIndex, Match match, List<IQueryNode> nodes, List<QueryError> errors, NodesToStringPosition nodesToStringPosition)
-        {
+            matched = true;
             if (validateFilters && searchDataCallback == null)
             {
                 errors.Add(new QueryError(startIndex, match.Length, "Cannot use a search word without setting the search data callback."));
                 return -1;
             }
 
-            if (IsPhraseToken(match.Value) || IsWordToken(match.Value))
+            var node = CreateWordExpressionNode(match.Value);
+            if (node != null)
             {
-                var node = CreateWordExpressionNode(match.Value);
-                if (node != null)
-                {
-                    nodesToStringPosition.Add(node, new Tuple<int, int>(startIndex, match.Length));
-                    nodes.Add(node);
-                }
-
-                return match.Length;
+                nodesToStringPosition.Add(node, new Tuple<int, int>(startIndex, match.Length));
+                nodes.Add(node);
             }
 
-            return -1;
+            return match.Length;
         }
 
-        private int ConsumeGroup(string text, int groupStartIndex, Match match, List<IQueryNode> nodes, List<QueryError> errors, NodesToStringPosition nodesToStringPosition)
+        private int ConsumeGroup(string text, int groupStartIndex, int endIndex, List<IQueryNode> nodes, List<QueryError> errors, NodesToStringPosition nodesToStringPosition, out bool matched)
         {
+            if (groupStartIndex >= text.Length || text[groupStartIndex] != '(')
+            {
+                matched = false;
+                return -1;
+            }
+
+            matched = true;
             if (groupStartIndex < 0 || groupStartIndex >= text.Length)
             {
                 errors.Add(new QueryError(0, $"A group should have been found but index was {groupStartIndex}"));
@@ -479,40 +641,15 @@ namespace Unity.QuickSearch
             }
         }
 
-        private static bool IsCombiningToken(string token)
-        {
-            return token == "and" || token == "or" || token == "not" || token == "-";
-        }
-
-        private bool IsFilterToken(string token)
-        {
-            return m_FilterRx.IsMatch(token);
-        }
-
         private static bool IsPhraseToken(string token)
         {
-            return k_PhraseRx.IsMatch(token);
+            var startIndex = token[0] == '!' ? 1 : 0;
+            var endIndex = token.Length - 1;
+            return token[startIndex] == '"' && token[endIndex] == '"';
         }
 
-        private static bool IsWordToken(string token)
+        private IQueryNode CreateFilterToken(string token, Match match, int index, List<QueryError> errors)
         {
-            return k_WordRx.IsMatch(token);
-        }
-
-        private static IQueryNode CreateCombiningNode(string token)
-        {
-            if (token == "and")
-                return new AndNode();
-            if (token == "or")
-                return new OrNode();
-            if (token == "not" || token == "-")
-                return new NotNode();
-            return null;
-        }
-
-        private IQueryNode CreateFilterToken(string token, int index, List<QueryError> errors)
-        {
-            var match = m_FilterRx.Match(token);
             if (match.Groups.Count != 5)
             {
                 errors.Add(new QueryError(index, token.Length, $"Could not parse filter block \"{token}\"."));
@@ -524,18 +661,21 @@ namespace Unity.QuickSearch
             var filterOperator = match.Groups[3].Value;
             var filterValue = match.Groups[4].Value;
 
+            var filterTypeIndex = index + match.Groups[1].Index;
+            var filterOperatorIndex = index + match.Groups[3].Index;
+            var filterValueIndex = index + match.Groups[4].Index;
+
             if (!string.IsNullOrEmpty(filterParam))
             {
                 // Trim () around the group
                 filterParam = filterParam.Trim('(', ')');
             }
 
-            var filter = m_Filters.FirstOrDefault(f => f.token == filterType);
-            if (filter == null)
+            if (!m_Filters.TryGetValue(filterType, out var filter))
             {
                 if (m_DefaultFilterHandler == null && validateFilters)
                 {
-                    errors.Add(new QueryError(index + match.Groups[1].Index, filterType.Length, $"Unknown filter type \"{filterType}\"."));
+                    errors.Add(new QueryError(filterTypeIndex, filterType.Length, $"Unknown filter type \"{filterType}\"."));
                     return null;
                 }
                 if (string.IsNullOrEmpty(filterParam))
@@ -544,74 +684,146 @@ namespace Unity.QuickSearch
                     filter = new DefaultParamFilter<TData>(filterType, m_DefaultParamFilterHandler ?? ((o, s, param, fo, value) => false));
             }
 
-            var op = m_FilterOperators.FirstOrDefault(fo => fo.Value.token == filterOperator).Value;
-            if (op == null)
+            if (!m_FilterOperators.ContainsKey(filterOperator))
             {
-                errors.Add(new QueryError(index + match.Groups[2].Index, filterOperator.Length, $"Unknown filter operator \"{filterOperator}\"."));
+                errors.Add(new QueryError(filterOperatorIndex, filterOperator.Length, $"Unknown filter operator \"{filterOperator}\"."));
                 return null;
             }
+            var op = m_FilterOperators[filterOperator];
 
             if (filter.supportedFilters.Any() && !filter.supportedFilters.Any(filterOp => filterOp.Equals(op.token)))
             {
-                errors.Add(new QueryError(index + match.Groups[2].Index, filterOperator.Length, $"The filter \"{op.token}\" is not supported for this filter."));
+                errors.Add(new QueryError(filterOperatorIndex, filterOperator.Length, $"The filter \"{op.token}\" is not supported for this filter."));
                 return null;
             }
 
             if (IsPhraseToken(filterValue))
                 filterValue = filterValue.Trim('"');
 
-            var filterValueType = filter.type;
+            var parseResult = ParseFilterValue(filterValue, filter, op, out var filterValueType);
+
+            if (!parseResult.success)
+            {
+                errors.Add(new QueryError(filterValueIndex, filterValue.Length, $"The value {filterValue} could not be converted to any of the supported handler types."));
+                return null;
+            }
+
+            IFilterOperationGenerator generator = null;
+            if (!m_FilterOperationGenerators.ContainsKey(filterValueType))
+            {
+                errors.Add(new QueryError(filterValueIndex, filterValue.Length, $"The type {filterValueType} does not have any corresponding operation generator."));
+                return null;
+            }
+            generator = m_FilterOperationGenerators[filterValueType];
+
+            var generatorData = new FilterOperationGeneratorData
+            {
+                filterValue = filterValue,
+                filterValueParseResult = parseResult,
+                globalStringComparison = globalStringComparison,
+                op = op,
+                paramValue = filterParam,
+                generator = generator
+            };
+
+            var operation = filter.GenerateOperation(generatorData, filterOperatorIndex, errors);
+            return new FilterNode(operation);
+        }
+
+        private IParseResult ParseFilterValue(string filterValue, IFilter filter, FilterOperator op, out Type filterValueType)
+        {
             var foundValueType = false;
             IParseResult parseResult = null;
-            var handlerTypes = op.handlers.Keys.Where(key => key.leftHandSideType == filter.type).ToList();
-            // Keep object handlers at the end.
-            if (filter.type != typeof(object))
-                handlerTypes.AddRange(op.handlers.Keys.Where(key => key.leftHandSideType == typeof(object)));
-            foreach (var opHandlerTypes in handlerTypes)
+            filterValueType = filter.type;
+
+            // Filter resolver only support values of the same type as the filter in their resolver
+            if (filter.resolver)
             {
-                var rhsType = opHandlerTypes.rightHandSideType;
-                parseResult = GenerateParseResultForType(filterValue, rhsType);
+                return ParseSpecificType(filterValue, filter.type);
+            }
+
+            // Check custom parsers first
+            foreach (var typeParser in m_TypeParsers)
+            {
+                parseResult = typeParser.Parse(filterValue);
                 if (parseResult.success)
                 {
-                    filterValueType = rhsType;
+                    filterValueType = typeParser.type;
                     foundValueType = true;
                     break;
                 }
             }
 
+            // If no custom type parsers managed to parse the string, try our default ones with the types of handlers available for the operator
+            if (!foundValueType)
+            {
+                // OPTME: Not the prettiest bit of code, but we got rid of LINQ at least.
+                var handlerTypes = new List<FilterOperatorTypes>();
+                foreach (var handlersKey in op.handlers.Keys)
+                {
+                    if (handlersKey.leftHandSideType == filter.type)
+                        handlerTypes.Add(handlersKey);
+                }
+                if (filter.type != typeof(object))
+                {
+                    foreach (var handlersKey in op.handlers.Keys)
+                    {
+                        if (handlersKey.leftHandSideType == typeof(object))
+                            handlerTypes.Add(handlersKey);
+                    }
+                }
+                var sortedHandlerTypes = new List<FilterOperatorTypes>();
+                foreach (var handlerType in handlerTypes)
+                {
+                    if (handlerType.rightHandSideType != typeof(object))
+                    {
+                        sortedHandlerTypes.Add(handlerType);
+                    }
+                }
+                foreach (var handlerType in handlerTypes)
+                {
+                    if (handlerType.rightHandSideType == typeof(object))
+                    {
+                        sortedHandlerTypes.Add(handlerType);
+                    }
+                }
+
+                foreach (var opHandlerTypes in sortedHandlerTypes)
+                {
+                    var rhsType = opHandlerTypes.rightHandSideType;
+                    parseResult = GenerateParseResultForType(filterValue, rhsType);
+                    if (parseResult.success)
+                    {
+                        filterValueType = rhsType;
+                        foundValueType = true;
+                        break;
+                    }
+                }
+            }
+
+            // If we still didn't manage to parse the value, try with the type of the filter instead
             if (!foundValueType)
             {
                 // Try one last time with the type of the filter instead
                 parseResult = GenerateParseResultForType(filterValue, filter.type);
-                if (!parseResult.success)
-                {
-                    errors.Add(new QueryError(index + match.Groups[3].Index, filterValue.Length, $"The value {filterValue} could not be converted to any of the supported handler types."));
-                    return null;
-                }
+                if (parseResult.success)
+                    filterValueType = filter.type;
             }
 
-            IFilterOperationGenerator<TData> filterOperationGenerator;
+            return parseResult;
+        }
 
-            if (!filter.paramFilter)
+        private IParseResult ParseSpecificType(string filterValue, Type type)
+        {
+            foreach (var typeParser in m_TypeParsers)
             {
-                Type type;
-                if (filter.resolver)
-                    type = typeof(FilterResolverOperationGenerator<,>).MakeGenericType(typeof(TData), filter.type);
-                else
-                    type = typeof(FilterOperationGenerator<,,>).MakeGenericType(typeof(TData), filter.type, filterValueType);
-                filterOperationGenerator = (IFilterOperationGenerator<TData>)Activator.CreateInstance(type, filter, op, filterValue, parseResult);
-            }
-            else
-            {
-                Type type;
-                if (filter.resolver)
-                    type = typeof(FilterResolverOperationGenerator<,,>).MakeGenericType(typeof(TData), filter.paramType, filter.type);
-                else
-                    type = typeof(FilterOperationGenerator<,,,>).MakeGenericType(typeof(TData), filter.paramType, filter.type, filterValueType);
-                filterOperationGenerator = (IFilterOperationGenerator<TData>)Activator.CreateInstance(type, filter, op, filterValue, filterParam, parseResult);
+                if (type != typeParser.type)
+                    continue;
+
+                return typeParser.Parse(filterValue);
             }
 
-            return new FilterNode(filterOperationGenerator.GenerateOperation(index + match.Groups[2].Index, errors, this));
+            return GenerateParseResultForType(filterValue, type);
         }
 
         private static IQueryNode CreateWordExpressionNode(string token)
@@ -755,19 +967,25 @@ namespace Unity.QuickSearch
             m_FilterRx = new Regex(filterRx, RegexOptions.Compiled);
 
             // The order of regex in this list is important. Keep it like that unless you know what you are doing!
-            m_TokenConsumers = new List<Tuple<Regex, TokenConsumer>>
+            m_TokenConsumers = new List<TokenConsumer>
             {
-                Tuple.Create<Regex, TokenConsumer>(k_EmptySpaceRx, ConsumeEmpty),
-                Tuple.Create<Regex, TokenConsumer>(k_CombiningTokenRx, ConsumeCombiningToken),
-                Tuple.Create<Regex, TokenConsumer>(k_GroupStartRx, ConsumeGroup),
-                Tuple.Create<Regex, TokenConsumer>(m_FilterRx, ConsumeFilter),
-                Tuple.Create<Regex, TokenConsumer>(k_PhraseRx, ConsumeWords),
-                Tuple.Create<Regex, TokenConsumer>(k_WordRx, ConsumeWords),
+                ConsumeEmpty,
+                ConsumeCombiningToken,
+                ConsumeGroup,
+                ConsumeFilter,
+                ConsumeWords
             };
         }
 
         private IParseResult GenerateParseResultForType(string value, Type type)
         {
+            // Check if we have a default type parser before doing the expensive reflection call
+            if (m_DefaultTypeParsers.ContainsKey(type))
+            {
+                var parser = m_DefaultTypeParsers[type];
+                return parser.Parse(value);
+            }
+
             var thisClassType = typeof(QueryEngineImpl<TData>);
             var method = thisClassType.GetMethod("ParseData", BindingFlags.NonPublic | BindingFlags.Instance);
             var typedMethod = method.MakeGenericMethod(type);
@@ -776,24 +994,57 @@ namespace Unity.QuickSearch
 
         private ParseResult<T> ParseData<T>(string value)
         {
-            var parserIndex = m_TypeParsers.FindIndex(typeParser => typeParser.type == typeof(T));
-            if (parserIndex > -1)
+            if (Utils.TryConvertValue(value, out T parsedValue))
             {
-                var parser = m_TypeParsers[parserIndex];
-                if (parser.parser.DynamicInvoke(value) is ParseResult<T> pr)
-                {
-                    return pr;
-                }
-            }
-            else
-            {
-                if (Utils.TryConvertValue(value, out T parsedValue))
-                {
-                    return new ParseResult<T>(true, parsedValue);
-                }
+                // Last resort to get a operation generator if we don't have one yet
+                AddFilterOperationGenerator<T>();
+
+                return new ParseResult<T>(true, parsedValue);
             }
 
-            return new ParseResult<T>(false, default);
+            return ParseResult<T>.none;
+        }
+
+        private void BuildDefaultTypeParsers()
+        {
+            AddDefaultTypeParser(s => int.TryParse(s, out var value) ? new ParseResult<int>(true, value) : ParseResult<int>.none);
+            AddDefaultTypeParser(s => float.TryParse(s, NumberStyles.Number, NumberFormatInfo.InvariantInfo, out var value) ? new ParseResult<float>(true, value) : ParseResult<float>.none);
+            AddDefaultTypeParser(s => bool.TryParse(s, out var value) ? new ParseResult<bool>(true, value) : ParseResult<bool>.none);
+            AddDefaultTypeParser(s => double.TryParse(s, NumberStyles.Number, NumberFormatInfo.InvariantInfo, out var value) ? new ParseResult<double>(true, value) : ParseResult<double>.none);
+        }
+
+        private void AddDefaultTypeParser<T>(Func<string, ParseResult<T>> parser)
+        {
+            if (m_DefaultTypeParsers.ContainsKey(typeof(T)))
+            {
+                Debug.LogWarning($"A default parser for type {typeof(T)} already exists.");
+                return;
+            }
+            m_DefaultTypeParsers.Add(typeof(T), new TypeParser<T>(parser));
+            AddFilterOperationGenerator<T>();
+        }
+
+        private void AddDefaultEnumTypeParser<T>()
+        {
+            AddDefaultTypeParser(s =>
+            {
+                try
+                {
+                    var value = Enum.Parse(typeof(T), s, true);
+                    return new ParseResult<T>(true, (T)value);
+                }
+                catch (Exception)
+                {
+                    return ParseResult<T>.none;
+                }
+            });
+        }
+
+        public void AddFilterOperationGenerator<T>()
+        {
+            if (m_FilterOperationGenerators.ContainsKey(typeof(T)))
+                return;
+            m_FilterOperationGenerators.Add(typeof(T), new FilterOperationGenerator<T>());
         }
     }
 
@@ -816,9 +1067,19 @@ namespace Unity.QuickSearch
         }
 
         /// <summary>
-        /// Global string comparison options for word matching and filter handling (if not overridden by filter).
+        /// Global string comparison options for word matching and filter handling (if not overridden).
         /// </summary>
         public StringComparison globalStringComparison => m_Impl.globalStringComparison;
+
+        /// <summary>
+        /// String comparison options for word/phrase matching.
+        /// </summary>
+        public StringComparison searchDataStringComparison => m_Impl.searchDataStringComparison;
+
+        /// <summary>
+        /// Indicates if word/phrase matching uses searchDataStringComparison or not.
+        /// </summary>
+        public bool searchDataOverridesStringComparison => m_Impl.searchDataOverridesGlobalStringComparison;
 
         /// <summary>
         /// The callback used to get the data to match to the search words.
@@ -852,7 +1113,7 @@ namespace Unity.QuickSearch
         public void AddFilter<TFilter>(string token, Func<TData, TFilter> getDataFunc, string[] supportedOperatorType = null)
         {
             var filter = new Filter<TData, TFilter>(token, supportedOperatorType, getDataFunc);
-            m_Impl.AddFilter(filter);
+            m_Impl.AddFilter(token, filter);
         }
 
         /// <summary>
@@ -866,7 +1127,7 @@ namespace Unity.QuickSearch
         public void AddFilter<TFilter>(string token, Func<TData, TFilter> getDataFunc, StringComparison stringComparison, string[] supportedOperatorType = null)
         {
             var filter = new Filter<TData, TFilter>(token, supportedOperatorType, getDataFunc, stringComparison);
-            m_Impl.AddFilter(filter);
+            m_Impl.AddFilter(token, filter);
         }
 
         /// <summary>
@@ -880,7 +1141,7 @@ namespace Unity.QuickSearch
         public void AddFilter<TParam, TFilter>(string token, Func<TData, TParam, TFilter> getDataFunc, string[] supportedOperatorType = null)
         {
             var filter = new Filter<TData, TParam, TFilter>(token, supportedOperatorType, getDataFunc);
-            m_Impl.AddFilter(filter);
+            m_Impl.AddFilter(token, filter);
         }
 
         /// <summary>
@@ -895,7 +1156,7 @@ namespace Unity.QuickSearch
         public void AddFilter<TParam, TFilter>(string token, Func<TData, TParam, TFilter> getDataFunc, StringComparison stringComparison, string[] supportedOperatorType = null)
         {
             var filter = new Filter<TData, TParam, TFilter>(token, supportedOperatorType, getDataFunc, stringComparison);
-            m_Impl.AddFilter(filter);
+            m_Impl.AddFilter(token, filter);
         }
 
         /// <summary>
@@ -910,7 +1171,7 @@ namespace Unity.QuickSearch
         public void AddFilter<TParam, TFilter>(string token, Func<TData, TParam, TFilter> getDataFunc, Func<string, TParam> parameterTransformer, string[] supportedOperatorType = null)
         {
             var filter = new Filter<TData, TParam, TFilter>(token, supportedOperatorType, getDataFunc, parameterTransformer);
-            m_Impl.AddFilter(filter);
+            m_Impl.AddFilter(token, filter);
         }
 
         /// <summary>
@@ -926,7 +1187,7 @@ namespace Unity.QuickSearch
         public void AddFilter<TParam, TFilter>(string token, Func<TData, TParam, TFilter> getDataFunc, Func<string, TParam> parameterTransformer, StringComparison stringComparison, string[] supportedOperatorType = null)
         {
             var filter = new Filter<TData, TParam, TFilter>(token, supportedOperatorType, getDataFunc, parameterTransformer, stringComparison);
-            m_Impl.AddFilter(filter);
+            m_Impl.AddFilter(token, filter);
         }
 
         /// <summary>
@@ -939,7 +1200,17 @@ namespace Unity.QuickSearch
         public void AddFilter<TFilter>(string token, Func<TData, string, TFilter, bool> filterResolver, string[] supportedOperatorType = null)
         {
             var filter = new Filter<TData, TFilter>(token, supportedOperatorType, filterResolver);
-            m_Impl.AddFilter(filter);
+            m_Impl.AddFilter(token, filter);
+        }
+
+        /// <summary>
+        /// Remove a custom filter.
+        /// </summary>
+        /// <param name="token">The identifier of the filter. Typically what precedes the operator in a filter (i.e. "id" in "id>=2").</param>
+        /// <remarks>You will get a warning if you try to remove a non existing filter.</remarks>
+        public void RemoveFilter(string token)
+        {
+            m_Impl.RemoveFilter(token);
         }
 
         /// <summary>
@@ -999,6 +1270,16 @@ namespace Unity.QuickSearch
         public void SetSearchDataCallback(Func<TData, IEnumerable<string>> getSearchDataCallback)
         {
             m_Impl.SetSearchDataCallback(getSearchDataCallback);
+        }
+
+        /// <summary>
+        /// Set the callback to be used to fetch the data that will be matched against the search words.
+        /// </summary>
+        /// <param name="getSearchDataCallback">Callback used to get the data to be matched against the search words. Takes an object of type TData and return an IEnumerable of strings.</param>
+        /// <param name="stringComparison">String comparison options.</param>
+        public void SetSearchDataCallback(Func<TData, IEnumerable<string>> getSearchDataCallback, StringComparison stringComparison)
+        {
+            m_Impl.SetSearchDataCallback(getSearchDataCallback, stringComparison);
         }
 
         /// <summary>
