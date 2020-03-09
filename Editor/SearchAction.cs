@@ -1,8 +1,10 @@
 using System;
+using System.Diagnostics;
 using UnityEngine;
 
 namespace Unity.QuickSearch
 {
+    [DebuggerDisplay("{DisplayName} - {Id}")]
     public class SearchAction
     {
         /// <summary>

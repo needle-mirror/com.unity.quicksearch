@@ -18,13 +18,51 @@ namespace Unity.QuickSearch
         private string m_SearchText = "";
         private string m_CachedPhrase;
         private readonly object m_AsyncItemReceivedEventLock = new object();
-        private List<SearchProvider> m_SearchProviders = new List<SearchProvider>();
+
+        internal class FilterDesc
+        {
+            public SearchProvider provider;
+            public bool isEnabled;
+        }
+        private List<FilterDesc> m_ProviderDescs = new List<FilterDesc>();
         private bool m_Disposed = false;
+        internal IEnumerable<FilterDesc> filters => m_ProviderDescs;
 
         public SearchContext(IEnumerable<SearchProvider> providers, string searchText = "")
         {
             this.providers = providers.ToList();
             this.searchText = searchText;
+        }
+
+        ~SearchContext()
+        {
+            Dispose(false);
+        }
+
+        public void ResetFilter(bool enableAll)
+        {
+            foreach (var t in m_ProviderDescs)
+                t.isEnabled = enableAll;
+        }
+
+        public void SetFilter(bool isEnabled, string providerId)
+        {
+            var index = m_ProviderDescs.FindIndex(t => t.provider.name.id == providerId);
+            if (index != -1)
+            {
+                m_ProviderDescs[index].isEnabled = isEnabled;
+            }
+        }
+
+        public bool IsEnabled(string providerId)
+        {
+            var index = m_ProviderDescs.FindIndex(t => t.provider.name.id == providerId);
+            if (index != -1)
+            {
+                return m_ProviderDescs[index].isEnabled;
+            }
+
+            return false;
         }
 
         private void BeginSession()
@@ -33,12 +71,11 @@ namespace Unity.QuickSearch
             UnityEngine.Debug.Log($"Start search session {String.Join(", ", m_SearchProviders.Select(p=>p.name.id))} -> {searchText}");
             #endif
 
-            foreach (var provider in m_SearchProviders)
+            foreach (var desc in m_ProviderDescs)
             {
                 using (var enableTimer = new DebugTimer(null))
                 {
-                    provider.onEnable?.Invoke();
-                    provider.enableTime = enableTimer.timeMs;
+                    desc.provider.OnEnable(enableTimer.timeMs);
                 }
             }
         }
@@ -48,8 +85,8 @@ namespace Unity.QuickSearch
             sessions.StopAllAsyncSearchSessions();
             sessions.Clear();
 
-            foreach (var provider in m_SearchProviders)
-                provider.onDisable?.Invoke();
+            foreach (var desc in m_ProviderDescs)
+                desc.provider.OnDisable();
 
             #if QUICKSEARCH_DEBUG
             UnityEngine.Debug.Log($"End search session {String.Join(", ", m_SearchProviders.Select(p => p.name.id))}");
@@ -60,10 +97,9 @@ namespace Unity.QuickSearch
         {
             if (!m_Disposed)
             {
-                if (disposing)
-                    EndSession();
+                EndSession();
 
-                m_SearchProviders = null;
+                m_ProviderDescs = null;
                 m_Disposed = true;
             }
         }
@@ -71,6 +107,7 @@ namespace Unity.QuickSearch
         public void Dispose()
         {
             Dispose(true);
+            GC.SuppressFinalize(this);
         }
 
         /// <summary>
@@ -112,7 +149,7 @@ namespace Unity.QuickSearch
                 }
                 else
                 {
-                    foreach (var providerFilterId in m_SearchProviders.Select(p => p.filterId))
+                    foreach (var providerFilterId in m_ProviderDescs.Select(desc => desc.provider.filterId))
                     {
                         if (searchQuery.StartsWith(providerFilterId, StringComparison.OrdinalIgnoreCase))
                         {
@@ -196,23 +233,23 @@ namespace Unity.QuickSearch
             get
             {
                 if (actionId != null)
-                    return m_SearchProviders.Where(p => p.actions.Any(a => a.Id == actionId));
+                    return m_ProviderDescs.Where(d => d.provider.actions.Any(a => a.Id == actionId)).Select(d => d.provider);
 
                 if (filterId != null)
-                    return m_SearchProviders.Where(p => p.filterId == filterId);
+                    return m_ProviderDescs.Where(d => d.provider.filterId == filterId).Select(d => d.provider);
 
-                return m_SearchProviders.Where(p=>!p.isExplicitProvider);
+                return m_ProviderDescs.Where(d => d.isEnabled && !d.provider.isExplicitProvider).Select(d => d.provider);
             }
 
-            set
+            private set
             {
-                if (m_SearchProviders?.Count > 0)
+                if (m_ProviderDescs?.Count > 0)
                     EndSession();
 
                 if (value != null)
-                    m_SearchProviders = value.Where(p => p.active).ToList();
+                    m_ProviderDescs = value.Where(provider => provider.active).Select(provider => new FilterDesc() { provider = provider, isEnabled = true }).ToList();
                 else
-                    m_SearchProviders.Clear();
+                    m_ProviderDescs.Clear();
 
                 BeginSession();
             }

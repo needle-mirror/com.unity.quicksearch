@@ -246,6 +246,11 @@ namespace Unity.QuickSearch
             return TypeCache.GetMethodsWithAttribute<T>();
         }
 
+        internal static IEnumerable<MethodInfo> GetAllMethodsWithAttribute(Type attributeType)
+        {
+            return TypeCache.GetMethodsWithAttribute(attributeType);
+        }
+
         internal static Rect GetMainWindowCenteredPosition(Vector2 size)
         {
             var mainWindowRect = GetEditorMainWindowPos();
@@ -639,5 +644,21 @@ namespace Unity.QuickSearch
             }
             return new string(sb).ToLowerInvariant();
         }
+
+        public static string CleanPath(string path)
+        {
+            return path.Replace("\\", "/");
+        }
+
+        public static bool IsPathUnderProject(string path)
+        {
+            if (!Path.IsPathRooted(path))
+            {
+                path = new FileInfo(path).FullName;
+            }
+
+            return CleanPath(path).StartsWith(Application.dataPath + "/");
+        }
+
     }
 }

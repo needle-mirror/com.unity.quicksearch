@@ -41,18 +41,18 @@ namespace Unity.QuickSearch
             return Regex.Split(source, @"(?<!^)(?=[A-Z0-9])");
         }
 
-        public static IEnumerable<string> SplitEntryComponents(string entry, char[] entrySeparators, int minIndexCharVariation, int maxIndexCharVariation)
+        public static IEnumerable<string> SplitEntryComponents(string entry, char[] entrySeparators)
         {
             var nameTokens = entry.Split(entrySeparators).Distinct();
             var scc = nameTokens.SelectMany(s => SplitCamelCase(s)).Where(s => s.Length > 0);
             var fcc = scc.Aggregate("", (current, s) => current + s[0]);
             return new []{ fcc, entry }.Concat(scc.Where(s => s.Length > 1))
-                                .Where(s => s.Length > 0)
-                                .Select(s => s.Substring(0, Math.Min(s.Length, maxIndexCharVariation)).ToLowerInvariant())
+                                .Where(s => s.Length > 1)
+                                .Select(s => s.ToLowerInvariant())
                                 .Distinct();
         }
 
-        public static IEnumerable<string> SplitFileEntryComponents(string path, char[] entrySeparators, int minIndexCharVariation, int maxIndexCharVariation)
+        public static IEnumerable<string> SplitFileEntryComponents(string path, char[] entrySeparators)
         {
             var name = Path.GetFileNameWithoutExtension(path);
             var nameTokens = name.Split(entrySeparators).Distinct().ToArray();
@@ -64,8 +64,8 @@ namespace Unity.QuickSearch
                              .Concat(FindShiftLeftVariations(fcc))
                              .Concat(nameTokens)
                              .Concat(path.Split(entrySeparators).Reverse())
-                             .Where(s => s.Length > 0)
-                             .Select(s => s.Substring(0, Math.Min(s.Length, maxIndexCharVariation)).ToLowerInvariant())
+                             .Where(s => s.Length > 1)
+                             .Select(s => s.ToLowerInvariant())
                              .Distinct();
         }
 

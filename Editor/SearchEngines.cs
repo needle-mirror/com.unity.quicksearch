@@ -1,5 +1,5 @@
 #if UNITY_2020_2_OR_NEWER
-//#define USE_SEARCH_ENGINE_API // << Enable this when the Search API gets merged in latest 2020.2
+#define USE_SEARCH_ENGINE_API
 #endif
 
 #if USE_SEARCH_ENGINE_API
@@ -13,46 +13,37 @@ namespace Unity.QuickSearch
 {
     abstract class QuickSearchEngine : UnityEditor.SearchService.ISearchEngineBase
     {
-        private bool m_LastActiveState;
-
         public SearchProvider provider { get; private set; }
+
+        public SearchContext context { get; private set; }
 
         public virtual void BeginSession(UnityEditor.SearchService.ISearchContext context)
         {
             provider = SearchService.Providers.First(p => p.name.id == providerId);
-            if (provider != null)
-            {
-                m_LastActiveState = provider.active;
-                provider.active = true;
-                provider.onEnable?.Invoke();
-            }
+            this.context = new SearchContext(new []{provider});
         }
 
         public virtual void EndSession(UnityEditor.SearchService.ISearchContext context)
         {
             StopAsyncResults();
-            if (provider != null)
-            {
-                provider.onDisable?.Invoke();
-                provider.active = m_LastActiveState;
-            }
+            this.context = null;
         }
 
         public virtual void BeginSearch(string query, UnityEditor.SearchService.ISearchContext context)
         {
             StopAsyncResults();
-            AsyncSearchSession.asyncItemReceived += onAsyncItemReceived;
+            this.context.asyncItemReceived += onAsyncItemReceived;
         }
 
         public virtual void EndSearch(UnityEditor.SearchService.ISearchContext context) {}
 
         private void StopAsyncResults()
         {
-            if (AsyncSearchSession.SearchInProgress)
+            if (context.searchInProgress)
             {
-                SearchService.StopAllAsyncSearchSessions();
+                context.sessions.StopAllAsyncSearchSessions();
             }
-            AsyncSearchSession.asyncItemReceived -= onAsyncItemReceived;
+            context.asyncItemReceived -= onAsyncItemReceived;
         }
 
         public string id => "quicksearch";
@@ -74,14 +65,23 @@ namespace Unity.QuickSearch
 
         public virtual IEnumerable<string> Search(string query, UnityEditor.SearchService.ISearchContext context, Action<IEnumerable<string>> asyncItemsReceived)
         {
-            var searchContext = new SearchContext();
+            if (asyncItemsReceived != null)
+            {
+                m_OnAsyncItemReceived = asyncItemsReceived;
+            }
+
             if (context.requiredTypeNames != null && context.requiredTypeNames.Any())
             {
-                searchContext.wantsMore = true;
-                searchContext.filterType = Utils.GetTypeFromName(context.requiredTypeNames.First());
+                this.context.wantsMore = true;
+                this.context.filterType = Utils.GetTypeFromName(context.requiredTypeNames.First());
             }
-            searchContext.searchText = query;
-            var items = SearchService.GetItems(searchContext, provider);
+            else
+            {
+                this.context.wantsMore = false;
+                this.context.filterType = null;
+            }
+            this.context.searchText = query;
+            var items = SearchService.GetItems(this.context);
             return items.Select(item => item.id);
         }
     }
@@ -98,19 +98,19 @@ namespace Unity.QuickSearch
         public override void BeginSearch(string query, UnityEditor.SearchService.ISearchContext context)
         {
             base.BeginSearch(query, context);
-            var searchContext = new SearchContext { searchText = query };
-            searchContext.wantsMore = true;
+            this.context.searchText = query;
+            this.context.wantsMore = true;
             if (context.requiredTypeNames != null && context.requiredTypeNames.Any())
             {
-                searchContext.filterType = Utils.GetTypeFromName(context.requiredTypeNames.First());
+                this.context.filterType = Utils.GetTypeFromName(context.requiredTypeNames.First());
             }
             else
             {
-                searchContext.filterType = typeof(GameObject);
+                this.context.filterType = typeof(GameObject);
             }
 
             m_SearchItems = new HashSet<int>();
-            foreach (var id in SearchService.GetItems(searchContext, provider).Select(item => Convert.ToInt32(item.id)))
+            foreach (var id in SearchService.GetItems(this.context, SearchFlags.Synchronous).Select(item => Convert.ToInt32(item.id)))
             {
                 m_SearchItems.Add(id);
             }
@@ -119,6 +119,7 @@ namespace Unity.QuickSearch
         public override void EndSearch(UnityEditor.SearchService.ISearchContext context)
         {
             m_SearchItems.Clear();
+            base.EndSearch(context);
         }
 
         public virtual bool Filter(string query, HierarchyProperty objectToFilter, UnityEditor.SearchService.ISearchContext context)
@@ -143,8 +144,8 @@ namespace Unity.QuickSearch
             Action<UnityEngine.Object, bool> selectHandler, Action<UnityEngine.Object> trackingHandler)
         {
             var selectContext = (UnityEditor.SearchService.ObjectSelector.SearchContext)context;
-            return QuickSearch.ShowObjectPicker(selectHandler, trackingHandler, 
-                selectContext.currentObject?.name ?? "", 
+            return QuickSearch.ShowObjectPicker(selectHandler, trackingHandler,
+                selectContext.currentObject?.name ?? "",
                 selectContext.requiredTypeNames.First(), selectContext.requiredTypes.First()) != null;
         }
     }

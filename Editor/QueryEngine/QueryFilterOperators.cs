@@ -4,6 +4,26 @@ using System.Globalization;
 
 namespace Unity.QuickSearch
 {
+    internal interface IFilterHandlerDelegate
+    {
+        bool Invoke(object ev, object fv, StringComparison sc);
+    }
+
+    internal class FilterHandlerDelegate<TLhs, TRhs> : IFilterHandlerDelegate
+    {
+        public Func<TLhs, TRhs, StringComparison, bool> handler { get; }
+
+        public FilterHandlerDelegate(Func<TLhs, TRhs, StringComparison, bool> handler)
+        {
+            this.handler = handler;
+        }
+
+        public bool Invoke(object ev, object fv, StringComparison sc)
+        {
+            return handler((TLhs)ev, (TRhs)fv, sc);
+        }
+    }
+
     internal readonly struct FilterOperatorTypes : IEquatable<FilterOperatorTypes>
     {
         public readonly Type leftHandSideType;
@@ -39,12 +59,12 @@ namespace Unity.QuickSearch
         private IQueryEngineImplementation m_EngineImplementation;
 
         public string token { get; }
-        public Dictionary<FilterOperatorTypes, Delegate> handlers { get; }
+        public Dictionary<Type, Dictionary<Type, IFilterHandlerDelegate>> handlers { get; }
 
         public FilterOperator(string token, IQueryEngineImplementation engine)
         {
             this.token = token;
-            handlers = new Dictionary<FilterOperatorTypes, Delegate>();
+            handlers = new Dictionary<Type, Dictionary<Type, IFilterHandlerDelegate>>();
             m_EngineImplementation = engine;
         }
 
@@ -55,11 +75,18 @@ namespace Unity.QuickSearch
 
         public FilterOperator AddHandler<TLhs, TRhs>(Func<TLhs, TRhs, StringComparison, bool> handler)
         {
-            var operatorTypes = new FilterOperatorTypes(typeof(TLhs), typeof(TRhs));
-            if (handlers.ContainsKey(operatorTypes))
-                handlers[operatorTypes] = handler;
+            var leftHandSideType = typeof(TLhs);
+            var rightHandSideType = typeof(TRhs);
+
+            if (!handlers.ContainsKey(typeof(TLhs)))
+                handlers.Add(typeof(TLhs), new Dictionary<Type, IFilterHandlerDelegate>());
+            var filterHandlerDelegate = new FilterHandlerDelegate<TLhs, TRhs>(handler);
+
+            var handlersByLeftHandSideType = handlers[leftHandSideType];
+            if (handlersByLeftHandSideType.ContainsKey(rightHandSideType))
+                handlersByLeftHandSideType[rightHandSideType] = filterHandlerDelegate;
             else
-                handlers.Add(operatorTypes, handler);
+                handlersByLeftHandSideType.Add(rightHandSideType, filterHandlerDelegate);
             m_EngineImplementation.AddFilterOperationGenerator<TRhs>();
             return this;
         }
@@ -68,10 +95,20 @@ namespace Unity.QuickSearch
         {
             var lhsType = typeof(TLhs);
             var rhsType = typeof(TRhs);
-            foreach (var kvp in handlers)
+            if (handlers.TryGetValue(lhsType, out var handlersByLeftHandSideType))
             {
-                if (kvp.Key.leftHandSideType == lhsType && kvp.Key.rightHandSideType == rhsType)
-                    return (Func<TLhs, TRhs, StringComparison, bool>)kvp.Value;
+                if (handlersByLeftHandSideType.TryGetValue(rhsType, out var filterHandlerDelegate))
+                    return ((FilterHandlerDelegate<TLhs, TRhs>)filterHandlerDelegate).handler;
+            }
+            return null;
+        }
+
+        public IFilterHandlerDelegate GetHandler(Type leftHandSideType, Type rightHandSideType)
+        {
+            if (handlers.TryGetValue(leftHandSideType, out var handlersByLeftHandSideType))
+            {
+                if (handlersByLeftHandSideType.TryGetValue(rightHandSideType, out var filterHandlerDelegate))
+                    return filterHandlerDelegate;
             }
             return null;
         }

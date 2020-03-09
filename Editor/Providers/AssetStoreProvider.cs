@@ -537,7 +537,7 @@ namespace Unity.QuickSearch.Providers
             newPreview.requestOp = newPreview.request.SendWebRequest();
             newPreview.requestOp.completed += (aop) =>
             {
-                if (newPreview.request.isDone && !newPreview.request.isHttpError && !newPreview.request.isNetworkError)
+                if (newPreview.request.isDone && newPreview.request.result == UnityWebRequest.Result.Success)
                     newPreview.preview = DownloadHandlerTexture.GetContent(newPreview.request);
                 newPreview.requestOp = null;
             };

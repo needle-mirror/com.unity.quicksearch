@@ -25,6 +25,8 @@ namespace Unity.QuickSearch.Providers
         {
             priority = 50;
             this.filterId = filterId;
+            this.showDetails = true;
+            showDetailsOptions = ShowDetailsOptions.Inspector;
 
             isEnabledForContextualSearch = () =>
                 Utils.IsFocusedWindowTypeName("SceneView") ||

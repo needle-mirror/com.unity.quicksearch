@@ -6,20 +6,15 @@ namespace Unity.QuickSearch.Providers
 {
     public class FileSearchIndexer : SearchIndexer, IDisposable
     {
-        private const int k_MinIndexCharVariation = 2;
-        private const int k_MaxIndexCharVariation = 16;
-
         public string type { get; }
 
         public FileSearchIndexer(string type, IEnumerable<SearchIndexerRoot> roots)
             : base (roots)
         {
             this.type = type;
-            minIndexCharVariation = k_MinIndexCharVariation;
-            maxIndexCharVariation = k_MaxIndexCharVariation;
             skipEntryHandler = ShouldSkipEntry;
             getIndexFilePathHandler = GetIndexFilePath;
-            getEntryComponentsHandler = (e, i) => SearchUtils.SplitFileEntryComponents(e, entrySeparators, k_MinIndexCharVariation, k_MaxIndexCharVariation);
+            getEntryComponentsHandler = (e, i) => SearchUtils.SplitFileEntryComponents(e, entrySeparators);
             enumerateRootEntriesHandler = EnumerateAssetPaths;
 
             AssetPostprocessorIndexer.contentRefreshed += UpdateIndexWithNewContent;

@@ -15,7 +15,7 @@ namespace Unity.QuickSearch
             float itemWidth = itemIconSize + itemPadding * 2;
             float itemHeight = itemIconSize + itemLabelHeight + itemLabelTopPadding + itemPadding * 2;
 
-            var gridWidth = m_DrawItemsWidth;
+            var gridWidth = m_DrawItemsRect.width;
             var itemCount = m_FilteredItems.Count;
             int columnCount = (int)(gridWidth / itemWidth);
             int lineCount = Mathf.CeilToInt(itemCount / (float)columnCount);

@@ -38,6 +38,43 @@ namespace Unity.QuickSearch
     }
 
     /// <summary>
+    /// Defines what details are shown in the details panel for the search view.
+    /// </summary>
+    [Flags]
+    public enum ShowDetailsOptions
+    {
+        /// <summary>
+        /// No options are defined.
+        /// </summary>
+        None = 0,
+
+        /// <summary>
+        /// Show a large preview.
+        /// </summary>
+        Preview = 1,
+
+        /// <summary>
+        /// Show an embedded inspector for the selected object.
+        /// </summary>
+        Inspector = 1 << 1,
+
+        /// <summary>
+        /// Show selected item possible actions
+        /// </summary>
+        Actions = 1 << 2,
+
+        /// <summary>
+        /// Show an extended item description
+        /// </summary>
+        Description = 1 << 3,
+
+        /// <summary>
+        /// Default set of options used when [[showDetails]] is set to true.
+        /// </summary>
+        Default = Preview | Actions | Description
+    }
+
+    /// <summary>
     /// The name entry holds a name and an identifier at once.
     /// </summary>
     [DebuggerDisplay("{displayName} ({id})")]
@@ -115,6 +152,7 @@ namespace Unity.QuickSearch
             fetchTimes = new double[10];
             fetchTimeWriteIndex = 0;
             showDetails = false;
+            showDetailsOptions = ShowDetailsOptions.Default;
             filterId = $"{id}:";
         }
 
@@ -258,6 +296,9 @@ namespace Unity.QuickSearch
         /// <summary> Indicates if the provider can show additional details or not.</summary>
         public bool showDetails;
 
+        /// <summary> Explicitly define details options to be shown</summary>
+        public ShowDetailsOptions showDetailsOptions = ShowDetailsOptions.Default;
+
         /// <summary> Handler used to fetch and format the label of a search item.</summary>
         public Func<SearchItem, SearchContext, string> fetchLabel;
         
@@ -316,5 +357,40 @@ namespace Unity.QuickSearch
         internal double loadTime;
         internal double enableTime;
         internal int fetchTimeWriteIndex;
+        int m_EnableLockCounter;
+
+        internal void OnEnable(double enableTimeMs)
+        {
+            try
+            {
+                if (m_EnableLockCounter == 0)
+                    onEnable?.Invoke();
+            }
+            catch (Exception ex)
+            {
+                UnityEngine.Debug.LogException(ex);
+            }
+            finally
+            {
+                enableTime = enableTimeMs;
+                ++m_EnableLockCounter;
+            }
+        }
+
+        internal void OnDisable()
+        {
+            --m_EnableLockCounter;
+            if (m_EnableLockCounter == 0)
+            {
+                try
+                {
+                    onDisable?.Invoke();
+                }
+                catch (Exception ex)
+                {
+                    UnityEngine.Debug.LogException(ex);
+                }
+            }
+        }
     }
 }

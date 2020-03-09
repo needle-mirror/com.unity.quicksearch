@@ -50,7 +50,8 @@ namespace Unity.QuickSearch
         // 4- Added entry types
         // 5- Added indexing tags
         // 6- Revert indexes back to 32 bits instead of 64 bits.
-        internal const int version = 0x4242E000 | 0x006;
+        // 7- Remove min and max char variations.
+        internal const int version = 0x4242E000 | 0x007;
 
         public readonly long key;                   // Value hash
         public readonly int crc;                    // Value correction code (can be length, property key hash, etc.)
@@ -245,8 +246,6 @@ namespace Unity.QuickSearch
     public class SearchIndexer
     {
         public SearchIndexerRoot[] roots { get; }
-        public int minIndexCharVariation { get; set; } = 2;
-        public int maxIndexCharVariation { get; set; } = 8;
         public char[] entrySeparators { get; set; } = SearchUtils.entrySeparators;
 
         internal int keywordCount => m_Keywords.Count;
@@ -367,7 +366,7 @@ namespace Unity.QuickSearch
                 if (p.Length == 0)
                     continue;
 
-                AddWord(p, minIndexCharVariation, maxIndexCharVariation, baseScore + compIndex, documentIndex, indexes);
+                AddWord(p, 2, p.Length, baseScore + compIndex, documentIndex, indexes);
             }
         }
 
@@ -392,12 +391,12 @@ namespace Unity.QuickSearch
 
         internal void AddWord(string word, int score, int documentIndex)
         {
-            AddWord(word, minIndexCharVariation, maxIndexCharVariation, score, documentIndex, m_BatchIndexes);
+            AddWord(word, 2, word.Length, score, documentIndex, m_BatchIndexes);
         }
 
         internal void AddWord(string word, int score, int documentIndex, List<SearchIndexEntry> indexes)
         {
-            AddWord(word, minIndexCharVariation, maxIndexCharVariation, score, documentIndex, indexes);
+            AddWord(word, 2, word.Length, score, documentIndex, indexes);
         }
 
         internal void AddWord(string word, int size, int score, int documentIndex)
@@ -461,12 +460,12 @@ namespace Unity.QuickSearch
 
         internal void AddProperty(string key, string value, int documentIndex, bool saveKeyword)
         {
-            AddProperty(key, value, minIndexCharVariation, maxIndexCharVariation, 0, documentIndex, m_BatchIndexes, saveKeyword);
+            AddProperty(key, value, 2, value.Length, 0, documentIndex, m_BatchIndexes, saveKeyword);
         }
 
         internal void AddProperty(string key, string value, int score, int documentIndex, bool saveKeyword)
         {
-            AddProperty(key, value, minIndexCharVariation, maxIndexCharVariation, score, documentIndex, m_BatchIndexes, saveKeyword);
+            AddProperty(key, value, 2, value.Length, score, documentIndex, m_BatchIndexes, saveKeyword);
         }
 
         internal void AddProperty(string name, string value, int minVariations, int maxVariations, int score, int documentIndex, bool saveKeyword)
@@ -719,7 +718,7 @@ namespace Unity.QuickSearch
                     for (int tokenIndex = 0; tokenIndex < tokens.Length; ++tokenIndex)
                     {
                         var token = tokens[tokenIndex];
-                        if (token.Length < minIndexCharVariation)
+                        if (token.Length < 2)
                             continue;
 
                         var opEndSepPos = token.LastIndexOfAny(k_OpCharacters);
@@ -731,7 +730,6 @@ namespace Unity.QuickSearch
                                 continue;
                             var name = token.Substring(0, opBeginSepPos);
                             var value = token.Substring(opEndSepPos + 1);
-                            value = value.Substring(0, Math.Min(value.Length, maxIndexCharVariation));
                             var opString = token.Substring(opBeginSepPos, opEndSepPos - opBeginSepPos + 1);
                             var op = SearchIndexOperator.Contains;
 

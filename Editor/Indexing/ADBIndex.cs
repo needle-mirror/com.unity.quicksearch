@@ -122,6 +122,9 @@ namespace Unity.QuickSearch.Providers
 
             index.Finish(() =>
             {
+                if (!this)
+                    return;
+
                 bytes = index.SaveBytes();
                 EditorUtility.SetDirty(this);
 

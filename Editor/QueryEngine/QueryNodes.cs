@@ -17,10 +17,12 @@ namespace Unity.QuickSearch
         QueryNodeType type { get; }
         List<IQueryNode> children { get; }
         bool leaf { get; }
+        int QueryHashCode();
     }
 
     internal class FilterNode : IQueryNode
     {
+        readonly string m_FilterString;
         public IFilterOperation filterOperation;
 
         public IQueryNode parent { get; set; }
@@ -28,9 +30,15 @@ namespace Unity.QuickSearch
         public List<IQueryNode> children => new List<IQueryNode>();
         public bool leaf => true;
 
-        public FilterNode(IFilterOperation operation)
+        public FilterNode(IFilterOperation operation, string filterString)
         {
             filterOperation = operation;
+            m_FilterString = filterString;
+        }
+
+        public int QueryHashCode()
+        {
+            return m_FilterString.GetHashCode();
         }
     }
 
@@ -48,6 +56,11 @@ namespace Unity.QuickSearch
         {
             this.searchValue = searchValue;
             exact = isExact;
+        }
+
+        public int QueryHashCode()
+        {
+            return exact ? ("!" + searchValue).GetHashCode() : searchValue.GetHashCode();
         }
     }
 
@@ -90,14 +103,21 @@ namespace Unity.QuickSearch
         }
 
         public abstract void SwapChildNodes();
+
+        public int QueryHashCode()
+        {
+            var hc = 0;
+            foreach (var child in children)
+            {
+                hc ^= child.GetHashCode();
+            }
+            return hc;
+        }
     }
 
     internal class AndNode : CombinedNode
     {
         public override QueryNodeType type => QueryNodeType.And;
-
-        public AndNode()
-        { }
 
         public override void SwapChildNodes()
         {
@@ -114,9 +134,6 @@ namespace Unity.QuickSearch
     {
         public override QueryNodeType type => QueryNodeType.Or;
 
-        public OrNode()
-        { }
-
         public override void SwapChildNodes()
         {
             if (children.Count != 2)
@@ -131,9 +148,6 @@ namespace Unity.QuickSearch
     internal class NotNode : CombinedNode
     {
         public override QueryNodeType type => QueryNodeType.Not;
-
-        public NotNode()
-        { }
 
         public override void SwapChildNodes()
         { }

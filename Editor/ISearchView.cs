@@ -64,5 +64,20 @@ namespace Unity.QuickSearch
         /// Load all global Window preferences. Will reset the filters according to what is saved in preferences.
         /// </summary>
         void LoadGlobalSettings();
+
+        /// <summary>
+        /// Request the search view to repaint itself
+        /// </summary>
+        void Repaint();
+
+        /// <summary>
+        /// Execute an search item action.
+        /// </summary>
+        void ExecuteAction(SearchAction action, SearchItem item, SearchContext context, bool endSearch = true);
+
+        /// <summary>
+        /// Close the search view
+        /// </summary>
+        void Close();
     }
 }

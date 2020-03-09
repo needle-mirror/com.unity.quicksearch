@@ -332,6 +332,12 @@ namespace Unity.QuickSearch
             stretchWidth = false
         };
 
+        public static readonly GUIStyle inspectorFoldout = new GUIStyle("FoldoutHeader")
+        {
+            clipping = TextClipping.Clip,
+            fixedWidth = 235
+        };
+
         public static readonly GUILayoutOption[] searchInProgressLayoutOptions = new[] { GUILayout.MaxWidth(searchInProgressButton.fixedWidth) };
         public static readonly GUIContent emptyContent = new GUIContent("", "No content");
 

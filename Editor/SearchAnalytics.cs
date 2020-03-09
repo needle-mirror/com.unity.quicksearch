@@ -207,7 +207,7 @@ namespace Unity.QuickSearch
             SendEvent(category, category.ToString(), name, message, description, duration);
         }
 
-        public static void SendSearchEvent(SearchEvent evt, SearchContext searchContext, SearchFilter searchFilter)
+        public static void SendSearchEvent(SearchEvent evt, SearchContext searchContext)
         {
             evt.useOverrideFilter = searchContext.filterId != null;
             evt.isDeveloperMode = Utils.IsDeveloperMode();
@@ -223,7 +223,7 @@ namespace Unity.QuickSearch
             {
                 id = provider.name.id,
                 avgTime = (long)provider.avgTime,
-                isEnabled = evt.useOverrideFilter ? true : searchFilter.IsEnabled(provider.name.id),
+                isEnabled = evt.useOverrideFilter ? true : searchContext.IsEnabled(provider.name.id),
                 custom = ""
             }).ToArray();
 

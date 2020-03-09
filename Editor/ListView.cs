@@ -20,7 +20,7 @@ namespace Unity.QuickSearch
             if (topSpaceSkipped > 0)
                 GUILayout.Space(topSpaceSkipped);
 
-            m_ItemVisibleRegion = new Rect(m_ScrollViewOffset.x, m_ScrollViewOffset.yMax, m_DrawItemsWidth, availableHeight);
+            m_ItemVisibleRegion = new Rect(m_ScrollViewOffset.x, m_ScrollViewOffset.yMax, m_DrawItemsRect.width, availableHeight);
 
             int thumbnailFetched = 0;
             var limitCount = Math.Max(0, Math.Min(itemDisplayCount, itemCount - itemSkipCount));
@@ -77,7 +77,7 @@ namespace Unity.QuickSearch
 
                 using (new EditorGUILayout.VerticalScope())
                 {
-                    var maxWidth = m_DrawItemsWidth - Styles.actionButtonSize - Styles.itemPreviewSize - Styles.itemRowSpacing - Styles.descriptionPadding;
+                    var maxWidth = m_DrawItemsRect.width - Styles.actionButtonSize - Styles.itemPreviewSize - Styles.itemRowSpacing - Styles.descriptionPadding;
                     var textMaxWidthLayoutOption = GUILayout.MaxWidth(maxWidth);
                     GUILayout.Label(item.provider.fetchLabel(item, context), m_SelectedIndex == index ? Styles.selectedItemLabel : Styles.itemLabel, textMaxWidthLayoutOption);
                     GUILayout.Label(SearchContent.FormatDescription(item, context, maxWidth), m_SelectedIndex == index ? Styles.selectedItemDescription : Styles.itemDescription, textMaxWidthLayoutOption);

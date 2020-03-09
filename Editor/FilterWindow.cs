@@ -52,21 +52,17 @@ namespace Unity.QuickSearch
 
             public static float foldoutIndent = filterExpanded.fixedWidth + 6;
         }
-        static SearchFilter s_SearchFilter;
+        static SearchContext s_SearchContext;
 
         private ISearchView m_SearchView;
         private Vector2 m_ScrollPos;
-        private List<SearchFilter.ProviderDesc> m_Providers;
         private int m_ToggleFilterFocusIndex = 1;
         private int m_ToggleFilterNextIndex = 0;
         private int m_ToggleFilterCount = 0;
         private int m_ExpandToggleIndex = -1;
-
-        internal SearchFilter filter
-        {
-            get;
-            private set;
-        }
+        private SearchContext m_Context;
+        private IEnumerable<SearchContext.FilterDesc> m_ExplicitProviders;
+        private IEnumerable<SearchContext.FilterDesc> m_FilterableProviders;
 
         internal static double s_CloseTime;
         internal static bool canShow
@@ -79,26 +75,27 @@ namespace Unity.QuickSearch
             }
         }
 
-        public static bool ShowAtPosition(ISearchView quickSearchTool, SearchFilter filter, Rect rect)
+        public static bool ShowAtPosition(ISearchView quickSearchTool, SearchContext context, Rect rect)
         {
             var screenPos = GUIUtility.GUIToScreenPoint(new Vector2(rect.x, rect.y));
             var screenRect = new Rect(screenPos, rect.size);
 
-            s_SearchFilter = filter;
+            s_SearchContext = context;
             var filterWindow = ScriptableObject.CreateInstance<FilterWindow>();
             filterWindow.m_SearchView = quickSearchTool;
             filterWindow.ShowAsDropDown(screenRect, Styles.windowSize);
-            s_SearchFilter = null;
+            s_SearchContext = null;
             return true;
         }
 
         [UsedImplicitly]
         internal void OnEnable()
         {
-            if (s_SearchFilter != null)
+            if (s_SearchContext != null)
             {
-                filter = s_SearchFilter;
-                m_Providers = filter.providerDescriptors.ToList();
+                m_Context = s_SearchContext;
+                m_FilterableProviders = m_Context.filters.Where(d => !d.provider.isExplicitProvider).OrderBy(d => d.provider.priority);
+                m_ExplicitProviders = m_Context.filters.Where(d => d.provider.isExplicitProvider).OrderBy(d => d.provider.priority);
             }
             else
             {
@@ -110,7 +107,7 @@ namespace Unity.QuickSearch
         internal void OnDestroy()
         {
             s_CloseTime = EditorApplication.timeSinceStartup;
-            if (filter.providerDescriptors.All(desc => !desc.name.isEnabled))
+            if (m_FilterableProviders.All(desc => !desc.isEnabled))
             {
                 Debug.LogWarning("All filters are disabled. Loading last used filters.");
                 m_SearchView.LoadGlobalSettings();
@@ -138,9 +135,9 @@ namespace Unity.QuickSearch
 
             m_ScrollPos = GUILayout.BeginScrollView(m_ScrollPos);
              
-            foreach (var providerDesc in m_Providers.Where(p => !p.provider.isExplicitProvider).OrderBy(f => f.priority))
+            foreach (var desc in m_FilterableProviders)
             {
-                DrawSectionHeader(providerDesc);
+                DrawSectionHeader(desc);
             }
 
             m_ToggleFilterCount = m_ToggleFilterNextIndex;
@@ -181,11 +178,11 @@ namespace Unity.QuickSearch
             GUILayout.EndHorizontal();
             GUILayout.Label(GUIContent.none, Styles.separator);
 
-            foreach (var provider in m_Providers.Where(p => p.provider.isExplicitProvider).OrderBy(p => p.priority).Select(p => p.provider))
+            foreach (var desc in m_ExplicitProviders)
             {
                 GUILayout.BeginHorizontal();
                 GUILayout.Space(Styles.foldoutIndent);
-                GUILayout.Label(GetProviderLabelContent(provider), Styles.filterHeader);
+                GUILayout.Label(GetProviderLabelContent(desc.provider), Styles.filterHeader);
                 GUILayout.EndHorizontal();
             }
         }
@@ -199,20 +196,20 @@ namespace Unity.QuickSearch
             GUILayout.FlexibleSpace();
             EditorGUI.BeginChangeCheck();
             GUI.SetNextControlName($"Box_{m_ToggleFilterNextIndex++}");
-            bool isEnabled = GUILayout.Toggle(filter.providerDescriptors.All(p => p.name.isEnabled), "", Styles.headerFilterToggle, GUILayout.ExpandWidth(false));
+            bool isEnabled = GUILayout.Toggle(m_FilterableProviders.All(d => d.isEnabled), "", Styles.headerFilterToggle, GUILayout.ExpandWidth(false));
             if (EditorGUI.EndChangeCheck())
-                filter.ResetFilter(isEnabled);
+                m_Context.ResetFilter(isEnabled);
 
             GUILayout.EndHorizontal();
         }
 
-        private void DrawSectionHeader(SearchFilter.ProviderDesc desc)
+        private void DrawSectionHeader(SearchContext.FilterDesc desc)
         {
             GUILayout.BeginHorizontal();
 
             GUILayout.Space(Styles.foldoutIndent);
 
-            GUILayout.Label(GetProviderLabelContent(desc.provider, desc.name.displayName), Styles.filterHeader);
+            GUILayout.Label(GetProviderLabelContent(desc.provider), Styles.filterHeader);
             GUILayout.FlexibleSpace();
             if (desc.provider != null)
             {
@@ -230,17 +227,19 @@ namespace Unity.QuickSearch
 
             EditorGUI.BeginChangeCheck();
             GUI.SetNextControlName($"Box_{m_ToggleFilterNextIndex++}");
-            bool isEnabled = GUILayout.Toggle(desc.name.isEnabled, "", Styles.filterToggle, GUILayout.ExpandWidth(false));
+            bool isEnabled = GUILayout.Toggle(desc.isEnabled, "", Styles.filterToggle, GUILayout.ExpandWidth(false));
             if (EditorGUI.EndChangeCheck())
-                filter.SetFilter(isEnabled, desc.name.id);
+            {
+                m_Context.SetFilter(isEnabled, desc.provider.name.id);
+                m_SearchView.Refresh();
+            }
 
             GUILayout.EndHorizontal();
         }
 
-        private static GUIContent GetProviderLabelContent(SearchProvider provider, string displayName = null)
+        private static GUIContent GetProviderLabelContent(SearchProvider provider)
         {
-            if (displayName == null)
-                displayName = SearchFilter.GetProviderNameWithFilter(provider);
+            var displayName = string.IsNullOrEmpty(provider.filterId) ? provider.name.displayName : provider.name.displayName + " (" + provider.filterId + ")";
 
             string tooltip = null;
             if (provider.filterId != null)

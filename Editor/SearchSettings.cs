@@ -16,15 +16,19 @@ namespace Unity.QuickSearch
 
     internal static class SearchSettings
     {
-        private const string k_KeyPrefix = "quicksearch";
+        private const string k_KeyPrefix = SearchService.prefKey;
         private const string k_RootIndexPath = "Assets/Assets.index";
 
         public const string settingsPreferencesKey = "Preferences/Quick Search";
-        const string k_DefaultActionPrefKey = SearchService.prefKey + ".defaultactions.";
+        public const string defaultQueryFolder = "Assets/Editor/Queries";
+        public const string k_DefaultActionPrefKey = SearchService.prefKey + ".defaultactions.";
+
         public static bool trackSelection { get; private set; }
         public static bool fetchPreview { get; private set; }
+        public static string queryFolder { get; private set; }
         public static SearchAssetIndexing assetIndexing { get; internal set; }
-        
+        public static bool dockable { get; internal set; }
+
         public static float itemIconSize
         {
             get
@@ -43,13 +47,21 @@ namespace Unity.QuickSearch
             trackSelection = EditorPrefs.GetBool($"{k_KeyPrefix}.{nameof(trackSelection)}", true);
             fetchPreview = EditorPrefs.GetBool($"{k_KeyPrefix}.{nameof(fetchPreview)}", true);
             assetIndexing = (SearchAssetIndexing)EditorPrefs.GetInt($"{k_KeyPrefix}.{nameof(assetIndexing)}", (int)SearchAssetIndexing.Files);
+            dockable = EditorPrefs.GetBool($"{k_KeyPrefix}.{nameof(dockable)}", false);
+            queryFolder = EditorPrefs.GetString($"{k_KeyPrefix}.{nameof(queryFolder)}", defaultQueryFolder);
+            if (queryFolder != "Assets" && !queryFolder.StartsWith("Assets"))
+            {
+                queryFolder = defaultQueryFolder;
+            }
         }
 
         private static void Save()
         {
             EditorPrefs.SetBool($"{k_KeyPrefix}.{nameof(trackSelection)}", trackSelection);
             EditorPrefs.SetBool($"{k_KeyPrefix}.{nameof(fetchPreview)}", fetchPreview);
+            EditorPrefs.SetBool($"{k_KeyPrefix}.{nameof(dockable)}", dockable);
             EditorPrefs.SetInt($"{k_KeyPrefix}.{nameof(assetIndexing)}", (int)assetIndexing);
+            EditorPrefs.SetString($"{k_KeyPrefix}.{nameof(queryFolder)}", queryFolder);
         }
 
         [UsedImplicitly, SettingsProvider]
@@ -71,6 +83,8 @@ namespace Unity.QuickSearch
                             {
                                 trackSelection = EditorGUILayout.Toggle(Styles.trackSelectionContent, trackSelection);
                                 fetchPreview = EditorGUILayout.Toggle(Styles.fetchPreviewContent, fetchPreview);
+                                if (Utils.IsDeveloperMode())
+                                    dockable = EditorGUILayout.Toggle(Styles.dockableContent, dockable);
                                 GUILayout.BeginHorizontal();
                                 assetIndexing = (SearchAssetIndexing)EditorGUILayout.EnumPopup(Styles.assetIndexingLabel, assetIndexing, GUILayout.MaxWidth(450f));
                                 if (assetIndexing == SearchAssetIndexing.Complete && !File.Exists(k_RootIndexPath))
@@ -80,13 +94,15 @@ namespace Unity.QuickSearch
                                         CreateRootIndex();
                                 }
                                 GUILayout.EndHorizontal();
+
+                                DrawQueryFolder();
+
                                 GUILayout.Space(10);
                                 DrawProviderSettings();
                             }
                             if (EditorGUI.EndChangeCheck())
                             {
                                 Save();
-                                SearchService.Refresh();
                             }
                         }
                         GUILayout.EndVertical();
@@ -95,6 +111,33 @@ namespace Unity.QuickSearch
                 }
             };
             return settings;
+        }
+
+        private static void DrawQueryFolder()
+        {
+            EditorGUILayout.BeginHorizontal();
+            EditorGUILayout.LabelField("Saved Queries", queryFolder, EditorStyles.textField);
+            if (GUILayout.Button("Browse...", Styles.browseBtn))
+            {
+                var folderName = "Queries";
+                var baseFolder = Application.dataPath;
+                if (Directory.Exists(queryFolder) && baseFolder != Application.dataPath)
+                {
+                    baseFolder = Path.GetDirectoryName(queryFolder);
+                    folderName = Path.GetFileName(queryFolder);
+                }
+
+                var result = EditorUtility.SaveFolderPanel("Queries", baseFolder, folderName);
+                if (!string.IsNullOrEmpty(result))
+                {
+                    result = Utils.CleanPath(result);
+                    if (Directory.Exists(result) && Utils.IsPathUnderProject(result))
+                    {
+                        queryFolder = result.Substring(Application.dataPath.Length);
+                    }
+                }
+            }
+            EditorGUILayout.EndHorizontal();
         }
 
         private static void DrawProviderSettings()
@@ -271,6 +314,13 @@ namespace Unity.QuickSearch
                 richText = true
             };
 
+            public static GUIStyle browseBtn = new GUIStyle("Button")
+            {
+                fixedWidth = 70
+            };
+
+            public static GUIStyle textFiedl = new GUIStyle(EditorStyles.textField);
+
             public static GUIContent toggleActiveContent = new GUIContent("", "Enable or disable this provider. Disabled search provider will be completely ignored by the search service.");
             public static GUIContent resetPrioritiesContent = new GUIContent("Reset Priorities", "All search providers will restore their initial priority");
             public static GUIContent increasePriorityContent = new GUIContent("\u2191", "Increase the provider's priority");
@@ -289,6 +339,9 @@ namespace Unity.QuickSearch
             public static GUIContent fetchPreviewContent = new GUIContent(
                 "Generate an asset preview thumbnail for found items",
                 "Fetching the preview of the items can consume more memory and make searches within very large project slower.");
+            public static GUIContent dockableContent = new GUIContent(
+                "Open Quick Search as dockable windows",
+                "Allow Quick Search window to be dockable.");
             public static GUIContent assetIndexingLabel = new GUIContent(
                 "Asset indexing mode",
                 "");

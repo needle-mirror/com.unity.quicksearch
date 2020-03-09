@@ -72,9 +72,15 @@ namespace Unity.QuickSearch
             context.asyncItemReceived += OnAsyncItemsReceived;
         }
 
+        ~BaseSearchList()
+        {
+            Dispose(false);
+        }
+
         public void Dispose()
         {
             Dispose(true);
+            GC.SuppressFinalize(this);
         }
 
         public abstract void AddItems(IEnumerable<SearchItem> items);
@@ -83,11 +89,8 @@ namespace Unity.QuickSearch
         {
             if (!m_Disposed)
             {
-                if (disposing)
-                {
-                    if (context != null)
-                        context.asyncItemReceived -= OnAsyncItemsReceived;
-                }
+                if (context != null)
+                    context.asyncItemReceived -= OnAsyncItemsReceived;
 
                 m_Disposed = true;
             }

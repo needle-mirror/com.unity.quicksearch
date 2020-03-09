@@ -314,6 +314,7 @@ namespace Unity.QuickSearch
                 }
                 providerIds.Add(provider.name.id);
             }
+            SearchSettings.SortActionsPriority();
         }
     }
 }

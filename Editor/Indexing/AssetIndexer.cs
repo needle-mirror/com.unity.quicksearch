@@ -32,9 +32,6 @@ namespace Unity.QuickSearch.Providers
         public string[] excludes;
         public int baseScore = 100;
         public AssetIndexerOptions options;
-
-        public int minIndexCharVariation = 2;
-        public int maxIndexCharVariation = 12;
     }
 
     class AssetIndexer : SearchIndexer
@@ -56,8 +53,6 @@ namespace Unity.QuickSearch.Providers
         {
             this.name = name;
             this.settings = settings;
-            minIndexCharVariation = Math.Max(2, settings?.minIndexCharVariation ?? 2);
-            maxIndexCharVariation = Math.Max(minIndexCharVariation, settings?.maxIndexCharVariation ?? 12);
             getEntryComponentsHandler = GetEntryComponents;
 
             m_QueryEngine.SetSearchDataCallback(e => null);
@@ -65,7 +60,7 @@ namespace Unity.QuickSearch.Providers
 
         public IEnumerable<string> GetEntryComponents(string path, int index)
         {
-            return SearchUtils.SplitFileEntryComponents(path, entrySeparators, minIndexCharVariation, maxIndexCharVariation);
+            return SearchUtils.SplitFileEntryComponents(path, entrySeparators);
         }
 
         public event Action<int, string, float, bool> reportProgress;
@@ -247,7 +242,7 @@ namespace Unity.QuickSearch.Providers
             try
             {
                 var fileName = Path.GetFileNameWithoutExtension(path).ToLowerInvariant();
-                IndexWord(path, fileName, documentIndex, Math.Min(16, fileName.Length), true);
+                IndexWord(path, fileName, documentIndex, fileName.Length, true);
 
                 if (path.StartsWith("Packages/", StringComparison.Ordinal))
                     IndexProperty(path, "a", "packages", documentIndex, saveKeyword: true);
@@ -370,14 +365,14 @@ namespace Unity.QuickSearch.Providers
         private void IndexWord(string path, string word, int documentIndex, int maxVariations, bool exact)
         {
             IndexDebugMatch(path, word);
-            AddWord(word.ToLowerInvariant(), minIndexCharVariation, maxVariations, settings.baseScore, documentIndex);
+            AddWord(word.ToLowerInvariant(), 2, maxVariations, settings.baseScore, documentIndex);
             if (exact)
                 AddExactWord(word.ToLowerInvariant(), settings.baseScore-1, documentIndex);
         }
 
         private void IndexWord(string path, string word, int documentIndex, bool exact = false)
         {
-            IndexWord(path, word, documentIndex, maxIndexCharVariation, exact);
+            IndexWord(path, word, documentIndex, word.Length, exact);
         }
 
         private void IndexProperty(string path, string name, string value, int documentIndex, bool saveKeyword)

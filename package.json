@@ -1,7 +1,7 @@
 {
   "name": "com.unity.quicksearch",
   "displayName": "Quick Search",
-  "version": "1.6.0-preview.3",
+  "version": "1.6.0-preview.4",
   "unity": "2019.3",
   "keywords": [
     "unity",
@@ -24,15 +24,20 @@
   },
   "dependencies": {},
   "repository": {
-    "footprint": "da3c2eb77aed0558573ee04fb9d4a1f16e6b25e5",
+    "footprint": "44f4aa7ea2a101f3fe1b7577b09885e57b2eb26f",
     "type": "git",
     "url": "https://github.cds.internal.unity3d.com/unity/com.unity.quicksearch.git",
-    "revision": "e6610d64c03138a22fa2bf4967230258fd557aa5"
+    "revision": "c0756f2214689aeac9a9f7a46354ae4b257eda7c"
   },
   "relatedPackages": {
-    "com.unity.quicksearch.tests": "1.6.0-preview.3"
+    "com.unity.quicksearch.tests": "1.6.0-preview.4"
   },
   "samples": [
+    {
+      "displayName": "Customized Scene Provider",
+      "description": "Scene Provider Customization Example",
+      "path": "Samples~/CustomizedSceneProvider"
+    },
     {
       "displayName": "QueryEngine Basic",
       "description": "Basic usage of the Query Engine, which should cover most needs.",

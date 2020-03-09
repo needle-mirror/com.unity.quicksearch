@@ -72,6 +72,8 @@ namespace Unity.QuickSearch.Providers
             return new SearchProvider(type, displayName)
             {
                 filterId = "res:",
+                showDetails = true,
+                showDetailsOptions = ShowDetailsOptions.Inspector,
                 fetchItems = (context, items, provider) => SearchItems(context, provider),
                 toObject = (item, type) => GetItemObject(item),
                 isExplicitProvider = true,

@@ -255,6 +255,31 @@ namespace Unity.QuickSearch
             LessOrEqual
         }
 
+        readonly struct FilterCreationParams
+        {
+            public readonly string token;
+            public readonly string[] supportedOperators;
+            public readonly bool overridesGlobalComparisonOptions;
+            public readonly StringComparison comparisonOptions;
+            public readonly bool useParameterTransformer;
+            public readonly string parameterTransformerFunction;
+            public readonly Type parameterTransformerAttributeType;
+
+            public FilterCreationParams(
+                string token, string[] supportedOperators, bool overridesGlobalComparison,
+                StringComparison comparisonOptions, bool useParameterTransformer,
+                string parameterTransformerFunction, Type parameterTransformerAttributeType)
+            {
+                this.token = token;
+                this.supportedOperators = supportedOperators;
+                this.overridesGlobalComparisonOptions = overridesGlobalComparison;
+                this.comparisonOptions = comparisonOptions;
+                this.useParameterTransformer = useParameterTransformer;
+                this.parameterTransformerFunction = parameterTransformerFunction;
+                this.parameterTransformerAttributeType = parameterTransformerAttributeType;
+            }
+        }
+
         private delegate int TokenConsumer(string text, int tokenIndexStart, int tokenEndIndex, List<IQueryNode> nodes, List<QueryError> errors, NodesToStringPosition nodesToStringPosition, out bool matched);
 
         private List<TokenConsumer> m_TokenConsumers;
@@ -323,9 +348,9 @@ namespace Unity.QuickSearch
 
             if (m_FilterOperators.TryGetValue(opToken, out var operators))
             {
-                var opHandler = operators.handlers.FirstOrDefault(kvp => kvp.Key.leftHandSideType == evt && kvp.Key.rightHandSideType == fvt);
-                if (opHandler.Value != null)
-                    return (bool)opHandler.Value.DynamicInvoke(new object[] { ev, fv, sc });
+                var opHandler = operators.GetHandler(evt, fvt);
+                if (opHandler != null)
+                    return opHandler.Invoke(ev, fv, sc);
             }
 
             if (evt != fvt)
@@ -403,6 +428,11 @@ namespace Unity.QuickSearch
         }
 
         public void AddOperatorHandler<TLhs, TRhs>(string op, Func<TLhs, TRhs, bool> handler)
+        {
+            AddOperatorHandler<TLhs, TRhs>(op, (ev, fv, sc) => handler(ev, fv));
+        }
+
+        public void AddOperatorHandler<TLhs, TRhs>(string op, Func<TLhs, TRhs, StringComparison, bool> handler)
         {
             if (!m_FilterOperators.ContainsKey(op))
                 return;
@@ -727,7 +757,7 @@ namespace Unity.QuickSearch
             };
 
             var operation = filter.GenerateOperation(generatorData, filterOperatorIndex, errors);
-            return new FilterNode(operation);
+            return new FilterNode(operation, token);
         }
 
         private IParseResult ParseFilterValue(string filterValue, IFilter filter, FilterOperator op, out Type filterValueType)
@@ -761,15 +791,25 @@ namespace Unity.QuickSearch
                 var handlerTypes = new List<FilterOperatorTypes>();
                 foreach (var handlersKey in op.handlers.Keys)
                 {
-                    if (handlersKey.leftHandSideType == filter.type)
-                        handlerTypes.Add(handlersKey);
+                    if (handlersKey != filter.type)
+                        continue;
+
+                    foreach (var rhsType in op.handlers[handlersKey].Keys)
+                    {
+                        handlerTypes.Add(new FilterOperatorTypes(handlersKey, rhsType));
+                    }
                 }
                 if (filter.type != typeof(object))
                 {
                     foreach (var handlersKey in op.handlers.Keys)
                     {
-                        if (handlersKey.leftHandSideType == typeof(object))
-                            handlerTypes.Add(handlersKey);
+                        if (handlersKey != typeof(object))
+                            continue;
+
+                        foreach (var rhsType in op.handlers[handlersKey].Keys)
+                        {
+                            handlerTypes.Add(new FilterOperatorTypes(handlersKey, rhsType));
+                        }
                     }
                 }
                 var sortedHandlerTypes = new List<FilterOperatorTypes>();
@@ -1046,6 +1086,190 @@ namespace Unity.QuickSearch
                 return;
             m_FilterOperationGenerators.Add(typeof(T), new FilterOperationGenerator<T>());
         }
+
+        public void AddFiltersFromAttribute<TFilterAttribute, TTransformerAttribute>()
+            where TFilterAttribute : QueryEngineFilterAttribute
+            where TTransformerAttribute : QueryEngineParameterTransformerAttribute
+        {
+            var filters = Utils.GetAllMethodsWithAttribute<TFilterAttribute>()
+                .Select(CreateFilterFromFilterAttribute<TFilterAttribute, TTransformerAttribute>)
+                .Where(filter => filter != null);
+            foreach (var filter in filters)
+            {
+                AddFilter(filter.token, filter);
+            }
+        }
+
+        private IFilter CreateFilterFromFilterAttribute<TFilterAttribute, TTransformerAttribute>(MethodInfo mi)
+            where TFilterAttribute : QueryEngineFilterAttribute
+            where TTransformerAttribute : QueryEngineParameterTransformerAttribute
+        {
+            var attr = mi.GetCustomAttributes(typeof(TFilterAttribute), false).Cast<TFilterAttribute>().First();
+            var filterToken = attr.token;
+            var stringComparison = attr.overridesStringComparison ? attr.comparisonOptions : globalStringComparison;
+            var supportedOperators = attr.supportedOperators;
+            var creationParams = new FilterCreationParams(
+                filterToken,
+                supportedOperators,
+                attr.overridesStringComparison,
+                stringComparison,
+                attr.useParamTransformer,
+                attr.paramTransformerFunction,
+                typeof(TTransformerAttribute)
+                );
+
+            try
+            {
+                var inputParams = mi.GetParameters();
+                if (inputParams.Length == 0)
+                {
+                    Debug.LogWarning($"Filter method {mi.Name} should have at least one input parameter.");
+                    return null;
+                }
+
+                var objectParam = inputParams[0];
+                if (objectParam.ParameterType != typeof(TData))
+                {
+                    Debug.LogWarning($"Parameter {objectParam.Name}'s type of filter method {mi.Name} must be {typeof(TData)}.");
+                    return null;
+                }
+                var returnType = mi.ReturnType;
+
+                // Basic filter
+                if (inputParams.Length == 1)
+                {
+                    return CreateFilterForMethodInfo(creationParams, mi, false, false, returnType);
+                }
+
+                // Filter function
+                if (inputParams.Length == 2)
+                {
+                    var filterParamType = inputParams[1].ParameterType;
+                    return CreateFilterForMethodInfo(creationParams, mi, true, false, filterParamType, returnType);
+                }
+
+                // Filter resolver
+                if (inputParams.Length == 3)
+                {
+                    var operatorType = inputParams[1].ParameterType;
+                    var filterValueType = inputParams[2].ParameterType;
+                    if (operatorType != typeof(string))
+                    {
+                        Debug.LogWarning($"Parameter {inputParams[1].Name}'s type of filter method {mi.Name} must be {typeof(string)}.");
+                        return null;
+                    }
+
+                    if (returnType != typeof(bool))
+                    {
+                        Debug.LogWarning($"Return type of filter method {mi.Name} must be {typeof(bool)}.");
+                        return null;
+                    }
+
+                    return CreateFilterForMethodInfo(creationParams, mi, false, true, filterValueType);
+                }
+
+                // Filter function resolver
+                if (inputParams.Length == 4)
+                {
+                    var filterParamType = inputParams[1].ParameterType;
+                    var operatorType = inputParams[2].ParameterType;
+                    var filterValueType = inputParams[3].ParameterType;
+                    if (operatorType != typeof(string))
+                    {
+                        Debug.LogWarning($"Parameter {inputParams[1].Name}'s type of filter method {mi.Name} must be {typeof(string)}.");
+                        return null;
+                    }
+
+                    if (returnType != typeof(bool))
+                    {
+                        Debug.LogWarning($"Return type of filter method {mi.Name} must be {typeof(bool)}.");
+                        return null;
+                    }
+
+                    return CreateFilterForMethodInfo(creationParams, mi, true, true, filterParamType, filterValueType);
+                }
+
+                Debug.LogWarning($"Error while creating filter {filterToken}. Parameter count mismatch.");
+                return null;
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"Error while creating filter {filterToken}. {ex.Message}");
+                return null;
+            }
+        }
+
+        private IFilter CreateFilterForMethodInfo(FilterCreationParams creationParams, MethodInfo mi, bool filterFunction, bool resolver, params Type[] methodTypes)
+        {
+            var methodName = $"CreateFilter{(filterFunction ? "Function" : "")}{(resolver ? "Resolver" : "")}ForMethodInfoTyped";
+            var thisClassType = typeof(QueryEngineImpl<TData>);
+            var method = thisClassType.GetMethod(methodName, BindingFlags.NonPublic | BindingFlags.Instance);
+            var typedMethod = method.MakeGenericMethod(methodTypes);
+            return typedMethod.Invoke(this, new object[] { creationParams, mi }) as IFilter;
+        }
+
+        private IFilter CreateFilterForMethodInfoTyped<TFilter>(FilterCreationParams creationParams, MethodInfo mi)
+        {
+            var methodFunc = Delegate.CreateDelegate(typeof(Func<TData, TFilter>), mi) as Func<TData, TFilter>;
+            if (creationParams.overridesGlobalComparisonOptions)
+                return new Filter<TData, TFilter>(creationParams.token, creationParams.supportedOperators, methodFunc, creationParams.comparisonOptions);
+            return new Filter<TData, TFilter>(creationParams.token, creationParams.supportedOperators, methodFunc);
+        }
+
+        private IFilter CreateFilterResolverForMethodInfoTyped<TFilter>(FilterCreationParams creationParams, MethodInfo mi)
+        {
+            var methodFunc = Delegate.CreateDelegate(typeof(Func<TData, string, TFilter, bool>), mi) as Func<TData, string, TFilter, bool>;
+            return new Filter<TData, TFilter>(creationParams.token, creationParams.supportedOperators, methodFunc);
+        }
+
+        private IFilter CreateFilterFunctionForMethodInfoTyped<TParam, TFilter>(FilterCreationParams creationParams, MethodInfo mi)
+        {
+            var methodFunc = Delegate.CreateDelegate(typeof(Func<TData, TParam, TFilter>), mi) as Func<TData, TParam, TFilter>;
+
+            if (creationParams.useParameterTransformer)
+            {
+                var parameterTransformerFunc = GetParameterTransformerFunction<TParam>(mi, creationParams.parameterTransformerFunction, creationParams.parameterTransformerAttributeType);
+                if (creationParams.overridesGlobalComparisonOptions)
+                    return new Filter<TData, TParam, TFilter>(creationParams.token, creationParams.supportedOperators, methodFunc, parameterTransformerFunc, creationParams.comparisonOptions);
+                return new Filter<TData, TParam, TFilter>(creationParams.token, creationParams.supportedOperators, methodFunc, parameterTransformerFunc);
+            }
+
+            if (creationParams.overridesGlobalComparisonOptions)
+                return new Filter<TData, TParam, TFilter>(creationParams.token, creationParams.supportedOperators, methodFunc, creationParams.comparisonOptions);
+            return new Filter<TData, TParam, TFilter>(creationParams.token, creationParams.supportedOperators, methodFunc);
+        }
+
+        private IFilter CreateFilterFunctionResolverForMethodInfoTyped<TParam, TFilter>(FilterCreationParams creationParams, MethodInfo mi)
+        {
+            var methodFunc = Delegate.CreateDelegate(typeof(Func<TData, TParam, string, TFilter, bool>), mi) as Func<TData, TParam, string, TFilter, bool>;
+
+            if (creationParams.useParameterTransformer)
+            {
+                var parameterTransformerFunc = GetParameterTransformerFunction<TParam>(mi, creationParams.parameterTransformerFunction, creationParams.parameterTransformerAttributeType);
+                return new Filter<TData, TParam, TFilter>(creationParams.token, creationParams.supportedOperators, methodFunc, parameterTransformerFunc);
+            }
+            return new Filter<TData, TParam, TFilter>(creationParams.token, creationParams.supportedOperators, methodFunc);
+        }
+
+        private static Func<string, TParam> GetParameterTransformerFunction<TParam>(MethodInfo mi, string functionName, Type transformerAttributeType)
+        {
+            var transformerMethod = Utils.GetAllMethodsWithAttribute(transformerAttributeType)
+                .Where(transformerMethodInfo =>
+                {
+                    var sameType = transformerMethodInfo.ReturnType == typeof(TParam);
+                    var sameName = transformerMethodInfo.Name == functionName;
+                    var paramInfos = transformerMethodInfo.GetParameters();
+                    var sameParameter = paramInfos.Length == 1 && paramInfos[0].ParameterType == typeof(string);
+                    return sameType && sameName && sameParameter;
+                }).FirstOrDefault();
+            if (transformerMethod == null)
+            {
+                Debug.LogWarning($"Filter function {mi.Name} uses a parameter transformer, but the function {functionName} was not found.");
+                return null;
+            }
+
+            return Delegate.CreateDelegate(typeof(Func<string, TParam>), transformerMethod) as Func<string, TParam>;
+        }
     }
 
     /// <summary>
@@ -1204,6 +1428,47 @@ namespace Unity.QuickSearch
         }
 
         /// <summary>
+        /// Add a new custom filter function with a custom resolver. Useful when you wish to handle all operators yourself.
+        /// </summary>
+        /// <typeparam name="TParam">The type of the constant parameter passed to the function.</typeparam>
+        /// <typeparam name="TFilter">The type of the data that is compared by the filter.</typeparam>
+        /// <param name="token">The identifier of the filter. Typically what precedes the operator in a filter (i.e. "id" in "id>=2").</param>
+        /// <param name="filterResolver">Callback used to handle any operators for this filter. Takes an object of type TData, an object of type TParam, the operator token and the filter value, and returns a boolean indicating if the filter passed or not.</param>
+        /// <param name="supportedOperatorType">List of supported operator tokens. Null for all operators.</param>
+        public void AddFilter<TParam, TFilter>(string token, Func<TData, TParam, string, TFilter, bool> filterResolver, string[] supportedOperatorType = null)
+        {
+            var filter = new Filter<TData, TParam, TFilter>(token, supportedOperatorType, filterResolver);
+            m_Impl.AddFilter(token, filter);
+        }
+
+        /// <summary>
+        /// Add a new custom filter function with a custom resolver. Useful when you wish to handle all operators yourself.
+        /// </summary>
+        /// <typeparam name="TParam">The type of the constant parameter passed to the function.</typeparam>
+        /// <typeparam name="TFilter">The type of the data that is compared by the filter.</typeparam>
+        /// <param name="token">The identifier of the filter. Typically what precedes the operator in a filter (i.e. "id" in "id>=2").</param>
+        /// <param name="filterResolver">Callback used to handle any operators for this filter. Takes an object of type TData, an object of type TParam, the operator token and the filter value, and returns a boolean indicating if the filter passed or not.</param>
+        /// <param name="parameterTransformer">Callback used to convert a string to the type TParam. Used when parsing the query to convert what is passed to the function into the correct format.</param>
+        /// <param name="supportedOperatorType">List of supported operator tokens. Null for all operators.</param>
+        public void AddFilter<TParam, TFilter>(string token, Func<TData, TParam, string, TFilter, bool> filterResolver, Func<string, TParam> parameterTransformer, string[] supportedOperatorType = null)
+        {
+            var filter = new Filter<TData, TParam, TFilter>(token, supportedOperatorType, filterResolver, parameterTransformer);
+            m_Impl.AddFilter(token, filter);
+        }
+
+        /// <summary>
+        /// Add all custom filters that are identified with the method attribute TAttribute.
+        /// </summary>
+        /// <typeparam name="TFilterAttribute">The type of the attribute of filters to fetch.</typeparam>
+        /// <typeparam name="TTransformerAttribute">The attribute type for the parameter transformers associated with the filter attribute.</typeparam>
+        public void AddFiltersFromAttribute<TFilterAttribute, TTransformerAttribute>()
+            where TFilterAttribute : QueryEngineFilterAttribute
+            where TTransformerAttribute : QueryEngineParameterTransformerAttribute
+        {
+            m_Impl.AddFiltersFromAttribute<TFilterAttribute, TTransformerAttribute>();
+        }
+
+        /// <summary>
         /// Remove a custom filter.
         /// </summary>
         /// <param name="token">The identifier of the filter. Typically what precedes the operator in a filter (i.e. "id" in "id>=2").</param>
@@ -1230,6 +1495,18 @@ namespace Unity.QuickSearch
         /// <param name="op">The filter operator.</param>
         /// <param name="handler">Callback to handle the operation. Takes a TFilterVariable (value returned by the filter handler, will vary for each element) and a TFilterConstant (right hand side value of the operator, which is constant), and returns a boolean indicating if the filter passes or not.</param>
         public void AddOperatorHandler<TFilterVariable, TFilterConstant>(string op, Func<TFilterVariable, TFilterConstant, bool> handler)
+        {
+            m_Impl.AddOperatorHandler(op, handler);
+        }
+
+        /// <summary>
+        /// Add a custom filter operator handler.
+        /// </summary>
+        /// <typeparam name="TFilterVariable">The operator's left hand side type. This is the type returned by a filter handler.</typeparam>
+        /// <typeparam name="TFilterConstant">The operator's right hand side type.</typeparam>
+        /// <param name="op">The filter operator.</param>
+        /// <param name="handler">Callback to handle the operation. Takes a TFilterVariable (value returned by the filter handler, will vary for each element), a TFilterConstant (right hand side value of the operator, which is constant), a StringComparison option and returns a boolean indicating if the filter passes or not.</param>
+        public void AddOperatorHandler<TFilterVariable, TFilterConstant>(string op, Func<TFilterVariable, TFilterConstant, StringComparison, bool> handler)
         {
             m_Impl.AddOperatorHandler(op, handler);
         }

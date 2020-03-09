@@ -76,7 +76,7 @@ namespace Unity.QuickSearch
 
             content.text = truncatedDesc;
             if (truncated)
-                content.tooltip = desc;
+                content.tooltip = Utils.StripHTML(desc);
 
             return content;
         }

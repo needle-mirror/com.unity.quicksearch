@@ -50,24 +50,6 @@ namespace Unity.QuickSearch.Providers
                 filterId = "p:",
                 showDetails = SearchSettings.fetchPreview,
 
-                onEnable = () =>
-                {
-                    if (SearchSettings.assetIndexing == SearchAssetIndexing.Files && fileIndexer == null)
-                    {
-                        var packageRoots = Utils.GetPackagesPaths().Select(p => new SearchIndexerRoot(Path.GetFullPath(p).Replace('\\', '/'), p));
-                        var roots = new[] { new SearchIndexerRoot(Application.dataPath, "Assets") }.Concat(packageRoots);
-                        fileIndexer = new FileSearchIndexer(type, roots);
-                        fileIndexer.Build();
-                    }
-                    else if (SearchSettings.assetIndexing == SearchAssetIndexing.Complete && assetIndexes == null)
-                    {
-                        assetIndexes = ADBIndex.Enumerate().ToList();
-                        foreach (var db in assetIndexes)
-                            db.IncrementalUpdate();
-                        AssetPostprocessorIndexer.contentRefreshed += TrackAssetIndexChanges;
-                    }
-                },
-
                 isEnabledForContextualSearch = () => Utils.IsFocusedWindowTypeName("ProjectBrowser"),
 
                 toObject = (item, type) => AssetDatabase.LoadAssetAtPath(item.id, type),
@@ -98,25 +80,29 @@ namespace Unity.QuickSearch.Providers
             };
         }
 
+        private static void SetupIndexers()
+        {
+            if (SearchSettings.assetIndexing == SearchAssetIndexing.Files && fileIndexer == null)
+            {
+                var packageRoots = Utils.GetPackagesPaths().Select(p => new SearchIndexerRoot(Path.GetFullPath(p).Replace('\\', '/'), p));
+                var roots = new[] { new SearchIndexerRoot(Application.dataPath, "Assets") }.Concat(packageRoots);
+                fileIndexer = new FileSearchIndexer(type, roots);
+                fileIndexer.Build();
+            }
+            else if (SearchSettings.assetIndexing == SearchAssetIndexing.Complete && assetIndexes == null)
+            {
+                assetIndexes = ADBIndex.Enumerate().ToList();
+                foreach (var db in assetIndexes)
+                    db.IncrementalUpdate();
+                AssetPostprocessorIndexer.contentRefreshed += TrackAssetIndexChanges;
+            }
+        }
+
         private static IEnumerator SearchAssets(SearchContext context, SearchProvider provider)
         {
             var searchQuery = context.searchQuery;
-            const bool searchGuids = true;
-            const bool searchPackages = true;
 
-            // Search by GUIDs
-            if (searchGuids)
-            {
-                var gui2Path = AssetDatabase.GUIDToAssetPath(searchQuery);
-                if (!String.IsNullOrEmpty(gui2Path))
-                    yield return provider.CreateItem(gui2Path, -1, $"{Path.GetFileName(gui2Path)} ({searchQuery})", null, null, null);
-            }
-
-            if (SearchSettings.assetIndexing == SearchAssetIndexing.Complete)
-            {
-                yield return assetIndexes.Select(db => SearchIndexes(context, provider, db.index));
-            }
-            else if (SearchSettings.assetIndexing == SearchAssetIndexing.Files)
+            if (SearchSettings.assetIndexing == SearchAssetIndexing.Files)
             {
                 if (searchQuery.IndexOf(':') != -1)
                 {
@@ -126,16 +112,41 @@ namespace Unity.QuickSearch.Providers
                         yield return assetEntry;
                 }
 
+                SetupIndexers();
                 while (!fileIndexer.IsReady())
                     yield return null;
 
-                foreach (var item in SearchFiles(searchQuery, searchPackages, provider))
+                foreach (var item in SearchFiles(searchQuery, provider))
                     yield return item;
+            }
+            else if (SearchSettings.assetIndexing == SearchAssetIndexing.Complete)
+            {
+                SetupIndexers();
+                yield return assetIndexes.Select(db => SearchIndexes(context, provider, db.index));
+            }
+
+            // Search file system wild cards
+            if (context.searchQuery.Contains('*'))
+            {
+                var safeFilter = string.Join("_", context.searchQuery.Split(k_InvalidSearchFileChars));
+                var projectFiles = Directory.EnumerateFiles(Application.dataPath, safeFilter, SearchOption.AllDirectories);
+                projectFiles = projectFiles.Select(path => path.Replace(Application.dataPath, "Assets").Replace("\\", "/"));
+                foreach (var fileEntry in projectFiles.Select(path => provider.CreateItem(path, Path.GetFileName(path))))
+                    yield return fileEntry;
             }
             else
             {
-                foreach (var assetEntry in AssetDatabase.FindAssets(searchQuery).Select(AssetDatabase.GUIDToAssetPath).Select(path => provider.CreateItem(path, Path.GetFileName(path))))
-                    yield return assetEntry;
+                // Search by GUID
+                var guidPath = AssetDatabase.GUIDToAssetPath(searchQuery);
+                if (!String.IsNullOrEmpty(guidPath))
+                    yield return provider.CreateItem(guidPath, -1, $"{Path.GetFileName(guidPath)} ({searchQuery})", null, null, null);
+
+                // Finally search the default asset database for any remaining results.
+                if (SearchSettings.assetIndexing == SearchAssetIndexing.NoIndexing)
+                {
+                    foreach (var assetPath in AssetDatabase.FindAssets(searchQuery).Select(AssetDatabase.GUIDToAssetPath))
+                        yield return provider.CreateItem(assetPath, 998, Path.GetFileName(assetPath), null, null, null);
+                }
             }
 
             if (context.wantsMore && context.filterType != null && String.IsNullOrEmpty(context.searchQuery))
@@ -143,16 +154,6 @@ namespace Unity.QuickSearch.Providers
                 yield return AssetDatabase.FindAssets($"t:{context.filterType.Name}")
                     .Select(guid => AssetDatabase.GUIDToAssetPath(guid))
                     .Select(path => provider.CreateItem(path, 999, Path.GetFileName(path), null, null, null));
-            }
-
-            // Search file system wild cards
-            if (context.searchQuery.Contains('*'))
-            {
-                var safeFilter = string.Join("_", context.searchQuery.Split(k_InvalidSearchFileChars));
-                var projectFiles = System.IO.Directory.EnumerateFiles(Application.dataPath, safeFilter, System.IO.SearchOption.AllDirectories);
-                projectFiles = projectFiles.Select(path => path.Replace(Application.dataPath, "Assets").Replace("\\", "/"));
-                foreach (var fileEntry in projectFiles.Select(path => provider.CreateItem(path, Path.GetFileName(path))))
-                    yield return fileEntry;
             }
         }
 
@@ -179,16 +180,16 @@ namespace Unity.QuickSearch.Providers
         }
 
 
-        private static IEnumerable<SearchItem> SearchFiles(string filter, bool searchPackages, SearchProvider provider)
+        private static IEnumerable<SearchItem> SearchFiles(string searchQuery, SearchProvider provider)
         {
             UnityEngine.Assertions.Assert.IsNotNull(fileIndexer);
 
-            return fileIndexer.Search(filter, searchPackages ? int.MaxValue : 100).Select(e =>
+            return fileIndexer.Search(searchQuery).Select(e =>
             {
                 var filename = Path.GetFileName(e.id);
                 var filenameNoExt = Path.GetFileNameWithoutExtension(e.id);
                 var itemScore = e.score;
-                if (filenameNoExt.Equals(filter, StringComparison.OrdinalIgnoreCase))
+                if (filenameNoExt.Equals(searchQuery, StringComparison.OrdinalIgnoreCase))
                     itemScore = SearchProvider.k_RecentUserScore + 1;
                 return provider.CreateItem(e.id, itemScore, filename, null, null, null);
             });
