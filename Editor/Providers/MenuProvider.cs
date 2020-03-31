@@ -45,10 +45,13 @@ namespace Unity.QuickSearch
 
                     fetchItems = (context, items, provider) =>
                     {
+                        if (string.IsNullOrEmpty(context.searchQuery))
+                            return null;
+
                         for (int i = 0; i < itemNames.Count; ++i)
                         {
                             var menuName = itemNames[i];
-                            if (!SearchProvider.MatchSearchGroups(context, itemNamesLower[i], true))
+                            if (!SearchUtils.MatchSearchGroups(context, itemNamesLower[i], true))
                                 continue;
 
                             items.Add(provider.CreateItem(menuName, Utils.GetNameFromPath(menuName)));

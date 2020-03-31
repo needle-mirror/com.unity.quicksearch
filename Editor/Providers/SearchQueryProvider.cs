@@ -11,8 +11,9 @@ namespace Providers
     [UsedImplicitly]
     static class Query
     {
-        private const string type = "query";
-        private const string displayName = "Search Queries";
+        internal const string type = "query";
+        private const string displayName = "Queries";
+        static List<SearchItem> m_SearchQueryItems;
 
         [UsedImplicitly, SearchItemProvider]
         private static SearchProvider CreateProvider()
@@ -23,15 +24,22 @@ namespace Providers
                 isExplicitProvider = true,
                 fetchItems = (context, items, provider) =>
                 {
-                    items.AddRange(SearchQuery.GetAllQueries().Select(query =>
+                    if (string.IsNullOrEmpty(context.searchQuery))
                     {
-                        var item = provider.CreateItem(AssetDatabase.GetAssetPath(query.GetInstanceID()));
-                        item.label = string.IsNullOrEmpty(query.title) ? query.name : query.title;
-                        item.thumbnail = query.icon ? query.icon : Icons.quicksearch;
-                        item.description = string.IsNullOrEmpty(query.description) ? query.searchQuery : query.description;
-                        item.data = query.searchQuery;
-                        return item;
-                    }));
+                        items.AddRange(SearchQuery.GetAllSearchQueryItems());
+                    }
+                    else
+                    {
+                        var queryItems = SearchQuery.GetAllSearchQueryItems();
+                        foreach (var qi in queryItems)
+                        {
+                            if (SearchUtils.MatchSearchGroups(context, qi.label, true) ||
+                                SearchUtils.MatchSearchGroups(context, ((SearchQuery)qi.data).searchQuery, true))
+                            {
+                                items.Add(qi);
+                            }
+                        }
+                    }
                     return null;
                 }
             };
@@ -42,15 +50,15 @@ namespace Providers
         {
             return new[]
             {
-                new SearchAction(type, "exec", null, "Execute Search Query")
+                new SearchAction(type, "exec", null, "Execute search query")
                 {
                     closeWindowAfterExecution = false,
                     handler = (item, context) =>
                     {
-                        context.searchView.SetSearchText(item.data as string);
+                        SearchQuery.ExecuteQuery(context.searchView, (SearchQuery)item.data);
                     }
                 },
-                new SearchAction(type, "select", null, "Select Search Query")
+                new SearchAction(type, "select", null, "Select search query")
                 {
                     handler = (item, context) =>
                     {

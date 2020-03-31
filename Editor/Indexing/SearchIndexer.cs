@@ -1,5 +1,4 @@
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -8,39 +7,9 @@ using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
 using System.Threading;
 using UnityEditor;
-using UnityEngine.Assertions;
 
 namespace Unity.QuickSearch
 {
-    internal enum SearchIndexOperator
-    {
-        Contains,
-        Equal,
-        NotEqual,
-        Greater,
-        GreaterOrEqual,
-        Less,
-        LessOrEqual,
-
-        Document,
-        None
-    }
-
-    public enum Combine
-    {
-        None,
-        Intersection,
-        Union
-    }
-
-    enum SearchIndexEntryType : int
-    {
-        Undefined = 0,
-        Word,
-        Number,
-        Property
-    }
-
     [DebuggerDisplay("{type} - K:{key}|{number} - C:{crc} - I:{index}")]
     readonly struct SearchIndexEntry : IEquatable<SearchIndexEntry>
     {
@@ -51,16 +20,25 @@ namespace Unity.QuickSearch
         // 5- Added indexing tags
         // 6- Revert indexes back to 32 bits instead of 64 bits.
         // 7- Remove min and max char variations.
-        internal const int version = 0x4242E000 | 0x007;
+        // 8- Add metadata field to documents
+        internal const int version = 0x4242E000 | 0x008;
+
+        public enum Type : int
+        {
+            Undefined = 0,
+            Word,
+            Number,
+            Property
+        }
 
         public readonly long key;                   // Value hash
         public readonly int crc;                    // Value correction code (can be length, property key hash, etc.)
-        public readonly SearchIndexEntryType type;  // Type of the index entry
+        public readonly Type type;  // Type of the index entry
         public readonly int index;                  // Index of documents in the documents array
         public readonly int score;
         public readonly double number;
 
-        public SearchIndexEntry(long _key, int _crc, SearchIndexEntryType _type, int _index = -1, int _score = int.MaxValue)
+        public SearchIndexEntry(long _key, int _crc, Type _type, int _index = -1, int _score = int.MaxValue)
         {
             key = _key;
             crc = _crc;
@@ -148,88 +126,6 @@ namespace Unity.QuickSearch
         }
     }
 
-    class SearchResultCollection : ICollection<SearchResult>
-    {
-        private HashSet<SearchResult> m_Set;
-
-        public int Count => m_Set.Count;
-        public bool IsReadOnly => false;
-
-        public SearchResultCollection()
-        {
-            m_Set = new HashSet<SearchResult>();
-        }
-
-        public SearchResultCollection(IEnumerable<SearchResult> inset)
-        {
-            m_Set = new HashSet<SearchResult>(inset);
-        }
-
-        public void Add(SearchResult item)
-        {
-            #if !USE_SORTED_SET
-            m_Set.Add(item);
-            #else // If using SortedSet eventually
-            var foundSet = m_Set.GetViewBetween(item, item);
-            if (foundSet.Count == 0)
-                m_Set.Add(item);
-            else
-            {
-                if (item.score < foundSet.First().score)
-                {
-                    m_Set.Remove(item);
-                    m_Set.Add(item);
-                }
-            }
-            #endif
-        }
-
-        public void Clear()
-        {
-            m_Set.Clear();
-        }
-
-        public bool Contains(SearchResult item)
-        {
-            return m_Set.Contains(item);
-        }
-
-        public bool TryGetValue(ref SearchResult item)
-        {
-            #if USE_SORTED_SET
-            var foundSet = m_Set.GetViewBetween(item, item);
-            if (foundSet.Count == 0)
-                return false;
-            var fItem = foundSet.First();
-            if (fItem.score < item.score)
-                item = fItem;
-            return true;
-            #else
-            return true;
-            #endif
-        }
-
-        public void CopyTo(SearchResult[] array, int arrayIndex)
-        {
-            m_Set.CopyTo(array, arrayIndex);
-        }
-
-        public bool Remove(SearchResult item)
-        {
-            return m_Set.Remove(item);
-        }
-
-        public IEnumerator<SearchResult> GetEnumerator()
-        {
-            return m_Set.GetEnumerator();
-        }
-
-        IEnumerator IEnumerable.GetEnumerator()
-        {
-            return m_Set.GetEnumerator();
-        }
-    }
-
     [DebuggerDisplay("{baseName} ({basePath})")]
     public readonly struct SearchIndexerRoot
     {
@@ -243,8 +139,21 @@ namespace Unity.QuickSearch
         }
     }
 
+    internal class SearchDocument
+    {
+        public SearchDocument(string id, string metadata = null)
+        {
+            this.id = id;
+            this.metadata = metadata;
+        }
+
+        public string id;
+        public string metadata;
+    }
+
     public class SearchIndexer
     {
+        public string name { get; set; }
         public SearchIndexerRoot[] roots { get; }
         public char[] entrySeparators { get; set; } = SearchUtils.entrySeparators;
 
@@ -267,7 +176,8 @@ namespace Unity.QuickSearch
         }
 
         internal IEnumerable<string> GetKeywords() { lock(this) return m_Keywords; }
-        internal IEnumerable<string> GetDocuments() { lock(this) return m_Documents; }
+        internal IEnumerable<string> GetDocuments() { lock(this) return m_Documents.Select(d => d.id); }
+        internal SearchDocument GetDocument(int index) { lock(this) return m_Documents[index]; }
 
         internal Dictionary<int, int> patternMatchCount { get; set; } = new Dictionary<int, int>();
 
@@ -293,7 +203,7 @@ namespace Unity.QuickSearch
         private Dictionary<RangeSet, IndexRange> m_FixedRanges = new Dictionary<RangeSet, IndexRange>();
 
         // Final documents and entries when the index is ready.
-        private List<string> m_Documents;
+        private List<SearchDocument> m_Documents;
         private SearchIndexEntry[] m_Indexes;
         protected HashSet<string> m_Keywords;
 
@@ -321,7 +231,7 @@ namespace Unity.QuickSearch
             getQueryTokensHandler = ParseQuery;
 
             m_Keywords = new HashSet<string>();
-            m_Documents = new List<string>();
+            m_Documents = new List<SearchDocument>();
             m_Indexes = new SearchIndexEntry[0];
             m_IndexTempFilePath = Path.GetTempFileName();
         }
@@ -372,19 +282,27 @@ namespace Unity.QuickSearch
 
         internal int AddDocument(string document, bool checkIfExists = true)
         {
+            return AddDocument(document, null, checkIfExists);
+        }
+
+        internal int AddDocument(string document, string metadata, bool checkIfExists = true)
+        {
             // Reformat entry to have them all uniformized.
             if (skipEntryHandler(document))
                 return -1;
 
-            lock(this)
+            lock (this)
             {
                 if (checkIfExists)
                 {
-                    var di = m_Documents.FindIndex(d => d == document);
+                    var di = m_Documents.FindIndex(d => d.id == document);
                     if (di >= 0)
+                    {
+                        m_Documents[di].metadata = metadata;
                         return di;
+                    }
                 }
-                m_Documents.Add(document);
+                m_Documents.Add(new SearchDocument(document, metadata));
                 return m_Documents.Count - 1;
             }
         }
@@ -411,7 +329,7 @@ namespace Unity.QuickSearch
 
         internal void AddExactWord(string word, int score, int documentIndex, List<SearchIndexEntry> indexes)
         {
-            indexes.Add(new SearchIndexEntry(word.GetHashCode(), int.MaxValue, SearchIndexEntryType.Word, documentIndex, score));
+            indexes.Add(new SearchIndexEntry(word.GetHashCode(), int.MaxValue, SearchIndexEntry.Type.Word, documentIndex, score));
         }
 
         internal void AddWord(string word, int minVariations, int maxVariations, int score, int documentIndex)
@@ -439,11 +357,11 @@ namespace Unity.QuickSearch
             for (int c = Math.Min(minVariations, maxVariations); c <= maxVariations; ++c)
             {
                 var ss = word.Substring(0, c);
-                indexes.Add(new SearchIndexEntry(ss.GetHashCode(), ss.Length, SearchIndexEntryType.Word, documentIndex, score));
+                indexes.Add(new SearchIndexEntry(ss.GetHashCode(), ss.Length, SearchIndexEntry.Type.Word, documentIndex, score));
             }
 
             if (word.Length > maxVariations)
-                indexes.Add(new SearchIndexEntry(word.GetHashCode(), word.Length, SearchIndexEntryType.Word, documentIndex, score-1));
+                indexes.Add(new SearchIndexEntry(word.GetHashCode(), word.Length, SearchIndexEntry.Type.Word, documentIndex, score-1));
         }
 
         internal void AddNumber(string key, double value, int score, int documentIndex)
@@ -485,16 +403,16 @@ namespace Unity.QuickSearch
             for (int c = Math.Min(minVariations, maxVariations); c <= maxVariations; ++c)
             {
                 var ss = value.Substring(0, c);
-                indexes.Add(new SearchIndexEntry(ss.GetHashCode(), nameHash, SearchIndexEntryType.Property, documentIndex, score + (maxVariations - c)));
+                indexes.Add(new SearchIndexEntry(ss.GetHashCode(), nameHash, SearchIndexEntry.Type.Property, documentIndex, score + (maxVariations - c)));
             }
 
             if (value.Length > maxVariations)
-                indexes.Add(new SearchIndexEntry(valueHash, nameHash, SearchIndexEntryType.Property, documentIndex, score-1));
+                indexes.Add(new SearchIndexEntry(valueHash, nameHash, SearchIndexEntry.Type.Property, documentIndex, score-1));
 
             // Add an exact match for property="match"
             nameHash = nameHash ^ name.Length.GetHashCode();
             valueHash = value.GetHashCode() ^ value.Length.GetHashCode();
-            indexes.Add(new SearchIndexEntry(valueHash, nameHash, SearchIndexEntryType.Property, documentIndex, score));
+            indexes.Add(new SearchIndexEntry(valueHash, nameHash, SearchIndexEntry.Type.Property, documentIndex, score));
 
             if (saveKeyword)
                 m_Keywords.Add($"{name}:{value}");
@@ -504,7 +422,7 @@ namespace Unity.QuickSearch
         {
             var keyHash = key.GetHashCode();
             var longNumber = BitConverter.DoubleToInt64Bits(value);
-            indexes.Add(new SearchIndexEntry(longNumber, keyHash, SearchIndexEntryType.Number, documentIndex, score));
+            indexes.Add(new SearchIndexEntry(longNumber, keyHash, SearchIndexEntry.Type.Number, documentIndex, score));
 
             m_Keywords.Add($"{key}:");
         }
@@ -561,7 +479,7 @@ namespace Unity.QuickSearch
                     var removedDocIndexes = new HashSet<int>();
                     foreach (var rd in removedDocuments)
                     {
-                        var di = m_Documents.FindIndex(d => d == rd);
+                        var di = m_Documents.FindIndex(d => d.id == rd);
                         if (di > -1)
                             removedDocIndexes.Add(di);
                     }
@@ -598,7 +516,7 @@ namespace Unity.QuickSearch
             int crc = word.Length;
             if (op == SearchIndexOperator.Equal)
                 crc = int.MaxValue;
-            return SearchIndexes(word.GetHashCode(), crc, SearchIndexEntryType.Word, maxScore, comparer, subset, patternMatchLimit);
+            return SearchIndexes(word.GetHashCode(), crc, SearchIndexEntry.Type.Word, maxScore, comparer, subset, patternMatchLimit);
         }
 
         private IEnumerable<SearchResult> ExcludeWord(string word, SearchIndexOperator op, SearchResultCollection subset)
@@ -630,7 +548,7 @@ namespace Unity.QuickSearch
                 valueHash ^= value.Length.GetHashCode();
             }
 
-            return SearchIndexes(valueHash, nameHash, SearchIndexEntryType.Property, maxScore, comparer, subset, patternMatchLimit);
+            return SearchIndexes(valueHash, nameHash, SearchIndexEntry.Type.Property, maxScore, comparer, subset, patternMatchLimit);
         }
 
         private SearchResultCollection m_AllDocumentIndexes;
@@ -656,10 +574,10 @@ namespace Unity.QuickSearch
         private IEnumerable<SearchResult> SearchNumber(string key, double value, SearchIndexOperator op, int maxScore, SearchResultCollection subset)
         {
             var wiec = new SearchIndexComparer(op);
-            return SearchIndexes(BitConverter.DoubleToInt64Bits(value), key.GetHashCode(), SearchIndexEntryType.Number, maxScore, wiec, subset);
+            return SearchIndexes(BitConverter.DoubleToInt64Bits(value), key.GetHashCode(), SearchIndexEntry.Type.Number, maxScore, wiec, subset);
         }
 
-        public IEnumerable<SearchResult> Search(string query, int maxScore = int.MaxValue, int patternMatchLimit = 2999)
+        public virtual IEnumerable<SearchResult> Search(string query, int maxScore = int.MaxValue, int patternMatchLimit = 2999)
         {
             //using (new DebugTimer($"Search Index ({query})"))
             {
@@ -678,7 +596,7 @@ namespace Unity.QuickSearch
                 var wiec = new SearchIndexComparer();
                 lock (this)
                 {
-                    var remains = SearchIndexes(patterns[0], lengths[0], SearchIndexEntryType.Word, maxScore, wiec, null, patternMatchLimit).ToList();
+                    var remains = SearchIndexes(patterns[0], lengths[0], SearchIndexEntry.Type.Word, maxScore, wiec, null, patternMatchLimit).ToList();
                     patternMatchCount[patterns[0]] = remains.Count;
 
                     if (remains.Count == 0)
@@ -687,12 +605,12 @@ namespace Unity.QuickSearch
                     for (int i = 1; i < patterns.Length; ++i)
                     {
                         var subset = new SearchResultCollection(remains);
-                        remains = SearchIndexes(patterns[i], lengths[i], SearchIndexEntryType.Word, maxScore, wiec, subset, patternMatchLimit).ToList();
+                        remains = SearchIndexes(patterns[i], lengths[i], SearchIndexEntry.Type.Word, maxScore, wiec, subset, patternMatchLimit).ToList();
                         if (remains.Count == 0)
                             break;
                     }
 
-                    return remains.Select(fi => new SearchResult(m_Documents[fi.index], fi.index, fi.score));
+                    return remains.Select(fi => new SearchResult(m_Documents[fi.index].id, fi.index, fi.score));
                 }
             }
         }
@@ -774,7 +692,7 @@ namespace Unity.QuickSearch
                     }
                 }
 
-                return results.Select(r => new SearchResult(m_Documents[r.index], r.index, r.score));
+                return results.Select(r => new SearchResult(m_Documents[r.index].id, r.index, r.score));
             }
         }
 
@@ -834,7 +752,7 @@ namespace Unity.QuickSearch
 
             if (matches == null)
                 return null;
-            return matches.Select(r => new SearchResult(m_Documents[r.index], r.index, r.score));
+            return matches.Select(r => new SearchResult(m_Documents[r.index].id, r.index, r.score));
         }
 
         private int SortTokensByPatternMatches(string item1, string item2)
@@ -854,10 +772,17 @@ namespace Unity.QuickSearch
                 indexWriter.Write(SearchIndexEntry.version);
                 indexWriter.Write(tag);
 
-                // Entries
+                // Documents
                 indexWriter.Write(m_Documents.Count);
                 foreach (var p in m_Documents)
-                    indexWriter.Write(p);
+                {
+                    indexWriter.Write(p.id);
+
+                    bool writeMetadata = !String.IsNullOrEmpty(p.metadata);
+                    indexWriter.Write(writeMetadata);
+                    if (writeMetadata)
+                        indexWriter.Write(p.metadata);
+                }
 
                 // Indexes
                 indexWriter.Write(m_Indexes.Length);
@@ -928,11 +853,16 @@ namespace Unity.QuickSearch
 
                 indexReader.ReadString(); // Skip
 
-                // Entries
+                // Documents
                 var elementCount = indexReader.ReadInt32();
-                var documents = new string[elementCount];
+                var documents = new SearchDocument[elementCount];
                 for (int i = 0; i < elementCount; ++i)
-                    documents[i] = indexReader.ReadString();
+                {
+                    documents[i] = new SearchDocument(indexReader.ReadString());
+                    bool readMetadata = indexReader.ReadBoolean();
+                    if (readMetadata)
+                        documents[i].metadata = indexReader.ReadString();
+                }
 
                 // Indexes
                 elementCount = indexReader.ReadInt32();
@@ -941,7 +871,7 @@ namespace Unity.QuickSearch
                 {
                     var key = indexReader.ReadInt64();
                     var crc = indexReader.ReadInt32();
-                    var type = (SearchIndexEntryType)indexReader.ReadInt32();
+                    var type = (SearchIndexEntry.Type)indexReader.ReadInt32();
                     var index = indexReader.ReadInt32();
                     var score = indexReader.ReadInt32();
                     indexes.Add(new SearchIndexEntry(key, crc, type, index, score));
@@ -975,10 +905,8 @@ namespace Unity.QuickSearch
             lock (this)
             {
                 using (var fileStream = new FileStream(indexFilePath, FileMode.Open, FileAccess.Read, FileShare.Read))
-                    Read(fileStream, checkVersionOnly);
+                    return Read(fileStream, checkVersionOnly);
             }
-
-            return true;
         }
 
         internal bool LoadIndexFromDisk(string basePath, bool useThread = false)
@@ -1008,7 +936,7 @@ namespace Unity.QuickSearch
             m_ThreadAborted = true;
         }
 
-        private void UpdateIndexes(IEnumerable<string> documents, List<SearchIndexEntry> entries, string saveIndexBasePath = null)
+        private void UpdateIndexes(IEnumerable<SearchDocument> documents, List<SearchIndexEntry> entries, string saveIndexBasePath = null)
         {
             if (entries == null)
                 return;
@@ -1035,7 +963,7 @@ namespace Unity.QuickSearch
             }
         }
 
-        private void ApplyIndexes(IEnumerable<string> documents, SearchIndexEntry[] entries)
+        private void ApplyIndexes(IEnumerable<SearchDocument> documents, SearchIndexEntry[] entries)
         {
             m_Documents = documents.ToList();
             m_Indexes = entries;
@@ -1051,7 +979,7 @@ namespace Unity.QuickSearch
                 LoadIndexFromDisk(roots[0].basePath);
 
             int entryStart = 0;
-            var documents = new List<string>();
+            var documents = new List<SearchDocument>();
             var wordIndexes = new List<SearchIndexEntry>();
 
             var baseScore = 0;
@@ -1068,11 +996,8 @@ namespace Unity.QuickSearch
                     rootName = rootName + "/";
 
                 // Fetch entries to be indexed and compiled.
-                documents.AddRange(enumerateRootEntriesHandler(r));
+                documents.AddRange(enumerateRootEntriesHandler(r).Select(id => new SearchDocument(rootName + id)));
                 BuildPartialIndex(wordIndexes, basePathWithSlash, entryStart, documents, baseScore);
-
-                for (int i = entryStart; i < documents.Count; ++i)
-                    documents[i] = rootName + documents[i];
 
                 entryStart = documents.Count;
                 baseScore = 100;
@@ -1081,14 +1006,14 @@ namespace Unity.QuickSearch
             UpdateIndexes(documents, wordIndexes, roots[0].basePath);
         }
 
-        private List<SearchIndexEntry> BuildPartialIndex(string basis, int entryStartIndex, IList<string> entries, int baseScore)
+        private List<SearchIndexEntry> BuildPartialIndex(string basis, int entryStartIndex, IList<SearchDocument> entries, int baseScore)
         {
             var wordIndexes = new List<SearchIndexEntry>(entries.Count * 3);
             BuildPartialIndex(wordIndexes, basis, entryStartIndex, entries, baseScore);
             return wordIndexes;
         }
 
-        private void BuildPartialIndex(List<SearchIndexEntry> wordIndexes, string basis, int entryStartIndex, IList<string> entries, int baseScore)
+        private void BuildPartialIndex(List<SearchIndexEntry> wordIndexes, string basis, int entryStartIndex, IList<SearchDocument> entries, int baseScore)
         {
             int entryCount = entries.Count - entryStartIndex;
             for (int i = entryStartIndex; i != entries.Count; ++i)
@@ -1096,14 +1021,14 @@ namespace Unity.QuickSearch
                 if (m_ThreadAborted)
                     break;
 
-                if (String.IsNullOrEmpty(entries[i]))
+                if (String.IsNullOrEmpty(entries[i].id))
                     continue;
 
                 // Reformat entry to have them all uniformized.
                 if (!String.IsNullOrEmpty(basis))
-                    entries[i] = entries[i].Replace('\\', '/').Replace(basis, "");
+                    entries[i].id = entries[i].id.Replace('\\', '/').Replace(basis, "");
 
-                var path = entries[i];
+                var path = entries[i].id;
                 if (skipEntryHandler(path))
                     continue;
 
@@ -1140,7 +1065,7 @@ namespace Unity.QuickSearch
             if (prevEntry.crc != term.crc || prevEntry.type != term.type)
                 return false;
 
-            if (term.type == SearchIndexEntryType.Number)
+            if (term.type == SearchIndexEntry.Type.Number)
                 return NumberCompare(op, prevEntry.number, term.number);
 
             return prevEntry.key == term.key;
@@ -1152,7 +1077,7 @@ namespace Unity.QuickSearch
                     m_Indexes[foundIndex].crc != term.crc || m_Indexes[foundIndex].type != term.type)
                 return false;
 
-            if (term.type == SearchIndexEntryType.Number)
+            if (term.type == SearchIndexEntry.Type.Number)
                 return NumberCompare(op, m_Indexes[foundIndex].number, term.number);
 
             return m_Indexes[foundIndex].key == term.key;
@@ -1192,7 +1117,7 @@ namespace Unity.QuickSearch
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private bool IsIndexValid(int foundIndex, long crc, SearchIndexEntryType type)
+        private bool IsIndexValid(int foundIndex, long crc, SearchIndexEntry.Type type)
         {
             return foundIndex >= 0 && foundIndex < m_Indexes.Length && m_Indexes[foundIndex].crc == crc && m_Indexes[foundIndex].type == type;
         }
@@ -1244,10 +1169,10 @@ namespace Unity.QuickSearch
 
         readonly struct RangeSet : IEquatable<RangeSet>
         {
-            public readonly SearchIndexEntryType type;
+            public readonly SearchIndexEntry.Type type;
             public readonly int crc;
 
-            public RangeSet(SearchIndexEntryType type, int crc)
+            public RangeSet(SearchIndexEntry.Type type, int crc)
             {
                 this.type = type;
                 this.crc = crc;
@@ -1260,9 +1185,9 @@ namespace Unity.QuickSearch
 
         private IndexRange FindTypeRange(int hitIndex, in SearchIndexEntry term)
         {
-            if (term.type == SearchIndexEntryType.Word)
+            if (term.type == SearchIndexEntry.Type.Word)
             {
-                if (m_Indexes[0].type != SearchIndexEntryType.Word || m_Indexes[hitIndex].type != SearchIndexEntryType.Word)
+                if (m_Indexes[0].type != SearchIndexEntry.Type.Word || m_Indexes[hitIndex].type != SearchIndexEntry.Type.Word)
                     return IndexRange.Invalid; // No words
 
                 IndexRange range;
@@ -1271,16 +1196,16 @@ namespace Unity.QuickSearch
                     return range;
 
                 int endRange = hitIndex;
-                while (m_Indexes[endRange+1].type == SearchIndexEntryType.Word)
+                while (m_Indexes[endRange+1].type == SearchIndexEntry.Type.Word)
                     endRange++;
 
                 range = new IndexRange(0, endRange);
                 m_FixedRanges[rangeSet] = range;
                 return range;
             }
-            else if (term.type == SearchIndexEntryType.Property || term.type == SearchIndexEntryType.Number)
+            else if (term.type == SearchIndexEntry.Type.Property || term.type == SearchIndexEntry.Type.Number)
             {
-                if (m_Indexes[hitIndex].type != SearchIndexEntryType.Property)
+                if (m_Indexes[hitIndex].type != SearchIndexEntry.Type.Property)
                     return IndexRange.Invalid;
 
                 IndexRange range;
@@ -1289,12 +1214,12 @@ namespace Unity.QuickSearch
                     return range;
 
                 int startRange = hitIndex, prev = hitIndex - 1;
-                while (prev >= 0 && m_Indexes[prev].type == SearchIndexEntryType.Property && m_Indexes[prev].crc == term.crc)
+                while (prev >= 0 && m_Indexes[prev].type == SearchIndexEntry.Type.Property && m_Indexes[prev].crc == term.crc)
                     startRange = prev--;
 
                 var indexCount = m_Indexes.Length;
                 int endRange = hitIndex, next = hitIndex + 1;
-                while (next < indexCount && m_Indexes[next].type == SearchIndexEntryType.Property && m_Indexes[next].crc == term.crc)
+                while (next < indexCount && m_Indexes[next].type == SearchIndexEntry.Type.Property && m_Indexes[next].crc == term.crc)
                     endRange = next++;
 
                 range = new IndexRange(startRange, endRange);
@@ -1338,7 +1263,7 @@ namespace Unity.QuickSearch
                 #endif
                 if (intersects && indexEntry.score < maxScore)
                 {
-                    if (term.type == SearchIndexEntryType.Number)
+                    if (term.type == SearchIndexEntry.Type.Number)
                         matches.Add(new SearchResult(indexEntry.index, indexEntry.score + (int)Math.Abs(term.number - m_Indexes[foundIndex].number)));
                     else
                         matches.Add(new SearchResult(indexEntry.index, indexEntry.score));
@@ -1354,7 +1279,7 @@ namespace Unity.QuickSearch
         }
 
         private IEnumerable<SearchResult> SearchIndexes(
-                long key, int crc, SearchIndexEntryType type, int maxScore,
+                long key, int crc, SearchIndexEntry.Type type, int maxScore,
                 SearchIndexComparer comparer, SearchResultCollection subset, int limit = int.MaxValue)
         {
             if (subset != null && subset.Count == 0)
@@ -1410,396 +1335,15 @@ namespace Unity.QuickSearch
                 m_Disposed = true;
             }
         }
-    }
 
-    class SearchIndexComparer : IComparer<SearchIndexEntry>, IEqualityComparer<SearchIndexEntry>
-    {
-        const double EPSILON = 0.0000000000001;
-
-        public SearchIndexOperator op { get; private set; }
-
-        public SearchIndexComparer(SearchIndexOperator op = SearchIndexOperator.Contains)
+        public virtual bool SkipEntry(string document, bool checkRoots = false)
         {
-            this.op = op;
+            return skipEntryHandler?.Invoke(document) ?? false;
         }
 
-        public int Compare(SearchIndexEntry item1, SearchIndexEntry item2)
+        public virtual void IndexDocument(string document, bool checkIfDocumentExists)
         {
-            var c = item1.type.CompareTo(item2.type);
-            if (c != 0)
-                return c;
-            c = item1.crc.CompareTo(item2.crc);
-            if (c != 0)
-                return c;
-
-            if (item1.type == SearchIndexEntryType.Number)
-            {
-                double eps = 0.0;
-                if (op == SearchIndexOperator.Less)
-                    eps = -EPSILON;
-                else if (op == SearchIndexOperator.Greater)
-                    eps = EPSILON;
-                c = item1.number.CompareTo(item2.number + eps);
-            }
-            else
-                c = item1.key.CompareTo(item2.key);
-            if (c != 0)
-                return c;
-
-            if (op == SearchIndexOperator.Document)
-            {
-                c = item1.index.CompareTo(item2.index);
-                if (c != 0)
-                    return c;
-            }
-
-            if (item2.score == int.MaxValue)
-                return 0;
-            return item1.score.CompareTo(item2.score);
-        }
-
-        public bool Equals(SearchIndexEntry x, SearchIndexEntry y)
-        {
-            return x.Equals(y);
-        }
-
-        public int GetHashCode(SearchIndexEntry obj)
-        {
-            return obj.GetHashCode();
-        }
-    }
-
-    class SearchIndexerQuery : SearchIndexerQuery<SearchResult> {}
-
-    class SearchIndexerQuery<T> : IQueryHandler<T, SearchIndexerQuery<T>.EvalHandler, object>
-    {
-        private QueryGraph graph { get; set; }
-
-        public delegate EvalResult EvalHandler(EvalHandlerArgs args);
-
-        public readonly struct EvalHandlerArgs
-        {
-            public readonly string name;
-            public readonly object value;
-            public readonly bool exclude;
-            public readonly SearchIndexOperator op;
-
-            public readonly IEnumerable<T> andSet;
-            public readonly IEnumerable<T> orSet;
-
-            public readonly object payload;
-
-            public EvalHandlerArgs(string name, object value, SearchIndexOperator op, bool exclude,
-                IEnumerable<T> andSet, IEnumerable<T> orSet, object payload)
-            {
-                this.name = name;
-                this.value = value;
-                this.op = op;
-                this.exclude = exclude;
-                this.andSet = andSet;
-                this.orSet = orSet;
-                this.payload = payload;
-            }
-        }
-
-        public readonly struct EvalResult
-        {
-            public readonly bool combined;
-            public readonly IEnumerable<T> results;
-
-            public static EvalResult None = new EvalResult(false, null);
-
-            public EvalResult(bool combined, IEnumerable<T> results = null)
-            {
-                this.combined = combined;
-                this.results = results;
-            }
-
-            public static EvalResult Combined(IEnumerable<T> results)
-            {
-                return new EvalResult(true, results);
-            }
-
-            public static void Print(EvalHandlerArgs args, IEnumerable<T> results = null, SearchResultCollection subset = null, double elapsedTime = -1)
-            {
-                var combineString = GetCombineString(args.andSet, args.orSet);
-                var elapsedTimeString = "";
-                if (elapsedTime > 0)
-                    elapsedTimeString = $"{elapsedTime:F2} ms";
-                UnityEngine.Debug.LogFormat(UnityEngine.LogType.Log, UnityEngine.LogOption.None, null,
-                    $"Eval -> {combineString} | op:{args.op,14} | exclude:{args.exclude,7} | " +
-                    $"[{args.name,4}, {args.value,8}] | i:{GetAddress(args.andSet)} | a:{GetAddress(args.orSet)} | " +
-                    $"h:{GetAddress(subset)} | results:{GetAddress(results)} | " + elapsedTimeString);
-            }
-
-            private static string GetCombineString(object inputSet, object addedSet)
-            {
-                var combineString = "  -  ";
-                if (addedSet != null && inputSet != null)
-                    combineString = "\u2229\u222A";
-                else if (addedSet != null)
-                    combineString = " \u2229 ";
-                else if (inputSet != null)
-                    combineString = " \u222A ";
-                return combineString;
-            }
-
-            private static int GetHandle(object obj)
-            {
-                return obj.GetHashCode();
-            }
-
-            private static string GetAddress(object obj)
-            {
-                if (obj == null)
-                    return "0x00000000";
-                var addr = GetHandle(obj);
-                return $"0x{addr.ToString("X8")}";
-            }
-
-            private static string GetAddress(ICollection<T> list)
-            {
-                if (list == null)
-                    return "0x00000000";
-                var addr = GetHandle(list);
-                return $"({list.Count}) 0x{addr.ToString("X8")}";
-            }
-        }
-
-        public void Initialize(QueryEngine<T> engine, QueryGraph graph)
-        {
-            this.graph = graph;
-            graph.Optimize(true, true);
-        }
-
-        public IEnumerable<T> Eval(EvalHandler handler, object payload)
-        {
-            var root = BuildInstruction(graph.root, handler, payload, false);
-            root.Execute(Combine.None);
-            if (root.results == null)
-                return new List<T>();
-            else
-                return root.results.Distinct();
-        }
-
-        private static Instruction BuildInstruction(IQueryNode node, EvalHandler eval, object payload, bool not)
-        {
-            switch (node.type)
-            {
-                case QueryNodeType.And:
-                {
-                    Assert.IsFalse(node.leaf, "And node cannot be leaf.");
-                    if (!not)
-                        return new AndInstruction(node, eval, payload, not);
-                    else
-                        return new OrInstruction(node, eval, payload, not);
-                }
-                case QueryNodeType.Or:
-                {
-                    Assert.IsFalse(node.leaf, "Or node cannot be leaf.");
-                    if (!not)
-                        return new OrInstruction(node, eval, payload, not);
-                    else
-                        return new AndInstruction(node, eval, payload, not);
-                }
-                case QueryNodeType.Not:
-                {
-                    Assert.IsFalse(node.leaf, "Not node cannot be leaf.");
-                    Instruction instruction = BuildInstruction(node.children[0], eval, payload, !not);
-                    return instruction;
-                }
-                case QueryNodeType.Filter:
-                case QueryNodeType.Search:
-                {
-                    Assert.IsNotNull(node);
-                    return new ResultInstruction(node, eval, payload, not);
-                }
-            }
-
-            return null;
-        }
-
-        private static SearchIndexOperator ParseOperatorToken(string token)
-        {
-            switch (token)
-            {
-                case ":": return SearchIndexOperator.Contains;
-                case "=": return SearchIndexOperator.Equal;
-                case ">": return SearchIndexOperator.Greater;
-                case ">=": return SearchIndexOperator.GreaterOrEqual;
-                case "<": return SearchIndexOperator.Less;
-                case "<=": return SearchIndexOperator.LessOrEqual;
-                case "!=": return SearchIndexOperator.NotEqual;
-            }
-            return SearchIndexOperator.None;
-        }
-
-        private abstract class Instruction
-        {
-            public object payload;
-            public IEnumerable<T> andSet; //not null for a AND
-            public IEnumerable<T> orSet; //not null for a OR
-            public IEnumerable<T> results;
-            protected EvalHandler eval;
-            public abstract bool Execute(Combine combine);
-        }
-
-        private abstract class OperandInstruction : Instruction
-        {
-            public Instruction leftInstruction;
-            public Instruction rightInstruction;
-            protected Combine combine;
-
-            public OperandInstruction(IQueryNode node, EvalHandler eval, object payload, bool not)
-            {
-                leftInstruction = BuildInstruction(node.children[0], eval, payload, not);
-                rightInstruction = BuildInstruction(node.children[1], eval, payload, not);
-                this.eval = eval;
-                this.payload = payload;
-            }
-
-            public override bool Execute(Combine combine)
-            {
-                // Pass the inputSet from the parent
-                if (andSet != null)
-                {
-                    leftInstruction.andSet = andSet;
-                    //rightInstruction.inputSet = inputSet;
-                }
-                // Pass the addedSet from the parent (only added by the right instruction)
-                if (orSet != null)
-                {
-                    //leftInstruction.addedSet = addedSet;
-                    rightInstruction.orSet = orSet;
-                }
-                bool combinedLeft = leftInstruction.Execute(combine);
-
-                UpdateRightInstruction(leftInstruction.results);
-
-                bool combinedRight = rightInstruction.Execute(this.combine);
-
-                UpdateOutputSet(combinedLeft, combinedRight, leftInstruction.results, rightInstruction.results);
-                return IsCombineHandled(combinedLeft, combinedRight);
-            }
-
-            internal abstract bool IsCombineHandled(bool combinedLeft, bool combinedRight);
-            internal abstract void UpdateOutputSet(bool combinedLeft, bool combinedRight, IEnumerable<T> leftReturn, IEnumerable<T> rightReturn);
-            internal abstract void UpdateRightInstruction(IEnumerable<T> leftReturn);
-        }
-
-        private class AndInstruction : OperandInstruction
-        {
-            public AndInstruction(IQueryNode node, EvalHandler eval, object dataSet, bool not) : base(node, eval, dataSet, not)
-            {
-                combine = Combine.Intersection;
-            }
-
-            internal override bool IsCombineHandled(bool combinedLeft, bool combinedRight)
-            {
-                return combinedLeft; // For a AND the inputSet is used by the left
-            }
-
-            internal override void UpdateOutputSet(bool combinedLeft, bool combinedRight, IEnumerable<T> leftReturn, IEnumerable<T> rightReturn)
-            {
-                if (!combinedRight)
-                {
-                    var result = eval(new EvalHandlerArgs(null, null, SearchIndexOperator.None, false, leftReturn, rightReturn, payload));
-                    results = result.results;
-                    if (!result.combined)
-                    {
-                        results = leftReturn.Intersect(rightReturn).ToList();
-                    }
-                }
-                else
-                    results = rightReturn;
-            }
-
-            internal override void UpdateRightInstruction(IEnumerable<T> leftReturn)
-            {
-                rightInstruction.andSet = leftReturn;
-            }
-        }
-
-        private class OrInstruction : OperandInstruction
-        {
-            public OrInstruction(IQueryNode node, EvalHandler eval, object payload, bool not) : base(node, eval, payload, not)
-            {
-                combine = Combine.Union;
-            }
-
-            internal override bool IsCombineHandled(bool combinedLeft, bool combinedRight)
-            {
-                return combinedRight; // For a OR the addedSet is used by the right
-            }
-
-            internal override void UpdateOutputSet(bool combinedLeft, bool combinedRight, IEnumerable<T> leftReturn, IEnumerable<T> rightReturn)
-            {
-                if (!combinedRight)
-                {
-                    int rightReturnOriginalCount = rightReturn.Count();
-                    int leftReturnOriginalCount = leftReturn.Count();
-                    var result = eval(new EvalHandlerArgs(null, null, SearchIndexOperator.None, false, leftReturn, rightReturn, payload));
-                    results = result.results;
-                    if (!result.combined)
-                    {
-                        results = leftReturn.Union(rightReturn);
-                    }
-                }
-                else
-                    results = rightReturn;
-            }
-
-            internal override void UpdateRightInstruction(IEnumerable<T> leftReturn)
-            {
-                // Pass the input Set from the parent
-                if (andSet != null)
-                    rightInstruction.andSet = andSet;
-
-                // might be wrong to modify that list because it's used somewhere else
-                if (rightInstruction.orSet == null)
-                    rightInstruction.orSet = leftReturn;
-                else
-                {
-                    rightInstruction.orSet = rightInstruction.orSet.Union(leftReturn);
-                }
-            }
-        }
-
-        private class ResultInstruction : Instruction
-        {
-            public readonly IQueryNode node;
-            public readonly bool exclude;
-
-            public ResultInstruction(IQueryNode node, EvalHandler eval, object payload, bool exclude)
-            {
-                this.node = node;
-                this.eval = eval;
-                this.payload = payload;
-                this.exclude = exclude;
-            }
-
-            public override bool Execute(Combine combine)
-            {
-                string searchName = null;
-                object searchValue = null;
-                var searchOperator = SearchIndexOperator.None;
-                if (node is FilterNode filterNode)
-                {
-                    searchName = filterNode.filterOperation.filterName;
-                    searchValue = filterNode.filterOperation.filterValue;
-                    searchOperator = ParseOperatorToken(filterNode.filterOperation.filterOperator.token);
-                }
-                else if (node is SearchNode searchNode)
-                {
-                    searchName = null;
-                    searchValue = searchNode.searchValue;
-                    searchOperator = searchNode.exact ? SearchIndexOperator.Equal : SearchIndexOperator.Contains;
-                }
-
-                var result = eval(new EvalHandlerArgs(searchName, searchValue, searchOperator, exclude, andSet, orSet, payload));
-                results = result.results;
-                return result.combined;
-            }
+            throw new NotImplementedException($"{nameof(IndexDocument)} must be implemented by a specialized indexer.");
         }
     }
 }

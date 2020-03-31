@@ -11,77 +11,157 @@ using UnityEngine;
 
 namespace Unity.QuickSearch
 {
-    abstract class QuickSearchEngine : UnityEditor.SearchService.ISearchEngineBase
+    class SearchApiSession : IDisposable
     {
-        public SearchProvider provider { get; private set; }
+        bool m_Disposed = false;
 
         public SearchContext context { get; private set; }
 
-        public virtual void BeginSession(UnityEditor.SearchService.ISearchContext context)
+        public Action<IEnumerable<string>> onAsyncItemsReceived { get; set; }
+
+        public SearchApiSession(SearchProvider provider)
         {
-            provider = SearchService.Providers.First(p => p.name.id == providerId);
-            this.context = new SearchContext(new []{provider});
+            context = new SearchContext(new []{ provider });
         }
 
-        public virtual void EndSession(UnityEditor.SearchService.ISearchContext context)
+        ~SearchApiSession()
         {
-            StopAsyncResults();
-            this.context = null;
+            Dispose(false);
         }
 
-        public virtual void BeginSearch(string query, UnityEditor.SearchService.ISearchContext context)
-        {
-            StopAsyncResults();
-            this.context.asyncItemReceived += onAsyncItemReceived;
-        }
-
-        public virtual void EndSearch(UnityEditor.SearchService.ISearchContext context) {}
-
-        private void StopAsyncResults()
+        public void StopAsyncResults()
         {
             if (context.searchInProgress)
             {
                 context.sessions.StopAllAsyncSearchSessions();
             }
-            context.asyncItemReceived -= onAsyncItemReceived;
+            context.asyncItemReceived -= OnAsyncItemsReceived;
         }
+
+        public void StartAsyncResults()
+        {
+            context.asyncItemReceived += OnAsyncItemsReceived;
+        }
+
+        private void OnAsyncItemsReceived(IEnumerable<SearchItem> items)
+        {
+            onAsyncItemsReceived?.Invoke(items.Select(item => item.id));
+        }
+
+        protected virtual void Dispose(bool disposing)
+        {
+            if (!m_Disposed)
+            {
+                StopAsyncResults();
+                context?.Dispose();
+                m_Disposed = true;
+                context = null;
+
+            }
+        }
+
+        public void Dispose()
+        {
+            Dispose(true);
+            GC.SuppressFinalize(this);
+        }
+    }
+
+    abstract class QuickSearchEngine : UnityEditor.SearchService.ISearchEngineBase, IDisposable
+    {
+        bool m_Disposed = false;
+
+        public Dictionary<Guid, SearchApiSession> searchSessions = new Dictionary<Guid, SearchApiSession>();
+
+        ~QuickSearchEngine()
+        {
+            Dispose(false);
+        }
+
+        public virtual void BeginSession(UnityEditor.SearchService.ISearchContext context)
+        {
+            if (searchSessions.ContainsKey(context.guid))
+                return;
+
+            var provider = SearchService.Providers.First(p => p.name.id == providerId);
+            searchSessions.Add(context.guid, new SearchApiSession(provider));
+        }
+
+        public virtual void EndSession(UnityEditor.SearchService.ISearchContext context)
+        {
+            if (!searchSessions.ContainsKey(context.guid))
+                return;
+
+            searchSessions[context.guid].StopAsyncResults();
+            searchSessions[context.guid].Dispose();
+            searchSessions.Remove(context.guid);
+        }
+
+        public virtual void BeginSearch(string query, UnityEditor.SearchService.ISearchContext context)
+        {
+            if (!searchSessions.ContainsKey(context.guid))
+                return;
+            searchSessions[context.guid].StopAsyncResults();
+            searchSessions[context.guid].StartAsyncResults();
+        }
+
+        public virtual void EndSearch(UnityEditor.SearchService.ISearchContext context) {}
 
         public string id => "quicksearch";
         public string displayName => "Quick Search";
 
         public abstract string providerId { get; }
 
-        public abstract Action<IEnumerable<SearchItem>> onAsyncItemReceived { get; }
+        protected virtual void Dispose(bool disposing)
+        {
+            if (!m_Disposed)
+            {
+                foreach (var kvp in searchSessions)
+                {
+                    kvp.Value.Dispose();
+                }
+
+                m_Disposed = true;
+                searchSessions = null;
+            }
+        }
+
+        public void Dispose()
+        {
+            Dispose(true);
+            GC.SuppressFinalize(this);
+        }
     }
 
     [UnityEditor.SearchService.Project.Engine]
     class ProjectSearchEngine : QuickSearchEngine, UnityEditor.SearchService.Project.IEngine
     {
-        Action<IEnumerable<string>> m_OnAsyncItemReceived = items => {};
-
         public override string providerId => "asset";
-
-        public override Action<IEnumerable<SearchItem>> onAsyncItemReceived => itemsReceived => m_OnAsyncItemReceived(itemsReceived.Select(item => item.id));
 
         public virtual IEnumerable<string> Search(string query, UnityEditor.SearchService.ISearchContext context, Action<IEnumerable<string>> asyncItemsReceived)
         {
+            if (!searchSessions.ContainsKey(context.guid))
+                return new string[] { };
+
+            var searchSession = searchSessions[context.guid];
+
             if (asyncItemsReceived != null)
             {
-                m_OnAsyncItemReceived = asyncItemsReceived;
+                searchSession.onAsyncItemsReceived = asyncItemsReceived;
             }
 
             if (context.requiredTypeNames != null && context.requiredTypeNames.Any())
             {
-                this.context.wantsMore = true;
-                this.context.filterType = Utils.GetTypeFromName(context.requiredTypeNames.First());
+                searchSession.context.wantsMore = true;
+                searchSession.context.filterType = Utils.GetTypeFromName(context.requiredTypeNames.First());
             }
             else
             {
-                this.context.wantsMore = false;
-                this.context.filterType = null;
+                searchSession.context.wantsMore = false;
+                searchSession.context.filterType = null;
             }
-            this.context.searchText = query;
-            var items = SearchService.GetItems(this.context);
+            searchSession.context.searchText = query;
+            var items = SearchService.GetItems(searchSession.context);
             return items.Select(item => item.id);
         }
     }
@@ -89,43 +169,58 @@ namespace Unity.QuickSearch
     [UnityEditor.SearchService.Scene.Engine]
     class SceneSearchEngine : QuickSearchEngine, UnityEditor.SearchService.Scene.IEngine
     {
-        private HashSet<int> m_SearchItems;
+        private readonly Dictionary<Guid, HashSet<int>> m_SearchItemsBySession = new Dictionary<Guid, HashSet<int>>();
 
         public override string providerId => "scene";
 
-        public override Action<IEnumerable<SearchItem>> onAsyncItemReceived => items => { };
-
         public override void BeginSearch(string query, UnityEditor.SearchService.ISearchContext context)
         {
+            if (!searchSessions.ContainsKey(context.guid))
+                return;
             base.BeginSearch(query, context);
-            this.context.searchText = query;
-            this.context.wantsMore = true;
+
+            var searchSession = searchSessions[context.guid];
+            searchSession.context.searchText = query;
+            searchSession.context.wantsMore = true;
             if (context.requiredTypeNames != null && context.requiredTypeNames.Any())
             {
-                this.context.filterType = Utils.GetTypeFromName(context.requiredTypeNames.First());
+                searchSession.context.filterType = Utils.GetTypeFromName(context.requiredTypeNames.First());
             }
             else
             {
-                this.context.filterType = typeof(GameObject);
+                searchSession.context.filterType = typeof(GameObject);
             }
 
-            m_SearchItems = new HashSet<int>();
-            foreach (var id in SearchService.GetItems(this.context, SearchFlags.Synchronous).Select(item => Convert.ToInt32(item.id)))
+            if (!m_SearchItemsBySession.ContainsKey(context.guid))
+                m_SearchItemsBySession.Add(context.guid, new HashSet<int>());
+            var searchItemsSet = m_SearchItemsBySession[context.guid];
+            searchItemsSet.Clear();
+
+            foreach (var id in SearchService.GetItems(searchSession.context, SearchFlags.Synchronous).Select(item => Convert.ToInt32(item.id)))
             {
-                m_SearchItems.Add(id);
+                searchItemsSet.Add(id);
             }
         }
 
         public override void EndSearch(UnityEditor.SearchService.ISearchContext context)
         {
-            m_SearchItems.Clear();
+            if (!searchSessions.ContainsKey(context.guid))
+                return;
+            if (m_SearchItemsBySession.ContainsKey(context.guid))
+            {
+                m_SearchItemsBySession[context.guid].Clear();
+                m_SearchItemsBySession.Remove(context.guid);
+            }
             base.EndSearch(context);
         }
 
         public virtual bool Filter(string query, HierarchyProperty objectToFilter, UnityEditor.SearchService.ISearchContext context)
         {
-            var id = objectToFilter.instanceID;
-            return m_SearchItems.Contains(id);
+            if (!searchSessions.ContainsKey(context.guid))
+                return false;
+            if (!m_SearchItemsBySession.ContainsKey(context.guid))
+                return false;
+            return m_SearchItemsBySession[context.guid].Contains(objectToFilter.instanceID);
         }
     }
 
@@ -134,7 +229,6 @@ namespace Unity.QuickSearch
     {
         public override string providerId => "res";
 
-        public override Action<IEnumerable<SearchItem>> onAsyncItemReceived => items => {};
         public override void BeginSearch(string query, UnityEditor.SearchService.ISearchContext context) {}
         public override void BeginSession(UnityEditor.SearchService.ISearchContext context) {}
         public override void EndSearch(UnityEditor.SearchService.ISearchContext context) {}

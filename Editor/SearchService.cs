@@ -121,33 +121,8 @@ namespace Unity.QuickSearch
         /// <remarks>Use with care. Useful for unit tests.</remarks>
         public static void Refresh()
         {
-            Providers = Utils.GetAllMethodsWithAttribute<SearchItemProviderAttribute>().Select(methodInfo =>
-            {
-                try
-                {
-                    SearchProvider fetchedProvider = null;
-                    using (var fetchLoadTimer = new DebugTimer(null))
-                    {
-                        fetchedProvider = methodInfo.Invoke(null, null) as SearchProvider;
-                        if (fetchedProvider == null)
-                            return null;
-
-                        fetchedProvider.loadTime = fetchLoadTimer.timeMs;
-
-                        // Load per provider user settings
-                        fetchedProvider.active = EditorPrefs.GetBool($"{prefKey}.{fetchedProvider.name.id}.active", fetchedProvider.active);
-                        fetchedProvider.priority = EditorPrefs.GetInt($"{prefKey}.{fetchedProvider.name.id}.priority", fetchedProvider.priority);
-                    }
-                    return fetchedProvider;
-                }
-                catch (Exception ex)
-                {
-                    UnityEngine.Debug.LogException(ex);
-                    return null;
-                }
-            }).Where(provider => provider != null).ToList();
-
             RefreshProviders();
+            RefreshProviderActions();
         }
 
         /// <summary>
@@ -212,9 +187,6 @@ namespace Unity.QuickSearch
             // Stop all search sessions every time there is a new search.
             context.sessions.StopAllAsyncSearchSessions();
 
-            if (context.actionId == null && string.IsNullOrEmpty(context.searchText) && !context.wantsMore)
-                return new List<SearchItem>(0);
-
             var allItems = new List<SearchItem>(3);
             #if QUICKSEARCH_DEBUG
             var debugProviderList = context.providers.ToList();
@@ -242,6 +214,7 @@ namespace Unity.QuickSearch
                             {
                                 var session = context.sessions.GetProviderSession(provider.name.id);
                                 session.Reset(iterator, k_MaxFetchTimeMs);
+                                session.Start();
                                 if (!session.FetchSome(allItems, k_MaxFetchTimeMs))
                                     session.Stop();
                             }
@@ -298,13 +271,42 @@ namespace Unity.QuickSearch
 
         internal static void RefreshProviders()
         {
+            Providers = Utils.GetAllMethodsWithAttribute<SearchItemProviderAttribute>().Select(methodInfo =>
+            {
+                try
+                {
+                    SearchProvider fetchedProvider = null;
+                    using (var fetchLoadTimer = new DebugTimer(null))
+                    {
+                        fetchedProvider = methodInfo.Invoke(null, null) as SearchProvider;
+                        if (fetchedProvider == null)
+                            return null;
+
+                        fetchedProvider.loadTime = fetchLoadTimer.timeMs;
+
+                        // Load per provider user settings
+                        fetchedProvider.active = EditorPrefs.GetBool($"{prefKey}.{fetchedProvider.name.id}.active", fetchedProvider.active);
+                        fetchedProvider.priority = EditorPrefs.GetInt($"{prefKey}.{fetchedProvider.name.id}.priority", fetchedProvider.priority);
+                    }
+                    return fetchedProvider;
+                }
+                catch (Exception ex)
+                {
+                    UnityEngine.Debug.LogException(ex);
+                    return null;
+                }
+            }).Where(provider => provider != null).ToList();
+        }
+
+        internal static void RefreshProviderActions()
+        {
             ActionIdToProviders = new Dictionary<string, List<string>>();
             foreach (var action in Utils.GetAllMethodsWithAttribute<SearchActionsProviderAttribute>()
                                         .SelectMany(methodInfo => methodInfo.Invoke(null, null) as IEnumerable<object>)
                                         .Where(a => a != null).Cast<SearchAction>())
             {
                 var provider = Providers.Find(p => p.name.id == action.providerId);
-                if (provider == null || !provider.active)
+                if (provider == null)
                     continue;
                 provider.actions.Add(action);
                 if (!ActionIdToProviders.TryGetValue(action.Id, out var providerIds))

@@ -23,6 +23,10 @@ namespace Unity.QuickSearch
 {
     internal static class Utils
     {
+        const string packageName = "com.unity.quicksearch";
+
+        public static readonly string packageFolderName = $"Packages/{packageName}";
+
         private static string[] _ignoredAssemblies =
         {
             "^UnityScript$", "^System$", "^mscorlib$", "^netstandard$",
@@ -32,6 +36,16 @@ namespace Unity.QuickSearch
         private static Type[] GetAllEditorWindowTypes()
         {
             return GetAllDerivedTypes(AppDomain.CurrentDomain, typeof(EditorWindow));
+        }
+
+        /// <summary>
+        /// Opens the Quick Search documentation page
+        /// </summary>
+        public static void OpenDocumentationUrl()
+        {
+            const string documentationUrl = "https://docs.unity3d.com/Packages/com.unity.quicksearch@latest/";
+            var uri = new Uri(documentationUrl);
+            Process.Start(uri.AbsoluteUri);
         }
 
         public static void OpenInBrowser(string baseUrl, List<Tuple<string, string>> query = null)
@@ -78,9 +92,28 @@ namespace Unity.QuickSearch
 
         public static Texture2D GetAssetPreviewFromPath(string path, Vector2 previewSize, FetchPreviewOptions previewOptions)
         {
-            var obj = AssetDatabase.LoadAssetAtPath<Texture2D>(path) ?? AssetDatabase.LoadMainAssetAtPath(path);
+            var tex = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
+            if (tex)
+                return tex;
+
+            if (!previewOptions.HasFlag(FetchPreviewOptions.Large))
+            {
+                var assetType = AssetDatabase.GetMainAssetTypeAtPath(path);
+                if (assetType == typeof(AudioClip))
+                    return GetAssetThumbnailFromPath(path);
+            }
+
+            var obj = AssetDatabase.LoadMainAssetAtPath(path);
             if (obj == null)
                 return null;
+            tex = GetAssetPreview(obj, previewOptions);
+            if (!(obj is GameObject))
+                Resources.UnloadAsset(obj);
+            return tex;
+        }
+
+        public static Texture2D GetAssetPreview(UnityEngine.Object obj, FetchPreviewOptions previewOptions)
+        {
             var preview = AssetPreview.GetAssetPreview(obj);
             if (preview == null || previewOptions.HasFlag(FetchPreviewOptions.Large))
             {
@@ -96,15 +129,25 @@ namespace Unity.QuickSearch
             return ((index % n) + n) % n;
         }
 
+        public static void SelectObject(UnityEngine.Object obj, bool ping = false)
+        {
+            if (!obj)
+                return;
+            Selection.activeObject = obj;
+            if (ping)
+            {
+                EditorApplication.delayCall += () =>
+                {
+                    EditorWindow.FocusWindowIfItsOpen(Utils.GetProjectBrowserWindowType());
+                    EditorApplication.delayCall += () => EditorGUIUtility.PingObject(obj);
+                };
+            }
+        }
+
         public static UnityEngine.Object SelectAssetFromPath(string path, bool ping = false)
         {
             var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(path);
-            if (asset != null)
-            {
-                Selection.activeObject = asset;
-                if (ping)
-                    EditorGUIUtility.PingObject(asset);
-            }
+            SelectObject(asset, ping);
             return asset;
         }
 
@@ -149,7 +192,7 @@ namespace Unity.QuickSearch
                 var avgTime = p.avgTime;
                 if (fullTimingInfo)
                     return $"{p.name.displayName} ({avgTime:0.#} ms, Enable: {p.enableTime:0.#} ms, Init: {p.loadTime:0.#} ms)";
-             
+
                 var avgTimeLabel = String.Empty;
                 if (avgTime > 9.99)
                     avgTimeLabel = $" ({avgTime:#} ms)";
@@ -231,7 +274,7 @@ namespace Unity.QuickSearch
             var pos = new Rect
             {
                 x = 0, y = 0,
-                width = Mathf.Min(size.x, parentWindowPosition.width * 0.90f), 
+                width = Mathf.Min(size.x, parentWindowPosition.width * 0.90f),
                 height = Mathf.Min(size.y, parentWindowPosition.height * 0.90f)
             };
             var w = (parentWindowPosition.width - pos.width) * 0.5f;
@@ -331,7 +374,7 @@ namespace Unity.QuickSearch
             string version = null;
             try
             {
-                var filePath = File.ReadAllText($"{QuickSearch.packageFolderName}/package.json");
+                var filePath = File.ReadAllText($"{packageFolderName}/package.json");
                 if (JsonDeserialize(filePath) is Dictionary<string, object> manifest && manifest.ContainsKey("version"))
                 {
                     version = manifest["version"] as string;
@@ -369,7 +412,7 @@ namespace Unity.QuickSearch
 
         internal static bool IsDeveloperMode()
         {
-            return Directory.Exists($"{QuickSearch.packageFolderName}/.git");
+            return Directory.Exists($"{packageFolderName}/.git");
         }
 
         public static int LevenshteinDistance<T>(IEnumerable<T> lhs, IEnumerable<T> rhs) where T : System.IEquatable<T>
@@ -462,7 +505,11 @@ namespace Unity.QuickSearch
         {
             var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(assetPath);
             if (asset != null)
+            {
                 EditorGUIUtility.PingObject(asset);
+                if (!(asset is GameObject))
+                    Resources.UnloadAsset(asset);
+            }
         }
 
         #if UNITY_2020_1_OR_NEWER
@@ -559,15 +606,15 @@ namespace Unity.QuickSearch
             }
         }
 
-        private static UnityEngine.Object s_LastDraggedObject;
-        internal static void StartDrag(UnityEngine.Object obj, string label = null)
+        private static UnityEngine.Object[] s_LastDraggedObjects;
+        internal static void StartDrag(UnityEngine.Object[] objects, string label = null)
         {
-            s_LastDraggedObject = obj;
-            if (!s_LastDraggedObject)
+            s_LastDraggedObjects = objects;
+            if (s_LastDraggedObjects == null)
                 return;
             DragAndDrop.PrepareStartDrag();
-            DragAndDrop.objectReferences = new[] { s_LastDraggedObject };
-            DragAndDrop.StartDrag(label ?? s_LastDraggedObject.name);
+            DragAndDrop.objectReferences = s_LastDraggedObjects;
+            DragAndDrop.StartDrag(label);
         }
 
         private static MethodInfo s_GetFieldInfoFromProperty;
@@ -595,7 +642,7 @@ namespace Unity.QuickSearch
             while (true)
             {
                 Debug.LogFormat(LogType.Log, LogOption.NoStacktrace, so.targetObject, $"{propertyLogger.propertyPath} [{propertyLogger.type}]");
-                if (!propertyLogger.Next(includeChildren)) 
+                if (!propertyLogger.Next(includeChildren))
                     break;
             }
         }
@@ -660,5 +707,60 @@ namespace Unity.QuickSearch
             return CleanPath(path).StartsWith(Application.dataPath + "/");
         }
 
+        public static string GetPathUnderProject(string path)
+        {
+            var cleanPath = CleanPath(path);
+            if (!Path.IsPathRooted(cleanPath) || !path.StartsWith(Application.dataPath))
+            {
+                return cleanPath;
+            }
+
+            return cleanPath.Substring(Application.dataPath.Length - 6);
+        }
+
+        public static Texture2D GetSceneObjectPreview(GameObject obj, Vector2 size, FetchPreviewOptions options, Texture2D defaultThumbnail)
+        {
+            var sr = obj.GetComponent<SpriteRenderer>();
+            if (sr && sr.sprite && sr.sprite.texture)
+                return sr.sprite.texture;
+
+            #if PACKAGE_UGUI
+            var uii = obj.GetComponent<UnityEngine.UI.Image>();
+            if (uii && uii.mainTexture is Texture2D uiit)
+                return uiit;
+            #endif
+
+            var preview = AssetPreview.GetAssetPreview(obj);
+            if (preview)
+                return preview;
+
+            var assetPath = SearchUtils.GetHierarchyAssetPath(obj, true);
+            if (String.IsNullOrEmpty(assetPath))
+                return defaultThumbnail;
+            return Utils.GetAssetPreviewFromPath(assetPath, size, options);
+        }
+
+        private static object[] s_SearchFilterArgs;
+        private static MethodInfo s_FindAllAssetsMethod;
+        private static MethodInfo s_SearchFieldStringToFilterMethod;
+        public static IEnumerable<string> FindAssets(string searchQuery)
+        {
+            if (s_FindAllAssetsMethod == null)
+            {
+                var type = typeof(AssetDatabase);
+                s_FindAllAssetsMethod = type.GetMethod("FindAllAssets", BindingFlags.NonPublic | BindingFlags.Static);
+                Debug.Assert(s_FindAllAssetsMethod != null);
+
+                var searchFilterType = type.Assembly.GetTypes().First(t => t.Name == "SearchFilter");
+                s_SearchFilterArgs = new object[] { Activator.CreateInstance(searchFilterType) };
+
+                s_SearchFieldStringToFilterMethod = searchFilterType.GetMethod("SearchFieldStringToFilter", BindingFlags.NonPublic | BindingFlags.Instance);
+                Debug.Assert(s_SearchFieldStringToFilterMethod != null);
+            }
+
+            s_SearchFieldStringToFilterMethod.Invoke(s_SearchFilterArgs[0], new object[] { searchQuery });
+            var properties = (IEnumerable<HierarchyProperty>)s_FindAllAssetsMethod.Invoke(null, s_SearchFilterArgs);
+            return properties.Select(p => AssetDatabase.GUIDToAssetPath(p.guid));
+        }
     }
 }

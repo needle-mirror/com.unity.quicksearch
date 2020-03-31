@@ -8,11 +8,14 @@ namespace Unity.QuickSearch
 {
     internal static class Icons
     {
-        public static string iconFolder = $"{QuickSearch.packageFolderName}/Editor/Icons";
+        public static string iconFolder = $"{Utils.packageFolderName}/Editor/Icons";
         public static Texture2D shortcut = LoadIcon($"{iconFolder}/shortcut.png");
         public static Texture2D quicksearch = LoadIcon($"{iconFolder}/quicksearch.png");
+        public static Texture2D searchQuery = LoadIcon($"{iconFolder}/search_query.png");
         public static Texture2D filter = LoadIcon($"{iconFolder}/filter.png");
         public static Texture2D settings = LoadIcon($"{iconFolder}/settings.png");
+        public static Texture2D favorite = EditorGUIUtility.FindTexture("Favorite");
+        public static Texture2D folder = EditorGUIUtility.FindTexture("FolderOpened Icon");
         public static Texture2D search = LoadIcon($"{iconFolder}/search.png");
         public static Texture2D clear = LoadIcon($"{iconFolder}/clear.png");
         public static Texture2D more = LoadIcon($"{iconFolder}/more.png");

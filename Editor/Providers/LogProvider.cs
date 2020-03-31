@@ -117,7 +117,7 @@ namespace Unity.QuickSearch
 
             private static SearchItem SearchLogEntry(SearchContext context, SearchProvider provider, LogEntry logEntry)
             {
-                if (!SearchProvider.MatchSearchGroups(context, logEntry.msgLowerCased, true))
+                if (!SearchUtils.MatchSearchGroups(context, logEntry.msgLowerCased, true))
                     return null;
 
                 var logItem = provider.CreateItem(logEntry.id, ~logEntry.lineNumber, logEntry.msg, null, null, logEntry);

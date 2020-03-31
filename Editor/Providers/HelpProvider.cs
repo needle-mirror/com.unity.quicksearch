@@ -37,27 +37,12 @@ namespace Unity.QuickSearch
                             return null;
                         }
 
-                        items.AddRange(helpItems.Where(item => SearchProvider.MatchSearchGroups(context, item.label) || SearchProvider.MatchSearchGroups(context, item.description)));
+                        items.AddRange(helpItems.Where(item => SearchUtils.MatchSearchGroups(context, item.label) || SearchUtils.MatchSearchGroups(context, item.description)));
                         return null;
                     }
                 };
 
                 return helpProvider;
-            }
-
-            static IEnumerable<SearchItem> GetRecentSearchItems(SearchProvider provider, IEnumerable<string> recentSearches)
-            {
-                int recentIndex = 0;
-                return recentSearches
-                    .Where(search => !string.IsNullOrEmpty(search) && !string.IsNullOrWhiteSpace(search))
-                    .Select(search =>
-                    {
-                        var item = provider.CreateItem($"help_recent_{recentIndex}", $"Recent search: {search}", "Use Alt + Up/Down Arrow to cycle through recent searches");
-                        item.thumbnail = Icons.quicksearch;
-                        item.score = m_StaticItemToAction.Count + recentIndex++;
-                        item.data = search;
-                        return item;
-                    });
             }
 
             [UsedImplicitly, SearchActionsProvider]
@@ -89,7 +74,7 @@ namespace Unity.QuickSearch
                     var helpItem = helpProvider.CreateItem("help_open_quicksearch_doc", "Open Quick Search Documentation");
                     helpItem.score = m_StaticItemToAction.Count;
                     helpItem.thumbnail = Icons.settings;
-                    m_StaticItemToAction.Add(helpItem, (item, context) => QuickSearch.OpenDocumentationUrl());
+                    m_StaticItemToAction.Add(helpItem, (item, context) => Utils.OpenDocumentationUrl());
                 }
 
                 // Settings provider: id, Search for...

@@ -43,6 +43,14 @@ namespace Unity.QuickSearch
         /// <param name="index">Index where the items should be inserted.</param>
         /// <param name="items">Items to be inserted.</param>
         void InsertRange(int index, IEnumerable<SearchItem> items);
+
+        /// <summary>
+        /// Return a subset of items.
+        /// </summary>
+        /// <param name="skipCount"></param>
+        /// <param name="count"></param>
+        /// <returns></returns>
+        IEnumerable<SearchItem> GetRange(int skipCount, int count);
     }
 
     abstract class BaseSearchList : IDisposable
@@ -400,6 +408,11 @@ namespace Unity.QuickSearch
         IEnumerator IEnumerable.GetEnumerator()
         {
             return GetEnumerator();
+        }
+
+        public IEnumerable<SearchItem> GetRange(int skipCount, int count)
+        {
+            return m_UnorderedItems.GetRange(skipCount, count);
         }
     }
 }

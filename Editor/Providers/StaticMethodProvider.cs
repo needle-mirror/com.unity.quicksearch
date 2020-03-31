@@ -38,7 +38,7 @@ namespace Unity.QuickSearch
 
                         foreach (var m in methods)
                         {
-                            if (!SearchProvider.MatchSearchGroups(context, m.Name))
+                            if (!SearchUtils.MatchSearchGroups(context, m.Name))
                                 continue;
 
                             var visibilityString = !m.IsPublic ? "<i>Internal</i> - " : String.Empty;
@@ -82,9 +82,9 @@ namespace Unity.QuickSearch
             {
                 return new[]
                 {
-                    new SearchAction(type, "exec", null, "Execute method...")
+                    new SearchAction(type, "exec", null, "Execute method...", (context, items) =>
                     {
-                        handler = (item, context) =>
+                        foreach (var item in items)
                         {
                             var m = item.data as MethodInfo;
                             if (m == null)
@@ -104,7 +104,7 @@ namespace Unity.QuickSearch
                                     LogResult(e);
                             }
                         }
-                    }
+                    })
                 };
             }
         }

@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using JetBrains.Annotations;
@@ -28,6 +29,8 @@ namespace Unity.QuickSearch
         public static string queryFolder { get; private set; }
         public static SearchAssetIndexing assetIndexing { get; internal set; }
         public static bool dockable { get; internal set; }
+        public static bool debug { get; internal set; }
+        public static Dictionary<string, int> providerInitialPriorities { get; internal set; }
 
         public static float itemIconSize
         {
@@ -44,10 +47,12 @@ namespace Unity.QuickSearch
 
         static SearchSettings()
         {
+            providerInitialPriorities = new Dictionary<string, int>();
             trackSelection = EditorPrefs.GetBool($"{k_KeyPrefix}.{nameof(trackSelection)}", true);
             fetchPreview = EditorPrefs.GetBool($"{k_KeyPrefix}.{nameof(fetchPreview)}", true);
             assetIndexing = (SearchAssetIndexing)EditorPrefs.GetInt($"{k_KeyPrefix}.{nameof(assetIndexing)}", (int)SearchAssetIndexing.Files);
             dockable = EditorPrefs.GetBool($"{k_KeyPrefix}.{nameof(dockable)}", false);
+            debug = EditorPrefs.GetBool($"{k_KeyPrefix}.{nameof(debug)}", false);
             queryFolder = EditorPrefs.GetString($"{k_KeyPrefix}.{nameof(queryFolder)}", defaultQueryFolder);
             if (queryFolder != "Assets" && !queryFolder.StartsWith("Assets"))
             {
@@ -60,6 +65,7 @@ namespace Unity.QuickSearch
             EditorPrefs.SetBool($"{k_KeyPrefix}.{nameof(trackSelection)}", trackSelection);
             EditorPrefs.SetBool($"{k_KeyPrefix}.{nameof(fetchPreview)}", fetchPreview);
             EditorPrefs.SetBool($"{k_KeyPrefix}.{nameof(dockable)}", dockable);
+            EditorPrefs.SetBool($"{k_KeyPrefix}.{nameof(debug)}", debug);
             EditorPrefs.SetInt($"{k_KeyPrefix}.{nameof(assetIndexing)}", (int)assetIndexing);
             EditorPrefs.SetString($"{k_KeyPrefix}.{nameof(queryFolder)}", queryFolder);
         }
@@ -81,10 +87,14 @@ namespace Unity.QuickSearch
                             GUILayout.Space(10);
                             EditorGUI.BeginChangeCheck();
                             {
+                                if (Utils.IsDeveloperMode())
+                                {
+                                    debug = EditorGUILayout.Toggle(Styles.debugContent, debug);
+                                    dockable = EditorGUILayout.Toggle(Styles.dockableContent, dockable);
+                                }
+
                                 trackSelection = EditorGUILayout.Toggle(Styles.trackSelectionContent, trackSelection);
                                 fetchPreview = EditorGUILayout.Toggle(Styles.fetchPreviewContent, fetchPreview);
-                                if (Utils.IsDeveloperMode())
-                                    dockable = EditorGUILayout.Toggle(Styles.dockableContent, dockable);
                                 GUILayout.BeginHorizontal();
                                 assetIndexing = (SearchAssetIndexing)EditorGUILayout.EnumPopup(Styles.assetIndexingLabel, assetIndexing, GUILayout.MaxWidth(450f));
                                 if (assetIndexing == SearchAssetIndexing.Complete && !File.Exists(k_RootIndexPath))
@@ -133,7 +143,7 @@ namespace Unity.QuickSearch
                     result = Utils.CleanPath(result);
                     if (Directory.Exists(result) && Utils.IsPathUnderProject(result))
                     {
-                        queryFolder = result.Substring(Application.dataPath.Length);
+                        queryFolder = Utils.GetPathUnderProject(result);
                     }
                 }
             }
@@ -194,18 +204,21 @@ namespace Unity.QuickSearch
 
             GUILayout.BeginHorizontal();
             GUILayout.Space(20);
-            if (GUILayout.Button(Styles.resetPrioritiesContent, GUILayout.MaxWidth(100)))
-                ResetProviderPriorities();
+            if (GUILayout.Button(Styles.resetDefaultsContent, GUILayout.MaxWidth(170)))
+                ResetProviderSettings();
             GUILayout.EndHorizontal();
         }
 
-        private static void ResetProviderPriorities()
+        private static void ResetProviderSettings()
         {
             foreach (var p in SearchService.Providers)
             {
                 EditorPrefs.DeleteKey($"{k_KeyPrefix}.{p.name.id}.active");
                 EditorPrefs.DeleteKey($"{k_KeyPrefix}.{p.name.id}.priority");
+                EditorPrefs.DeleteKey($"{k_DefaultActionPrefKey}{p.name.id}");
             }
+
+            SearchService.Refresh();
         }
 
         private static void LowerProviderPriority(SearchProvider provider)
@@ -297,7 +310,7 @@ namespace Unity.QuickSearch
         #endif
         internal static void CreateRootIndex()
         {
-            File.Copy($"{QuickSearch.packageFolderName}/Templates/Asset.index.template", k_RootIndexPath);
+            File.Copy($"{Utils.packageFolderName}/Templates/Asset.index.template", k_RootIndexPath);
             AssetDatabase.ImportAsset(k_RootIndexPath, ImportAssetOptions.ForceSynchronousImport);
         }
 
@@ -322,7 +335,7 @@ namespace Unity.QuickSearch
             public static GUIStyle textFiedl = new GUIStyle(EditorStyles.textField);
 
             public static GUIContent toggleActiveContent = new GUIContent("", "Enable or disable this provider. Disabled search provider will be completely ignored by the search service.");
-            public static GUIContent resetPrioritiesContent = new GUIContent("Reset Priorities", "All search providers will restore their initial priority");
+            public static GUIContent resetDefaultsContent = new GUIContent("Reset All Providers Defaults", "All search providers will restore their initial preferences (priority, active, default action)");
             public static GUIContent increasePriorityContent = new GUIContent("\u2191", "Increase the provider's priority");
             public static GUIContent decreasePriorityContent = new GUIContent("\u2193", "Decrease the provider's priority");
 
@@ -339,12 +352,9 @@ namespace Unity.QuickSearch
             public static GUIContent fetchPreviewContent = new GUIContent(
                 "Generate an asset preview thumbnail for found items",
                 "Fetching the preview of the items can consume more memory and make searches within very large project slower.");
-            public static GUIContent dockableContent = new GUIContent(
-                "Open Quick Search as dockable windows",
-                "Allow Quick Search window to be dockable.");
-            public static GUIContent assetIndexingLabel = new GUIContent(
-                "Asset indexing mode",
-                "");
+            public static GUIContent dockableContent = new GUIContent("[DEV] Open Quick Search as dockable windows", "Allow Quick Search window to be dockable.");
+            public static GUIContent debugContent = new GUIContent("[DEV] Display additional debugging information");
+            public static GUIContent assetIndexingLabel = new GUIContent("Asset indexing mode","");
             public static GUIContent createRootIndexButtonContent = new GUIContent("Create index");
         }
     }

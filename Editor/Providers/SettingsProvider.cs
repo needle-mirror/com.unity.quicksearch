@@ -39,8 +39,11 @@ namespace Unity.QuickSearch
                     filterId = "se:",
                     fetchItems = (context, items, provider) =>
                     {
+                        if (string.IsNullOrEmpty(context.searchQuery))
+                            return null;
+
                         items.AddRange(SettingsPaths.value
-                                       .Where(path => SearchProvider.MatchSearchGroups(context, path))
+                                       .Where(path => SearchUtils.MatchSearchGroups(context, path))
                                        .Select(path => provider.CreateItem(path, null, path)));
                         return null;
                     },
@@ -56,16 +59,14 @@ namespace Unity.QuickSearch
             {
                 return new[]
                 {
-                    new SearchAction(type, "open", null, "Open project settings...")
+                    new SearchAction(type, "open", null, "Open project settings...", (context, items) =>
                     {
-                        handler = (item, context) =>
-                        {
-                            if (item.id.StartsWith("Project/"))
-                                SettingsService.OpenProjectSettings(item.id);
-                            else
-                                SettingsService.OpenUserPreferences(item.id);
-                        }
-                    }
+                        var item = items.Last();
+                        if (item.id.StartsWith("Project/"))
+                            SettingsService.OpenProjectSettings(item.id);
+                        else
+                            SettingsService.OpenUserPreferences(item.id);
+                    })
                 };
             }
         }

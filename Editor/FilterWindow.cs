@@ -108,10 +108,7 @@ namespace Unity.QuickSearch
         {
             s_CloseTime = EditorApplication.timeSinceStartup;
             if (m_FilterableProviders.All(desc => !desc.isEnabled))
-            {
-                Debug.LogWarning("All filters are disabled. Loading last used filters.");
-                m_SearchView.LoadGlobalSettings();
-            }
+                Debug.LogWarning("All filters are disabled");
         }
 
         [UsedImplicitly]

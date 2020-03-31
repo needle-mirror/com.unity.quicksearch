@@ -565,11 +565,12 @@ namespace Unity.QuickSearch.Providers
                         }
                     }
                 },
-                new SearchAction("store", "browse", null, "Browse item")
+                new SearchAction("store", "browse", null, "Browse item(s)")
                 {
-                    handler = (item, context) =>
+                    execute = (context, items) =>
                     {
-                        BrowseAssetStoreItem(item);
+                        foreach (var item in items)
+                            BrowseAssetStoreItem(item);
                     }
                 }
             };

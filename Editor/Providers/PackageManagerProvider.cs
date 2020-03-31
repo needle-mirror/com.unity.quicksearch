@@ -48,6 +48,9 @@ namespace Unity.QuickSearch
 
             private static IEnumerable<SearchItem> SearchPackages(SearchContext context, SearchProvider provider)
             {
+                if (string.IsNullOrEmpty(context.searchQuery))
+                    yield break;
+
                 if (s_SearchRequest == null || s_ListRequest == null)
                     yield break;
 
@@ -60,8 +63,8 @@ namespace Unity.QuickSearch
                 foreach (var p in s_SearchRequest.Result)
                 {
                     if (p.keywords.Contains(context.searchQuery) ||
-                        SearchProvider.MatchSearchGroups(context, p.description.ToLowerInvariant(), true) ||
-                        SearchProvider.MatchSearchGroups(context, p.name.ToLowerInvariant(), true))
+                        SearchUtils.MatchSearchGroups(context, p.description.ToLowerInvariant(), true) ||
+                        SearchUtils.MatchSearchGroups(context, p.name.ToLowerInvariant(), true))
                         yield return provider.CreateItem(p.packageId, String.IsNullOrEmpty(p.resolvedPath) ? 0 : 1, FormatLabel(p), FormatDescription(p), null, p);
                 }
             }

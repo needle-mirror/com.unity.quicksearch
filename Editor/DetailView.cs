@@ -11,7 +11,7 @@ namespace Unity.QuickSearch
         private readonly ISearchView m_SearchView;
         private string m_LastPreviewItemId;
         private Editor[] m_Editors;
-        private int m_EditorTargetID = 0;
+        private int m_EditorsHash = 0;
         private Vector2 m_ScrollPosition;
         private double m_LastPreviewStamp = 0;
         private Texture2D m_PreviewTexture;
@@ -22,56 +22,112 @@ namespace Unity.QuickSearch
             m_SearchView = searchView;
         }
 
-        public void Draw(SearchContext context, SearchItem item, float width, float height, Action<SearchItem, bool> selectCallback)
+        public bool HasDetails(SearchContext context)
         {
-            if (item == null || !item.provider.showDetails)
+            var selection = context.searchView.selection;
+            var selectionCount = selection.Count;
+            if (selectionCount == 0)
+                return false;
+
+            var showDetails = true;
+            string sameType = null;
+            foreach (var s in selection)
+            {
+                if (!s.provider.showDetails)
+                {
+                    showDetails = false;
+                    break;
+                }
+
+                if (sameType == null)
+                    sameType = s.provider.name.id;
+                else if (sameType != s.provider.name.id)
+                {
+                    showDetails = false;
+                    break;
+                }
+            }
+
+            if (!showDetails)
+                return false;
+
+            return true;
+        }
+
+        public void Draw(SearchContext context, float width)
+        {
+            var selection = context.searchView.selection;
+            var selectionCount = selection.Count;
+            if (selectionCount == 0)
                 return;
 
-            var showOptions = item.provider.showDetailsOptions;
-
+            var lastItem = selection.Last();
             using (var scrollView = new EditorGUILayout.ScrollViewScope(m_ScrollPosition, GUILayout.Width(width), GUILayout.ExpandHeight(true)))
             {
-                if (showOptions.HasFlag(ShowDetailsOptions.Preview))
-                    DrawPreview(context, item);
+                var showOptions = lastItem.provider.showDetailsOptions;
 
-                if (showOptions.HasFlag(ShowDetailsOptions.Description))
-                    DrawDescription(context, item);
+                if (showOptions.HasFlag(ShowDetailsOptions.Inspector) && Event.current.type == EventType.Layout)
+                    SetupEditors(selection);
+
+                if (selectionCount > 1)
+                {
+                    GUILayout.Label($"Selected {selectionCount} items", Styles.previewDescription);
+                }
+                else
+                {
+                    if (showOptions.HasFlag(ShowDetailsOptions.Preview))
+                    {
+                        if (showOptions.HasFlag(ShowDetailsOptions.Inspector))
+                        {
+                            if (m_Editors != null && m_Editors.Length == 1 && m_Editors[0].HasPreviewGUI())
+                            {
+                                var e = m_Editors[0];
+                                var previewRect = EditorGUILayout.GetControlRect(GUILayout.MaxWidth(width), GUILayout.MaxHeight(width));
+                                if (previewRect.width > 0 && previewRect.height > 0)
+                                    e.OnPreviewGUI(previewRect, Styles.largePreview);
+                            }
+                            else
+                                DrawPreview(context, lastItem, width);
+                        }
+                        else
+                            DrawPreview(context, lastItem, width);
+                    }
+
+                    if (showOptions.HasFlag(ShowDetailsOptions.Description))
+                        DrawDescription(context, lastItem);
+                }
 
                 if (showOptions.HasFlag(ShowDetailsOptions.Inspector))
-                    DrawInspector(item, width);
-                
-                if (showOptions.HasFlag(ShowDetailsOptions.Actions) || selectCallback != null)
-                    DrawActions(context, item, selectCallback, showOptions);
+                {
+                    DrawInspector(selection, width);
+                }
+
+                if (showOptions.HasFlag(ShowDetailsOptions.Actions))
+                    DrawActions(context);
 
                 m_ScrollPosition = scrollView.scrollPosition;
             }
         }
 
-        private void DrawActions(SearchContext context, SearchItem item, Action<SearchItem, bool> selectCallback, ShowDetailsOptions showOptions)
+        private void DrawActions(SearchContext context)
         {
+            var selection = context.searchView.selection;
+            var firstItem = selection.First();
             GUILayout.Space(10);
 
-            if (selectCallback == null)
+            foreach (var action in firstItem.provider.actions.Where(a => a.enabled(context, selection)))
             {
-                if (showOptions.HasFlag(ShowDetailsOptions.Actions))
+                if (action == null || action.content == null)
+                    continue;
+
+                if (selection.Count > 1 && action.execute == null)
+                    continue;
+
+                if (GUILayout.Button(new GUIContent(action.DisplayName, action.content.image, action.content.tooltip), GUILayout.ExpandWidth(true)))
                 {
-                    foreach (var action in item.provider.actions)
-                    {
-                        if (action == null || action.Id == "context" || action.content == null || action.handler == null)
-                            continue;
-                        if (GUILayout.Button(new GUIContent(action.DisplayName, action.content.image, action.content.tooltip), GUILayout.ExpandWidth(true)))
-                        {
-                            m_SearchView.ExecuteAction(action, item, context, true);
-                            GUIUtility.ExitGUI();
-                        }
-                    }
+                    m_SearchView.ExecuteAction(action, selection.ToArray(), context, true);
+                    GUIUtility.ExitGUI();
                 }
-            }
-            else if (GUILayout.Button("Select", GUILayout.ExpandWidth(true)))
-            {
-                selectCallback(item, false);
-                m_SearchView.Close();
-                GUIUtility.ExitGUI();
             }
         }
 
@@ -83,56 +139,69 @@ namespace Unity.QuickSearch
                     UnityEngine.Object.DestroyImmediate(e);
             }
             m_Editors = null;
-            m_EditorTargetID = 0;
+            m_EditorsHash = 0;
         }
 
-        private void DrawInspector(SearchItem item, float width)
+        private void DrawInspector(SearchSelection selection, float width)
         {
-            if (Event.current.type == EventType.Layout)
-                SetupEditors(item);
+            if (m_Editors == null)
+                return;
 
-            if (m_Editors != null)
+            for (int i = 0; i < m_Editors.Length; ++i)
             {
-                for (int i = 0; i < m_Editors.Length; ++i)
+                var e = m_Editors[i];
+
+                EditorGUIUtility.labelWidth = 0.4f * width;
+                bool foldout = false;
+                if (!m_EditorTypeFoldout.TryGetValue(e.GetType().Name, out foldout))
+                    foldout = true;
+                using (new EditorGUIUtility.IconSizeScope(new Vector2(16, 16)))
                 {
-                    var e = m_Editors[i];
-
-                    EditorGUIUtility.labelWidth = 0.4f * width;
-                    bool foldout = false;
-                    if (!m_EditorTypeFoldout.TryGetValue(e.GetType().Name, out foldout))
-                        foldout = true;
-                    using (new EditorGUIUtility.IconSizeScope(new Vector2(16, 16)))
-                    {
-                        var sectionContent = EditorGUIUtility.ObjectContent(e.target, e.GetType());
+                    var sectionContent = selection.Count == 1 ? EditorGUIUtility.ObjectContent(e.target, e.GetType()) : e.GetPreviewTitle();
+                    if (selection.Count == 1)
                         sectionContent.tooltip = sectionContent.text;
-                        foldout = EditorGUILayout.BeginToggleGroup(sectionContent, foldout);
-                        if (foldout)
-                        {
-                            if (e.target is Transform)
-                                e.DrawDefaultInspector();
-                            else
-                                e.OnInspectorGUI();
-                        }
-
-                        m_EditorTypeFoldout[e.GetType().Name] = foldout;
-                        EditorGUILayout.EndToggleGroup();
+                    else
+                        sectionContent.tooltip = String.Join("\r\n", e.targets.Select(t => $"{SearchUtils.GetObjectPath(t)} ({t.GetInstanceID()})"));
+                    foldout = EditorGUILayout.BeginToggleGroup(sectionContent, foldout);
+                    if (foldout)
+                    {
+                        if (e.target is Transform)
+                            e.DrawDefaultInspector();
+                        else
+                            e.OnInspectorGUI();
                     }
+
+                    m_EditorTypeFoldout[e.GetType().Name] = foldout;
+                    EditorGUILayout.EndToggleGroup();
                 }
             }
         }
 
-        private void SetupEditors(SearchItem item)
+        private void SetupEditors(SearchSelection selection)
         {
-            var itemObject = item.provider.toObject?.Invoke(item, typeof(UnityEngine.Object));
-            if (itemObject && itemObject.GetInstanceID() != m_EditorTargetID)
+            int selectionHash = 0;
+            foreach (var s in selection)
+                selectionHash ^= s.id.GetHashCode();
+
+            if (selectionHash == m_EditorsHash)
+                return;
+
+            ResetEditors();
+
+            var targets = new List<UnityEngine.Object>();
+            foreach (var s in selection)
             {
-                var targets = new List<UnityEngine.Object>();
+                var item = s;
+                var itemObject = item.provider.toObject?.Invoke(item, typeof(UnityEngine.Object));
+                if (!itemObject)
+                    continue;
+
                 if (itemObject is GameObject go)
                 {
                     var components = go.GetComponents<Component>();
                     foreach (var c in components.Skip(components.Length > 1 ? 1 : 0))
                     {
-                        if (c.hideFlags.HasFlag(HideFlags.HideInInspector))
+                        if (!c || c.hideFlags.HasFlag(HideFlags.HideInInspector))
                             continue;
 
                         targets.Add(c);
@@ -140,15 +209,10 @@ namespace Unity.QuickSearch
                 }
                 else
                     targets.Add(itemObject);
+            }
 
-                ResetEditors();
-                m_Editors = targets.Select(t => Editor.CreateEditor(t)).Where(e => e).ToArray();
-                m_EditorTargetID = itemObject.GetInstanceID();
-            }
-            else if (!itemObject)
-            {
-                ResetEditors();
-            }
+            m_Editors = targets.GroupBy(t => t.GetType()).Select(g => Editor.CreateEditor(g.ToArray())).ToArray();
+            m_EditorsHash = selectionHash;
         }
 
         private static void DrawDescription(SearchContext context, SearchItem item)
@@ -157,26 +221,38 @@ namespace Unity.QuickSearch
             GUILayout.Label(description, Styles.previewDescription);
         }
 
-        private void DrawPreview(SearchContext context, SearchItem item)
+        private void DrawPreview(SearchContext context, SearchItem item, float size)
         {
             if (item.provider.fetchPreview == null)
                 return;
-            var now = EditorApplication.timeSinceStartup;
-            if (now - m_LastPreviewStamp > 2.5)
-                m_PreviewTexture = null;
 
-            if (!m_PreviewTexture || m_LastPreviewItemId != item.id)
+            if (m_Editors != null && m_Editors.Length == 1 && m_Editors[0].HasPreviewGUI())
             {
-                m_LastPreviewStamp = now;
-                m_PreviewTexture = item.provider.fetchPreview(item, context, Styles.previewSize, FetchPreviewOptions.Preview2D | FetchPreviewOptions.Large);
-                m_LastPreviewItemId = item.id;
+                var e = m_Editors[0];
+                var previewRect = EditorGUILayout.GetControlRect(GUILayout.MaxWidth(size), GUILayout.MaxHeight(size));
+                if (previewRect.width > 0 && previewRect.height > 0)
+                    e.OnPreviewGUI(previewRect, Styles.largePreview);
             }
+            else
+            {
+                var now = EditorApplication.timeSinceStartup;
+                if (now - m_LastPreviewStamp > 2.5)
+                    m_PreviewTexture = null;
 
-            if (m_PreviewTexture == null || AssetPreview.IsLoadingAssetPreviews())
-                m_SearchView.Repaint();
+                if (!m_PreviewTexture || m_LastPreviewItemId != item.id)
+                {
+                    m_LastPreviewStamp = now;
+                    m_PreviewTexture = item.provider.fetchPreview(item, context, Styles.previewSize, FetchPreviewOptions.Preview2D | FetchPreviewOptions.Large);
+                    m_LastPreviewItemId = item.id;
+                }
 
-            GUILayout.Space(10);
-            GUILayout.Label(m_PreviewTexture, Styles.largePreview, GUILayout.MaxWidth(Styles.previewSize.x), GUILayout.MaxHeight(Styles.previewSize.y));
+                if (m_PreviewTexture == null || AssetPreview.IsLoadingAssetPreviews())
+                    m_SearchView.Repaint();
+
+                size -= (Styles.largePreview.margin.left + Styles.largePreview.margin.right);
+                GUILayout.Space(10);
+                GUILayout.Label(m_PreviewTexture, Styles.largePreview, GUILayout.MaxWidth(size), GUILayout.MaxHeight(size));
+            }
         }
     }
 }

@@ -4,7 +4,7 @@ using UnityEngine;
 
 namespace Unity.QuickSearch
 {
-    static class Styles
+    internal static class Styles
     {
         static Styles()
         {
@@ -27,6 +27,9 @@ namespace Unity.QuickSearch
         private const int actionButtonMargin = (int)((itemRowHeight - actionButtonSize) / 2f);
         public const float itemRowHeight = itemPreviewSize + itemRowPadding * 2f;
         public const float statusOffset = 20;
+        public const int kSearchBoxBtnSize = 24;
+        public const int kSearchFieldWidthOffset = 120;
+
 
         private static bool isDarkTheme => EditorGUIUtility.isProSkin;
 
@@ -49,6 +52,8 @@ namespace Unity.QuickSearch
         private static readonly Color lightColor5 = new Color(181 / 255f, 181 / 255f, 181 / 255f);
         private static readonly Color lightColor6 = new Color(214 / 255f, 214 / 255f, 214 / 255f);
         private static readonly Color lightColor7 = new Color(230 / 255f, 230 / 255f, 230 / 255f);
+
+        public static readonly Color sliderColor = isDarkTheme ? new Color(71 / 255f, 71 / 255f, 71 / 255f) : new Color(230 / 255f, 230 / 255f, 230 / 255f);
 
         public static readonly string highlightedTextColorFormat = isDarkTheme ? "<color=#F6B93F>{0}</color>" : "<b>{0}</b>";
 
@@ -73,6 +78,8 @@ namespace Unity.QuickSearch
         };
         public static readonly GUIContent filterButtonContent = new GUIContent("", Icons.filter, "Open search filter window (Alt + Left)");
         public static readonly GUIContent moreActionsContent = new GUIContent("", Icons.more, "Open actions menu (Alt + Right)");
+
+        public static readonly float scrollbarWidth = new GUIStyle("VerticalScrollbar").fixedWidth;
 
         public static readonly GUIStyle itemBackground1 = new GUIStyle
         {
@@ -110,8 +117,6 @@ namespace Unity.QuickSearch
         public static readonly GUIStyle largePreview = new GUIStyle
         {
             name = "quick-search-item-large-preview",
-            fixedWidth = previewSize.x,
-            fixedHeight = previewSize.y,
             alignment = TextAnchor.MiddleCenter,
             imagePosition = ImagePosition.ImageOnly,
             margin = new RectOffset(2, 2, 2, 2),
@@ -279,7 +284,7 @@ namespace Unity.QuickSearch
             padding = new RectOffset(6, 0, 0, 0)
         };
 
-        public static readonly GUIStyle searchFieldClear = new GUIStyle()
+        public static readonly GUIStyle searchFieldBtn = new GUIStyle()
         {
             name = "quick-search-search-field-clear",
             fixedHeight = 0,
@@ -293,7 +298,8 @@ namespace Unity.QuickSearch
             onNormal = clear,
             onHover = clear,
             onFocused = clear,
-            onActive = clear
+            onActive = clear,
+            alignment = TextAnchor.MiddleCenter
         };
 
         public static readonly GUIStyle filterButton = new GUIStyle(EditorStyles.whiteLargeLabel)
@@ -310,6 +316,8 @@ namespace Unity.QuickSearch
             onFocused = clear,
             onActive = clear
         };
+
+        public static readonly GUIContent createSearchQueryContent = new GUIContent(Icons.favorite, "Create New Search Query (Ctrl + S)");
 
         public static readonly GUIContent prefButtonContent = new GUIContent(Icons.settings, "Open quick search preferences...");
         public static readonly GUIStyle prefButton = new GUIStyle("IconButton")
@@ -342,6 +350,23 @@ namespace Unity.QuickSearch
         public static readonly GUIContent emptyContent = new GUIContent("", "No content");
 
         public static readonly GUIContent[] statusWheel;
+
+        public static readonly GUIStyle debugToolbar = new GUIStyle(EditorStyles.toolbar)
+        {
+            name = "quick-search-debug-toolbar"
+        };
+
+        public static readonly GUIStyle debugToolbarButton = new GUIStyle(EditorStyles.toolbarButton)
+        {
+            name = "quick-search-debug-toolbarbutton",
+            richText = true
+        };
+
+        public static readonly GUIStyle debugLabel = new GUIStyle(EditorStyles.label)
+        {
+            margin = new RectOffset(3, 3, 3, 3),
+            richText = true
+        };
 
         private static Texture2D GenerateSolidColorTexture(Color fillColor)
         {

@@ -1,34 +1,50 @@
 # Changelog
-## [1.6.0-preview.4] - 2020-03-10
+
+## [1.6.0-preview.5] - 2020-04-01
+- [UX] Remove support for 2018.4.
 - [UX] Remove search provider sub categories. It simplifies the search view filter window.
-- [UX] New scene provider filtering (added support for: id:<string>, path:<string/string> size:<number>, layer:<number>, tag:<string>, t:<type>, is:[visible|hidden|leaf|root|child])
+- [UX] Change Reset priorities button in Preferences to Reset to providers Defaults (which reset priority, active and default actions).
 - [UX] Add the ability to fetch items on a specific provider.
-- [UX] Add support to override the default object picker using Quick Search
+- [UX] Add support to override the default object picker using Quick Search.
 - [UX] Add support for multiple asset indexes.
 - [UX] Add Search Engines for Unity's Search API.
 - [UX] Add scene property filtering support (i.e. `t:light2d p(intensity)>=0.5`)
+- [UX] Add prefab asset indexing support.
+- [UX] Add new scene provider filters (i.e. id:<string>, path:<string/string> size:<number>, layer:<number>, tag:<string>, t:<type>, is:[visible|hidden|leaf|root|child])
+- [UX] Add new create Search Query Button. If search queries exist in the project, this is what we show instead of hardcoded help string.
+- [UX] Add multi selection support
 - [UX] Add grid view support to display search results in a grid of thumbnails.
+- [UX] Add Creation Window to for Search Query.
+- [UX] Add background scene asset indexing.
 - [UX] Add an embedded inspector for objects returned by the resource and scene search providers.
-- [FIX] The asset store provider will only be available for 2020.1 and newer.
-- [FIX] Support any characters in word searches.
-- [FIX] Fix Unity crash when dragging and dropping from quick search (1215420)
-- [FIX] Fix Quick Search fails to find assets when more than 16 characters are entered into the search field (1225947)
+- [FIX] Remove the asset store provider for Unity version before 2019.3.
+- [FIX] Fix Unity crash when dragging and dropping from quick search (case 1215420)
+- [FIX] Fix Quick Search fails to find assets when more than 16 characters are entered into the search field (case 1225947)
 - [FIX] Fix Progress API usage.
-- [FIX] Fix filter override application. Remove SearchFilter.
+- [FIX] Fix filter override application.
 - [FIX] Fix complete file name indexing (case 1214270)
+- [FIX] Fix an issue tracking selection of item at index 1.
 - [FIX] Fix actions sorting on SearchService init and in SearchSettings window.
+- [FIX] Add support for any characters in word searches.
 - [FIX] Add better support for startup incremental update.
-- [DOC] Quick Search 1.6 and higher will require Unity 2019.3 and higher.
-- [API] You can now override the string comparison options for word/phrase matching with the `QueryEngine`.
-- [API] Refactor SearchService to extract all the QuickSearch Window related stuff. Everything is driven by search context.
+- [API] Remove the `SearchFilter` class.
 - [API] Optimize call to operator handlers when in fallback mode.
-- [API] Multiple simultaneous calls to SearchService.GetItems can now be done with different search contexts.
-- [API] Improved the build time of a QueryEngine search query.
-- [API] Do not call onEnable/onDisable multiple time when doing multiple simultaneous searches with a provider.
-- [API] Allow removal of filters on the QueryEngine.
-- [API] Added the ability to customize a query engine with filters using method attributes. Used by the Scene Provider.
+- [API] Improve the `SearchContext` API in order to keep track of filtered providers.
+- [API] Improve support for simultaneous calls to `SearchService.GetItems` with different search contexts.
+- [API] Improve build time of a `QueryEngine` search query.
+- [API] Fix calling onEnable/onDisable multiple time when doing multiple simultaneous searches with a provider.
+- [API] Add the ability to customize a query engine with filters using method attributes. Used by the Scene Provider.
+- [API] Add the ability for the QueryEngine to skip unknown filters in a query.
+- [API] Add support to remove filters on the `QueryEngine`.
+- [API] Add support to override the string comparison options for word/phrase matching with the `QueryEngine`.
+- [API] Add support for concurrent calls to the SearchApi engines with different SearchApi contexts.
 
-## [1.5.2] - 2020-02-18
+## [1.5.3] - 2020-02-23
+- [FIX] Increase word character variation indexing to 32.
+- [FIX] Ensure package and store search providers are not enabled while runnign tests.
+
+## [1.5.2] - 2020-02-20
+- [FIX] The asset store provider will only be available for 2020.1 and newer.
 - [FIX] Improve scene provider performances
 - [FIX] Fix Unity crash when dragging and dropping from quick search (1215420)
 - [Fix] Fix complete file name indexing (case 1214270)

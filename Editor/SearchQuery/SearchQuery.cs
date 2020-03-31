@@ -15,6 +15,8 @@ namespace Unity.QuickSearch
     [CreateAssetMenu(menuName = "Search Query", order = 201)]
     public class SearchQuery : ScriptableObject
     {
+        static List<SearchItem> s_SearchQueryItems;
+
         public SearchQuery()
         {
         }
@@ -81,6 +83,25 @@ namespace Unity.QuickSearch
                 .Where(asset => asset != null);
         }
 
+        public static List<SearchItem> GetAllSearchQueryItems()
+        {
+            var queryProvider = SearchService.GetProvider(Providers.Query.type);
+            return s_SearchQueryItems ?? (s_SearchQueryItems = SearchQuery.GetAllQueries().Select(query =>
+            {
+                var item = queryProvider.CreateItem(AssetDatabase.GetAssetPath(query.GetInstanceID()));
+                item.label = string.IsNullOrEmpty(query.title) ? query.name : query.title;
+                item.thumbnail = query.icon ? query.icon : Icons.favorite;
+                item.description = string.IsNullOrEmpty(query.description) ? $"{query.searchQuery} - {AssetDatabase.GetAssetPath(query)}" : query.description;
+                item.data = query;
+                return item;
+            }).ToList());
+        }
+
+        public static void ResetSearchQueryItems()
+        {
+            s_SearchQueryItems = null;
+        }
+
         [OnOpenAsset]
         private static bool OpenQuery(int instanceID, int line)
         {
@@ -88,12 +109,17 @@ namespace Unity.QuickSearch
             if (query != null)
             {
                 var qsWindow = QuickSearch.Create();
-                qsWindow.SetFilteredProviders(query.providerIds);
-                qsWindow.context.searchText = query.searchQuery;
+                ExecuteQuery(qsWindow, query);
                 qsWindow.ShowWindow();
             }
 
             return false;
+        }
+
+        public static void ExecuteQuery(ISearchView view, SearchQuery query)
+        {
+            view.context.SetFilteredProviders(query.providerIds);
+            view.SetSearchText(query.searchQuery);
         }
 
         public string title;

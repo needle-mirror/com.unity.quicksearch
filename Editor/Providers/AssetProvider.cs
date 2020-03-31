@@ -17,7 +17,7 @@ namespace Unity.QuickSearch.Providers
         private const string type = "asset";
         private const string displayName = "Asset";
 
-        private static List<ADBIndex> assetIndexes;
+        private static List<SearchDatabase> assetIndexes;
         private static FileSearchIndexer fileIndexer;
 
         private static readonly string[] baseTypeFilters = new[]
@@ -33,13 +33,8 @@ namespace Unity.QuickSearch.Providers
                 .Distinct()
                 .OrderBy(n => n)).ToArray();
 
+        private static readonly string[] k_NonSimpleSearchTerms = new string[] {"(", ")", "-", "=", "<", ">", "or", "and"};
         private static readonly char[] k_InvalidSearchFileChars = Path.GetInvalidFileNameChars().Where(c => c != '*').ToArray();
-
-        private static void TrackAssetIndexChanges(string[] updated, string[] deleted, string[] moved)
-        {
-            if (updated.Concat(deleted).Any(u => u.EndsWith(".index", StringComparison.OrdinalIgnoreCase)))
-                assetIndexes = ADBIndex.Enumerate().ToList();
-        }
 
         [UsedImplicitly, SearchItemProvider]
         internal static SearchProvider CreateProvider()
@@ -48,36 +43,51 @@ namespace Unity.QuickSearch.Providers
             {
                 priority = 25,
                 filterId = "p:",
-                showDetails = SearchSettings.fetchPreview,
+                showDetails = true,
+                showDetailsOptions = ShowDetailsOptions.Default | ShowDetailsOptions.Inspector,
 
                 isEnabledForContextualSearch = () => Utils.IsFocusedWindowTypeName("ProjectBrowser"),
-
                 toObject = (item, type) => AssetDatabase.LoadAssetAtPath(item.id, type),
-
                 fetchItems = (context, items, provider) => SearchAssets(context, provider),
-
-                fetchKeywords = (context, lastToken, items) =>
-                {
-                    if (!lastToken.Contains(":"))
-                        return;
-                    if (SearchSettings.assetIndexing == SearchAssetIndexing.Complete)
-                        items.AddRange(assetIndexes.SelectMany(db => db.index.GetKeywords()));
-                    else
-                        items.AddRange(typeFilter.Select(t => "t:" + t));
-                },
-
+                fetchKeywords = (context, lastToken, keywords) => FetchKeywords(lastToken, keywords),
                 fetchDescription = (item, context) => (item.description = GetAssetDescription(item.id)),
                 fetchThumbnail = (item, context) => Utils.GetAssetThumbnailFromPath(item.id),
                 fetchPreview = (item, context, size, options) => Utils.GetAssetPreviewFromPath(item.id, size, options),
-
-                startDrag = (item, context) =>
-                {
-                    var obj = AssetDatabase.LoadAssetAtPath<Object>(item.id);
-                    if (obj)
-                        Utils.StartDrag(obj, item.label);
-                },
+                openContextual = (selection, context, rect) => OpenContextualMenu(selection, rect),
+                startDrag = (item, context) => StartDrag(item, context),
                 trackSelection = (item, context) => Utils.PingAsset(item.id)
             };
+        }
+
+        private static void TrackAssetIndexChanges(string[] updated, string[] deleted, string[] moved)
+        {
+            if (updated.Concat(deleted).Any(u => u.EndsWith(".index", StringComparison.OrdinalIgnoreCase)))
+                assetIndexes = SearchDatabase.Enumerate("asset").ToList();
+        }
+
+        private static bool OpenContextualMenu(SearchSelection selection, Rect contextRect)
+        {
+            var old = Selection.instanceIDs;
+            SearchUtils.SelectMultipleItems(selection);
+            EditorUtility.DisplayPopupMenu(contextRect, "Assets/", null);
+            EditorApplication.delayCall += () => EditorApplication.delayCall += () => Selection.instanceIDs = old;
+            return true;
+        }
+
+        private static void StartDrag(SearchItem item, SearchContext context)
+        {
+                var selectedObjects = context.selection.Select(i => AssetDatabase.LoadAssetAtPath<Object>(i.id));
+                Utils.StartDrag(selectedObjects.ToArray(), item.GetLabel(context, true));
+        }
+
+        private static void FetchKeywords(in string lastToken, List<string> keywords)
+        {
+            if (assetIndexes == null || !lastToken.Contains(":"))
+                return;
+            if (SearchSettings.assetIndexing == SearchAssetIndexing.Complete)
+                keywords.AddRange(assetIndexes.SelectMany(db => db.index.GetKeywords()));
+            else
+                keywords.AddRange(typeFilter.Select(t => "t:" + t));
         }
 
         private static void SetupIndexers()
@@ -91,7 +101,7 @@ namespace Unity.QuickSearch.Providers
             }
             else if (SearchSettings.assetIndexing == SearchAssetIndexing.Complete && assetIndexes == null)
             {
-                assetIndexes = ADBIndex.Enumerate().ToList();
+                assetIndexes = SearchDatabase.Enumerate("asset").ToList();
                 foreach (var db in assetIndexes)
                     db.IncrementalUpdate();
                 AssetPostprocessorIndexer.contentRefreshed += TrackAssetIndexChanges;
@@ -100,8 +110,10 @@ namespace Unity.QuickSearch.Providers
 
         private static IEnumerator SearchAssets(SearchContext context, SearchProvider provider)
         {
-            var searchQuery = context.searchQuery;
+            if (string.IsNullOrEmpty(context.searchQuery))
+                yield break;
 
+            var searchQuery = context.searchQuery;
             if (SearchSettings.assetIndexing == SearchAssetIndexing.Files)
             {
                 if (searchQuery.IndexOf(':') != -1)
@@ -141,10 +153,15 @@ namespace Unity.QuickSearch.Providers
                 if (!String.IsNullOrEmpty(guidPath))
                     yield return provider.CreateItem(guidPath, -1, $"{Path.GetFileName(guidPath)} ({searchQuery})", null, null, null);
 
-                // Finally search the default asset database for any remaining results.
                 if (SearchSettings.assetIndexing == SearchAssetIndexing.NoIndexing)
                 {
-                    foreach (var assetPath in AssetDatabase.FindAssets(searchQuery).Select(AssetDatabase.GUIDToAssetPath))
+                    // Finally search the default asset database for any remaining results.
+                    foreach (var assetPath in AssetDatabase.FindAssets(searchQuery).Select(guid => AssetDatabase.GUIDToAssetPath(guid)))
+                        yield return provider.CreateItem(assetPath, 998, Path.GetFileName(assetPath), null, null, null);
+                }
+                else if (!k_NonSimpleSearchTerms.Any(t => searchQuery.IndexOf(t, StringComparison.Ordinal) != -1))
+                {
+                    foreach (var assetPath in Utils.FindAssets(searchQuery))
                         yield return provider.CreateItem(assetPath, 998, Path.GetFileName(assetPath), null, null, null);
                 }
             }
@@ -157,15 +174,15 @@ namespace Unity.QuickSearch.Providers
             }
         }
 
-        private static IEnumerator SearchIndexes(SearchContext context, SearchProvider provider, AssetIndexer adbIndex)
+        private static IEnumerator SearchIndexes(SearchContext context, SearchProvider provider, SearchIndexer index)
         {
             var searchQuery = context.searchQuery;
 
             // Search index
-            while (!adbIndex.IsReady())
+            while (!index.IsReady())
                 yield return null;
 
-            yield return adbIndex.Search(searchQuery.ToLowerInvariant()).Select(e =>
+            yield return index.Search(searchQuery.ToLowerInvariant()).Select(e =>
             {
                 var itemScore = e.score;
                 var words = context.searchPhrase;
@@ -174,7 +191,7 @@ namespace Unity.QuickSearch.Providers
                     itemScore = SearchProvider.k_RecentUserScore - 1;
 
                 var filename = Path.GetFileName(e.id);
-                string description = adbIndex.GetDebugIndexStrings(e.id);
+                string description = (index as AssetIndexer)?.GetDebugIndexStrings(e.id);
                 return provider.CreateItem(e.id, itemScore, filename, description, null, null);
             });
         }
@@ -219,7 +236,8 @@ namespace Unity.QuickSearch.Providers
             {
                 new SearchAction(type, "select", null, "Select asset...")
                 {
-                    handler = (item, context) => Utils.FrameAssetFromPath(item.id)
+                    handler = (item, context) => Utils.FrameAssetFromPath(item.id),
+                    execute = (context, items) => SearchUtils.SelectMultipleItems(items, focusProjectBrowser: true)
                 },
                 new SearchAction(type, "open", null, "Open asset...")
                 {
@@ -229,23 +247,15 @@ namespace Unity.QuickSearch.Providers
                         if (asset != null) AssetDatabase.OpenAsset(asset);
                     }
                 },
+                new SearchAction(type, "add_scene", null, "Add scene...")
+                {
+                    // Only works in single selection and adds a scene to the current hierarchy.
+                    enabled = (context, items) => items.Count == 1 && items.Last().id.EndsWith(".unity", StringComparison.OrdinalIgnoreCase),
+                    handler = (item, context) => UnityEditor.SceneManagement.EditorSceneManager.OpenScene(item.id, UnityEditor.SceneManagement.OpenSceneMode.Additive)
+                },
                 new SearchAction(type, "reveal", null, k_RevealActionLabel)
                 {
                     handler = (item, context) => EditorUtility.RevealInFinder(item.id)
-                },
-                new SearchAction(type, "context", null, "Context")
-                {
-                    handler = (item, context) =>
-                    {
-                        var asset = AssetDatabase.LoadAssetAtPath<Object>(item.id);
-                        if (asset != null)
-                        {
-                            var old = Selection.activeObject;
-                            Selection.activeObject = asset;
-                            EditorUtility.DisplayPopupMenu(QuickSearch.contextualActionPosition, "Assets/", null);
-                            EditorApplication.delayCall += () => Selection.activeObject = old;
-                        }
-                    }
                 }
             };
         }

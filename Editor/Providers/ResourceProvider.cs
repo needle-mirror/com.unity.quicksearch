@@ -82,7 +82,7 @@ namespace Unity.QuickSearch.Providers
                 fetchPreview = FetchPreview,
                 trackSelection = TrackSelection,
                 fetchKeywords = FetchKeywords,
-                startDrag = (item, context) => DragItem(item),
+                startDrag = (item, context) => DragItem(item, context),
                 onEnable = OnEnable
             };
         }
@@ -137,6 +137,8 @@ namespace Unity.QuickSearch.Providers
 
         private static IEnumerable<SearchItem> SearchItems(SearchContext context, SearchProvider provider)
         {
+            if (string.IsNullOrEmpty(context.searchQuery))
+                yield break;
             var focusedTokens = context.textFilters.Where(filter => filter.EndsWith(":", System.StringComparison.OrdinalIgnoreCase)).ToList();
             var sanitizedSearchQuery = context.searchQuery;
             foreach (var focusedFilter in focusedTokens)
@@ -171,11 +173,9 @@ namespace Unity.QuickSearch.Providers
                 s_QueryEngine.SetSearchDataCallback(DefaultSearchDataCallback);
         }
 
-        private static void DragItem(SearchItem item)
+        private static void DragItem(SearchItem item, SearchContext context)
         {
-            var obj = GetItemObject(item);
-            if (obj)
-                Utils.StartDrag(obj, item.label);
+            Utils.StartDrag(context.selection.Select(i => GetItemObject(i)).ToArray(), item.label);
         }
 
         private static string FetchDescription(SearchItem item, SearchContext context)

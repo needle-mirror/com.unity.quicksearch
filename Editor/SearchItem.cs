@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using UnityEngine;
 
 namespace Unity.QuickSearch
@@ -43,6 +44,23 @@ namespace Unity.QuickSearch
         public SearchProvider provider;
         /// <summary>Search provider defined content. It can be used to transport any data to custom search provider handlers (i.e. `fetchDescription`).</summary>
         public object data;
+
+        /// <summary>
+        /// A search item representing none, usually used to clear the selection.
+        /// </summary>
+        public static readonly SearchItem none = new SearchItem(Guid.NewGuid().ToString())
+        {
+            label = "None",
+            description = "Clear the current value",
+            score = int.MinValue,
+            provider = new SearchProvider("none")
+            {
+                priority = int.MinValue,
+                toObject = (item, type) => null,
+                fetchThumbnail = (item, context) => Icons.clear,
+                actions = new[] { new SearchAction("select", "select", null, null, (SearchItem item, SearchContext context) => {})}.ToList()
+            }
+        };
 
         /// <summary>
         /// Construct a search item. Minimally a search item need to have a unique id for a given search query.

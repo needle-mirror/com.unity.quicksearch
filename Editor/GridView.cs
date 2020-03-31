@@ -1,26 +1,33 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using UnityEditor;
 using UnityEngine;
 
 namespace Unity.QuickSearch
 {
-    partial class QuickSearch
+    class GridView : ResultView
     {
         const float itemPadding = 4f;
         const float itemLabelHeight = 32f;
         const float itemLabelTopPadding = 4f;
 
-        private void DrawGrid()
+        public GridView(ISearchView hostView)
+            : base(hostView)
         {
-            float itemWidth = itemIconSize + itemPadding * 2;
-            float itemHeight = itemIconSize + itemLabelHeight + itemLabelTopPadding + itemPadding * 2;
+        }
 
-            var gridWidth = m_DrawItemsRect.width;
-            var itemCount = m_FilteredItems.Count;
+        protected override void Draw(Rect screenRect, ICollection<int> selection, ref bool focusSelectedItem)
+        {
+            float itemWidth = itemSize + itemPadding * 2;
+            float itemHeight = itemSize + itemLabelHeight + itemLabelTopPadding + itemPadding * 2;
+
+            var gridWidth = screenRect.width;
+            var itemCount = items.Count;
             int columnCount = (int)(gridWidth / itemWidth);
             int lineCount = Mathf.CeilToInt(itemCount / (float)columnCount);
             var gridHeight = lineCount * itemHeight - Styles.statusLabel.fixedHeight;
-            var availableHeight = position.height - m_ScrollViewOffset.yMax - Styles.statusLabel.fixedHeight;
+            var availableHeight = screenRect.height;
 
             if (gridHeight > availableHeight)
             {
@@ -32,45 +39,47 @@ namespace Unity.QuickSearch
 
             var spaceBetweenTiles = (gridWidth - (columnCount * itemWidth)) / (columnCount + 1f);
 
-            Rect gridRect = new Rect(0, m_ScrollPosition.y, gridWidth, availableHeight);
-            Rect itemRect = new Rect(spaceBetweenTiles, 0, itemWidth, itemHeight);
+            var viewRect = screenRect; viewRect.width = gridWidth; viewRect.height = gridHeight;
+            m_ScrollPosition = GUI.BeginScrollView(screenRect, m_ScrollPosition, viewRect);
 
-            m_ItemVisibleRegion = new Rect(m_ScrollViewOffset.x, m_ScrollViewOffset.yMax, gridWidth, availableHeight);
+            Rect gridRect = new Rect(0, screenRect.y + m_ScrollPosition.y, gridWidth, availableHeight);
+            Rect itemRect = new Rect(spaceBetweenTiles, screenRect.y, itemWidth, itemHeight);
 
-            GUILayout.Space(gridHeight);
-
+            var evt = Event.current;
             int index = 0;
-            var eventType = Event.current.type;
-            var mouseButton = Event.current.button;
-            var mousePosition = Event.current.mousePosition;
-            var isHoverGrid = !(m_AutoCompleting && m_AutoCompleteRect.Contains(GetScrollViewOffsetedMousePosition()));
+            int selectionIndex = selection.Count == 0 ? -1 : selection.Last();
+            var eventType = evt.type;
+            var mouseButton = evt.button;
+            var mousePosition = evt.mousePosition;
+            var isHoverGrid = !SearchField.IsAutoCompleteHovered(evt.mousePosition);
             isHoverGrid &= gridRect.Contains(mousePosition);
-            foreach (var item in m_FilteredItems)
+
+            foreach (var item in items)
             {
-                if (index == m_SelectedIndex && m_FocusSelectedItem)
+                if (evt.type == EventType.Repaint && index == selectionIndex && focusSelectedItem)
                 {
-                    FocusGridItemRect(itemRect);
-                    m_FocusSelectedItem = false;
+                    FocusGridItemRect(itemRect, screenRect);
+                    focusSelectedItem = false;
                 }
 
                 if (itemRect.Overlaps(gridRect))
                 {
-                    if (Event.current.isMouse && !isHoverGrid)
+                    if (evt.isMouse && !isHoverGrid)
                     {
                         // Skip
                     }
                     else if (eventType == EventType.MouseDown && mouseButton == 0)
                     {
                         if (itemRect.Contains(mousePosition))
-                            HandleMouseDown();
+                            HandleMouseDown(index);
                     }
-                    else if (Event.current.type == EventType.MouseUp || IsDragFinishedFarEnough(Event.current))
+                    else if (evt.type == EventType.MouseUp || IsDragClicked(evt))
                     {
                         if (itemRect.Contains(mousePosition))
                         {
                             HandleMouseUp(index, itemCount);
-                            if (index == m_SelectedIndex)
-                                EditorApplication.delayCall += () => m_FocusSelectedItem = true;
+                            if (index == selectionIndex)
+                                focusSelectedItem = true;
                         }
                     }
                     else if (eventType == EventType.MouseDrag && m_PrepareDrag)
@@ -80,7 +89,7 @@ namespace Unity.QuickSearch
                     }
                     else if (eventType == EventType.Repaint)
                     {
-                        DrawGridItem(index, item, itemRect, isHoverGrid);
+                        DrawGridItem(index, item, itemRect, isHoverGrid, selection, evt);
                     }
                     else
                     {
@@ -94,27 +103,52 @@ namespace Unity.QuickSearch
 
                 ++index;
             }
+
+            GUI.EndScrollView();
         }
 
-        private void DrawGridItem(int index, SearchItem item, Rect itemRect, bool canHover)
+        public override int GetDisplayItemCount()
         {
-            //GUI.DrawTexture(itemRect, EditorGUIUtility.whiteTexture, ScaleMode.StretchToFill, false, 0f, Color.red, 1f, 0f);
+            float itemWidth = itemSize + itemPadding * 2;
+            float itemHeight = itemSize + itemLabelHeight + itemLabelTopPadding + itemPadding * 2;
 
+            var gridWidth = m_DrawItemsRect.width;
+            var itemCount = searchView.results.Count;
+            int columnCount = (int)(gridWidth / itemWidth);
+            int lineCount = Mathf.CeilToInt(itemCount / (float)columnCount);
+            var gridHeight = lineCount * itemHeight - Styles.statusLabel.fixedHeight;
+            var availableHeight = m_DrawItemsRect.height;
+
+            if (gridHeight > availableHeight)
+            {
+                gridWidth -= Styles.scrollbar.fixedWidth;
+                columnCount = (int)(gridWidth / itemWidth);
+            }
+
+            int rowCount = Mathf.Max(1, Mathf.RoundToInt(m_DrawItemsRect.height / itemHeight));
+            int gridItemCount = rowCount * columnCount + 1;
+
+            return Math.Max(0, Math.Min(itemCount, gridItemCount));
+        }
+
+        private void DrawGridItem(int index, SearchItem item, Rect itemRect, bool canHover, ICollection<int> selection, Event evt)
+        {
+            var backgroundRect = new Rect(itemRect.x+1, itemRect.y+1, itemRect.width-2, itemRect.height-2);
             var itemContent = canHover ? new GUIContent("", item.GetDescription(context, true)) : GUIContent.none;
-            if (m_SelectedIndex == index)
-                GUI.Label(itemRect, itemContent, Styles.selectedGridItemBackground);
+            if (selection.Contains(index))
+                GUI.Label(backgroundRect, itemContent, Styles.selectedGridItemBackground);
             else if (canHover)
-                GUI.Label(itemRect, itemContent, itemRect.Contains(Event.current.mousePosition) ? Styles.itemGridBackground2 : Styles.itemGridBackground1);
+                GUI.Label(backgroundRect, itemContent, itemRect.Contains(evt.mousePosition) ? Styles.itemGridBackground2 : Styles.itemGridBackground1);
 
             Texture2D thumbnail = null;
-            var shouldFetchPreview = SearchSettings.fetchPreview && itemIconSize > 64;
-            if (SearchSettings.fetchPreview && itemIconSize > 64)
+            var shouldFetchPreview = SearchSettings.fetchPreview && itemSize > 64;
+            if (SearchSettings.fetchPreview && itemSize > 64)
             {
                 thumbnail = item.preview;
                 shouldFetchPreview = !thumbnail && item.provider.fetchPreview != null;
                 if (shouldFetchPreview)
                 {
-                    var previewSize = new Vector2(itemIconSize, itemIconSize);
+                    var previewSize = new Vector2(itemSize, itemSize);
                     thumbnail = item.provider.fetchPreview(item, context, previewSize, FetchPreviewOptions.Preview2D | FetchPreviewOptions.Normal);
                     if (thumbnail)
                     {
@@ -136,7 +170,7 @@ namespace Unity.QuickSearch
 
             if (thumbnail)
             {
-                var thumbnailRect = new Rect(itemRect.x + itemPadding, itemRect.y + itemPadding, itemIconSize, itemIconSize);
+                var thumbnailRect = new Rect(itemRect.x + itemPadding, itemRect.y + itemPadding, itemSize, itemSize);
                 var dw = thumbnailRect.width - thumbnail.width;
                 var dh = thumbnailRect.height - thumbnail.height;
                 if (dw > 0 || dh > 0)
@@ -152,7 +186,7 @@ namespace Unity.QuickSearch
             }
 
             var labelRect = new Rect(
-                itemRect.x + itemPadding, itemRect.yMax - itemLabelHeight - itemPadding, 
+                itemRect.x + itemPadding, itemRect.yMax - itemLabelHeight - itemPadding,
                 itemRect.width - itemPadding * 2f, itemLabelHeight - itemPadding);
             var maxCharLength = Utils.GetNumCharactersThatFitWithinWidth(Styles.itemLabelGrid, item.GetLabel(context, true), itemRect.width * 2f);
             var itemLabel = item.GetLabel(context);
@@ -165,18 +199,19 @@ namespace Unity.QuickSearch
             GUI.Label(labelRect, itemLabel, Styles.itemLabelGrid);
         }
 
-        private void FocusGridItemRect(Rect itemRect)
+        private void FocusGridItemRect(Rect itemRect, Rect screenRect)
         {
             // Focus item
-            if (itemRect.center.y <= m_ScrollPosition.y)
+            var itemHalfHeight = itemRect.height / 2f;
+            if (itemRect.center.y <= m_ScrollPosition.y + itemHalfHeight)
             {
-                m_ScrollPosition.y = Mathf.Max(0, itemRect.yMin - 20);
-                Repaint();
+                m_ScrollPosition.y = Mathf.Max(0, itemRect.yMin - itemHalfHeight);
+                searchView.Repaint();
             }
-            else if (itemRect.center.y > m_ScrollPosition.y + m_ItemVisibleRegion.height)
+            else if (itemRect.center.y > m_ScrollPosition.y + screenRect.yMax)
             {
-                m_ScrollPosition.y = itemRect.yMin - itemRect.height;
-                Repaint();
+                m_ScrollPosition.y = Mathf.Max(0f, itemRect.yMax - screenRect.yMax);
+                searchView.Repaint();
             }
         }
     }

@@ -249,32 +249,6 @@ namespace Unity.QuickSearch
         }
     }
 
-    #if UNITY_2020_1_OR_NEWER
-    internal class EditorWindowDescriptor : ResourceDescriptor
-    {
-        public override int Priority => 60;
-
-        public override bool Match(Object obj)
-        {
-            return obj is EditorWindow;
-        }
-
-        public override bool GetDescription(Object obj, StringBuilder sb)
-        {
-            AddSeparatorIfNeeded(sb);
-            var win = obj as EditorWindow;
-            sb.Append(UIElementsSearchProvider.GetTransformPath(win.rootVisualElement));
-            return true;
-        }
-
-        public override void TrackSelection(Object obj)
-        {
-            var win = obj as EditorWindow;
-            Utils.PingUIElement(win.rootVisualElement, win);
-        }
-    }
-    #endif
-
     internal class MonoScriptDescriptor : ResourceDescriptor
     {
         public override int Priority => 50;

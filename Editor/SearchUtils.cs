@@ -76,6 +76,15 @@ namespace Unity.QuickSearch
             return GetTransformPath(tform.parent) + "/" + tform.name;
         }
 
+        public static string GetObjectPath(UnityEngine.Object obj)
+        {
+            if (obj is GameObject go)
+                return GetTransformPath(go.transform);
+            if (obj is Component c)
+                return GetTransformPath(c.gameObject.transform);
+            return obj.name;
+        }
+
         public static string GetHierarchyPath(GameObject gameObject, bool includeScene = true)
         {
             if (gameObject == null)
@@ -135,5 +144,70 @@ namespace Unity.QuickSearch
 
             return gameObject.scene.path;
         }
+
+        public static void SelectMultipleItems(IEnumerable<SearchItem> items, bool focusProjectBrowser = false)
+        {
+            Selection.objects = items.Select(i => i.provider.toObject(i, typeof(UnityEngine.Object))).Where(o=>o).ToArray();
+            if (Selection.objects.Length == 0)
+                return;
+            EditorApplication.delayCall += () =>
+            {
+                if(focusProjectBrowser)
+                    EditorWindow.FocusWindowIfItsOpen(Utils.GetProjectBrowserWindowType());
+                EditorApplication.delayCall += () => EditorGUIUtility.PingObject(Selection.objects.LastOrDefault());
+            };
+        }
+
+        /// <summary>
+        /// Helper function to match a string against the SearchContext. This will try to match the search query against each tokens of content (similar to the AddComponent menu workflow)
+        /// </summary>
+        /// <param name="context">Search context containing the searchQuery that we try to match.</param>
+        /// <param name="content">String content that will be tokenized and use to match the search query.</param>
+        /// <param name="useLowerTokens">Perform matching ignoring casing.</param>
+        /// <returns>Has a match occurred.</returns>
+        public static bool MatchSearchGroups(SearchContext context, string content, bool ignoreCase = false)
+        {
+            return MatchSearchGroups(context.searchQuery, context.searchWords, content, out _, out _,
+                                     ignoreCase ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
+        }
+
+        private static bool MatchSearchGroups(string searchContext, string[] tokens, string content, out int startIndex, out int endIndex, StringComparison sc = StringComparison.OrdinalIgnoreCase)
+        {
+            startIndex = endIndex = -1;
+            if (String.IsNullOrEmpty(content))
+                return false;
+
+            if (string.IsNullOrEmpty(searchContext))
+                return false;
+
+            if (searchContext == content)
+            {
+                startIndex = 0;
+                endIndex = content.Length - 1;
+                return true;
+            }
+
+            // Each search group is space separated
+            // Search group must match in order and be complete.
+            var searchGroups = tokens;
+            var startSearchIndex = 0;
+            foreach (var searchGroup in searchGroups)
+            {
+                if (searchGroup.Length == 0)
+                    continue;
+
+                startSearchIndex = content.IndexOf(searchGroup, startSearchIndex, sc);
+                if (startSearchIndex == -1)
+                {
+                    return false;
+                }
+
+                startIndex = startIndex == -1 ? startSearchIndex : startIndex;
+                startSearchIndex = endIndex = startSearchIndex + searchGroup.Length - 1;
+            }
+
+            return startIndex != -1 && endIndex != -1;
+        }
+
     }
 }

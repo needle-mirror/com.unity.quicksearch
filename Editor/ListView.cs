@@ -1,210 +1,207 @@
+#define QUICKSEARCH_DEBUG
+
 using System;
+using System.Collections.Generic;
 using System.Linq;
-using UnityEditor;
 using UnityEngine;
 
 namespace Unity.QuickSearch
 {
-    partial class QuickSearch
+    class ListView : ResultView
     {
-        private void DrawList()
+        public ListView(ISearchView hostView)
+            : base(hostView)
         {
-            var itemCount = m_FilteredItems.Count;
-            var availableHeight = position.height - m_ScrollViewOffset.yMax - Styles.statusLabel.fixedHeight;
+        }
+
+        protected override void Draw(Rect screenRect, ICollection<int> selection, ref bool focusSelectedItem)
+        {
+            var itemCount = items.Count;
+            var availableHeight = screenRect.height;
             var itemSkipCount = Math.Max(0, (int)(m_ScrollPosition.y / Styles.itemRowHeight));
-            var itemDisplayCount = Math.Max(0, Math.Min(itemCount, (int)(availableHeight / Styles.itemRowHeight) + 2));
+            var itemDisplayCount = Math.Max(0, Math.Min(itemCount, Mathf.CeilToInt(availableHeight / Styles.itemRowHeight) + 1));
             var topSpaceSkipped = itemSkipCount * Styles.itemRowHeight;
-
-            int rowIndex = itemSkipCount;
-
-            if (topSpaceSkipped > 0)
-                GUILayout.Space(topSpaceSkipped);
-
-            m_ItemVisibleRegion = new Rect(m_ScrollViewOffset.x, m_ScrollViewOffset.yMax, m_DrawItemsRect.width, availableHeight);
-
-            int thumbnailFetched = 0;
             var limitCount = Math.Max(0, Math.Min(itemDisplayCount, itemCount - itemSkipCount));
-            foreach (var item in m_FilteredItems.GetRange(itemSkipCount, limitCount))
-            {
-                try
-                {
-                    DrawItem(item, context, rowIndex++, ref thumbnailFetched);
-                }
-                #if QUICKSEARCH_DEBUG
-                catch (Exception ex)
-                {
-                    Debug.LogError($"itemCount={itemCount}, " +
-                                    $"itemSkipCount={itemSkipCount}, " +
-                                    $"limitCount={limitCount}, " +
-                                    $"availableHeight={availableHeight}, " +
-                                    $"itemDisplayCount={itemDisplayCount}, " +
-                                    $"m_SelectedIndex={m_SelectedIndex}, " +
-                                    $"m_ScrollViewOffset.yMax={m_ScrollViewOffset.yMax}, " +
-                                    $"rowIndex={rowIndex-1}");
-                    Debug.LogException(ex);
-                }
-                #else
-                catch
-                {
-                    // ignored
-                }
-                #endif
-            }
+            var totalSpace = itemCount * Styles.itemRowHeight;
+            var scrollbarSpace = availableHeight <= totalSpace ? Styles.scrollbarWidth : 0f;
+            var viewRect = screenRect; viewRect.width -= scrollbarSpace; viewRect.height = totalSpace;
+            int selectionIndex = selection.Count == 0 ? -1 : selection.Last();
 
-            var bottomSpaceSkipped = (itemCount - rowIndex) * Styles.itemRowHeight;
-            if (bottomSpaceSkipped > 0)
-                GUILayout.Space(bottomSpaceSkipped);
+            m_ScrollPosition = GUI.BeginScrollView(screenRect, m_ScrollPosition, viewRect);
+
+            var itemIndex = 0;
+            var itemRect = new Rect(0, topSpaceSkipped + screenRect.y, viewRect.width, Styles.itemRowHeight);
+            foreach (var item in items)
+            {
+                if (itemIndex >= itemSkipCount && itemIndex <= itemSkipCount + limitCount)
+                {
+                    try
+                    {
+                        DrawItem(item, itemRect, itemIndex, selection);
+                    }
+                    catch (Exception ex)
+                    {
+                        if (!(ex is ExitGUIException))
+                            Debug.LogException(ex);
+                    }
+
+                    itemRect.y += itemRect.height;
+                }
+                else
+                {
+                    item.thumbnail = item.preview = null;
+                }
+
+                itemIndex++;
+            }
 
             // Fix selected index display if out of virtual scrolling area
-            if (Event.current.type == EventType.Repaint && m_FocusSelectedItem && m_SelectedIndex >= 0)
+            if (Event.current.type == EventType.Repaint && focusSelectedItem && selectionIndex >= 0)
             {
-                ScrollListToItem(itemSkipCount + 1, itemSkipCount + itemDisplayCount - 2, m_SelectedIndex);
-                m_FocusSelectedItem = false;
+                ScrollListToItem(itemSkipCount + 1, itemSkipCount + itemDisplayCount - 2, selectionIndex, screenRect);
+                focusSelectedItem = false;
             }
             else
-                HandleListItemEvents(itemCount, context);
+                HandleListItemEvents(itemCount, screenRect);
+
+            GUI.EndScrollView();
         }
 
-        private void DrawItem(SearchItem item, SearchContext context, int index, ref int thumbnailFetched)
+        public override int GetDisplayItemCount()
         {
-            var bgStyle = index % 2 == 0 ? Styles.itemBackground1 : Styles.itemBackground2;
-            if (m_SelectedIndex == index)
-                bgStyle = Styles.selectedItemBackground;
-
-            using (new EditorGUILayout.HorizontalScope(bgStyle))
-            {
-                DrawListThumbnail(item, context, ref thumbnailFetched);
-
-                using (new EditorGUILayout.VerticalScope())
-                {
-                    var maxWidth = m_DrawItemsRect.width - Styles.actionButtonSize - Styles.itemPreviewSize - Styles.itemRowSpacing - Styles.descriptionPadding;
-                    var textMaxWidthLayoutOption = GUILayout.MaxWidth(maxWidth);
-                    GUILayout.Label(item.provider.fetchLabel(item, context), m_SelectedIndex == index ? Styles.selectedItemLabel : Styles.itemLabel, textMaxWidthLayoutOption);
-                    GUILayout.Label(SearchContent.FormatDescription(item, context, maxWidth), m_SelectedIndex == index ? Styles.selectedItemDescription : Styles.itemDescription, textMaxWidthLayoutOption);
-                }
-
-                if (selectCallback == null && item.provider.actions.Count > 1)
-                {
-                    GUILayout.FlexibleSpace();
-
-                    if (GUILayout.Button(Styles.moreActionsContent, Styles.actionButton))
-                    {
-                        ShowItemContextualMenu(item, context);
-                        GUIUtility.ExitGUI();
-                    }
-                }
-            }
+            var itemCount = searchView.results.Count;
+            return Math.Max(0, Math.Min(itemCount, Mathf.RoundToInt(m_DrawItemsRect.height / Styles.itemRowHeight)));
         }
 
-        private void DrawListThumbnail(SearchItem item, SearchContext context, ref int previewFetchedCount, int maxThumbnailFetchPerRepaint = 1, int maxItemPreviewCachedCount = 25)
+        private void DrawItem(SearchItem item, Rect itemRect, int itemIndex, ICollection<int> selection)
         {
-            Texture2D thumbnail = null;
             if (Event.current.type == EventType.Repaint)
             {
-                if (SearchSettings.fetchPreview)
-                {
-                    thumbnail = item.preview;
-                    var shouldFetchPreview = !thumbnail && item.provider.fetchPreview != null;
-                    if (shouldFetchPreview && previewFetchedCount < maxThumbnailFetchPerRepaint)
-                    {
-                        if (m_ItemPreviewCache.Count > maxItemPreviewCachedCount)
-                        {
-                            m_ItemPreviewCache.First().preview = null;
-                            m_ItemPreviewCache.RemoveFirst();
-                        }
+                bool isItemSelected = selection.Contains(itemIndex);
 
-                        var previewSize = new Vector2(Styles.preview.fixedWidth, Styles.preview.fixedHeight);
-                        thumbnail = item.provider.fetchPreview(item, context, previewSize, FetchPreviewOptions.Preview2D | FetchPreviewOptions.Normal);
-                        if (thumbnail)
-                        {
-                            previewFetchedCount++;
-                            item.preview = thumbnail;
-                            m_ItemPreviewCache.AddLast(item);
-                        }
-                    }
-                    else if (shouldFetchPreview && previewFetchedCount == maxThumbnailFetchPerRepaint)
-                    {
-                        previewFetchedCount++;
-                        RequestRepaintAfterTime(0.3f);
-                    }
+                // Draw item background
+                var bgStyle = itemIndex % 2 == 0 ? Styles.itemBackground1 : Styles.itemBackground2;
+                if (isItemSelected)
+                    bgStyle = Styles.selectedItemBackground;
+                bgStyle.Draw(itemRect, itemRect.Contains(Event.current.mousePosition), false, false, false);
+
+                // Draw thumbnail
+                var thumbnailRect = DrawListThumbnail(item, itemRect);
+
+                // Draw label
+                var maxWidth = itemRect.width - Styles.actionButtonSize - Styles.itemPreviewSize - Styles.descriptionPadding;
+                var label = item.provider.fetchLabel(item, context);
+                var labelStyle = isItemSelected ? Styles.selectedItemLabel : Styles.itemLabel;
+                var labelRect = new Rect(thumbnailRect.xMax + labelStyle.margin.left, itemRect.y + labelStyle.margin.top, maxWidth - labelStyle.margin.right, labelStyle.lineHeight);
+                GUI.Label(labelRect, label, labelStyle);
+                labelRect.y = labelRect.yMax + labelStyle.margin.bottom;
+
+                // Draw description
+                var labelContent = SearchContent.FormatDescription(item, context, maxWidth);
+                labelStyle = isItemSelected ? Styles.selectedItemDescription : Styles.itemDescription;
+                labelRect.y += labelStyle.margin.top;
+                GUI.Label(labelRect, labelContent, labelStyle);
+            }
+
+            // Draw action dropdown
+            if (searchView.selectCallback == null && searchView.selection.Count <= 1 && item.provider.actions.Count > 1)
+            {
+                var buttonRect = new Rect(itemRect.xMax - Styles.actionButton.fixedWidth - Styles.actionButton.margin.right, itemRect.y, Styles.actionButton.fixedWidth, Styles.actionButton.fixedHeight);
+                buttonRect.y += (itemRect.height - Styles.actionButton.fixedHeight) / 2f;
+                if (GUI.Button(buttonRect, Styles.moreActionsContent, Styles.actionButton))
+                {
+                    var contextRect = new Rect(Event.current.mousePosition, new Vector2(1, 1));
+                    searchView.ShowItemContextualMenu(item, context, contextRect);
+                    GUIUtility.ExitGUI();
                 }
+            }
+        }
 
-                if (!thumbnail)
+        private int m_FetchedPreview = 0;
+        private Rect DrawListThumbnail(SearchItem item, Rect itemRect)
+        {
+            Texture2D thumbnail = null;
+            if (SearchSettings.fetchPreview)
+            {
+                thumbnail = item.preview;
+                var shouldFetchPreview = !thumbnail && item.provider.fetchPreview != null;
+                if (shouldFetchPreview)
                 {
-                    thumbnail = item.thumbnail;
-                    if (!thumbnail && item.provider.fetchThumbnail != null)
+                    var previewSize = new Vector2(Styles.preview.fixedWidth, Styles.preview.fixedHeight);
+                    thumbnail = item.provider.fetchPreview(item, context, previewSize, FetchPreviewOptions.Preview2D | FetchPreviewOptions.Normal);
+                    if (thumbnail)
                     {
-                        thumbnail = item.provider.fetchThumbnail(item, context);
-                        if (thumbnail)
-                            item.thumbnail = thumbnail;
+                        item.preview = thumbnail;
+                        m_FetchedPreview++;
+                        if (m_FetchedPreview > 25)
+                        {
+                            m_FetchedPreview = 0;
+                            Resources.UnloadUnusedAssets();
+                        }
                     }
                 }
             }
-            GUILayout.Label(thumbnail ?? Icons.quicksearch, Styles.preview);
+
+            if (!thumbnail)
+            {
+                thumbnail = item.thumbnail;
+                if (!thumbnail && item.provider.fetchThumbnail != null)
+                {
+                    thumbnail = item.provider.fetchThumbnail(item, context);
+                    if (thumbnail)
+                        item.thumbnail = thumbnail;
+                }
+            }
+
+            var thumbnailRect = new Rect(itemRect.x, itemRect.y, Styles.preview.fixedWidth, Styles.preview.fixedHeight);
+            thumbnailRect.x += Styles.preview.margin.left;
+            thumbnailRect.y += (itemRect.height - Styles.preview.fixedHeight) /2f;
+            GUI.Label(thumbnailRect, thumbnail ?? Icons.quicksearch, Styles.preview);
+
+            return thumbnailRect;
         }
 
-        private void HandleListItemEvents(int itemTotalCount, SearchContext context)
+        private void HandleListItemEvents(int itemTotalCount, Rect screenRect)
         {
-            var mpOffseted = GetScrollViewOffsetedMousePosition();
-            if (m_AutoCompleting && m_AutoCompleteRect.Contains(mpOffseted))
-                return;
-
-            if (Event.current.isMouse && !m_ItemVisibleRegion.Contains(mpOffseted))
+            var mousePosition = Event.current.mousePosition - new Vector2(0, screenRect.y);
+            if (SearchField.IsAutoCompleteHovered(mousePosition))
                 return;
 
             if (Event.current.type == EventType.MouseDown && Event.current.button == 0)
             {
-                var clickedItemIndex = (int)(Event.current.mousePosition.y / Styles.itemRowHeight);
+                var clickedItemIndex = (int)(mousePosition.y / Styles.itemRowHeight);
                 if (clickedItemIndex >= 0 && clickedItemIndex < itemTotalCount)
-                    HandleMouseDown();
+                    HandleMouseDown(clickedItemIndex);
             }
-            else if (Event.current.type == EventType.MouseUp || IsDragFinishedFarEnough(Event.current))
+            else if (Event.current.type == EventType.MouseUp || IsDragClicked(Event.current))
             {
-                var clickedItemIndex = (int)(Event.current.mousePosition.y / Styles.itemRowHeight);
+                var clickedItemIndex = (int)(mousePosition.y / Styles.itemRowHeight);
                 HandleMouseUp(clickedItemIndex, itemTotalCount);
             }
             else if (Event.current.type == EventType.MouseDrag && m_PrepareDrag)
             {
-                var dragIndex = (int)(Event.current.mousePosition.y / Styles.itemRowHeight);
+                var dragIndex = (int)(mousePosition.y / Styles.itemRowHeight);
                 HandleMouseDrag(dragIndex, itemTotalCount);
             }
         }
 
-        private void RequestRepaintAfterTime(double seconds)
-        {
-            if (!m_IsRepaintAfterTimeRequested)
-            {
-                m_IsRepaintAfterTimeRequested = true;
-                m_RequestRepaintAfterTime = EditorApplication.timeSinceStartup + seconds;
-            }
-        }
-
-        private void ScrollListToItem(int start, int end, int selection)
+        private void ScrollListToItem(int start, int end, int selection, Rect screenRect)
         {
             if (start <= selection && selection < end)
                 return;
 
-            Rect projectedSelectedItemRect = new Rect(0, selection * Styles.itemRowHeight, position.width, Styles.itemRowHeight);
+            Rect projectedSelectedItemRect = new Rect(0, selection * Styles.itemRowHeight, screenRect.width, Styles.itemRowHeight);
             if (selection < start)
             {
                 m_ScrollPosition.y = Mathf.Max(0, projectedSelectedItemRect.y - 2);
-                Repaint();
+                searchView.Repaint();
             }
             else if (selection > end)
             {
-                Rect visibleRect = GetListVisibleRect();
-                m_ScrollPosition.y += (projectedSelectedItemRect.yMax - visibleRect.yMax) + 2;
-                Repaint();
+                Rect visibleRect = new Rect(m_ScrollPosition, screenRect.size);
+                m_ScrollPosition.y += projectedSelectedItemRect.yMax - visibleRect.yMax + 2;
+                searchView.Repaint();
             }
-        }
-
-        private Rect GetListVisibleRect()
-        {
-            Rect visibleRect = position;
-            visibleRect.x = m_ScrollPosition.x;
-            visibleRect.y = m_ScrollPosition.y;
-            visibleRect.height -= m_ScrollViewOffset.yMax;
-            return visibleRect;
         }
     }
 }

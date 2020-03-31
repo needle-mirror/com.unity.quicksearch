@@ -199,61 +199,10 @@ namespace Unity.QuickSearch
             return CreateItem(id, 0, label, description, thumbnail, data);
         }
 
-        /// <summary>
-        /// Helper function to match a string against the SearchContext. This will try to match the search query against each tokens of content (similar to the AddComponent menu workflow)
-        /// </summary>
-        /// <param name="context">Search context containing the searchQuery that we try to match.</param>
-        /// <param name="content">String content that will be tokenized and use to match the search query.</param>
-        /// <param name="useLowerTokens">Perform matching ignoring casing.</param>
-        /// <returns>Has a match occurred.</returns>
-        public static bool MatchSearchGroups(SearchContext context, string content, bool useLowerTokens = false)
-        {
-            return MatchSearchGroups(context.searchQuery, context.searchWords, content, out _, out _,
-                                     useLowerTokens ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase);
-        }
-
         internal void RecordFetchTime(double t)
         {
             fetchTimes[fetchTimeWriteIndex] = t;
             fetchTimeWriteIndex = Utils.Wrap(fetchTimeWriteIndex + 1, fetchTimes.Length);
-        }
-
-        private static bool MatchSearchGroups(string searchContext, string[] tokens, string content, out int startIndex, out int endIndex, StringComparison sc = StringComparison.OrdinalIgnoreCase)
-        {
-            startIndex = endIndex = -1;
-            if (String.IsNullOrEmpty(content))
-                return false;
-
-            if (string.IsNullOrEmpty(searchContext))
-                return false;
-
-            if (searchContext == content)
-            {
-                startIndex = 0;
-                endIndex = content.Length - 1;
-                return true;
-            }
-
-            // Each search group is space separated
-            // Search group must match in order and be complete.
-            var searchGroups = tokens;
-            var startSearchIndex = 0;
-            foreach (var searchGroup in searchGroups)
-            {
-                if (searchGroup.Length == 0)
-                    continue;
-
-                startSearchIndex = content.IndexOf(searchGroup, startSearchIndex, sc);
-                if (startSearchIndex == -1)
-                {
-                    return false;
-                }
-
-                startIndex = startIndex == -1 ? startSearchIndex : startIndex;
-                startSearchIndex = endIndex = startSearchIndex + searchGroup.Length - 1;
-            }
-
-            return startIndex != -1 && endIndex != -1;
         }
 
         /// <summary> Average time it takes to query that provider.</summary>
@@ -301,20 +250,20 @@ namespace Unity.QuickSearch
 
         /// <summary> Handler used to fetch and format the label of a search item.</summary>
         public Func<SearchItem, SearchContext, string> fetchLabel;
-        
+
         /// <summary>
         /// Handler to provider an async description for an item. Will be called when the item is about to be displayed.
         /// Allows a plugin provider to only fetch long description when they are needed.
         /// </summary>
         public Func<SearchItem, SearchContext, string> fetchDescription;
-        
+
         /// <summary>
         /// Handler to provider an async thumbnail for an item. Will be called when the item is about to be displayed.
         /// Compared to preview a thumbnail should be small and returned as fast as possible. Use fetchPreview if you want to generate a preview that is bigger and slower to return.
         /// Allows a plugin provider to only fetch/generate preview when they are needed.
         /// </summary>
         public Func<SearchItem, SearchContext, Texture2D> fetchThumbnail;
-        
+
         /// <summary>
         /// Similar to fetchThumbnail, fetchPreview usually returns a bigger preview. The QuickSearch UI will progressively show one preview each frame,
         /// preventing the UI to block if many preview needs to be generated at the same time.
@@ -332,24 +281,39 @@ namespace Unity.QuickSearch
         /// The enumeration of those objects should return SearchItems.
         /// </summary>
         public Func<SearchContext, List<SearchItem>, SearchProvider, object> fetchItems;
-        
-        /// <summary> Provider can return a list of words that will help the user complete his search query</summary>
-        public Action<SearchContext, string, List<string>> fetchKeywords;
-        
-        /// <summary> Called when the QuickSearchWindow is opened. Allow the Provider to perform some caching.</summary>
-        public Action onEnable;
-        
-        /// <summary> Called when the QuickSearchWindow is closed. Allow the Provider to release cached resources.</summary>
-        public Action onDisable;
-        
-        /// <summary> Hint to sort the Provider. Affect the order of search results and the order in which provider are shown in the FilterWindow.</summary>
-        public int priority;
-        
-        /// <summary> Called when quick search is invoked in "contextual mode". If you return true it means the provider is enabled for this search context.</summary>
-        public Func<bool> isEnabledForContextualSearch;
 
         /// <summary> Returns any valid Unity object held by the search item.</summary>
-        internal Func<SearchItem, Type, UnityEngine.Object> toObject;
+        public Func<SearchItem, Type, UnityEngine.Object> toObject;
+
+        /// <summary>
+        /// This callback is used to open additional context for a given item.
+        /// </summary>
+        public Func<SearchSelection, SearchContext, Rect, bool> openContextual;
+
+        /// <summary>
+        /// Provider can return a list of words that will help the user complete his search query
+        /// </summary>
+        public Action<SearchContext, string, List<string>> fetchKeywords;
+
+        /// <summary>
+        /// Called when the QuickSearchWindow is opened. Allow the Provider to perform some caching.
+        /// </summary>
+        public Action onEnable;
+        
+        /// <summary> 
+        /// Called when the QuickSearchWindow is closed. Allow the Provider to release cached resources.
+        /// </summary>
+        public Action onDisable;
+
+        /// <summary> 
+        /// Hint to sort the Provider. Affect the order of search results and the order in which provider are shown in the FilterWindow.
+        /// </summary>
+        public int priority;
+
+        /// <summary> 
+        /// Called when quick search is invoked in "contextual mode". If you return true it means the provider is enabled for this search context.
+        /// </summary>
+        public Func<bool> isEnabledForContextualSearch;
 
         // INTERNAL
         internal List<SearchAction> actions;

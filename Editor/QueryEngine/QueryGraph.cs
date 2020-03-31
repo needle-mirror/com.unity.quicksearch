@@ -5,6 +5,8 @@ namespace Unity.QuickSearch
     {
         public IQueryNode root { get; private set; }
 
+        public bool empty => root == null;
+
         public QueryGraph(IQueryNode root)
         {
             this.root = root;
@@ -12,7 +14,7 @@ namespace Unity.QuickSearch
 
         public void Optimize(bool propagateNotToLeaves, bool swapNotToRightHandSide)
         {
-            if (root == null)
+            if (empty)
                 return;
 
             Optimize(root, propagateNotToLeaves, swapNotToRightHandSide);

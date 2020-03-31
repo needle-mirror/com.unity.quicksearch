@@ -26,7 +26,7 @@ namespace Unity.QuickSearch.Providers
             priority = 50;
             this.filterId = filterId;
             this.showDetails = true;
-            showDetailsOptions = ShowDetailsOptions.Inspector;
+            showDetailsOptions = ShowDetailsOptions.Inspector | ShowDetailsOptions.Actions;
 
             isEnabledForContextualSearch = () =>
                 Utils.IsFocusedWindowTypeName("SceneView") ||
@@ -108,32 +108,12 @@ namespace Unity.QuickSearch.Providers
                 var obj = ObjectFromItem(item);
                 if (obj == null)
                     return item.thumbnail;
-
-                var sr = obj.GetComponent<SpriteRenderer>();
-                if (sr && sr.sprite && sr.sprite.texture)
-                    return sr.sprite.texture;
-
-                #if PACKAGE_UGUI
-                var uii = obj.GetComponent<UnityEngine.UI.Image>();
-                if (uii && uii.mainTexture is Texture2D uiit)
-                    return uiit;
-                #endif
-
-                var preview = AssetPreview.GetAssetPreview(obj);
-                if (preview)
-                    return preview;
-
-                var assetPath = SearchUtils.GetHierarchyAssetPath(obj, true);
-                if (String.IsNullOrEmpty(assetPath))
-                    return item.thumbnail;
-                return Utils.GetAssetPreviewFromPath(assetPath, size, options);
+                return Utils.GetSceneObjectPreview(obj, size, options, item.thumbnail);
             };
 
             startDrag = (item, context) =>
             {
-                var obj = ObjectFromItem(item);
-                if (obj != null)
-                    Utils.StartDrag(obj, item.label);
+                Utils.StartDrag(context.selection.Select(i => ObjectFromItem(i)).ToArray(), item.GetLabel(context, true));
             };
 
             trackSelection = (item, context) => PingItem(item);
@@ -144,6 +124,9 @@ namespace Unity.QuickSearch.Providers
 
         private IEnumerator SearchItems(SearchContext context, SearchProvider provider)
         {
+            if (string.IsNullOrEmpty(context.searchQuery))
+                yield break;
+
             #if DEBUG_TIMING
             using (new DebugTimer($"Search scene ({context.searchQuery})"))
             #endif
@@ -197,6 +180,13 @@ namespace Unity.QuickSearch.Providers
                 SceneView.lastActiveSceneView.FrameSelected();
         }
 
+        private static void FrameObjects(UnityEngine.Object[] objects)
+        {
+            Selection.instanceIDs = objects.Select(o => o.GetInstanceID()).ToArray();
+            if (SceneView.lastActiveSceneView != null)
+                SceneView.lastActiveSceneView.FrameSelected();
+        }
+
         private static GameObject ObjectFromItem(SearchItem item)
         {
             var instanceID = Convert.ToInt32(item.id);
@@ -208,17 +198,15 @@ namespace Unity.QuickSearch.Providers
         {
             return new SearchAction[]
             {
-                new SearchAction(providerId, "select", null, "Select object in scene...")
+                new SearchAction(providerId, "select", null, "Select object(s) in scene...")
                 {
-                    handler = (item, context) =>
+                    execute = (context, items) =>
                     {
-                        var pingedObject = PingItem(item);
-                        if (pingedObject != null)
-                            FrameObject(pingedObject);
+                        FrameObjects(items.Select(i => i.provider.toObject(i, typeof(GameObject))).Where(i=>i).ToArray());
                     }
                 },
 
-                new SearchAction(providerId, "open", null, "Open containing asset...")
+                new SearchAction(providerId, "open", null, "Select containing asset...")
                 {
                     handler = (item, context) =>
                     {

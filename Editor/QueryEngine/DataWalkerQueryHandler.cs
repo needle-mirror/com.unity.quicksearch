@@ -5,30 +5,36 @@ using UnityEngine.Assertions;
 
 namespace Unity.QuickSearch
 {
-    internal class DataWalkerQueryHandler<TData> : IQueryHandler<TData, Func<TData, bool>, IEnumerator<TData>>
+    internal class DataWalkerQueryHandler<TData> : IQueryHandler<TData, IEnumerator<TData>>
     {
         private QueryEngine<TData> m_Engine;
 
-        public Func<TData, bool> predicate { get; private set; }
+        public Func<TData, bool> predicate { get; private set; } = o => false;
 
         public void Initialize(QueryEngine<TData> engine, QueryGraph graph)
         {
             m_Engine = engine;
-            if (graph != null)
+            if (graph != null && !graph.empty)
                 predicate = BuildFunctionFromNode(graph.root);
         }
 
-        public IEnumerable<TData> Eval(Func<TData, bool> handler, IEnumerator<TData> payload)
+        public IEnumerable<TData> Eval(IEnumerator<TData> payload)
         {
+            if (payload == null)
+                yield break;
+
             while (payload.MoveNext())
             {
-                if (handler(payload.Current))
+                if (predicate(payload.Current))
                     yield return payload.Current;
             }
         }
 
         private Func<TData, bool> BuildFunctionFromNode(IQueryNode node)
         {
+            if (node == null)
+                return o => false;
+
             switch (node.type)
             {
                 case QueryNodeType.And:

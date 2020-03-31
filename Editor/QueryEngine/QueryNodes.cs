@@ -1,4 +1,6 @@
 using System.Collections.Generic;
+using System.Text;
+using UnityEngine;
 
 namespace Unity.QuickSearch
 {
@@ -8,7 +10,8 @@ namespace Unity.QuickSearch
         Or,
         Filter,
         Search,
-        Not
+        Not,
+        NoOp
     }
 
     internal interface IQueryNode
@@ -17,28 +20,29 @@ namespace Unity.QuickSearch
         QueryNodeType type { get; }
         List<IQueryNode> children { get; }
         bool leaf { get; }
+        string identifier { get; }
         int QueryHashCode();
     }
 
     internal class FilterNode : IQueryNode
     {
-        readonly string m_FilterString;
         public IFilterOperation filterOperation;
 
         public IQueryNode parent { get; set; }
         public QueryNodeType type => QueryNodeType.Filter;
         public List<IQueryNode> children => new List<IQueryNode>();
         public bool leaf => true;
+        public string identifier { get; }
 
         public FilterNode(IFilterOperation operation, string filterString)
         {
             filterOperation = operation;
-            m_FilterString = filterString;
+            identifier = filterString;
         }
 
         public int QueryHashCode()
         {
-            return m_FilterString.GetHashCode();
+            return identifier.GetHashCode();
         }
     }
 
@@ -51,16 +55,18 @@ namespace Unity.QuickSearch
         public QueryNodeType type => QueryNodeType.Search;
         public List<IQueryNode> children => new List<IQueryNode>();
         public bool leaf => true;
+        public string identifier { get; private set; }
 
         public SearchNode(string searchValue, bool isExact)
         {
             this.searchValue = searchValue;
             exact = isExact;
+            identifier = exact ? ("!" + searchValue) : searchValue;
         }
 
         public int QueryHashCode()
         {
-            return exact ? ("!" + searchValue).GetHashCode() : searchValue.GetHashCode();
+            return identifier.GetHashCode();
         }
     }
 
@@ -70,6 +76,7 @@ namespace Unity.QuickSearch
         public abstract QueryNodeType type { get; }
         public List<IQueryNode> children { get; }
         public bool leaf => children.Count == 0;
+        public abstract string identifier { get; }
 
         protected CombinedNode()
         {
@@ -118,6 +125,7 @@ namespace Unity.QuickSearch
     internal class AndNode : CombinedNode
     {
         public override QueryNodeType type => QueryNodeType.And;
+        public override string identifier => "(" + children[0].identifier + " " + children[1].identifier + ")";
 
         public override void SwapChildNodes()
         {
@@ -133,6 +141,7 @@ namespace Unity.QuickSearch
     internal class OrNode : CombinedNode
     {
         public override QueryNodeType type => QueryNodeType.Or;
+        public override string identifier => "(" + children[0].identifier + " or " + children[1].identifier + ")";
 
         public override void SwapChildNodes()
         {
@@ -148,8 +157,28 @@ namespace Unity.QuickSearch
     internal class NotNode : CombinedNode
     {
         public override QueryNodeType type => QueryNodeType.Not;
+        public override string identifier => "-" + children[0].identifier;
 
         public override void SwapChildNodes()
         { }
+    }
+
+    internal sealed class NoOpNode : IQueryNode
+    {
+        public IQueryNode parent { get; set; }
+        public QueryNodeType type => QueryNodeType.NoOp;
+        public List<IQueryNode> children => new List<IQueryNode>();
+        public bool leaf => true;
+        public string identifier { get; }
+
+        public NoOpNode(string identifier)
+        {
+            this.identifier = identifier;
+        }
+
+        public int QueryHashCode()
+        {
+            return identifier.GetHashCode();
+        }
     }
 }

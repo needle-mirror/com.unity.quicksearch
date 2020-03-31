@@ -19,6 +19,7 @@ namespace Unity.QuickSearch
         private string m_CachedPhrase;
         private readonly object m_AsyncItemReceivedEventLock = new object();
 
+        [DebuggerDisplay("{provider.name.id} - Enabled: {isEnabled}")]
         internal class FilterDesc
         {
             public SearchProvider provider;
@@ -63,6 +64,13 @@ namespace Unity.QuickSearch
             }
 
             return false;
+        }
+
+        internal void SetFilteredProviders(IEnumerable<string> providerIds)
+        {
+            ResetFilter(false);
+            foreach (var id in providerIds)
+                SetFilter(true, id);
         }
 
         private void BeginSession()
@@ -115,11 +123,8 @@ namespace Unity.QuickSearch
         /// </summary>
         public string searchText
         { 
-            get
-            {
-                return m_SearchText;
-            }
-            
+            get => m_SearchText;
+
             set
             {
                 if (m_SearchText.Equals(value))
@@ -184,7 +189,7 @@ namespace Unity.QuickSearch
             get
             {
                 if (m_CachedPhrase == null && searchWords.Length > 0)
-                    m_CachedPhrase = String.Join(" ", searchWords).Trim();
+                    m_CachedPhrase = string.Join(" ", searchWords).Trim();
                 return m_CachedPhrase ?? String.Empty;
             }
         }
@@ -193,11 +198,6 @@ namespace Unity.QuickSearch
         /// All tokens containing a colon (':')
         /// </summary>
         public string[] textFilters { get; private set; } = k_Empty;
-
-        /// <summary>
-        /// Mark the number of item found after running the search.
-        /// </summary>
-        public int totalItemCount { get; internal set; } = 0;
 
         /// <summary>
         /// Editor window that initiated the search.
@@ -271,6 +271,11 @@ namespace Unity.QuickSearch
         public bool searchInProgress => sessions.searchInProgress;
 
         /// <summary>
+        /// Return the search result selection if any.
+        /// </summary>
+        public SearchSelection selection => searchView?.selection;
+
+        /// <summary>
         /// This event is used to receive any async search result.
         /// </summary>
         public event Action<IEnumerable<SearchItem>> asyncItemReceived
@@ -278,16 +283,40 @@ namespace Unity.QuickSearch
             add
             {
                 lock (m_AsyncItemReceivedEventLock)
-                {
                     sessions.asyncItemReceived += value;
-                }
             }
             remove
             {
                 lock (m_AsyncItemReceivedEventLock)
-                {
                     sessions.asyncItemReceived -= value;
-                }
+            }
+        }
+
+        public event Action sessionStarted
+        {
+            add
+            {
+                lock (m_AsyncItemReceivedEventLock)
+                    sessions.sessionStarted += value;
+            }
+            remove
+            {
+                lock (m_AsyncItemReceivedEventLock)
+                    sessions.sessionStarted -= value;
+            }
+        }
+
+        public event Action sessionEnded
+        {
+            add
+            {
+                lock (m_AsyncItemReceivedEventLock)
+                    sessions.sessionEnded += value;
+            }
+            remove
+            {
+                lock (m_AsyncItemReceivedEventLock)
+                    sessions.sessionEnded -= value;
             }
         }
     }
