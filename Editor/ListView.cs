@@ -108,7 +108,10 @@ namespace Unity.QuickSearch
             {
                 var buttonRect = new Rect(itemRect.xMax - Styles.actionButton.fixedWidth - Styles.actionButton.margin.right, itemRect.y, Styles.actionButton.fixedWidth, Styles.actionButton.fixedHeight);
                 buttonRect.y += (itemRect.height - Styles.actionButton.fixedHeight) / 2f;
-                if (GUI.Button(buttonRect, Styles.moreActionsContent, Styles.actionButton))
+                bool actionHover = buttonRect.Contains(Event.current.mousePosition);
+                GUI.Label(buttonRect, Styles.moreActionsContent, actionHover ? Styles.actionButtonHovered : Styles.actionButton);
+                UnityEditor.EditorGUIUtility.AddCursorRect(buttonRect, UnityEditor.MouseCursor.Link);
+                if (Event.current.type == EventType.MouseDown && actionHover)
                 {
                     var contextRect = new Rect(Event.current.mousePosition, new Vector2(1, 1));
                     searchView.ShowItemContextualMenu(item, context, contextRect);

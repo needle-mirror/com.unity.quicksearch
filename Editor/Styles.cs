@@ -228,6 +228,11 @@ namespace Unity.QuickSearch
             hover = new GUIStyleState { background = buttonHoveredBackgroundImage, scaledBackgrounds = new[] { buttonHoveredBackgroundImage } }
         };
 
+        public static readonly GUIStyle actionButtonHovered = new GUIStyle(actionButton)
+        {
+            name = "quick-search-action-button-hovered"
+        };
+
         private const float k_ToolbarHeight = 40.0f;
 
         private static readonly GUIStyleState clear = new GUIStyleState()

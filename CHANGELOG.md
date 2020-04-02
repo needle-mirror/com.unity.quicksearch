@@ -1,6 +1,6 @@
 # Changelog
 
-## [1.6.0-preview.5] - 2020-04-01
+## [1.6.0-preview.6] - 2020-04-03
 - [UX] Remove support for 2018.4.
 - [UX] Remove search provider sub categories. It simplifies the search view filter window.
 - [UX] Change Reset priorities button in Preferences to Reset to providers Defaults (which reset priority, active and default actions).

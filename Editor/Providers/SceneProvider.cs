@@ -124,19 +124,19 @@ namespace Unity.QuickSearch.Providers
 
         private IEnumerator SearchItems(SearchContext context, SearchProvider provider)
         {
-            if (string.IsNullOrEmpty(context.searchQuery))
-                yield break;
-
             #if DEBUG_TIMING
             using (new DebugTimer($"Search scene ({context.searchQuery})"))
             #endif
             {
-                yield return m_SceneQueryEngine.Search(context.searchQuery).Select(gameObject => 
+                if (!String.IsNullOrEmpty(context.searchQuery))
                 {
-                    if (!gameObject)
-                        return null;
-                    return AddResult(provider, gameObject.GetInstanceID().ToString(), 0, false);
-                });
+                    yield return m_SceneQueryEngine.Search(context.searchQuery).Select(gameObject =>
+                    {
+                        if (!gameObject)
+                            return null;
+                        return AddResult(provider, gameObject.GetInstanceID().ToString(), 0, false);
+                    });
+                }
 
                 if (context.wantsMore && context.filterType != null && String.IsNullOrEmpty(context.searchQuery))
                 {

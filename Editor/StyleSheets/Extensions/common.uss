@@ -34,6 +34,14 @@
 	border-radius: 4px;
 }
 
+.quick-search-action-button {
+    -unity-enable-hovering: --enable-style-hovering;
+}
+
+.quick-search-action-button-hovered {
+    background-color: --theme-toolbar-button-background-color-hover;
+}
+
 .quick-search-debug-toolbar {
     height: --window-toolbar-height;
     margin: 0 0 0 0;

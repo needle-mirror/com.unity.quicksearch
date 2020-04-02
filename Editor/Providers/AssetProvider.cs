@@ -110,63 +110,65 @@ namespace Unity.QuickSearch.Providers
 
         private static IEnumerator SearchAssets(SearchContext context, SearchProvider provider)
         {
-            if (string.IsNullOrEmpty(context.searchQuery))
-                yield break;
-
             var searchQuery = context.searchQuery;
-            if (SearchSettings.assetIndexing == SearchAssetIndexing.Files)
+
+            if (!String.IsNullOrEmpty(searchQuery))
             {
-                if (searchQuery.IndexOf(':') != -1)
+                if (SearchSettings.assetIndexing == SearchAssetIndexing.Files)
                 {
-                    foreach (var assetEntry in AssetDatabase.FindAssets(searchQuery)
-                                                            .Select(AssetDatabase.GUIDToAssetPath)
-                                                            .Select(path => provider.CreateItem(path, Path.GetFileName(path))))
-                        yield return assetEntry;
+                    if (searchQuery.IndexOf(':') != -1)
+                    {
+                        foreach (var assetEntry in AssetDatabase.FindAssets(searchQuery)
+                                                                .Select(AssetDatabase.GUIDToAssetPath)
+                                                                .Select(path => provider.CreateItem(path, Path.GetFileName(path))))
+                            yield return assetEntry;
+                    }
+
+                    SetupIndexers();
+                    while (!fileIndexer.IsReady())
+                        yield return null;
+
+                    foreach (var item in SearchFiles(searchQuery, provider))
+                        yield return item;
+                }
+                else if (SearchSettings.assetIndexing == SearchAssetIndexing.Complete)
+                {
+                    SetupIndexers();
+                    yield return assetIndexes.Select(db => SearchIndexes(context, provider, db.index));
                 }
 
-                SetupIndexers();
-                while (!fileIndexer.IsReady())
-                    yield return null;
-
-                foreach (var item in SearchFiles(searchQuery, provider))
-                    yield return item;
-            }
-            else if (SearchSettings.assetIndexing == SearchAssetIndexing.Complete)
-            {
-                SetupIndexers();
-                yield return assetIndexes.Select(db => SearchIndexes(context, provider, db.index));
-            }
-
-            // Search file system wild cards
-            if (context.searchQuery.Contains('*'))
-            {
-                var safeFilter = string.Join("_", context.searchQuery.Split(k_InvalidSearchFileChars));
-                var projectFiles = Directory.EnumerateFiles(Application.dataPath, safeFilter, SearchOption.AllDirectories);
-                projectFiles = projectFiles.Select(path => path.Replace(Application.dataPath, "Assets").Replace("\\", "/"));
-                foreach (var fileEntry in projectFiles.Select(path => provider.CreateItem(path, Path.GetFileName(path))))
-                    yield return fileEntry;
-            }
-            else
-            {
-                // Search by GUID
-                var guidPath = AssetDatabase.GUIDToAssetPath(searchQuery);
-                if (!String.IsNullOrEmpty(guidPath))
-                    yield return provider.CreateItem(guidPath, -1, $"{Path.GetFileName(guidPath)} ({searchQuery})", null, null, null);
-
-                if (SearchSettings.assetIndexing == SearchAssetIndexing.NoIndexing)
+                // Search file system wild cards
+                if (context.searchQuery.Contains('*'))
                 {
-                    // Finally search the default asset database for any remaining results.
-                    foreach (var assetPath in AssetDatabase.FindAssets(searchQuery).Select(guid => AssetDatabase.GUIDToAssetPath(guid)))
-                        yield return provider.CreateItem(assetPath, 998, Path.GetFileName(assetPath), null, null, null);
+                    var globSearch = context.searchQuery;
+                    if (globSearch.IndexOf("glob:", StringComparison.OrdinalIgnoreCase) == -1 && context.searchWords.Length == 1)
+                        globSearch = $"glob:\"{globSearch}\"";
+                    yield return AssetDatabase.FindAssets(globSearch)
+                        .Select(guid => AssetDatabase.GUIDToAssetPath(guid))
+                        .Select(path => provider.CreateItem(path, 999, Path.GetFileName(path), null, null, null));
                 }
-                else if (!k_NonSimpleSearchTerms.Any(t => searchQuery.IndexOf(t, StringComparison.Ordinal) != -1))
+                else
                 {
-                    foreach (var assetPath in Utils.FindAssets(searchQuery))
-                        yield return provider.CreateItem(assetPath, 998, Path.GetFileName(assetPath), null, null, null);
+                    // Search by GUID
+                    var guidPath = AssetDatabase.GUIDToAssetPath(searchQuery);
+                    if (!String.IsNullOrEmpty(guidPath))
+                        yield return provider.CreateItem(guidPath, -1, $"{Path.GetFileName(guidPath)} ({searchQuery})", null, null, null);
+
+                    if (SearchSettings.assetIndexing == SearchAssetIndexing.NoIndexing)
+                    {
+                        // Finally search the default asset database for any remaining results.
+                        foreach (var assetPath in AssetDatabase.FindAssets(searchQuery).Select(guid => AssetDatabase.GUIDToAssetPath(guid)))
+                            yield return provider.CreateItem(assetPath, 998, Path.GetFileName(assetPath), null, null, null);
+                    }
+                    else if (!k_NonSimpleSearchTerms.Any(t => searchQuery.IndexOf(t, StringComparison.Ordinal) != -1))
+                    {
+                        foreach (var assetPath in Utils.FindAssets(searchQuery))
+                            yield return provider.CreateItem(assetPath, 998, Path.GetFileName(assetPath), null, null, null);
+                    }
                 }
             }
 
-            if (context.wantsMore && context.filterType != null && String.IsNullOrEmpty(context.searchQuery))
+            if (context.wantsMore && context.filterType != null && String.IsNullOrEmpty(searchQuery))
             {
                 yield return AssetDatabase.FindAssets($"t:{context.filterType.Name}")
                     .Select(guid => AssetDatabase.GUIDToAssetPath(guid))

@@ -97,11 +97,8 @@ namespace Unity.QuickSearch
             var foundItems = SearchService.GetItems(context);
             if (selectCallback != null)
                 foundItems.Add(SearchItem.none);
-
-            if (string.IsNullOrEmpty(context.searchText))
-            {
+            else if (String.IsNullOrEmpty(context.searchText))
                 foundItems = SearchQuery.GetAllSearchQueryItems();
-            }
 
             SetItems(filterCallback == null ? foundItems : foundItems.Where(item => filterCallback(item)));
 
@@ -308,7 +305,7 @@ namespace Unity.QuickSearch
                     var showDetails = selectCallback == null && m_DetailView.HasDetails(context);
                     if (m_DetailsViewSplitterPos < 0f)
                         m_DetailsViewSplitterPos = position.width - Styles.previewSize.x;
-                    
+
                     DrawItems(showDetails ? m_DetailsViewSplitterPos-2f : position.width);
 
                     if (showDetails)

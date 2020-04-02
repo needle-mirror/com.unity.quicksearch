@@ -195,7 +195,7 @@ namespace Unity.QuickSearch.Providers
                 .Select(db => { db.Log("Enumerate"); return db; });
         }
 
-        private static void CreateTemplateIndex(string templateFilename, string path)
+        public static void CreateTemplateIndex(string templateFilename, string path)
         {
             var dirPath = path;
             var templatePath = $"{Utils.packageFolderName}/Templates/{templateFilename}.index.template";

@@ -309,7 +309,8 @@ namespace Unity.QuickSearch
 
         internal void AddWord(string word, int score, int documentIndex)
         {
-            AddWord(word, 2, word.Length, score, documentIndex, m_BatchIndexes);
+            lock (this)
+                AddWord(word, 2, word.Length, score, documentIndex, m_BatchIndexes);
         }
 
         internal void AddWord(string word, int score, int documentIndex, List<SearchIndexEntry> indexes)
@@ -319,12 +320,14 @@ namespace Unity.QuickSearch
 
         internal void AddWord(string word, int size, int score, int documentIndex)
         {
-            AddWord(word, size, size, score, documentIndex, m_BatchIndexes);
+            lock (this)
+                AddWord(word, size, size, score, documentIndex, m_BatchIndexes);
         }
 
         internal void AddExactWord(string word, int score, int documentIndex)
         {
-            AddExactWord(word, score, documentIndex, m_BatchIndexes);
+            lock (this)
+                AddExactWord(word, score, documentIndex, m_BatchIndexes);
         }
 
         internal void AddExactWord(string word, int score, int documentIndex, List<SearchIndexEntry> indexes)
@@ -334,7 +337,8 @@ namespace Unity.QuickSearch
 
         internal void AddWord(string word, int minVariations, int maxVariations, int score, int documentIndex)
         {
-            AddWord(word, minVariations, maxVariations, score, documentIndex, m_BatchIndexes);
+            lock (this)
+                AddWord(word, minVariations, maxVariations, score, documentIndex, m_BatchIndexes);
         }
 
         internal void AddWord(string word, int minVariations, int maxVariations, int score, int documentIndex, List<SearchIndexEntry> indexes)
@@ -366,7 +370,8 @@ namespace Unity.QuickSearch
 
         internal void AddNumber(string key, double value, int score, int documentIndex)
         {
-            AddNumber(key, value, score, documentIndex, m_BatchIndexes);
+            lock (this)
+                AddNumber(key, value, score, documentIndex, m_BatchIndexes);
         }
 
         private bool ExcludeWordVariations(string word)
@@ -378,17 +383,20 @@ namespace Unity.QuickSearch
 
         internal void AddProperty(string key, string value, int documentIndex, bool saveKeyword)
         {
-            AddProperty(key, value, 2, value.Length, 0, documentIndex, m_BatchIndexes, saveKeyword);
+            lock (this)
+                AddProperty(key, value, 2, value.Length, 0, documentIndex, m_BatchIndexes, saveKeyword);
         }
 
         internal void AddProperty(string key, string value, int score, int documentIndex, bool saveKeyword)
         {
-            AddProperty(key, value, 2, value.Length, score, documentIndex, m_BatchIndexes, saveKeyword);
+            lock (this)
+                AddProperty(key, value, 2, value.Length, score, documentIndex, m_BatchIndexes, saveKeyword);
         }
 
         internal void AddProperty(string name, string value, int minVariations, int maxVariations, int score, int documentIndex, bool saveKeyword)
         {
-            AddProperty(name, value, minVariations, maxVariations, score, documentIndex, m_BatchIndexes, saveKeyword);
+            lock (this)
+                AddProperty(name, value, minVariations, maxVariations, score, documentIndex, m_BatchIndexes, saveKeyword);
         }
 
         internal void AddProperty(string name, string value, int minVariations, int maxVariations, int score, int documentIndex, List<SearchIndexEntry> indexes, bool saveKeyword)

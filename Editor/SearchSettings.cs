@@ -310,7 +310,7 @@ namespace Unity.QuickSearch
         #endif
         internal static void CreateRootIndex()
         {
-            File.Copy($"{Utils.packageFolderName}/Templates/Asset.index.template", k_RootIndexPath);
+            File.Copy($"{Utils.packageFolderName}/Templates/Assets.index.template", k_RootIndexPath);
             AssetDatabase.ImportAsset(k_RootIndexPath, ImportAssetOptions.ForceSynchronousImport);
         }
 

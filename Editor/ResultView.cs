@@ -178,7 +178,7 @@ namespace Unity.QuickSearch
             if (IsDragClicked(Event.current.mousePosition))
                 return;
             if (dragIndex >= 0 && dragIndex < itemTotalCount)
-            {                
+            {
                 var item = items.ElementAt(dragIndex);
                 if (item.provider?.startDrag != null)
                 {
