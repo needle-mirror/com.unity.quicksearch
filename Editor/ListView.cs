@@ -9,6 +9,10 @@ namespace Unity.QuickSearch
 {
     class ListView : ResultView
     {
+        private float m_ItemRowHeight = Styles.itemRowHeight;
+
+        private bool compactView => itemSize == 0;
+
         public ListView(ISearchView hostView)
             : base(hostView)
         {
@@ -16,13 +20,19 @@ namespace Unity.QuickSearch
 
         protected override void Draw(Rect screenRect, ICollection<int> selection, ref bool focusSelectedItem)
         {
+            if (compactView)
+                m_ItemRowHeight = Styles.itemRowHeight / 2.0f;
+            else
+                m_ItemRowHeight = Styles.itemRowHeight;
+
             var itemCount = items.Count;
             var availableHeight = screenRect.height;
-            var itemSkipCount = Math.Max(0, (int)(m_ScrollPosition.y / Styles.itemRowHeight));
-            var itemDisplayCount = Math.Max(0, Math.Min(itemCount, Mathf.CeilToInt(availableHeight / Styles.itemRowHeight) + 1));
-            var topSpaceSkipped = itemSkipCount * Styles.itemRowHeight;
+            var itemRowHeight = m_ItemRowHeight;
+            var itemSkipCount = Math.Max(0, (int)(m_ScrollPosition.y / itemRowHeight));
+            var itemDisplayCount = Math.Max(0, Math.Min(itemCount, Mathf.CeilToInt(availableHeight / itemRowHeight) + 1));
+            var topSpaceSkipped = itemSkipCount * itemRowHeight;
             var limitCount = Math.Max(0, Math.Min(itemDisplayCount, itemCount - itemSkipCount));
-            var totalSpace = itemCount * Styles.itemRowHeight;
+            var totalSpace = itemCount * itemRowHeight;
             var scrollbarSpace = availableHeight <= totalSpace ? Styles.scrollbarWidth : 0f;
             var viewRect = screenRect; viewRect.width -= scrollbarSpace; viewRect.height = totalSpace;
             int selectionIndex = selection.Count == 0 ? -1 : selection.Last();
@@ -30,7 +40,7 @@ namespace Unity.QuickSearch
             m_ScrollPosition = GUI.BeginScrollView(screenRect, m_ScrollPosition, viewRect);
 
             var itemIndex = 0;
-            var itemRect = new Rect(0, topSpaceSkipped + screenRect.y, viewRect.width, Styles.itemRowHeight);
+            var itemRect = new Rect(0, topSpaceSkipped + screenRect.y, viewRect.width, itemRowHeight);
             foreach (var item in items)
             {
                 if (itemIndex >= itemSkipCount && itemIndex <= itemSkipCount + limitCount)
@@ -70,11 +80,13 @@ namespace Unity.QuickSearch
         public override int GetDisplayItemCount()
         {
             var itemCount = searchView.results.Count;
-            return Math.Max(0, Math.Min(itemCount, Mathf.RoundToInt(m_DrawItemsRect.height / Styles.itemRowHeight)));
+            return Math.Max(0, Math.Min(itemCount, Mathf.RoundToInt(m_DrawItemsRect.height / m_ItemRowHeight)));
         }
 
         private void DrawItem(SearchItem item, Rect itemRect, int itemIndex, ICollection<int> selection)
         {
+            bool hasActionDropdown = searchView.selectCallback == null && searchView.selection.Count <= 1 && item.provider.actions.Count > 1;
+
             if (Event.current.type == EventType.Repaint)
             {
                 bool isItemSelected = selection.Contains(itemIndex);
@@ -85,26 +97,48 @@ namespace Unity.QuickSearch
                     bgStyle = Styles.selectedItemBackground;
                 bgStyle.Draw(itemRect, itemRect.Contains(Event.current.mousePosition), false, false, false);
 
+                if (compactView)
+                    item.options |= SearchItemOptions.Compacted;
+                else
+                    item.options &= ~SearchItemOptions.Compacted;
+
                 // Draw thumbnail
                 var thumbnailRect = DrawListThumbnail(item, itemRect);
 
                 // Draw label
-                var maxWidth = itemRect.width - Styles.actionButtonSize - Styles.itemPreviewSize - Styles.descriptionPadding;
-                var label = item.provider.fetchLabel(item, context);
-                var labelStyle = isItemSelected ? Styles.selectedItemLabel : Styles.itemLabel;
-                var labelRect = new Rect(thumbnailRect.xMax + labelStyle.margin.left, itemRect.y + labelStyle.margin.top, maxWidth - labelStyle.margin.right, labelStyle.lineHeight);
-                GUI.Label(labelRect, label, labelStyle);
-                labelRect.y = labelRect.yMax + labelStyle.margin.bottom;
+                var maxWidth = itemRect.width
+                    - (hasActionDropdown ? Styles.actionButtonSize : 0)
+                    - (compactView ? Styles.itemPreviewSize/2.0f : Styles.itemPreviewSize)
+                    - Styles.descriptionPadding;
+                var labelStyle = isItemSelected ?
+                    (compactView ? Styles.selectedItemLabelCompact : Styles.selectedItemLabel) :
+                    (compactView ? Styles.itemLabelCompact : Styles.itemLabel);
+                var labelRect = new Rect(
+                    thumbnailRect.xMax + labelStyle.margin.left, itemRect.y + labelStyle.margin.top,
+                    maxWidth - labelStyle.margin.right, labelStyle.lineHeight);
 
-                // Draw description
-                var labelContent = SearchContent.FormatDescription(item, context, maxWidth);
-                labelStyle = isItemSelected ? Styles.selectedItemDescription : Styles.itemDescription;
-                labelRect.y += labelStyle.margin.top;
-                GUI.Label(labelRect, labelContent, labelStyle);
+                if (!compactView)
+                {
+                    var label = item.provider.fetchLabel(item, context);
+                    GUI.Label(labelRect, label, labelStyle);
+                    labelRect.y = labelRect.yMax + labelStyle.margin.bottom;
+
+                    // Draw description
+                    var labelContent = SearchContent.FormatDescription(item, context, maxWidth);
+                    labelStyle = isItemSelected ? Styles.selectedItemDescription : Styles.itemDescription;
+                    labelRect.y += labelStyle.margin.top;
+                    GUI.Label(labelRect, labelContent, labelStyle);
+                }
+                else
+                {
+                    // Draw label
+                    var labelContent = SearchContent.FormatDescription(item, context, maxWidth);
+                    GUI.Label(labelRect, labelContent, labelStyle);
+                }
             }
 
             // Draw action dropdown
-            if (searchView.selectCallback == null && searchView.selection.Count <= 1 && item.provider.actions.Count > 1)
+            if (hasActionDropdown)
             {
                 var buttonRect = new Rect(itemRect.xMax - Styles.actionButton.fixedWidth - Styles.actionButton.margin.right, itemRect.y, Styles.actionButton.fixedWidth, Styles.actionButton.fixedHeight);
                 buttonRect.y += (itemRect.height - Styles.actionButton.fixedHeight) / 2f;
@@ -124,13 +158,13 @@ namespace Unity.QuickSearch
         private Rect DrawListThumbnail(SearchItem item, Rect itemRect)
         {
             Texture2D thumbnail = null;
-            if (SearchSettings.fetchPreview)
+            if (!compactView && SearchSettings.fetchPreview)
             {
                 thumbnail = item.preview;
                 var shouldFetchPreview = !thumbnail && item.provider.fetchPreview != null;
                 if (shouldFetchPreview)
                 {
-                    var previewSize = new Vector2(Styles.preview.fixedWidth, Styles.preview.fixedHeight);
+                    var previewSize = new Vector2(Styles.itemPreviewSize, Styles.itemPreviewSize);
                     thumbnail = item.provider.fetchPreview(item, context, previewSize, FetchPreviewOptions.Preview2D | FetchPreviewOptions.Normal);
                     if (thumbnail)
                     {
@@ -156,9 +190,11 @@ namespace Unity.QuickSearch
                 }
             }
 
-            var thumbnailRect = new Rect(itemRect.x, itemRect.y, Styles.preview.fixedWidth, Styles.preview.fixedHeight);
+            var thumbnailRect = new Rect(itemRect.x, itemRect.y, Styles.itemPreviewSize, Styles.itemPreviewSize);
+            if (compactView)
+                thumbnailRect.size /= 2.0f;
             thumbnailRect.x += Styles.preview.margin.left;
-            thumbnailRect.y += (itemRect.height - Styles.preview.fixedHeight) /2f;
+            thumbnailRect.y += (itemRect.height - thumbnailRect.height) / 2f;
             GUI.Label(thumbnailRect, thumbnail ?? Icons.quicksearch, Styles.preview);
 
             return thumbnailRect;
@@ -172,18 +208,18 @@ namespace Unity.QuickSearch
 
             if (Event.current.type == EventType.MouseDown && Event.current.button == 0)
             {
-                var clickedItemIndex = (int)(mousePosition.y / Styles.itemRowHeight);
+                var clickedItemIndex = (int)(mousePosition.y / m_ItemRowHeight);
                 if (clickedItemIndex >= 0 && clickedItemIndex < itemTotalCount)
                     HandleMouseDown(clickedItemIndex);
             }
             else if (Event.current.type == EventType.MouseUp || IsDragClicked(Event.current))
             {
-                var clickedItemIndex = (int)(mousePosition.y / Styles.itemRowHeight);
+                var clickedItemIndex = (int)(mousePosition.y / m_ItemRowHeight);
                 HandleMouseUp(clickedItemIndex, itemTotalCount);
             }
             else if (Event.current.type == EventType.MouseDrag && m_PrepareDrag)
             {
-                var dragIndex = (int)(mousePosition.y / Styles.itemRowHeight);
+                var dragIndex = (int)(mousePosition.y / m_ItemRowHeight);
                 HandleMouseDrag(dragIndex, itemTotalCount);
             }
         }
@@ -193,7 +229,7 @@ namespace Unity.QuickSearch
             if (start <= selection && selection < end)
                 return;
 
-            Rect projectedSelectedItemRect = new Rect(0, selection * Styles.itemRowHeight, screenRect.width, Styles.itemRowHeight);
+            Rect projectedSelectedItemRect = new Rect(0, selection * m_ItemRowHeight, screenRect.width, m_ItemRowHeight);
             if (selection < start)
             {
                 m_ScrollPosition.y = Mathf.Max(0, projectedSelectedItemRect.y - 2);

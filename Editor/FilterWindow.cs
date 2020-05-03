@@ -11,7 +11,7 @@ namespace Unity.QuickSearch
     {
         private static class Styles
         {
-            public static Vector2 windowSize = new Vector2(270, 250);
+            public static Vector2 windowSize = new Vector2(240, 250);
             public static readonly GUIStyle filterHeader = new GUIStyle(EditorStyles.boldLabel)
             {
                 name = "quick-search-filter-header",
@@ -21,7 +21,7 @@ namespace Unity.QuickSearch
             public static readonly GUIContent prefButtonContent = new GUIContent(Icons.settings, "Open quick search preferences...");
             public static readonly GUIStyle prefButton = new GUIStyle("IconButton")
             {
-                fixedWidth = 16, fixedHeight = 16, 
+                fixedWidth = 16, fixedHeight = 16,
                 margin = new RectOffset(2, 2, 2, 2)
             };
 
@@ -50,6 +50,10 @@ namespace Unity.QuickSearch
             public static readonly GUIStyle filterExpanded = new GUIStyle("IN Foldout") { margin = new RectOffset(2, 1, 2, 0) };
             public static readonly GUIStyle separator = new GUIStyle("sv_iconselector_sep") { margin = new RectOffset(1, 1, 4, 0) };
 
+            public static readonly GUIContent showAllResults = new GUIContent("Show all results...",
+                "If this option is checked, Quick Search will try to find as many results as possible even if it means the search can take more time to resolve." +
+                "\r\n\r\nIf you find searches to be too slow in large project try to uncheck this option.");
+
             public static float foldoutIndent = filterExpanded.fixedWidth + 6;
         }
         static SearchContext s_SearchContext;
@@ -59,7 +63,6 @@ namespace Unity.QuickSearch
         private int m_ToggleFilterFocusIndex = 1;
         private int m_ToggleFilterNextIndex = 0;
         private int m_ToggleFilterCount = 0;
-        private int m_ExpandToggleIndex = -1;
         private SearchContext m_Context;
         private IEnumerable<SearchContext.FilterDesc> m_ExplicitProviders;
         private IEnumerable<SearchContext.FilterDesc> m_FilterableProviders;
@@ -131,13 +134,16 @@ namespace Unity.QuickSearch
             GUILayout.Label(GUIContent.none, Styles.separator);
 
             m_ScrollPos = GUILayout.BeginScrollView(m_ScrollPos);
-             
+
             foreach (var desc in m_FilterableProviders)
             {
                 DrawSectionHeader(desc);
             }
 
             m_ToggleFilterCount = m_ToggleFilterNextIndex;
+
+            GUILayout.Space(10);
+            DrawWantsMore();
 
             GUILayout.Space(10);
             DrawExplicitProviders();
@@ -156,11 +162,6 @@ namespace Unity.QuickSearch
             else if (Event.current.type == EventType.KeyDown && Event.current.keyCode == KeyCode.DownArrow)
             {
                 m_ToggleFilterFocusIndex = Math.Min(m_ToggleFilterFocusIndex+1, m_ToggleFilterCount-1);
-                Event.current.Use();
-            }
-            else if (Event.current.type == EventType.KeyDown && (Event.current.keyCode == KeyCode.LeftArrow || Event.current.keyCode == KeyCode.RightArrow))
-            {
-                m_ExpandToggleIndex = m_ToggleFilterFocusIndex;
                 Event.current.Use();
             }
 
@@ -210,15 +211,15 @@ namespace Unity.QuickSearch
             GUILayout.FlexibleSpace();
             if (desc.provider != null)
             {
-                var avgTime = desc.provider.avgTime;
+                var fetchTime = desc.provider.fetchTime;
                 var loadTime = desc.provider.loadTime;
                 var enableTime = desc.provider.enableTime;
-                if (avgTime > 0.99 || loadTime > 9.99 || enableTime > 9.99)
+                if (fetchTime > 0.99 || loadTime > 9.99 || enableTime > 9.99)
                 {
-                    GUIContent content = new GUIContent(avgTime.ToString("0.#") + " ms", 
+                    GUIContent content = new GUIContent(fetchTime.ToString("0.#") + " ms",
                                                         $"Initialization took {loadTime.ToString("0.#")} ms\r\n" +
                                                         $"Activation took {enableTime.ToString("0.#")} ms");
-                    GUILayout.Label(content, avgTime < 25.0 ? Styles.filterTimeLabel : Styles.filterTimeLongLabel);
+                    GUILayout.Label(content, fetchTime < 25.0 ? Styles.filterTimeLabel : Styles.filterTimeLongLabel);
                 }
             }
 
@@ -227,7 +228,30 @@ namespace Unity.QuickSearch
             bool isEnabled = GUILayout.Toggle(desc.isEnabled, "", Styles.filterToggle, GUILayout.ExpandWidth(false));
             if (EditorGUI.EndChangeCheck())
             {
-                m_Context.SetFilter(isEnabled, desc.provider.name.id);
+                m_Context.SetFilter(desc.provider.name.id, isEnabled);
+                m_SearchView.Refresh();
+            }
+
+            GUILayout.EndHorizontal();
+        }
+
+        private void DrawWantsMore()
+        {
+            GUILayout.BeginHorizontal();
+            GUILayout.Space(Styles.foldoutIndent);
+
+            GUILayout.Label(Styles.showAllResults, Styles.filterHeader);
+            GUILayout.FlexibleSpace();
+
+            EditorGUI.BeginChangeCheck();
+            GUI.SetNextControlName($"Box_{m_ToggleFilterNextIndex++}");
+            SearchSettings.wantsMore = GUILayout.Toggle(SearchSettings.wantsMore, "", Styles.filterToggle, GUILayout.ExpandWidth(false));
+            if (EditorGUI.EndChangeCheck())
+            {
+                if (SearchSettings.wantsMore)
+                    m_SearchView.context.options |= SearchFlags.WantsMore;
+                else
+                    m_SearchView.context.options &= ~SearchFlags.WantsMore;
                 m_SearchView.Refresh();
             }
 

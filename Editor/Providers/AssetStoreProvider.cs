@@ -470,6 +470,7 @@ namespace Unity.QuickSearch.Providers
             {
                 #if UNITY_2020_1_OR_NEWER
                 active = true,
+                isExplicitProvider = true,
                 #else
                 active = false,
                 #endif

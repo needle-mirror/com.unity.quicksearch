@@ -58,7 +58,7 @@ namespace Unity.QuickSearch
             {
                 try
                 {
-                    return ExpressionEvaluator.Evaluate(expression, out result);
+                    return UnityEditor.ExpressionEvaluator.Evaluate(expression, out result);
                 }
                 catch (Exception)
                 {

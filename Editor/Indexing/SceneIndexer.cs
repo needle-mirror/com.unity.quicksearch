@@ -5,13 +5,12 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using UnityEditor;
-using UnityEditor.Experimental.SceneManagement;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using Object = UnityEngine.Object;
 
-namespace Unity.QuickSearch.Providers
+namespace Unity.QuickSearch
 {
     class SceneIndexer : ObjectIndexer
     {
@@ -28,7 +27,7 @@ namespace Unity.QuickSearch.Providers
 
         public override bool SkipEntry(string path, bool checkRoots = false)
         {
-            if (checkRoots && !GetIndexedPaths().Any(p => p == path))
+            if (checkRoots && !GetRoots().Any(p => p == path))
                 return true;
             return base.SkipEntry(path, false);
         }
@@ -56,14 +55,14 @@ namespace Unity.QuickSearch.Providers
                 yield return null;
             }
 
-            Finish(() => {});
+            Finish((bytes) => {}, null, false);
             while (!IsReady())
                 yield return null;
 
             ReportProgress(progressId, $"Scene indexing completed (Objects: {documentCount}, Indexes: {indexCount:n0})", 1f, true);
         }
 
-        private List<string> GetIndexedPaths()
+        public override IEnumerable<string> GetRoots()
         {
             var scenePaths = new List<string>();
             if (settings.roots == null || settings.roots.Length == 0)
@@ -87,7 +86,12 @@ namespace Unity.QuickSearch.Providers
 
         public override List<string> GetDependencies()
         {
-            return GetIndexedPaths().Where(path => !base.SkipEntry(path, false)).ToList();
+            return GetRoots().Where(path => !base.SkipEntry(path, false)).ToList();
+        }
+
+        public override Hash128 GetDcoumentHash(string path)
+        {
+            return AssetDatabase.GetAssetDependencyHash(path);
         }
 
         public override void IndexDocument(string scenePath, bool checkIfDocumentExists)
@@ -96,6 +100,7 @@ namespace Unity.QuickSearch.Providers
                 IndexScene(scenePath, checkIfDocumentExists);
             else if (scenePath.EndsWith(".prefab", StringComparison.OrdinalIgnoreCase))
                 IndexPrefab(scenePath, checkIfDocumentExists);
+            AddDocumentHash(scenePath, GetDcoumentHash(scenePath));
         }
 
         private void IndexObjects(GameObject[] objects, string type, string containerName, bool checkIfDocumentExists)
@@ -128,6 +133,7 @@ namespace Unity.QuickSearch.Providers
                 IndexProperty(id, "from", type, documentIndex, saveKeyword: true, exact: true);
                 IndexProperty(id, type, containerName, documentIndex, saveKeyword: true);
                 IndexGameObject(id, documentIndex, obj, options);
+                IndexCustomGameObjectProperties(id, documentIndex, obj);
             }
         }
 
@@ -205,7 +211,7 @@ namespace Unity.QuickSearch.Providers
                 if (options.types)
                 {
                     var ptype = PrefabUtility.GetPrefabAssetType(go);
-                    if (ptype != PrefabAssetType.NotAPrefab)
+                    if (ptype == PrefabAssetType.Regular || ptype == PrefabAssetType.Variant)
                     {
                         IndexProperty(id, "t", "prefab", documentIndex, saveKeyword: true, exact: true);
 
@@ -217,6 +223,9 @@ namespace Unity.QuickSearch.Providers
                         }
                     }
                 }
+
+                if (options.properties)
+                    IndexObject(id, go, documentIndex);
 
                 var gocs = go.GetComponents<Component>();
 
@@ -234,6 +243,24 @@ namespace Unity.QuickSearch.Providers
                     if (options.properties)
                         IndexObject(id, c, documentIndex);
                 }
+            }
+        }
+
+        private void IndexCustomGameObjectProperties(string id, int documentIndex, GameObject go)
+        {
+            if (HasCustomIndexers(go.GetType()))
+                IndexCustomProperties(id, documentIndex, go);
+
+            var gocs = go.GetComponents<Component>();
+            // Why begin at 1?
+            for (var componentIndex = 0; componentIndex < gocs.Length; ++componentIndex)
+            {
+                var c = gocs[componentIndex];
+                // Should we skip HideInInspector components?
+                if (!c)
+                    continue;
+                if (HasCustomIndexers(c.GetType()))
+                    IndexCustomProperties(id, documentIndex, c);
             }
         }
 

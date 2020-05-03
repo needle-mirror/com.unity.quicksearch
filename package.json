@@ -1,7 +1,7 @@
 {
   "name": "com.unity.quicksearch",
   "displayName": "Quick Search",
-  "version": "1.6.0-preview.6",
+  "version": "1.6.0-preview.7",
   "unity": "2019.3",
   "keywords": [
     "unity",
@@ -24,13 +24,15 @@
   },
   "dependencies": {},
   "repository": {
-    "footprint": "f4be4da382ddd81282217cf35e36a0020fc9b429",
     "type": "git",
     "url": "https://github.cds.internal.unity3d.com/unity/com.unity.quicksearch.git",
-    "revision": "f7532fb7d1fce17f20d7b7728783a0063420ac40"
+    "revision": "d1d3d50ed06c10c2667da0fb8073352eef5208b3"
   },
   "relatedPackages": {
-    "com.unity.quicksearch.tests": "1.6.0-preview.6"
+    "com.unity.quicksearch.tests": "1.6.0-preview.7"
+  },
+  "upmCi": {
+    "footprint": "cdba516b53bcba3598630f2ceabca66d656e5a1d"
   },
   "samples": [
     {

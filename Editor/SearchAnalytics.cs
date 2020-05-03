@@ -222,7 +222,7 @@ namespace Unity.QuickSearch
             evt.providerDatas = providers.Select(provider => new ProviderData()
             {
                 id = provider.name.id,
-                avgTime = (long)provider.avgTime,
+                avgTime = (long)searchContext.searchElapsedTime,
                 isEnabled = evt.useOverrideFilter ? true : searchContext.IsEnabled(provider.name.id),
                 custom = ""
             }).ToArray();

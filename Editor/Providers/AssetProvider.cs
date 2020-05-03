@@ -28,13 +28,12 @@ namespace Unity.QuickSearch.Providers
 
         private static readonly string[] typeFilter =
             baseTypeFilters.Concat(TypeCache.GetTypesDerivedFrom<ScriptableObject>()
-                .Where(t => !t.IsSubclassOf(typeof(Editor)) || !t.IsSubclassOf(typeof(EditorWindow)) || !t.IsSubclassOf(typeof(AssetImporter)))
+                .Where(t => !t.IsSubclassOf(typeof(Editor)) && !t.IsSubclassOf(typeof(EditorWindow)) && !t.IsSubclassOf(typeof(AssetImporter)))
                 .Select(t => t.Name)
                 .Distinct()
                 .OrderBy(n => n)).ToArray();
 
-        private static readonly string[] k_NonSimpleSearchTerms = new string[] {"(", ")", "-", "=", "<", ">", "or", "and"};
-        private static readonly char[] k_InvalidSearchFileChars = Path.GetInvalidFileNameChars().Where(c => c != '*').ToArray();
+        private static readonly string[] k_NonSimpleSearchTerms = new string[] {"(", ")", "-", "=", "<", ">"};
 
         [UsedImplicitly, SearchItemProvider]
         internal static SearchProvider CreateProvider()
@@ -49,10 +48,10 @@ namespace Unity.QuickSearch.Providers
                 isEnabledForContextualSearch = () => Utils.IsFocusedWindowTypeName("ProjectBrowser"),
                 toObject = (item, type) => AssetDatabase.LoadAssetAtPath(item.id, type),
                 fetchItems = (context, items, provider) => SearchAssets(context, provider),
-                fetchKeywords = (context, lastToken, keywords) => FetchKeywords(lastToken, keywords),
+                fetchKeywords = (context, lastToken, keywords) => FetchKeywords(context, lastToken, keywords),
                 fetchDescription = (item, context) => (item.description = GetAssetDescription(item.id)),
                 fetchThumbnail = (item, context) => Utils.GetAssetThumbnailFromPath(item.id),
-                fetchPreview = (item, context, size, options) => Utils.GetAssetPreviewFromPath(item.id, size, options),
+                fetchPreview = (item, context, size, options) => Utils.GetAssetPreviewFromPath(item.id, options),
                 openContextual = (selection, context, rect) => OpenContextualMenu(selection, rect),
                 startDrag = (item, context) => StartDrag(item, context),
                 trackSelection = (item, context) => Utils.PingAsset(item.id)
@@ -76,30 +75,35 @@ namespace Unity.QuickSearch.Providers
 
         private static void StartDrag(SearchItem item, SearchContext context)
         {
+            if (context.selection.Count > 1)
+            {
                 var selectedObjects = context.selection.Select(i => AssetDatabase.LoadAssetAtPath<Object>(i.id));
                 Utils.StartDrag(selectedObjects.ToArray(), item.GetLabel(context, true));
+            }
+            else
+                Utils.StartDrag(new [] { AssetDatabase.LoadAssetAtPath<Object>(item.id) }, item.GetLabel(context, true));
         }
 
-        private static void FetchKeywords(in string lastToken, List<string> keywords)
+        private static void FetchKeywords(in SearchContext context, in string lastToken, List<string> keywords)
         {
             if (assetIndexes == null || !lastToken.Contains(":"))
                 return;
-            if (SearchSettings.assetIndexing == SearchAssetIndexing.Complete)
+            if (context.options.HasFlag(SearchFlags.FullIndexing))
                 keywords.AddRange(assetIndexes.SelectMany(db => db.index.GetKeywords()));
             else
                 keywords.AddRange(typeFilter.Select(t => "t:" + t));
         }
 
-        private static void SetupIndexers()
+        private static void SetupIndexers(SearchContext context)
         {
-            if (SearchSettings.assetIndexing == SearchAssetIndexing.Files && fileIndexer == null)
+            if (context.options.HasFlag(SearchFlags.BasicIndexing) && fileIndexer == null)
             {
                 var packageRoots = Utils.GetPackagesPaths().Select(p => new SearchIndexerRoot(Path.GetFullPath(p).Replace('\\', '/'), p));
                 var roots = new[] { new SearchIndexerRoot(Application.dataPath, "Assets") }.Concat(packageRoots);
                 fileIndexer = new FileSearchIndexer(type, roots);
                 fileIndexer.Build();
             }
-            else if (SearchSettings.assetIndexing == SearchAssetIndexing.Complete && assetIndexes == null)
+            else if (context.options.HasFlag(SearchFlags.FullIndexing) && assetIndexes == null)
             {
                 assetIndexes = SearchDatabase.Enumerate("asset").ToList();
                 foreach (var db in assetIndexes)
@@ -114,27 +118,19 @@ namespace Unity.QuickSearch.Providers
 
             if (!String.IsNullOrEmpty(searchQuery))
             {
-                if (SearchSettings.assetIndexing == SearchAssetIndexing.Files)
+                if (context.options.HasFlag(SearchFlags.BasicIndexing))
                 {
-                    if (searchQuery.IndexOf(':') != -1)
-                    {
-                        foreach (var assetEntry in AssetDatabase.FindAssets(searchQuery)
-                                                                .Select(AssetDatabase.GUIDToAssetPath)
-                                                                .Select(path => provider.CreateItem(path, Path.GetFileName(path))))
-                            yield return assetEntry;
-                    }
-
-                    SetupIndexers();
+                    SetupIndexers(context);
                     while (!fileIndexer.IsReady())
                         yield return null;
 
                     foreach (var item in SearchFiles(searchQuery, provider))
                         yield return item;
                 }
-                else if (SearchSettings.assetIndexing == SearchAssetIndexing.Complete)
+                else if (context.options.HasFlag(SearchFlags.FullIndexing))
                 {
-                    SetupIndexers();
-                    yield return assetIndexes.Select(db => SearchIndexes(context, provider, db.index));
+                    SetupIndexers(context);
+                    yield return assetIndexes.Select(db => SearchIndexes(context, provider, db));
                 }
 
                 // Search file system wild cards
@@ -154,16 +150,28 @@ namespace Unity.QuickSearch.Providers
                     if (!String.IsNullOrEmpty(guidPath))
                         yield return provider.CreateItem(guidPath, -1, $"{Path.GetFileName(guidPath)} ({searchQuery})", null, null, null);
 
-                    if (SearchSettings.assetIndexing == SearchAssetIndexing.NoIndexing)
+                    if ((context.options & SearchFlags.IndexingMask) == 0)
                     {
                         // Finally search the default asset database for any remaining results.
                         foreach (var assetPath in AssetDatabase.FindAssets(searchQuery).Select(guid => AssetDatabase.GUIDToAssetPath(guid)))
                             yield return provider.CreateItem(assetPath, 998, Path.GetFileName(assetPath), null, null, null);
                     }
-                    else if (!k_NonSimpleSearchTerms.Any(t => searchQuery.IndexOf(t, StringComparison.Ordinal) != -1))
+                    else if (context.wantsMore && !k_NonSimpleSearchTerms.Any(t => searchQuery.IndexOf(t, StringComparison.Ordinal) != -1))
                     {
-                        foreach (var assetPath in Utils.FindAssets(searchQuery))
-                            yield return provider.CreateItem(assetPath, 998, Path.GetFileName(assetPath), null, null, null);
+                        IEnumerable<string> assetPaths = null;
+                        try
+                        {
+                            assetPaths = Utils.FindAssets(searchQuery);
+                        }
+                        catch
+                        {
+                            // Ignore these errors.
+                        }
+                        if (assetPaths != null)
+                        {
+                            foreach (var assetPath in assetPaths)
+                                yield return provider.CreateItem(assetPath, 998, Path.GetFileName(assetPath), null, null, null);
+                        }
                     }
                 }
             }
@@ -176,14 +184,17 @@ namespace Unity.QuickSearch.Providers
             }
         }
 
-        private static IEnumerator SearchIndexes(SearchContext context, SearchProvider provider, SearchIndexer index)
+        private static IEnumerator SearchIndexes(SearchContext context, SearchProvider provider, SearchDatabase db)
         {
-            var searchQuery = context.searchQuery;
+            while (db.index == null)
+                yield return null;
 
             // Search index
+            var index = db.index;
             while (!index.IsReady())
                 yield return null;
 
+            var searchQuery = context.searchQuery;
             yield return index.Search(searchQuery.ToLowerInvariant()).Select(e =>
             {
                 var itemScore = e.score;

@@ -1,5 +1,3 @@
-#define QUICKSEARCH_DEBUG
-
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -16,6 +14,7 @@ namespace Unity.QuickSearch
         ISearchView searchView { get; }
         Rect rect { get; }
 
+        void Draw(Rect rect, ICollection<int> selection);
         void Draw(ICollection<int> selection, float sliderPos, ref bool focusSelectedItem);
         int GetDisplayItemCount();
     }
@@ -35,7 +34,7 @@ namespace Unity.QuickSearch
         }
 
         public ISearchList items => searchView.results;
-        public float itemSize => SearchSettings.itemIconSize;
+        public float itemSize => searchView.itemIconSize;
         public Vector2 scrollPosition { get => m_ScrollPosition; set => m_ScrollPosition = value; }
         public ISearchView searchView { get; private set; }
         public SearchContext context => searchView.context;
@@ -44,9 +43,17 @@ namespace Unity.QuickSearch
         public abstract int GetDisplayItemCount();
         protected abstract void Draw(Rect rect, ICollection<int> selection, ref bool focusSelectedItem);
 
+        public void Draw(Rect rect, ICollection<int> selection)
+        {
+            bool _dummy = false;
+            if (Event.current.type == EventType.Repaint)
+                m_DrawItemsRect = rect;
+            Draw(rect, selection, ref _dummy);
+        }
+
         public void Draw(ICollection<int> selection, float sliderPos, ref bool focusSelectedItem)
         {
-            GUILayout.Box(String.Empty, GUIStyle.none, GUILayout.ExpandHeight(true), GUILayout.Width(sliderPos));
+            GUILayout.Box(String.Empty, GUIStyle.none, GUILayout.ExpandHeight(true), GUILayout.Width(sliderPos-1));
             if (Event.current.type == EventType.Repaint)
                 m_DrawItemsRect = GUILayoutUtility.GetLastRect();
 
@@ -87,11 +94,8 @@ namespace Unity.QuickSearch
 
             if (clickedItemIndex >= 0 && clickedItemIndex < itemTotalCount)
             {
-                if (evt.button == 0)
+                if (evt.button == 0 && mouseDownItemIndex == clickedItemIndex)
                 {
-                    if (mouseDownItemIndex != clickedItemIndex)
-                        return;
-
                     var ctrl = evt.control || evt.command;
                     var now = EditorApplication.timeSinceStartup;
                     if (searchView.multiselect && evt.modifiers.HasFlag(EventModifiers.Shift))

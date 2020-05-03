@@ -106,7 +106,7 @@ namespace Unity.QuickSearch
                     if (action == null)
                         continue;
 
-                    var desc = Utils.FormatProviderList(supportedProviderIds.Select(providerId => SearchService.GetProvider(providerId)));
+                    var desc = Utils.FormatProviderList(supportedProviderIds.Select(providerId => SearchService.GetProvider(providerId)), showFetchTime: false);
                     var helpItem = helpProvider.CreateItem($"help_action_query_{actionId}",
                         $"{action.DisplayName} for {desc}",
                         $"Type <b> >{actionId}</b>"

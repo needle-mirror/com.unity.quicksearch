@@ -9,6 +9,52 @@ using UnityEditor;
 namespace Unity.QuickSearch
 {
     /// <summary>
+    /// Various search options used to fetch items.
+    /// </summary>
+    [Flags]
+    public enum SearchFlags
+    {
+        /// <summary>
+        /// No specific search options.
+        /// </summary>
+        None = 0,
+
+        /// <summary>
+        /// Search items are fetch synchronously.
+        /// </summary>
+        Synchronous = 1 << 0,
+
+        /// <summary>
+        /// Fetch items will be sorted by the search service.
+        /// </summary>
+        Sorted = 1 << 1,
+
+        /// <summary>
+        /// Send the first items asynchronously
+        /// </summary>
+        FirstBatchAsync = 1 << 2,
+
+        /// <summary>
+        /// Sets the search to search for all results.
+        /// </summary>
+        WantsMore = 1 << 3,
+
+        /// <summary>
+        ///
+        /// </summary>
+        BasicIndexing = 1 << 5,
+
+        /// <summary>
+        ///
+        /// </summary>
+        FullIndexing = 1 << 6,
+
+        IndexingMask = BasicIndexing | FullIndexing,
+
+        Default = Sorted
+    }
+
+    /// <summary>
     /// The search context contains many fields to process a search query.
     /// </summary>
     [DebuggerDisplay("{m_SearchText}")]
@@ -17,7 +63,6 @@ namespace Unity.QuickSearch
         private static readonly string[] k_Empty = new string[0];
         private string m_SearchText = "";
         private string m_CachedPhrase;
-        private readonly object m_AsyncItemReceivedEventLock = new object();
 
         [DebuggerDisplay("{provider.name.id} - Enabled: {isEnabled}")]
         internal class FilterDesc
@@ -29,10 +74,21 @@ namespace Unity.QuickSearch
         private bool m_Disposed = false;
         internal IEnumerable<FilterDesc> filters => m_ProviderDescs;
 
-        public SearchContext(IEnumerable<SearchProvider> providers, string searchText = "")
+        public SearchContext(IEnumerable<SearchProvider> providers, string searchText, SearchFlags options)
         {
             this.providers = providers.ToList();
             this.searchText = searchText;
+            this.options = options;
+        }
+
+        public SearchContext(IEnumerable<SearchProvider> providers, string searchText)
+            : this(providers, searchText, SearchFlags.Default)
+        {
+        }
+
+        public SearchContext(IEnumerable<SearchProvider> providers)
+            : this(providers, String.Empty, SearchFlags.Default)
+        {
         }
 
         ~SearchContext()
@@ -46,7 +102,7 @@ namespace Unity.QuickSearch
                 t.isEnabled = enableAll;
         }
 
-        public void SetFilter(bool isEnabled, string providerId)
+        public void SetFilter(string providerId, bool isEnabled)
         {
             var index = m_ProviderDescs.FindIndex(t => t.provider.name.id == providerId);
             if (index != -1)
@@ -66,11 +122,16 @@ namespace Unity.QuickSearch
             return false;
         }
 
+        public void ReportProgress(float progress = 0f, string status = null)
+        {
+            SearchService.ReportProgress(this, progress, status);
+        }
+
         internal void SetFilteredProviders(IEnumerable<string> providerIds)
         {
             ResetFilter(false);
             foreach (var id in providerIds)
-                SetFilter(true, id);
+                SetFilter(id, true);
         }
 
         private void BeginSession()
@@ -122,7 +183,7 @@ namespace Unity.QuickSearch
         /// Raw search text (i.e. what is in the search text box)
         /// </summary>
         public string searchText
-        { 
+        {
             get => m_SearchText;
 
             set
@@ -172,6 +233,18 @@ namespace Unity.QuickSearch
         }
 
         /// <summary>
+        /// Returns the time it took to evaluate the last query in milliseconds.
+        /// </summary>
+        internal double searchElapsedTime => (searchFinishTime - searchStartTime) * 1000.0;
+        internal double searchStartTime { get; set; } = 0;
+        internal double searchFinishTime { get; set; } = 0;
+
+        /// <summary>
+        /// Progress handle to set the search current progress.
+        /// </summary>
+        public int progressId { get; set; } = -1;
+
+        /// <summary>
         /// Processed search query (no filterId, no textFilters)
         /// </summary>
         public string searchQuery { get; private set; } = String.Empty;
@@ -205,15 +278,34 @@ namespace Unity.QuickSearch
         public EditorWindow focusedWindow { get; internal set; }
 
         /// <summary>
+        /// Search context options
+        /// </summary>
+        public SearchFlags options { get; set; }
+
+        /// <summary>
         /// Indicates if the search should return results as many as possible.
         /// </summary>
-        public bool wantsMore { get; set; }
+        public bool wantsMore
+        {
+            get
+            {
+                return options.HasFlag(SearchFlags.WantsMore);
+            }
+
+            set
+            {
+                if (value)
+                    options |= SearchFlags.WantsMore;
+                else
+                    options &= ~SearchFlags.WantsMore;
+            }
+        }
 
         /// <summary>
         /// Indicates that the search results should be filter for this type.
         /// </summary>
         [CanBeNull] internal Type filterType { get; set; }
-// 
+//
         /// <summary>
         /// The search action id to be executed.
         /// </summary>
@@ -224,6 +316,13 @@ namespace Unity.QuickSearch
         /// Can be null
         /// </summary>
         [CanBeNull] public string filterId { get; private set; }
+
+        /// <summary>
+        /// Returns a unique code that represents filtered providers for the current context.
+        /// </summary>
+        internal int scopeHash => filters.Where(d => d.isEnabled && !d.provider.isExplicitProvider)
+                .Select(d => d.provider.filterId.GetHashCode())
+                .Aggregate((h1, h2) => (h1 ^ h2).GetHashCode());
 
         /// <summary>
         /// Which Providers are active for this particular context.
@@ -278,44 +377,44 @@ namespace Unity.QuickSearch
         /// <summary>
         /// This event is used to receive any async search result.
         /// </summary>
-        public event Action<IEnumerable<SearchItem>> asyncItemReceived
+        public event Action<SearchContext, IEnumerable<SearchItem>> asyncItemReceived
         {
             add
             {
-                lock (m_AsyncItemReceivedEventLock)
+                lock (this)
                     sessions.asyncItemReceived += value;
             }
             remove
             {
-                lock (m_AsyncItemReceivedEventLock)
+                lock (this)
                     sessions.asyncItemReceived -= value;
             }
         }
 
-        public event Action sessionStarted
+        public event Action<SearchContext> sessionStarted
         {
             add
             {
-                lock (m_AsyncItemReceivedEventLock)
+                lock (this)
                     sessions.sessionStarted += value;
             }
             remove
             {
-                lock (m_AsyncItemReceivedEventLock)
+                lock (this)
                     sessions.sessionStarted -= value;
             }
         }
 
-        public event Action sessionEnded
+        public event Action<SearchContext> sessionEnded
         {
             add
             {
-                lock (m_AsyncItemReceivedEventLock)
+                lock (this)
                     sessions.sessionEnded += value;
             }
             remove
             {
-                lock (m_AsyncItemReceivedEventLock)
+                lock (this)
                     sessions.sessionEnded -= value;
             }
         }

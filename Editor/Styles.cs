@@ -84,7 +84,7 @@ namespace Unity.QuickSearch
         public static readonly GUIStyle itemBackground1 = new GUIStyle
         {
             name = "quick-search-item-background1",
-            fixedHeight = itemRowHeight,
+            fixedHeight = 0,
 
             margin = marginNone,
             padding = defaultPadding
@@ -105,8 +105,8 @@ namespace Unity.QuickSearch
         public static readonly GUIStyle preview = new GUIStyle
         {
             name = "quick-search-item-preview",
-            fixedWidth = itemPreviewSize,
-            fixedHeight = itemPreviewSize,
+            fixedWidth = 0,
+            fixedHeight = 0,
             alignment = TextAnchor.MiddleCenter,
             imagePosition = ImagePosition.ImageOnly,
             margin = new RectOffset(2, 2, 2, 2),
@@ -132,6 +132,11 @@ namespace Unity.QuickSearch
             padding = paddingNone
         };
 
+        public static readonly GUIStyle itemLabelCompact = new GUIStyle(itemLabel)
+        {
+            margin = new RectOffset(4, 4, 2, 2)
+        };
+
         public static readonly GUIStyle itemLabelGrid = new GUIStyle(itemLabel)
         {
             fontSize = itemLabel.fontSize - 1,
@@ -146,6 +151,11 @@ namespace Unity.QuickSearch
             name = "quick-search-item-selected-label",
             margin = new RectOffset(4, 4, 6, 2),
             padding = paddingNone
+        };
+
+        public static readonly GUIStyle selectedItemLabelCompact = new GUIStyle(selectedItemLabel)
+        {
+            margin = new RectOffset(4, 4, 2, 2),
         };
 
         public static readonly GUIStyle noResult = new GUIStyle(EditorStyles.centeredGreyMiniLabel)
@@ -333,7 +343,6 @@ namespace Unity.QuickSearch
             padding = new RectOffset(0, 0, 0, 0)
         };
 
-        public static readonly GUIContent searchInProgressContent = new GUIContent(Icons.loading, "Open quick search preferences...");
         public static readonly GUIStyle searchInProgressButton = new GUIStyle(prefButton)
         {
             imagePosition = ImagePosition.ImageOnly,

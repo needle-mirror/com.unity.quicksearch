@@ -15,7 +15,10 @@ namespace Unity.QuickSearch
         bool resolver { get; }
         StringComparison stringComparison { get; }
         bool overrideStringComparison { get; }
-        IFilterOperation GenerateOperation(FilterOperationGeneratorData data, int operatorIndex, List<QueryError> errors);
+        IFilterOperation GenerateOperation(FilterOperationGeneratorData data, int operatorIndex, ICollection<QueryError> errors);
+
+        INestedQueryHandlerTransformer queryHandlerTransformer { get; }
+        void SetNestedQueryTransformer<TNestedQueryData, TRhs>(Func<TNestedQueryData, TRhs> transformer);
     }
 
     internal abstract class BaseFilter<TFilter> : IFilter
@@ -30,6 +33,8 @@ namespace Unity.QuickSearch
 
         public StringComparison stringComparison { get; }
         public bool overrideStringComparison { get; }
+
+        public INestedQueryHandlerTransformer queryHandlerTransformer { get; private set; }
 
         protected BaseFilter(string token, IEnumerable<string> supportedOperatorTypes, bool resolver)
         {
@@ -54,7 +59,14 @@ namespace Unity.QuickSearch
             return converter.IsValid(value);
         }
 
-        public abstract IFilterOperation GenerateOperation(FilterOperationGeneratorData data, int operatorIndex, List<QueryError> errors);
+        public abstract IFilterOperation GenerateOperation(FilterOperationGeneratorData data, int operatorIndex, ICollection<QueryError> errors);
+
+        public void SetNestedQueryTransformer<TNestedQueryData, TRhs>(Func<TNestedQueryData, TRhs> transformer)
+        {
+            if (transformer == null)
+                return;
+            queryHandlerTransformer = new NestedQueryHandlerTransformer<TNestedQueryData, TRhs>(transformer);
+        }
     }
 
     internal class Filter<TData, TFilter> : BaseFilter<TFilter>
@@ -92,15 +104,16 @@ namespace Unity.QuickSearch
             return m_FilterResolver(data, op.token, value);
         }
 
-        public override IFilterOperation GenerateOperation(FilterOperationGeneratorData data, int operatorIndex, List<QueryError> errors)
+        public override IFilterOperation GenerateOperation(FilterOperationGeneratorData data, int operatorIndex, ICollection<QueryError> errors)
         {
             if (resolver)
             {
-                var filterValue = ((ParseResult<TFilter>)data.filterValueParseResult).parsedValue;
-
                 // ReSharper disable once ConvertToLocalFunction
-                Func<TData, bool> operation = o => Resolve(o, data.op, filterValue);
-                return new FilterOperation<TData, TFilter>(this, data.op, data.filterValue, operation);
+                Func<TData, TFilter, bool> operation = (o, fv) => Resolve(o, data.op, fv);
+                var filterOperation = new FilterOperation<TData, TFilter, TFilter>(this, data.op, data.filterValue, operation);
+                var filterValue = ((ParseResult<TFilter>)data.filterValueParseResult).parsedValue;
+                filterOperation.SetFilterValue(filterValue);
+                return filterOperation;
             }
             else
                 return data.generator.GenerateOperation(data, this, operatorIndex, errors);
@@ -175,15 +188,17 @@ namespace Unity.QuickSearch
             return Utils.ConvertValue<TParam>(param);
         }
 
-        public override IFilterOperation GenerateOperation(FilterOperationGeneratorData data, int operatorIndex, List<QueryError> errors)
+        public override IFilterOperation GenerateOperation(FilterOperationGeneratorData data, int operatorIndex, ICollection<QueryError> errors)
         {
             if (resolver)
             {
-                var filterValue = ((ParseResult<TFilter>)data.filterValueParseResult).parsedValue;
                 // ReSharper disable once ConvertToLocalFunction
-                Func<TData, TParam, bool> operation = (o, param) => Resolve(o, param, data.op, filterValue);
+                Func<TData, TParam, TFilter, bool> operation = (o, param, fv) => Resolve(o, param, data.op, fv);
 
-                return new FilterOperation<TData, TParam, TFilter>(this, data.op, data.filterValue, data.paramValue, operation);
+                var filterOperation = new FilterOperation<TData, TParam, TFilter, TFilter>(this, data.op, data.filterValue, data.paramValue, operation);
+                var filterValue = ((ParseResult<TFilter>)data.filterValueParseResult).parsedValue;
+                filterOperation.SetFilterValue(filterValue);
+                return filterOperation;
             }
             else
                 return data.generator.GenerateOperation(data, this, operatorIndex, errors);

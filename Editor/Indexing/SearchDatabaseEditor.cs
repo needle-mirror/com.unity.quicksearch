@@ -2,22 +2,18 @@ using System.Linq;
 using UnityEditor;
 using UnityEngine;
 
-namespace Unity.QuickSearch.Providers
+namespace Unity.QuickSearch
 {
     [CustomEditor(typeof(SearchDatabase))]
     class SearchDatabaseEditor : Editor
     {
         private SearchDatabase m_DB;
         private SerializedProperty m_Settings;
+        private GUIContent m_IndexTitleLabel;
 
         [SerializeField] private bool m_KeywordsFoldout;
         [SerializeField] private bool m_DocumentsFoldout;
         [SerializeField] private bool m_DependenciesFoldout;
-        private GUIContent m_IndexTitleLabel;
-
-        static class Styles
-        {
-        }
 
         internal void OnEnable()
         {

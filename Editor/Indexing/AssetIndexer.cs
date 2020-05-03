@@ -8,7 +8,7 @@ using UnityEditor;
 using UnityEngine;
 using Object = UnityEngine.Object;
 
-namespace Unity.QuickSearch.Providers
+namespace Unity.QuickSearch
 {
     class AssetIndexer : ObjectIndexer
     {
@@ -32,16 +32,19 @@ namespace Unity.QuickSearch.Providers
             Start(clear: true);
 
             EditorApplication.LockReloadAssemblies();
-            foreach (var path in paths)
+            lock (this)
             {
-                var progressReport = pathIndex++ / pathCount;
-                ReportProgress(progressId, path, progressReport, false);
-                IndexDocument(path, false);
-                yield return null;
+                foreach (var path in paths)
+                {
+                    var progressReport = pathIndex++ / pathCount;
+                    ReportProgress(progressId, path, progressReport, false);
+                    IndexDocument(path, false);
+                    yield return null;
+                }
             }
             EditorApplication.UnlockReloadAssemblies();
 
-            Finish(() => {});
+            Finish((bytes) => {}, null, false);
             while (!IsReady())
                 yield return null;
 
@@ -49,23 +52,30 @@ namespace Unity.QuickSearch.Providers
             yield return null;
         }
 
+        public override IEnumerable<string> GetRoots()
+        {
+            if (settings.roots == null || settings.roots.Length == 0)
+                return new string[] { Path.GetDirectoryName(settings.path).Replace("\\", "/") };
+            return settings.roots.Where(r => Directory.Exists(r));
+        }
+
         public override List<string> GetDependencies()
         {
-            string[] roots;
-            if (settings.roots == null || settings.roots.Length == 0)
-            {
-                roots = new string[] { Path.GetDirectoryName(settings.path).Replace("\\", "/") };
-            }
-            else
-            {
-                roots = settings.roots.Where(r => Directory.Exists(r)).ToArray();
-            }
-            return AssetDatabase.FindAssets(String.Empty, roots).Select(AssetDatabase.GUIDToAssetPath).Where(path => !SkipEntry(path)).ToList();
+            string[] roots = GetRoots().ToArray();
+            return AssetDatabase.FindAssets(String.Empty, roots)
+                .Select(AssetDatabase.GUIDToAssetPath)
+                .Distinct().Where(path => !SkipEntry(path)).ToList();
+        }
+
+        public override Hash128 GetDcoumentHash(string path)
+        {
+            return AssetDatabase.GetAssetDependencyHash(path);
         }
 
         public override void IndexDocument(string path, bool checkIfDocumentExists)
         {
             var documentIndex = AddDocument(path, checkIfDocumentExists);
+            AddDocumentHash(path, GetDcoumentHash(path));
             if (documentIndex < 0)
                 return;
 
@@ -75,6 +85,9 @@ namespace Unity.QuickSearch.Providers
             {
                 var fileName = Path.GetFileNameWithoutExtension(path).ToLowerInvariant();
                 IndexWord(path, fileName, documentIndex, fileName.Length, true);
+
+                IndexWord(path, path, documentIndex, path.Length, exact: true);
+                IndexProperty(path, "id", path, documentIndex, saveKeyword: false, exact: true);
 
                 if (path.StartsWith("Packages/", StringComparison.Ordinal))
                     IndexProperty(path, "a", "packages", documentIndex, saveKeyword: true);
@@ -95,43 +108,52 @@ namespace Unity.QuickSearch.Providers
                     }
                 }
 
-                if (settings.options.properties || settings.options.types)
+                var at = AssetDatabase.GetMainAssetTypeAtPath(path);
+                var hasCustomIndexers = HasCustomIndexers(at);
+
+                if (settings.options.properties || settings.options.types || hasCustomIndexers)
                 {
                     bool wasLoaded = AssetDatabase.IsMainAssetAtPathLoaded(path);
                     var mainAsset = AssetDatabase.LoadMainAssetAtPath(path);
                     if (!mainAsset)
                         return;
 
-                    if (!String.IsNullOrEmpty(mainAsset.name))
-                        IndexWord(path, mainAsset.name, documentIndex, true);
+                    if (hasCustomIndexers)
+                        IndexCustomProperties(path, documentIndex, mainAsset);
 
-                    Type at = mainAsset.GetType();
-                    IndexWord(path, at.Name, documentIndex);
-                    while (at != null && at != typeof(Object))
+                    if (settings.options.properties || settings.options.types)
                     {
-                        IndexProperty(path, "t", at.Name, documentIndex, saveKeyword: true);
-                        at = at.BaseType;
-                    }
+                        if (!String.IsNullOrEmpty(mainAsset.name))
+                            IndexWord(path, mainAsset.name, documentIndex, true);
 
-                    if (PrefabUtility.GetPrefabAssetType(mainAsset) != PrefabAssetType.NotAPrefab)
-                        IndexProperty(path, "t", "prefab", documentIndex, saveKeyword: true);
-
-                    var labels = AssetDatabase.GetLabels(mainAsset);
-                    foreach (var label in labels)
-                        IndexProperty(path, "l", label, documentIndex, saveKeyword: true);
-
-                    if (settings.options.properties)
-                    {
-                        IndexObject(path, mainAsset, documentIndex);
-
-                        if (mainAsset is GameObject go)
+                        IndexWord(path, at.Name, documentIndex);
+                        while (at != null && at != typeof(Object))
                         {
-                            foreach (var v in go.GetComponents(typeof(Component)))
+                            IndexProperty(path, "t", at.Name, documentIndex, saveKeyword: true);
+                            at = at.BaseType;
+                        }
+
+                        var prefabType = PrefabUtility.GetPrefabAssetType(mainAsset);
+                        if (prefabType == PrefabAssetType.Regular || prefabType == PrefabAssetType.Variant)
+                            IndexProperty(path, "t", "prefab", documentIndex, saveKeyword: true);
+
+                        var labels = AssetDatabase.GetLabels(mainAsset);
+                        foreach (var label in labels)
+                            IndexProperty(path, "l", label, documentIndex, saveKeyword: true);
+
+                        if (settings.options.properties)
+                        {
+                            IndexObject(path, mainAsset, documentIndex);
+
+                            if (mainAsset is GameObject go)
                             {
-                                if (!v)
-                                    continue;
-                                IndexPropertyComponents(path, documentIndex, "has", v.GetType().Name);
-                                IndexObject(path, v, documentIndex);
+                                foreach (var v in go.GetComponents(typeof(Component)))
+                                {
+                                    if (!v)
+                                        continue;
+                                    IndexPropertyComponents(path, documentIndex, "has", v.GetType().Name);
+                                    IndexObject(path, v, documentIndex);
+                                }
                             }
                         }
                     }

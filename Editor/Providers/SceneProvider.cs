@@ -34,22 +34,6 @@ namespace Unity.QuickSearch.Providers
 
             EditorApplication.hierarchyChanged += () => m_HierarchyChanged = true;
 
-            onEnable = () =>
-            {
-                if (m_HierarchyChanged)
-                {
-                    m_GameObjects = fetchGameObjects();
-                    m_SceneQueryEngine = new SceneQueryEngine(m_GameObjects);
-                    m_HierarchyChanged = false;
-                }
-            };
-
-            onDisable = () =>
-            {
-                // Only track changes that occurs when Quick Search is not active.
-                m_HierarchyChanged = false;
-            };
-
             toObject = (item, type) => ObjectFromItem(item);
 
             fetchItems = (context, items, provider) => SearchItems(context, provider);
@@ -63,7 +47,7 @@ namespace Unity.QuickSearch.Providers
                 if (!go)
                     return item.id;
 
-                if (context.searchView == null || context.searchView.displayMode == DisplayMode.List)
+                if (context == null || context.searchView == null || context.searchView.displayMode == DisplayMode.List)
                 {
                     var transformPath = SearchUtils.GetTransformPath(go.transform);
                     var components = go.GetComponents<Component>();
@@ -74,11 +58,14 @@ namespace Unity.QuickSearch.Providers
                     else
                         item.label = $"{transformPath} ({item.id})";
 
-                    long score = 1;
-                    List<int> matches = new List<int>();
-                    var sq = Utils.CleanString(context.searchQuery);
-                    if (FuzzySearch.FuzzyMatch(sq, Utils.CleanString(item.label), ref score, matches))
-                        item.label = RichTextFormatter.FormatSuggestionTitle(item.label, matches);
+                    if (context != null)
+                    {
+                        long score = 1;
+                        List<int> matches = new List<int>();
+                        var sq = Utils.CleanString(context.searchQuery);
+                        if (FuzzySearch.FuzzyMatch(sq, Utils.CleanString(item.label), ref score, matches))
+                            item.label = RichTextFormatter.FormatSuggestionTitle(item.label, matches);
+                    }
                 }
                 else
                 {
@@ -108,12 +95,15 @@ namespace Unity.QuickSearch.Providers
                 var obj = ObjectFromItem(item);
                 if (obj == null)
                     return item.thumbnail;
-                return Utils.GetSceneObjectPreview(obj, size, options, item.thumbnail);
+                return Utils.GetSceneObjectPreview(obj, options, item.thumbnail);
             };
 
             startDrag = (item, context) =>
             {
-                Utils.StartDrag(context.selection.Select(i => ObjectFromItem(i)).ToArray(), item.GetLabel(context, true));
+                if (context.selection.Count > 1)
+                    Utils.StartDrag(context.selection.Select(i => ObjectFromItem(i)).ToArray(), item.GetLabel(context, true));
+                else
+                    Utils.StartDrag(new [] { ObjectFromItem(item) }, item.GetLabel(context, true));
             };
 
             trackSelection = (item, context) => PingItem(item);
@@ -124,25 +114,26 @@ namespace Unity.QuickSearch.Providers
 
         private IEnumerator SearchItems(SearchContext context, SearchProvider provider)
         {
-            #if DEBUG_TIMING
-            using (new DebugTimer($"Search scene ({context.searchQuery})"))
-            #endif
+            if (!String.IsNullOrEmpty(context.searchQuery))
             {
-                if (!String.IsNullOrEmpty(context.searchQuery))
+                if (m_HierarchyChanged)
                 {
-                    yield return m_SceneQueryEngine.Search(context.searchQuery).Select(gameObject =>
-                    {
-                        if (!gameObject)
-                            return null;
-                        return AddResult(provider, gameObject.GetInstanceID().ToString(), 0, false);
-                    });
+                    m_GameObjects = fetchGameObjects();
+                    m_SceneQueryEngine = new SceneQueryEngine(m_GameObjects);
+                    m_HierarchyChanged = false;
                 }
 
-                if (context.wantsMore && context.filterType != null && String.IsNullOrEmpty(context.searchQuery))
+                yield return m_SceneQueryEngine.Search(context).Select(gameObject =>
                 {
-                    yield return GameObject.FindObjectsOfType(context.filterType)
-                        .Select(go => AddResult(provider, go.GetInstanceID().ToString(), 999, false));
-                }
+                    if (!gameObject)
+                        return null;
+                    return AddResult(provider, gameObject.GetInstanceID().ToString(), 0, false);
+                });
+            }
+            else if (context.wantsMore && context.filterType != null && String.IsNullOrEmpty(context.searchQuery))
+            {
+                yield return GameObject.FindObjectsOfType(context.filterType)
+                    .Select(go => AddResult(provider, go.GetInstanceID().ToString(), 999, false));
             }
         }
 
@@ -158,9 +149,9 @@ namespace Unity.QuickSearch.Providers
 
         private static SearchItem SetItemDescriptionFormat(SearchItem item, bool useFuzzySearch)
         {
-            item.descriptionFormat = SearchItemDescriptionFormat.Ellipsis
-                | SearchItemDescriptionFormat.RightToLeft
-                | (useFuzzySearch ? SearchItemDescriptionFormat.FuzzyHighlight : SearchItemDescriptionFormat.Highlight);
+            item.options = SearchItemOptions.Ellipsis
+                | SearchItemOptions.RightToLeft
+                | (useFuzzySearch ? SearchItemOptions.FuzzyHighlight : SearchItemOptions.Highlight);
             return item;
         }
 

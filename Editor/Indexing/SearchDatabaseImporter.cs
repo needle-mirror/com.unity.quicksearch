@@ -1,26 +1,18 @@
 //#define DEBUG_INDEXING
 
-#if UNITY_2020_2_OR_NEWER
-//#define USE_UMPE_INDEXING
-#endif
-
+using System;
 using UnityEditor;
 using UnityEditor.Experimental.AssetImporters;
 using UnityEngine;
 
-#if USE_UMPE_INDEXING
-using System;
-using Unity.MPE;
-#endif
-
 namespace Unity.QuickSearch.Providers
 {
     [ExcludeFromPreset, ScriptedImporter(version: SearchDatabase.version, ext: "index")]
-    public class SearchDatabaseImporter : ScriptedImporter
+    class SearchDatabaseImporter : ScriptedImporter
     {
         private SearchDatabase db { get; set; }
 
-        /// This boolean state is used to delay the importation of indexes 
+        /// This boolean state is used to delay the importation of indexes
         /// that depends on assets that get imported to late such as prefabs.
         private static bool s_DelayImport = true;
 
@@ -36,6 +28,8 @@ namespace Unity.QuickSearch.Providers
             var settings = JsonUtility.FromJson<SearchDatabase.Settings>(jsonText);
             var fileName = System.IO.Path.GetFileNameWithoutExtension(filePath);
 
+            hideFlags |= HideFlags.HideInInspector;
+
             #if DEBUG_INDEXING
             using (new DebugTimer($"Importing index {fileName}"))
             #endif
@@ -44,9 +38,9 @@ namespace Unity.QuickSearch.Providers
                 db.name = fileName;
                 db.hideFlags = HideFlags.NotEditable;
                 db.settings = settings;
-                if (db.settings.path == null)
+                if (String.IsNullOrEmpty(db.settings.path))
                     db.settings.path = filePath;
-                if (db.settings.name == null)
+                if (String.IsNullOrEmpty(db.settings.name))
                     db.settings.name = fileName;
                 db.index = SearchDatabase.CreateIndexer(settings);
 
@@ -70,7 +64,7 @@ namespace Unity.QuickSearch.Providers
 
         private bool ShouldDelayImport()
         {
-            if (db.settings.type == "asset")
+            if (db.settings.type == nameof(SearchDatabase.IndexType.asset))
                 return false;
             return s_DelayImport;
         }
@@ -82,14 +76,15 @@ namespace Unity.QuickSearch.Providers
 
         private bool Reimport(string assetPath)
         {
-            if (!SearchDatabase.incrementalIndexCache.TryGetValue(assetPath, out var indexStream))
+            if (!SearchDatabase.incrementalIndexCache.TryGetValue(assetPath, out var cachedIndexBytes))
                 return false;
             SearchDatabase.incrementalIndexCache.Remove(assetPath);
-            db.bytes = indexStream;
-            if (!db.index.LoadBytes(indexStream))
-                return false;
-            db.Log("Reimport");
-            return true;
+            db.bytes = cachedIndexBytes;
+            return db.index.LoadBytes(cachedIndexBytes, (loaded) =>
+                {
+                    db.Log($"Reimport.{loaded}");
+                    SearchDatabase.SendIndexLoaded(db);
+                });
         }
 
         private void Build()

@@ -33,14 +33,14 @@ namespace Unity.QuickSearch
             if (String.IsNullOrEmpty(desc))
                 return Styles.emptyContent;
             var content = Take(desc);
-            if (item.descriptionFormat == SearchItemDescriptionFormat.None || Event.current.type != EventType.Repaint)
+            if (item.options == SearchItemOptions.None || Event.current.type != EventType.Repaint)
                 return content;
 
             var truncatedDesc = desc;
             var truncated = false;
             if (useColor)
             {
-                if (item.descriptionFormat.HasFlag(SearchItemDescriptionFormat.Ellipsis))
+                if (item.options.HasFlag(SearchItemOptions.Ellipsis))
                 {
                     int maxCharLength = Utils.GetNumCharactersThatFitWithinWidth(Styles.itemDescription, truncatedDesc + "...", availableSpace);
                     if (maxCharLength < 0)
@@ -48,7 +48,7 @@ namespace Unity.QuickSearch
                     truncated = desc.Length > maxCharLength;
                     if (truncated)
                     {
-                        if (item.descriptionFormat.HasFlag(SearchItemDescriptionFormat.RightToLeft))
+                        if (item.options.HasFlag(SearchItemOptions.RightToLeft))
                         {
                             truncatedDesc = "..." + desc.Replace("<b>", "").Replace("</b>", "");
                             truncatedDesc = truncatedDesc.Substring(Math.Max(0, truncatedDesc.Length - maxCharLength));
@@ -58,19 +58,22 @@ namespace Unity.QuickSearch
                     }
                 }
 
-                if (item.descriptionFormat.HasFlag(SearchItemDescriptionFormat.Highlight))
+                if (context != null)
                 {
-                    var parts = context.searchQuery.Split('*', ' ', '.').Where(p => p.Length > 2);
-                    foreach (var p in parts)
-                        truncatedDesc = Regex.Replace(truncatedDesc, Regex.Escape(p), string.Format(Styles.highlightedTextColorFormat, "$0"), RegexOptions.IgnoreCase);
-                }
-                else if (item.descriptionFormat.HasFlag(SearchItemDescriptionFormat.FuzzyHighlight))
-                {
-                    long score = 1;
-                    var matches = new List<int>();
-                    var sq = Utils.CleanString(context.searchQuery.ToLowerInvariant());
-                    if (FuzzySearch.FuzzyMatch(sq, Utils.CleanString(truncatedDesc), ref score, matches))
-                        truncatedDesc = RichTextFormatter.FormatSuggestionTitle(truncatedDesc, matches);
+                    if (item.options.HasFlag(SearchItemOptions.Highlight))
+                    {
+                        var parts = context.searchQuery.Split('*', ' ', '.').Where(p => p.Length > 2);
+                        foreach (var p in parts)
+                            truncatedDesc = Regex.Replace(truncatedDesc, Regex.Escape(p), string.Format(Styles.highlightedTextColorFormat, "$0"), RegexOptions.IgnoreCase);
+                    }
+                    else if (item.options.HasFlag(SearchItemOptions.FuzzyHighlight))
+                    {
+                        long score = 1;
+                        var matches = new List<int>();
+                        var sq = Utils.CleanString(context.searchQuery.ToLowerInvariant());
+                        if (FuzzySearch.FuzzyMatch(sq, Utils.CleanString(truncatedDesc), ref score, matches))
+                            truncatedDesc = RichTextFormatter.FormatSuggestionTitle(truncatedDesc, matches);
+                    }
                 }
             }
 

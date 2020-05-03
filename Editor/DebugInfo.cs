@@ -14,13 +14,10 @@ namespace Unity.QuickSearch
         public int textureCount;
         public long gcTotalMemory;
         public long totalMemory;
-        private StringBuilder m_StatsBuilder = new StringBuilder();
+        private readonly StringBuilder m_StatsBuilder = new StringBuilder();
 
         private static DebugInfo s_InitialStats;
         private static DebugInfo s_CurrentStats;
-        private static DateTime s_StartTime;
-        private static DateTime s_EndTime;
-        private static int s_SessionCount = 0;
 
         private static ISearchView searchView;
         private static SearchContext searchContext;
@@ -39,7 +36,6 @@ namespace Unity.QuickSearch
             textureCount = Resources.FindObjectsOfTypeAll<Texture>().Length;
             gcTotalMemory = GC.GetTotalMemory(false);
             totalMemory = Profiler.GetTotalAllocatedMemoryLong();
-            
         }
 
         public string ToString(DebugInfo d)
@@ -48,9 +44,6 @@ namespace Unity.QuickSearch
                 return "No initial stats";
 
             m_StatsBuilder.Clear();
-            if (s_SessionCount > 0)
-                m_StatsBuilder.Append($"<b>Sessions</b>: {s_SessionCount}  ");
-
             m_StatsBuilder.Append($"<b>Mem.</b>: {DiffBytes(totalMemory, d.totalMemory)}  ");
             m_StatsBuilder.Append($"<b>GC</b>: {DiffBytes(gcTotalMemory, d.gcTotalMemory)}  ");
             m_StatsBuilder.Append($"<b>Objects</b>: {objectCount}/{d.objectCount} ({Diff(objectCount, d.objectCount)})  ");
@@ -89,20 +82,12 @@ namespace Unity.QuickSearch
 
             searchView = view;
             searchContext = view.context;
-            searchContext.sessionStarted += OnSearchStarted;
-            searchContext.sessionEnded += OnSearchEnded;
 
             Refresh();
         }
 
         public static void Disable()
         {
-            if (searchContext != null)
-            {
-                searchContext.sessionStarted -= OnSearchStarted;
-                searchContext.sessionEnded -= OnSearchEnded;
-            }
-
             searchView = null;
             searchContext = null;
         }
@@ -126,15 +111,9 @@ namespace Unity.QuickSearch
 
                 string elapsedTimeString;
                 if (searchContext.searchInProgress)
-                {
-                    var elapsedTime = (int)Math.Round((DateTime.Now - s_StartTime).TotalMilliseconds);
-                    elapsedTimeString = "<i>" + elapsedTime + " ms</i>";
-                }
+                    elapsedTimeString = "<i>" + Math.Round(searchContext.searchElapsedTime) + " ms</i>";
                 else
-                {
-                    var elapsedTime = (int)Math.Round((s_EndTime - s_StartTime).TotalMilliseconds);
-                    elapsedTimeString = "<b>" + elapsedTime + " ms</b>";
-                }
+                    elapsedTimeString = "<b>" + Math.Round(searchContext.searchElapsedTime) + " ms</b>";
                 if (GUILayout.Button(elapsedTimeString, Styles.debugToolbarButton))
                     searchView.Refresh();
 
@@ -192,19 +171,6 @@ namespace Unity.QuickSearch
                 Resources.UnloadUnusedAssets();
                 s_Objects = Resources.FindObjectsOfTypeAll<UnityEngine.Object>();
             }
-        }
-
-        private static void OnSearchStarted()
-        {
-            s_SessionCount++;
-            if (s_SessionCount == 1)
-                s_StartTime = DateTime.Now;
-        }
-
-        private static void OnSearchEnded()
-        {
-            s_EndTime = DateTime.Now;
-            s_SessionCount--;
         }
     }
 }

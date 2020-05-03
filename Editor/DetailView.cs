@@ -246,7 +246,7 @@ namespace Unity.QuickSearch
                     m_LastPreviewItemId = item.id;
                 }
 
-                if (m_PreviewTexture == null || AssetPreview.IsLoadingAssetPreviews())
+                if (m_PreviewTexture == null)
                     m_SearchView.Repaint();
 
                 size -= (Styles.largePreview.margin.left + Styles.largePreview.margin.right);

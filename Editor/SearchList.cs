@@ -25,7 +25,7 @@ namespace Unity.QuickSearch
         SearchContext context { get; }
 
         /// <summary>
-        /// Yields search item until the search query is finished. 
+        /// Yields search item until the search query is finished.
         /// Nullified items can be returned while the search request is pending.
         /// </summary>
         /// <returns>List of search items. Items can be null and must be discarded</returns>
@@ -51,6 +51,14 @@ namespace Unity.QuickSearch
         /// <param name="count"></param>
         /// <returns></returns>
         IEnumerable<SearchItem> GetRange(int skipCount, int count);
+
+        /// <summary>
+        ///
+        /// </summary>
+        /// <typeparam name="TResult"></typeparam>
+        /// <param name="selector"></param>
+        /// <returns></returns>
+        IEnumerable<TResult> Select<TResult>(Func<SearchItem, TResult> selector);
     }
 
     abstract class BaseSearchList : IDisposable
@@ -91,6 +99,7 @@ namespace Unity.QuickSearch
             GC.SuppressFinalize(this);
         }
 
+        public abstract IEnumerable<SearchItem> Fetch();
         public abstract void AddItems(IEnumerable<SearchItem> items);
 
         protected virtual void Dispose(bool disposing)
@@ -104,9 +113,14 @@ namespace Unity.QuickSearch
             }
         }
 
-        private void OnAsyncItemsReceived(IEnumerable<SearchItem> items)
+        private void OnAsyncItemsReceived(SearchContext context, IEnumerable<SearchItem> items)
         {
             AddItems(items);
+        }
+
+        public IEnumerable<TResult> Select<TResult>(Func<SearchItem, TResult> selector)
+        {
+            return Fetch().Where(item => item != null).Select(item => selector(item));
         }
     }
 
@@ -128,7 +142,7 @@ namespace Unity.QuickSearch
         public int Count { get; private set; }
         public bool IsReadOnly => true;
         public SearchItem this[int index] => this.ElementAt(index);
-        
+
         public SortedSearchList(SearchContext searchContext) : base(searchContext)
         {
             Clear();
@@ -150,7 +164,7 @@ namespace Unity.QuickSearch
             AddItems(items);
         }
 
-        public IEnumerable<SearchItem> Fetch()
+        public override IEnumerable<SearchItem> Fetch()
         {
             if (context == null)
                 throw new Exception("Fetch can only be used if the search list was created with a search context.");
@@ -327,7 +341,7 @@ namespace Unity.QuickSearch
         }
     }
 
-    internal class AsyncSearchList : BaseSearchList, ISearchList
+    class AsyncSearchList : BaseSearchList, ISearchList
     {
         private readonly List<SearchItem> m_UnorderedItems;
 
@@ -364,7 +378,7 @@ namespace Unity.QuickSearch
             m_UnorderedItems.CopyTo(array, arrayIndex);
         }
 
-        public IEnumerable<SearchItem> Fetch()
+        public override IEnumerable<SearchItem> Fetch()
         {
             if (context == null)
                 throw new Exception("Fetch can only be used if the search list was created with a search context.");

@@ -1,10 +1,11 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 
 namespace Unity.QuickSearch.Providers
 {
-    public class FileSearchIndexer : SearchIndexer, IDisposable
+    class FileSearchIndexer : SearchIndexer, IDisposable
     {
         public string type { get; }
 
@@ -33,7 +34,14 @@ namespace Unity.QuickSearch.Providers
 
         private static IEnumerable<string> EnumerateAssetPaths(SearchIndexerRoot root)
         {
-            return Directory.EnumerateFiles(root.basePath, "*.*", SearchOption.AllDirectories);
+            var dirInfo = new DirectoryInfo(root.basePath);
+            var hiddenFolders = dirInfo.GetDirectories("*", SearchOption.AllDirectories)
+                .Where(d => (d.Attributes & FileAttributes.Hidden) != 0)
+                .Select(d => d.FullName.Replace("\\", "/")).ToArray();
+
+            return Directory.EnumerateFiles(root.basePath, "*.*", SearchOption.AllDirectories)
+                .Select(entry => entry.Replace("\\", "/"))
+                .Where(entry => !hiddenFolders.Any(d => entry.StartsWith(d, StringComparison.Ordinal)));
         }
 
         public void Dispose()

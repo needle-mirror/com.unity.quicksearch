@@ -14,20 +14,33 @@ namespace Unity.QuickSearch
         /// <summary>
         /// This event is used to receive any async search result.
         /// </summary>
-        public event Action<IEnumerable<SearchItem>> asyncItemReceived;
+        public event Action<SearchContext, IEnumerable<SearchItem>> asyncItemReceived;
 
-        public event Action sessionStarted;
-        public event Action sessionEnded;
+        /// <summary>
+        /// This event is used to know when a search has started to fetch new search items.
+        /// </summary>
+        public event Action<SearchContext> sessionStarted;
+
+        /// <summary>
+        /// This event is used to know when a search has finished fetching items.
+        /// </summary>
+        public event Action<SearchContext> sessionEnded;
 
         private const long k_MaxTimePerUpdate = 10; // milliseconds
 
         private StackedEnumerator<SearchItem> m_ItemsEnumerator = new StackedEnumerator<SearchItem>();
         private long m_MaxFetchTimePerProviderMs;
+        private SearchContext m_Context;
 
         /// <summary>
         /// Checks if this async search session is active.
         /// </summary>
         public bool searchInProgress { get; set; } = false;
+
+        public AsyncSearchSession(SearchContext context)
+        {
+            m_Context = context;
+        }
 
         /// <summary>
         /// Called when the system is ready to process any new async results.
@@ -38,7 +51,7 @@ namespace Unity.QuickSearch
             var atEnd = !FetchSome(newItems, m_MaxFetchTimePerProviderMs);
 
             if (newItems.Count > 0)
-                asyncItemReceived?.Invoke(newItems);
+                SendItems(newItems);
 
             if (atEnd)
             {
@@ -47,24 +60,37 @@ namespace Unity.QuickSearch
         }
 
         /// <summary>
+        /// Resolved a batch of items asynchronously.
+        /// </summary>
+        /// <param name="items"></param>
+        public void SendItems(IEnumerable<SearchItem> items)
+        {
+            asyncItemReceived?.Invoke(m_Context, items);
+        }
+
+        /// <summary>
         /// Hard reset an async search session.
         /// </summary>
         /// <param name="itemEnumerator">The enumerator that will yield new search results. This object can be an IEnumerator or IEnumerable</param>
         /// <param name="maxFetchTimePerProviderMs">The amount of time allowed to yield new results.</param>
         /// <remarks>Normally async search sessions are re-used per search provider.</remarks>
-        public void Reset(object itemEnumerator, long maxFetchTimePerProviderMs = k_MaxTimePerUpdate)
+        public void Reset(SearchContext context, object itemEnumerator, long maxFetchTimePerProviderMs = k_MaxTimePerUpdate)
         {
             // Remove and add the event handler in case it was already removed.
             Stop();
             searchInProgress = true;
+            m_Context = context;
             m_MaxFetchTimePerProviderMs = maxFetchTimePerProviderMs;
-            m_ItemsEnumerator = new StackedEnumerator<SearchItem>(itemEnumerator);
-            EditorApplication.update += OnUpdate;
+            if (itemEnumerator != null)
+            {
+                m_ItemsEnumerator = new StackedEnumerator<SearchItem>(itemEnumerator);
+                EditorApplication.update += OnUpdate;
+            }
         }
 
         internal void Start()
         {
-            sessionStarted?.Invoke();
+            sessionStarted?.Invoke(m_Context);
         }
 
         /// <summary>
@@ -73,7 +99,7 @@ namespace Unity.QuickSearch
         public void Stop()
         {
             if (searchInProgress)
-                sessionEnded?.Invoke();
+                sessionEnded?.Invoke(m_Context);
 
             searchInProgress = false;
             EditorApplication.update -= OnUpdate;
@@ -172,10 +198,17 @@ namespace Unity.QuickSearch
         /// <summary>
         /// This event is used to receive any async search result.
         /// </summary>
-        public event Action<IEnumerable<SearchItem>> asyncItemReceived;
+        public event Action<SearchContext, IEnumerable<SearchItem>> asyncItemReceived;
 
-        public event Action sessionStarted;
-        public event Action sessionEnded;
+        /// <summary>
+        /// This event is triggered when a session has started to fetch search items.
+        /// </summary>
+        public event Action<SearchContext> sessionStarted;
+
+        /// <summary>
+        /// This event is triggered when a session has finished to fetch all search items.
+        /// </summary>
+        public event Action<SearchContext> sessionEnded;
 
         /// <summary>
         /// Checks if any of the providers' async search are active.
@@ -187,11 +220,11 @@ namespace Unity.QuickSearch
         /// </summary>
         /// <param name="providerId"></param>
         /// <returns>The provider's async search session.</returns>
-        public AsyncSearchSession GetProviderSession(string providerId)
+        public AsyncSearchSession GetProviderSession(SearchContext context, string providerId)
         {
             if (!m_SearchSessions.TryGetValue(providerId, out var session))
             {
-                session = new AsyncSearchSession();
+                session = new AsyncSearchSession(context);
                 session.sessionStarted += OnProviderAsyncSessionStarted;
                 session.sessionEnded += OnProviderAsyncSessionEnded;
                 session.asyncItemReceived += OnProviderAsyncItemReceived;
@@ -201,19 +234,19 @@ namespace Unity.QuickSearch
             return session;
         }
 
-        private void OnProviderAsyncSessionStarted()
+        private void OnProviderAsyncSessionStarted(SearchContext context)
         {
-            sessionStarted?.Invoke();
+            sessionStarted?.Invoke(context);
         }
 
-        private void OnProviderAsyncSessionEnded()
+        private void OnProviderAsyncSessionEnded(SearchContext context)
         {
-            sessionEnded?.Invoke();
+            sessionEnded?.Invoke(context);
         }
 
-        private void OnProviderAsyncItemReceived(IEnumerable<SearchItem> obj)
+        private void OnProviderAsyncItemReceived(SearchContext context, IEnumerable<SearchItem> items)
         {
-            asyncItemReceived?.Invoke(obj);
+            asyncItemReceived?.Invoke(context, items);
         }
 
         /// <summary>
@@ -239,6 +272,7 @@ namespace Unity.QuickSearch
                 searchSession.Value.sessionEnded -= OnProviderAsyncSessionEnded;
             }
             m_SearchSessions.Clear();
+            asyncItemReceived = null;
         }
     }
 }

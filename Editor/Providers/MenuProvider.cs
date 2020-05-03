@@ -7,121 +7,140 @@ using UnityEditor;
 using UnityEditor.ShortcutManagement;
 using UnityEngine;
 
-namespace Unity.QuickSearch
+namespace Unity.QuickSearch.Providers
 {
-    namespace Providers
+    [UsedImplicitly]
+    static class MenuProvider
     {
-        [UsedImplicitly]
-        static class MenuProvider
+        struct MenuData
         {
-            internal static string type = "menu";
-            internal static string displayName = "Menu";
+            public string path;
+            public string[] words;
+        }
 
-            internal static string[] itemNamesLower;
-            internal static List<string> itemNames = new List<string>();
-            internal static string[] shortcutIds;
+        private const string type = "menu";
+        private const string displayName = "Menu";
 
-            [UsedImplicitly, SearchItemProvider]
-            internal static SearchProvider CreateProvider()
+        private static string[] shortcutIds;
+        private static QueryEngine<MenuData> queryEngine = null;
+        private static readonly List<MenuData> menus = new List<MenuData>();
+
+        [UsedImplicitly, SearchItemProvider]
+        internal static SearchProvider CreateProvider()
+        {
+            List<string> itemNames = new List<string>();
+            List<string> shortcuts = new List<string>();
+            GetMenuInfo(itemNames, shortcuts);
+
+            for (int i = 0; i < itemNames.Count; ++i)
             {
-                List<string> shortcuts = new List<string>();
-                GetMenuInfo(itemNames, shortcuts);
-                itemNamesLower = itemNames.Select(n => n.ToLowerInvariant()).ToArray();
-
-                return new SearchProvider(type, displayName)
+                var menuItem = itemNames[i];
+                menus.Add(new MenuData() 
                 {
-                    priority = 80,
-                    filterId = "me:",
+                    path = menuItem,
+                    words = SplitMenuPath(menuItem).Concat(new string[]{ menuItem }).Select(w => w.ToLowerInvariant()).ToArray()
+                });
+            }
 
-                    onEnable = () =>
-                    {
-                        shortcutIds = ShortcutManager.instance.GetAvailableShortcutIds().ToArray();
-                    },
+            queryEngine = new QueryEngine<MenuData>();
+            queryEngine.AddFilter("id", m => m.path);
+            queryEngine.SetSearchDataCallback(m => m.words, s => s.ToLowerInvariant(), StringComparison.Ordinal);
 
-                    onDisable = () =>
-                    {
-                        shortcutIds = new string[0];
-                    },
+            queryEngine.SetNestedQueryHandler((q, f) => q.Split(',').Select(w=>w.Trim()));
+            queryEngine.SetFilterNestedQueryTransformer<string, string>("id", s => s);
 
-                    fetchItems = (context, items, provider) =>
-                    {
-                        if (string.IsNullOrEmpty(context.searchQuery))
-                            return null;
+            return new SearchProvider(type, displayName)
+            {
+                priority = 80,
+                filterId = "me:",
 
-                        for (int i = 0; i < itemNames.Count; ++i)
-                        {
-                            var menuName = itemNames[i];
-                            if (!SearchUtils.MatchSearchGroups(context, itemNamesLower[i], true))
-                                continue;
+                onEnable = () =>
+                {
+                    shortcutIds = ShortcutManager.instance.GetAvailableShortcutIds().ToArray();
+                },
 
-                            items.Add(provider.CreateItem(menuName, Utils.GetNameFromPath(menuName)));
-                        }
+                onDisable = () =>
+                {
+                    shortcutIds = new string[0];
+                },
 
+                fetchItems = (context, items, provider) =>
+                {
+                    var query = queryEngine.Parse(context.searchQuery);
+                    if (!query.valid)
                         return null;
-                    },
+                    return query.Apply(menus).Select(m => provider.CreateItem(m.path));
+                },
 
-                    fetchDescription = (item, context) =>
-                    {
-                        if (String.IsNullOrEmpty(item.description))
-                            item.description = GetMenuDescription(item.id);
-                        return item.description;
-                    },
+                fetchLabel = (item, context) =>
+                {
+                    return item.label ?? (item.label = Utils.GetNameFromPath(item.id));
+                },
 
-                    fetchThumbnail = (item, context) => Icons.shortcut
-                };
-            }
+                fetchDescription = (item, context) =>
+                {
+                    if (String.IsNullOrEmpty(item.description))
+                        item.description = GetMenuDescription(item.id);
+                    return item.description;
+                },
 
-            private static string GetMenuDescription(string menuName)
+                fetchThumbnail = (item, context) => Icons.shortcut
+            };
+        }
+
+        private static IEnumerable<string> SplitMenuPath(string menuPath)
+        {
+            return menuPath.Split(new char[] { '/', ' ' }, StringSplitOptions.RemoveEmptyEntries).Reverse();
+        }
+
+        private static string GetMenuDescription(string menuName)
+        {
+            var sm = ShortcutManager.instance;
+            if (sm == null)
+                return menuName;
+
+            var shortcutId = menuName;
+            if (!shortcutIds.Contains(shortcutId))
             {
-                var sm = ShortcutManager.instance;
-                if (sm == null)
-                    return menuName;
-
-                var shortcutId = menuName;
+                shortcutId = "Main Menu/" + menuName;
                 if (!shortcutIds.Contains(shortcutId))
-                {
-                    shortcutId = "Main Menu/" + menuName;
-                    if (!shortcutIds.Contains(shortcutId))
-                        return menuName;
-                }
-                var shortcutBinding = ShortcutManager.instance.GetShortcutBinding(shortcutId);
-                if (!shortcutBinding.keyCombinationSequence.Any())
                     return menuName;
-
-                return $"{menuName} ({shortcutBinding.ToString()})";
             }
+            var shortcutBinding = ShortcutManager.instance.GetShortcutBinding(shortcutId);
+            if (!shortcutBinding.keyCombinationSequence.Any())
+                return menuName;
 
-            [UsedImplicitly, SearchActionsProvider]
-            internal static IEnumerable<SearchAction> ActionHandlers()
+            return $"{menuName} ({shortcutBinding})";
+        }
+
+        [UsedImplicitly, SearchActionsProvider]
+        internal static IEnumerable<SearchAction> ActionHandlers()
+        {
+            return new[]
             {
-                return new[]
+                new SearchAction("menu", "select", null, "Execute shortcut...")
                 {
-                    new SearchAction("menu", "exec", null, "Execute shortcut...")
+                    handler = (item, context) =>
                     {
-                        handler = (item, context) =>
-                        {
-                            var menuId = item.id;
-                            EditorApplication.delayCall += () => EditorApplication.ExecuteMenuItem(menuId);
-                        }
+                        var menuId = item.id;
+                        EditorApplication.delayCall += () => EditorApplication.ExecuteMenuItem(menuId);
                     }
-                };
-            }
+                }
+            };
+        }
 
-            [UsedImplicitly, Shortcut("Help/Quick Search/Menu", KeyCode.M, ShortcutModifiers.Alt | ShortcutModifiers.Shift)]
-            private static void OpenQuickSearch()
-            {
-                var qs = QuickSearch.OpenWithContextualProvider(type);
-                qs.itemIconSize = 0; // Open in list view by default.
-            }
+        [UsedImplicitly, Shortcut("Help/Quick Search/Menu", KeyCode.M, ShortcutModifiers.Alt | ShortcutModifiers.Shift)]
+        private static void OpenQuickSearch()
+        {
+            var qs = QuickSearch.OpenWithContextualProvider(type, Settings.type);
+            qs.itemIconSize = 1; // Open in list view by default.
+        }
 
-            private static void GetMenuInfo(List<string> outItemNames, List<string> outItemDefaultShortcuts)
-            {
-                Assembly assembly = typeof(Menu).Assembly;
-                var managerType = assembly.GetTypes().First(t => t.Name == "Menu");
-                var method = managerType.GetMethod("GetMenuItemDefaultShortcuts", BindingFlags.NonPublic | BindingFlags.Static);
-                var arguments = new object[] { outItemNames, outItemDefaultShortcuts };
-                method.Invoke(null, arguments);
-            }
+        private static void GetMenuInfo(List<string> outItemNames, List<string> outItemDefaultShortcuts)
+        {
+            var method = typeof(Menu).GetMethod("GetMenuItemDefaultShortcuts", BindingFlags.NonPublic | BindingFlags.Static);
+            var arguments = new object[] { outItemNames, outItemDefaultShortcuts };
+            method.Invoke(null, arguments);
         }
     }
 }

@@ -415,6 +415,8 @@ namespace Unity.QuickSearch
                         EditorGUIUtility.AddCursorRect(position, MouseCursor.Text);
 
                     string drawText = editor.IsEditingControl(id) ? editor.text : text;
+                    editor.position = position;
+                    editor.style = style;
                     editor.DrawCursor(drawText);
                     break;
             }

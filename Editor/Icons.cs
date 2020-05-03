@@ -25,7 +25,6 @@ namespace Unity.QuickSearch
         public static Texture2D logError = LoadIcon($"{iconFolder}/log_error.png");
         public static Texture2D packageInstalled = LoadIcon($"{iconFolder}/package_installed.png");
         public static Texture2D packageUpdate = LoadIcon($"{iconFolder}/package_update.png");
-        public static Texture2D loading = LoadIcon($"{iconFolder}/loading.png");
 
         static Icons()
         {

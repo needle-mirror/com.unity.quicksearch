@@ -1,8 +1,9 @@
+using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using JetBrains.Annotations;
-using Unity.QuickSearch.Providers;
 using UnityEditor;
 using UnityEngine;
 
@@ -11,116 +12,332 @@ namespace Unity.QuickSearch
     internal enum SearchAssetIndexing
     {
         NoIndexing,
-        Files,
-        Complete
+        BasicIndexing,
+        FullIndexing
+    }
+	
+	internal enum ProjectSize
+    {
+        Small,
+        Medium,
+        Large
+    }
+
+    internal class SearchProviderSettings : IDictionary
+    {
+        public bool active;
+        public int priority;
+        public string defaultAction;
+
+        public int Count => 3;
+        public ICollection Keys => new string[] { nameof(active), nameof(priority), nameof(defaultAction) };
+        public ICollection Values => new object[] { active, priority, defaultAction };
+
+        public SearchProviderSettings()
+        {
+            active = true;
+            priority = 0;
+            defaultAction = null;
+        }
+
+        public object this[object key] 
+        { 
+            get 
+            {
+                switch ((string)key)
+                {
+                    case nameof(active): return active;
+                    case nameof(priority): return priority;
+                    case nameof(defaultAction): return defaultAction;
+                }
+                return null;
+            }
+
+            set => throw new NotSupportedException();
+        }
+
+        public IDictionaryEnumerator GetEnumerator()
+        {
+            var d = new Dictionary<string, object>()
+            {
+                {nameof(active), active},
+                {nameof(priority), priority},
+                {nameof(defaultAction), defaultAction}
+            };
+            return d.GetEnumerator();
+        }
+
+        IEnumerator IEnumerable.GetEnumerator()
+        {
+            return GetEnumerator();
+        }
+
+        public bool IsFixedSize => true;
+        public bool IsReadOnly => true;
+        public bool IsSynchronized => true;
+        public object SyncRoot => this;
+
+        public void Add(object key, object value) { throw new NotSupportedException(); }
+        public void Clear() { throw new NotSupportedException(); }
+        public bool Contains(object key) { throw new NotSupportedException(); }
+        public void CopyTo(Array array, int index) { throw new NotSupportedException(); }
+        public void Remove(object key) { throw new NotSupportedException(); }
     }
 
     internal static class SearchSettings
     {
-        private const string k_KeyPrefix = SearchService.prefKey;
-        private const string k_RootIndexPath = "Assets/Assets.index";
+        internal const string k_RootIndexPath = "Assets/Assets.index";
+        private const string k_ProjectUserSettingsPath = "UserSettings/QuickSearch.settings";
 
         public const string settingsPreferencesKey = "Preferences/Quick Search";
         public const string defaultQueryFolder = "Assets/Editor/Queries";
-        public const string k_DefaultActionPrefKey = SearchService.prefKey + ".defaultactions.";
 
+        internal static string k_AssetIndexPath = $"{Utils.packageFolderName}/Templates/Assets.index.template";
+        
+        // Per project settings
         public static bool trackSelection { get; private set; }
         public static bool fetchPreview { get; private set; }
+        public static bool wantsMore { get; internal set; }
         public static string queryFolder { get; private set; }
         public static SearchAssetIndexing assetIndexing { get; internal set; }
         public static bool dockable { get; internal set; }
         public static bool debug { get; internal set; }
-        public static Dictionary<string, int> providerInitialPriorities { get; internal set; }
-
-        public static float itemIconSize
-        {
-            get
-            {
-                return EditorPrefs.GetFloat($"{k_KeyPrefix}.{nameof(itemIconSize)}", 0);
-            }
-            
-            set
-            {
-                EditorPrefs.SetFloat($"{k_KeyPrefix}.{nameof(itemIconSize)}", value);
-            }
-        }
+        public static float itemIconSize { get; internal set; }
+        public static bool onBoardingDoNotAskAgain { get; internal set; }
+        public static Dictionary<string, bool> filters { get; private set; }
+        public static Dictionary<string, string> scopes { get; private set; }
+        public static Dictionary<string, SearchProviderSettings> providers { get; private set; }
 
         static SearchSettings()
         {
-            providerInitialPriorities = new Dictionary<string, int>();
-            trackSelection = EditorPrefs.GetBool($"{k_KeyPrefix}.{nameof(trackSelection)}", true);
-            fetchPreview = EditorPrefs.GetBool($"{k_KeyPrefix}.{nameof(fetchPreview)}", true);
-            assetIndexing = (SearchAssetIndexing)EditorPrefs.GetInt($"{k_KeyPrefix}.{nameof(assetIndexing)}", (int)SearchAssetIndexing.Files);
-            dockable = EditorPrefs.GetBool($"{k_KeyPrefix}.{nameof(dockable)}", false);
-            debug = EditorPrefs.GetBool($"{k_KeyPrefix}.{nameof(debug)}", false);
-            queryFolder = EditorPrefs.GetString($"{k_KeyPrefix}.{nameof(queryFolder)}", defaultQueryFolder);
-            if (queryFolder != "Assets" && !queryFolder.StartsWith("Assets"))
-            {
-                queryFolder = defaultQueryFolder;
-            }
+            Load();
         }
 
-        private static void Save()
+        private static void Load()
         {
-            EditorPrefs.SetBool($"{k_KeyPrefix}.{nameof(trackSelection)}", trackSelection);
-            EditorPrefs.SetBool($"{k_KeyPrefix}.{nameof(fetchPreview)}", fetchPreview);
-            EditorPrefs.SetBool($"{k_KeyPrefix}.{nameof(dockable)}", dockable);
-            EditorPrefs.SetBool($"{k_KeyPrefix}.{nameof(debug)}", debug);
-            EditorPrefs.SetInt($"{k_KeyPrefix}.{nameof(assetIndexing)}", (int)assetIndexing);
-            EditorPrefs.SetString($"{k_KeyPrefix}.{nameof(queryFolder)}", queryFolder);
+            if (!File.Exists(k_ProjectUserSettingsPath))
+            {
+                if (!Directory.Exists("UserSettings/"))
+                    Directory.CreateDirectory("UserSettings/");
+                File.WriteAllText(k_ProjectUserSettingsPath, "{}");
+            }
+
+            var settings = (IDictionary)SJSON.Load(k_ProjectUserSettingsPath);
+            trackSelection = ReadSetting(settings, nameof(trackSelection), true);
+            fetchPreview = ReadSetting(settings, nameof(fetchPreview), true);
+            wantsMore = ReadSetting(settings, nameof(wantsMore), true);
+            dockable = ReadSetting(settings, nameof(dockable), false);
+            debug = ReadSetting(settings, nameof(debug), false);
+            itemIconSize = ReadSetting(settings, nameof(itemIconSize), 1.0f);
+            assetIndexing = (SearchAssetIndexing)ReadSetting(settings, nameof(assetIndexing), (int)SearchAssetIndexing.BasicIndexing);
+            queryFolder = ReadSetting(settings, nameof(queryFolder), defaultQueryFolder);
+            onBoardingDoNotAskAgain = ReadSetting(settings, nameof(onBoardingDoNotAskAgain), false);
+            filters = ReadProperties<bool>(settings, nameof(filters));
+            scopes = ReadProperties<string>(settings, nameof(scopes));
+            providers = ReadProviderSettings(settings, nameof(providers));
+        }
+
+        internal static void Save()
+        {
+            var settings = new Dictionary<string, object>
+            {
+                [nameof(trackSelection)] = trackSelection,
+                [nameof(fetchPreview)] = fetchPreview,
+                [nameof(wantsMore)] = wantsMore,
+                [nameof(dockable)] = dockable,
+                [nameof(debug)] = debug,
+                [nameof(itemIconSize)] = itemIconSize,
+                [nameof(assetIndexing)] = (int)assetIndexing,
+                [nameof(queryFolder)] = queryFolder,
+                [nameof(onBoardingDoNotAskAgain)] = onBoardingDoNotAskAgain,
+                [nameof(filters)] = filters,
+                [nameof(scopes)] = scopes,
+                [nameof(providers)] = providers
+            };
+
+            SJSON.Save(settings, k_ProjectUserSettingsPath);
+        }
+
+        internal static void SetScopeValue(string prefix, int hash, string value)
+        {
+            SearchSettings.scopes[$"{prefix}.{hash:X8}"] = value;
+        }
+
+        internal static string GetScopeValue(string prefix, int hash, string defaultValue)
+        {
+            if (scopes.TryGetValue($"{prefix}.{hash:X8}", out var value))
+                return value;
+            return defaultValue;
+        }
+
+        public static SearchFlags GetContextOptions()
+        {
+            SearchFlags options = SearchFlags.Default;
+            options &= ~SearchFlags.IndexingMask;
+            if (assetIndexing == SearchAssetIndexing.BasicIndexing)
+                options |= SearchFlags.BasicIndexing;
+            else if (assetIndexing == SearchAssetIndexing.FullIndexing)
+                options |= SearchFlags.FullIndexing;
+            if (wantsMore)
+                options |= SearchFlags.WantsMore;
+            return options;
+        }
+
+        public static SearchFlags ApplyContextOptions(SearchFlags options)
+        {
+            if ((options & SearchFlags.IndexingMask) == 0)
+            {
+                options &= ~SearchFlags.IndexingMask;
+                if (assetIndexing == SearchAssetIndexing.BasicIndexing)
+                    options |= SearchFlags.BasicIndexing;
+                else if (assetIndexing == SearchAssetIndexing.FullIndexing)
+                    options |= SearchFlags.FullIndexing;
+            }
+
+            if (wantsMore)
+                options |= SearchFlags.WantsMore;
+
+            return options;
+        }
+
+        public static void ApplyContextOptions(SearchContext context)
+        {
+            context.options = ApplyContextOptions(context.options);
         }
 
         [UsedImplicitly, SettingsProvider]
-        private static SettingsProvider CreateSearchSettings()
+        internal static SettingsProvider CreateSearchSettings()
         {
             var settings = new SettingsProvider(settingsPreferencesKey, SettingsScope.User)
             {
+                guiHandler = DrawSearchSettings,
                 keywords = new[] { "quick", "omni", "search" },
-                guiHandler = searchContext =>
-                {
-                    EditorGUIUtility.labelWidth = 350;
-                    GUILayout.BeginHorizontal();
-                    {
-                        GUILayout.Space(10);
-                        GUILayout.BeginVertical();
-                        {
-                            GUILayout.Space(10);
-                            EditorGUI.BeginChangeCheck();
-                            {
-                                if (Utils.IsDeveloperMode())
-                                {
-                                    debug = EditorGUILayout.Toggle(Styles.debugContent, debug);
-                                    dockable = EditorGUILayout.Toggle(Styles.dockableContent, dockable);
-                                }
-
-                                trackSelection = EditorGUILayout.Toggle(Styles.trackSelectionContent, trackSelection);
-                                fetchPreview = EditorGUILayout.Toggle(Styles.fetchPreviewContent, fetchPreview);
-                                GUILayout.BeginHorizontal();
-                                assetIndexing = (SearchAssetIndexing)EditorGUILayout.EnumPopup(Styles.assetIndexingLabel, assetIndexing, GUILayout.MaxWidth(450f));
-                                if (assetIndexing == SearchAssetIndexing.Complete && !File.Exists(k_RootIndexPath))
-                                {
-                                    GUILayout.Space(10);
-                                    if (GUILayout.Button(Styles.createRootIndexButtonContent, GUILayout.MaxWidth(100)))
-                                        CreateRootIndex();
-                                }
-                                GUILayout.EndHorizontal();
-
-                                DrawQueryFolder();
-
-                                GUILayout.Space(10);
-                                DrawProviderSettings();
-                            }
-                            if (EditorGUI.EndChangeCheck())
-                            {
-                                Save();
-                            }
-                        }
-                        GUILayout.EndVertical();
-                    }
-                    GUILayout.EndHorizontal();
-                }
             };
             return settings;
+        }
+
+        private static void DrawSearchSettings(string searchContext)
+        {
+            EditorGUIUtility.labelWidth = 350;
+            GUILayout.BeginHorizontal();
+            {
+                GUILayout.Space(10);
+                GUILayout.BeginVertical();
+                {
+                    GUILayout.Space(10);
+                    EditorGUI.BeginChangeCheck();
+                    {
+                        if (Utils.IsDeveloperMode() || debug)
+                        {
+                            debug = EditorGUILayout.Toggle(Styles.debugContent, debug);
+                        }
+
+                        dockable = EditorGUILayout.Toggle(Styles.dockableContent, dockable);
+                        trackSelection = EditorGUILayout.Toggle(Styles.trackSelectionContent, trackSelection);
+                        fetchPreview = EditorGUILayout.Toggle(Styles.fetchPreviewContent, fetchPreview);
+                        GUILayout.BeginHorizontal();
+                        assetIndexing = (SearchAssetIndexing)EditorGUILayout.EnumPopup(Styles.assetIndexingLabel, assetIndexing, GUILayout.MaxWidth(475f));
+                        if (assetIndexing == SearchAssetIndexing.FullIndexing)
+                        {
+                            if (!File.Exists(k_RootIndexPath))
+                            {
+                                GUILayout.Space(10);
+                                if (GUILayout.Button(Styles.createRootIndexButtonContent, GUILayout.MaxWidth(100)))
+                                    CreateRootIndex();
+                            }
+                            GUILayout.Space(10);
+                            if (GUILayout.Button(Styles.openIndexManagerButtonContent, GUILayout.MaxWidth(130)))
+                                IndexManager.OpenWindow();
+                        }
+                        GUILayout.EndHorizontal();
+
+                        DrawQueryFolder();
+
+                        GUILayout.Space(10);
+                        DrawProviderSettings();
+                    }
+                    if (EditorGUI.EndChangeCheck())
+                    {
+                        Save();
+                    }
+                }
+                GUILayout.EndVertical();
+            }
+            GUILayout.EndHorizontal();
+        }
+
+        private static T ReadSetting<T>(IDictionary settings, string key, T defaultValue = default)
+        {
+            try
+            {
+                if (SJSON.TryGetValue(settings, key, out var value))
+                    return (T)value;
+            }
+            catch (Exception)
+            {
+                // Any error will return the default value.
+            }
+
+            return defaultValue;
+        }
+
+        private static float ReadSetting(IDictionary settings, string key, float defaultValue = 0)
+        {
+            return (float)ReadSetting(settings, key, (double)defaultValue);
+        }
+
+        private static int ReadSetting(IDictionary settings, string key, int defaultValue = 0)
+        {
+            return (int)ReadSetting(settings, key, (double)defaultValue);
+        }
+
+        private static Dictionary<string, SearchProviderSettings> ReadProviderSettings(IDictionary settings, string fieldName)
+        {
+            var properties = new Dictionary<string, SearchProviderSettings>();
+            if (SJSON.TryGetValue(settings, fieldName, out var _data) && _data is IDictionary dataDict)
+            {
+                foreach (var p in dataDict)
+                {
+                    try
+                    {
+                        if (p is DictionaryEntry e && e.Value is IDictionary vdict)
+                        {
+                            properties[(string)e.Key] = new SearchProviderSettings()
+                            {
+                                active = Convert.ToBoolean(vdict[nameof(SearchProviderSettings.active)]),
+                                priority = (int)(double)vdict[nameof(SearchProviderSettings.priority)],
+                                defaultAction = vdict[nameof(SearchProviderSettings.defaultAction)] as string,
+                            };
+                        }
+                    }
+                    catch
+                    {
+                        // ignore copy
+                    }
+                }
+            }
+            return properties;
+        }
+
+        private static Dictionary<string, T> ReadProperties<T>(IDictionary settings, string fieldName)
+        {
+            var properties = new Dictionary<string, T>();
+            if (SJSON.TryGetValue(settings, fieldName, out var _data) && _data is IDictionary dataDict)
+            {
+                foreach (var p in dataDict)
+                {
+                    try
+                    {
+                        if (p is DictionaryEntry e)
+                            properties[(string)e.Key] = (T)e.Value;
+                    }
+                    catch
+                    {
+                        // ignore copy
+                    }
+                }
+            }
+            return properties;
         }
 
         private static void DrawQueryFolder()
@@ -158,10 +375,12 @@ namespace Unity.QuickSearch
                 GUILayout.BeginHorizontal();
                 GUILayout.Space(20);
 
+                var settings = GetProviderSettings(p.name.id);
+
                 var wasActive = p.active;
                 p.active = GUILayout.Toggle(wasActive, Styles.toggleActiveContent);
                 if (p.active != wasActive)
-                    EditorPrefs.SetBool($"{k_KeyPrefix}.{p.name.id}.active", p.active);
+                    settings.active = p.active;
 
                 using (new EditorGUI.DisabledGroupScope(!p.active))
                 {
@@ -209,15 +428,27 @@ namespace Unity.QuickSearch
             GUILayout.EndHorizontal();
         }
 
+        internal static SearchProviderSettings GetProviderSettings(string providerId)
+        {
+            if (TryGetProviderSettings(providerId, out var settings))
+                return settings;
+
+            var provider = SearchService.GetProvider(providerId);
+            if (provider == null)
+                return new SearchProviderSettings();
+
+            providers[providerId] = new SearchProviderSettings() { active = provider.active, priority = provider.priority, defaultAction = null };
+            return providers[providerId];
+        }
+
+        internal static bool TryGetProviderSettings(string providerId, out SearchProviderSettings settings)
+        {
+            return providers.TryGetValue(providerId, out settings);
+        }
+
         private static void ResetProviderSettings()
         {
-            foreach (var p in SearchService.Providers)
-            {
-                EditorPrefs.DeleteKey($"{k_KeyPrefix}.{p.name.id}.active");
-                EditorPrefs.DeleteKey($"{k_KeyPrefix}.{p.name.id}.priority");
-                EditorPrefs.DeleteKey($"{k_DefaultActionPrefKey}{p.name.id}");
-            }
-
+            providers.Clear();
             SearchService.Refresh();
         }
 
@@ -230,7 +461,7 @@ namespace Unity.QuickSearch
                 if (cp != provider)
                     continue;
 
-                var adj = sortedProviderList[i-1];
+                var adj = sortedProviderList[i - 1];
                 var temp = provider.priority;
                 if (cp.priority == adj.priority)
                     temp++;
@@ -238,8 +469,8 @@ namespace Unity.QuickSearch
                 provider.priority = adj.priority;
                 adj.priority = temp;
 
-                EditorPrefs.SetInt($"{k_KeyPrefix}.{adj.name.id}.priority", adj.priority);
-                EditorPrefs.SetInt($"{k_KeyPrefix}.{provider.name.id}.priority", provider.priority);
+                GetProviderSettings(adj.name.id).priority = adj.priority;
+                GetProviderSettings(provider.name.id).priority = provider.priority;
                 break;
             }
         }
@@ -247,13 +478,13 @@ namespace Unity.QuickSearch
         private static void UpperProviderPriority(SearchProvider provider)
         {
             var sortedProviderList = SearchService.Providers.Where(p => !p.isExplicitProvider).OrderBy(p => p.priority).ToList();
-            for (int i = 0, end = sortedProviderList.Count-1; i < end; ++i)
+            for (int i = 0, end = sortedProviderList.Count - 1; i < end; ++i)
             {
                 var cp = sortedProviderList[i];
                 if (cp != provider)
                     continue;
 
-                var adj = sortedProviderList[i+1];
+                var adj = sortedProviderList[i + 1];
                 var temp = provider.priority;
                 if (cp.priority == adj.priority)
                     temp--;
@@ -261,8 +492,8 @@ namespace Unity.QuickSearch
                 provider.priority = adj.priority;
                 adj.priority = temp;
 
-                EditorPrefs.SetInt($"{k_KeyPrefix}.{adj.name.id}.priority", adj.priority);
-                EditorPrefs.SetInt($"{k_KeyPrefix}.{provider.name.id}.priority", provider.priority);
+                GetProviderSettings(adj.name.id).priority = adj.priority;
+                GetProviderSettings(provider.name.id).priority = provider.priority;
                 break;
             }
         }
@@ -272,7 +503,7 @@ namespace Unity.QuickSearch
             if (string.IsNullOrEmpty(providerId) || string.IsNullOrEmpty(actionId))
                 return;
 
-            EditorPrefs.SetString(k_DefaultActionPrefKey + providerId, actionId);
+            GetProviderSettings(providerId).defaultAction = actionId;
             SortActionsPriority();
         }
 
@@ -287,7 +518,7 @@ namespace Unity.QuickSearch
             if (searchProvider.actions.Count == 1)
                 return;
 
-            var defaultActionId = EditorPrefs.GetString(k_DefaultActionPrefKey + searchProvider.name.id);
+            var defaultActionId = GetProviderSettings(searchProvider.name.id).defaultAction;
             if (string.IsNullOrEmpty(defaultActionId))
                 return;
             if (searchProvider.actions.Count == 0 || defaultActionId == searchProvider.actions[0].Id)
@@ -305,13 +536,19 @@ namespace Unity.QuickSearch
             });
         }
 
-        #if DEBUG_INDEXING
-        [MenuItem("Quick Search/Create Root Index")]
-        #endif
-        internal static void CreateRootIndex()
+        private static void CreateRootIndex()
         {
-            File.Copy($"{Utils.packageFolderName}/Templates/Assets.index.template", k_RootIndexPath);
+            File.Copy(k_AssetIndexPath, k_RootIndexPath);
             AssetDatabase.ImportAsset(k_RootIndexPath, ImportAssetOptions.ForceSynchronousImport);
+        }
+
+        internal static void SetSettingsFromProjectSize(bool newFetchPreview, bool newTrackSelection, bool newWantsMore, SearchAssetIndexing newAssetIndexing)
+        {
+            fetchPreview = newFetchPreview;
+            trackSelection = newTrackSelection;
+            wantsMore = newWantsMore;
+            assetIndexing = newAssetIndexing;
+            Save();
         }
 
         static class Styles
@@ -335,7 +572,7 @@ namespace Unity.QuickSearch
             public static GUIStyle textFiedl = new GUIStyle(EditorStyles.textField);
 
             public static GUIContent toggleActiveContent = new GUIContent("", "Enable or disable this provider. Disabled search provider will be completely ignored by the search service.");
-            public static GUIContent resetDefaultsContent = new GUIContent("Reset All Providers Defaults", "All search providers will restore their initial preferences (priority, active, default action)");
+            public static GUIContent resetDefaultsContent = new GUIContent("Reset Providers Settings", "All search providers will restore their initial preferences (priority, active, default action)");
             public static GUIContent increasePriorityContent = new GUIContent("\u2191", "Increase the provider's priority");
             public static GUIContent decreasePriorityContent = new GUIContent("\u2193", "Decrease the provider's priority");
 
@@ -352,10 +589,11 @@ namespace Unity.QuickSearch
             public static GUIContent fetchPreviewContent = new GUIContent(
                 "Generate an asset preview thumbnail for found items",
                 "Fetching the preview of the items can consume more memory and make searches within very large project slower.");
-            public static GUIContent dockableContent = new GUIContent("[DEV] Open Quick Search as dockable windows", "Allow Quick Search window to be dockable.");
+            public static GUIContent dockableContent = new GUIContent("Open Quick Search as dockable window");
             public static GUIContent debugContent = new GUIContent("[DEV] Display additional debugging information");
             public static GUIContent assetIndexingLabel = new GUIContent("Asset indexing mode","");
             public static GUIContent createRootIndexButtonContent = new GUIContent("Create index");
+            public static GUIContent openIndexManagerButtonContent = new GUIContent("Index Manager");
         }
     }
 }

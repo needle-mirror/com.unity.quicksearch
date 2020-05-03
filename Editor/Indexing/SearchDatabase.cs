@@ -11,19 +11,28 @@ using System.Linq;
 using UnityEditor;
 using UnityEngine;
 
-namespace Unity.QuickSearch.Providers
+namespace Unity.QuickSearch
 {
     class SearchDatabase : ScriptableObject
     {
         // 1- First version
         // 2- Rename ADBIndex for SearchDatabase
         // 3- Add db name and type
-        public const int version = (3 << 8) ^ SearchIndexEntry.version;
+        // 4- Add better ref: property indexing
+        public const int version = (4 << 8) ^ SearchIndexEntry.version;
+
+        public enum IndexType
+        {
+            asset,
+            scene,
+            prefab
+        }
 
         [Serializable]
         public class Options
         {
-            // Used for asset
+            public bool disabled = false;           // Disables the index
+
             public bool files = true;               // Index file paths
             public bool directories = true;         // Index folder paths
             public bool fstats = true;              // Index file statistics
@@ -37,9 +46,8 @@ namespace Unity.QuickSearch.Providers
         [Serializable]
         public class Settings
         {
-            public bool disabled;
             public string name;
-            public string type = "asset";
+            public string type = nameof(IndexType.asset);
             public string path;
             public string[] roots;
             public string[] includes;
@@ -57,11 +65,13 @@ namespace Unity.QuickSearch.Providers
         internal static Dictionary<string, Type> indexerFactory = new Dictionary<string, Type>();
         internal static Dictionary<string, byte[]> incrementalIndexCache = new Dictionary<string, byte[]>();
 
+        internal static event Action<SearchDatabase> indexLoaded;
+
         static SearchDatabase()
         {
-            indexerFactory["asset"] = typeof(AssetIndexer);
-            indexerFactory["scene"] = typeof(SceneIndexer);
-            indexerFactory["prefab"] = typeof(SceneIndexer);
+            indexerFactory[nameof(IndexType.asset)] = typeof(AssetIndexer);
+            indexerFactory[nameof(IndexType.scene)] = typeof(SceneIndexer);
+            indexerFactory[nameof(IndexType.prefab)] = typeof(SceneIndexer);
         }
 
         [System.Diagnostics.Conditional("DEBUG_INDEXING")]
@@ -102,21 +112,22 @@ namespace Unity.QuickSearch.Providers
         private void Load()
         {
             Log("Load");
-            if (index.LoadBytes(bytes))
-                Setup();
+            index.LoadBytes(bytes, (success) => Setup());
         }
 
         private void Setup()
         {
             Log("Setup");
+            AssetPostprocessorIndexer.contentRefreshed -= OnContentRefreshed;
             AssetPostprocessorIndexer.contentRefreshed += OnContentRefreshed;
+            SendIndexLoaded(this);
         }
 
         private void OnContentRefreshed(string[] updated, string[] removed, string[] moved)
         {
-            if (!this || settings.disabled)
+            if (!this || settings.options.disabled)
                 return;
-            var changeset = new AssetIndexChangeSet(updated, removed, moved, p => !index.SkipEntry(p, true));
+            var changeset = new AssetIndexChangeSet(updated, removed, moved, p => HasDocumentChanged(p));
             if (!changeset.empty)
             {
                 Log("OnContentRefreshed", changeset.all.ToArray());
@@ -131,9 +142,23 @@ namespace Unity.QuickSearch.Providers
             }
         }
 
+        private bool HasDocumentChanged(string path)
+        {
+            if (index.SkipEntry(path, true))
+                return false;
+
+            if (!index.TryGetHash(path, out var hash))
+                return true;
+
+            if (hash != index.GetDcoumentHash(path))
+                return true;
+
+            return false;
+        }
+
         internal void IncrementalUpdate()
         {
-            var changeset = AssetPostprocessorIndexer.GetDiff(p => !index.SkipEntry(p, true));
+            var changeset = AssetPostprocessorIndexer.GetDiff(p => HasDocumentChanged(p));
             if (!changeset.empty)
             {
                 Log($"IncrementalUpdate", changeset.all.ToArray());
@@ -169,29 +194,32 @@ namespace Unity.QuickSearch.Providers
                 yield return null;
             }
 
-            index.Finish(() =>
+            index.Finish((bytes) =>
             {
                 if (!this)
                     return;
-
-                bytes = index.SaveBytes();
-                EditorUtility.SetDirty(this);
 
                 var sourceAssetPath = AssetDatabase.GetAssetPath(this);
                 if (!String.IsNullOrEmpty(sourceAssetPath))
                 {
                     // Kick in an incremental import.
                     incrementalIndexCache[sourceAssetPath] = bytes;
-                    AssetDatabase.ImportAsset(sourceAssetPath, ImportAssetOptions.Default);
+                    AssetDatabase.ImportAsset(sourceAssetPath, ImportAssetOptions.DontDownloadFromCacheServer);
                 }
-            }, set.removed);
+            }, set.removed, saveBytes: true);
+        }
+
+        internal static void SendIndexLoaded(SearchDatabase sb)
+        {
+            indexLoaded?.Invoke(sb);
         }
 
         public static IEnumerable<SearchDatabase> Enumerate(params string[] types)
         {
-            return AssetDatabase.FindAssets($"t:{nameof(SearchDatabase)} a:all").Select(AssetDatabase.GUIDToAssetPath)
+            const string k_SearchDataFindAssetQuery = "t:SearchDatabase a:all";
+            return AssetDatabase.FindAssets(k_SearchDataFindAssetQuery).Select(AssetDatabase.GUIDToAssetPath)
                 .Select(path => AssetDatabase.LoadAssetAtPath<SearchDatabase>(path))
-                .Where(db => db != null && db.index != null && !db.settings.disabled && (types.Length == 0 || types.Contains(db.settings.type)))
+                .Where(db => db != null && !db.settings.options.disabled && (types.Length == 0 || types.Contains(db.settings.type)))
                 .Select(db => { db.Log("Enumerate"); return db; });
         }
 

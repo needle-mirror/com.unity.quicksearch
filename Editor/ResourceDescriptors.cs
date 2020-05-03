@@ -88,7 +88,7 @@ namespace Unity.QuickSearch
         public override Texture2D GetPreview(Object obj, int width, int height)
         {
             var path = AssetDatabase.GetAssetOrScenePath(obj);
-            return Utils.GetAssetPreviewFromPath(path, new Vector2(width, height), FetchPreviewOptions.Preview2D);
+            return Utils.GetAssetPreviewFromPath(path, FetchPreviewOptions.Preview2D);
         }
 
         public override void TrackSelection(Object obj)
@@ -166,7 +166,7 @@ namespace Unity.QuickSearch
             var assetPath = SearchUtils.GetHierarchyAssetPath(obj as GameObject, true);
             if (String.IsNullOrEmpty(assetPath))
                 return Utils.GetThumbnailForGameObject(obj as GameObject);
-            return AssetPreview.GetAssetPreview(obj) ?? Utils.GetAssetPreviewFromPath(assetPath, new Vector2(64, 64), FetchPreviewOptions.Preview2D);
+            return AssetPreview.GetAssetPreview(obj) ?? Utils.GetAssetPreviewFromPath(assetPath, FetchPreviewOptions.Preview2D);
         }
 
         public override void TrackSelection(Object obj)

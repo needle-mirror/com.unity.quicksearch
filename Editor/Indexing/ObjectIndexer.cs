@@ -4,16 +4,45 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using UnityEditor;
+using UnityEngine;
 using Object = UnityEngine.Object;
 
-namespace Unity.QuickSearch.Providers
+namespace Unity.QuickSearch
 {
-    abstract class ObjectIndexer : SearchIndexer
+    internal enum FilePattern
+    {
+        Extension,
+        Folder,
+        File
+    }
+
+    public struct CustomObjectIndexerTarget
+    {
+        public Object target;
+        public SerializedObject serializedObject;
+        public string id;
+        public int documentIndex;
+        public Type targetType;
+    }
+
+    [AttributeUsage(AttributeTargets.Method)]
+    public class CustomObjectIndexerAttribute : Attribute
+    {
+        public Type type { get; }
+
+        public CustomObjectIndexerAttribute(Type type)
+        {
+            this.type = type;
+        }
+    }
+
+    public abstract class ObjectIndexer : SearchIndexer
     {
         private static readonly string[] k_FieldNamesNoKeywords = {"name", "text"};
 
-        public SearchDatabase.Settings settings { get; private set; }
+        internal SearchDatabase.Settings settings { get; private set; }
 
         #if DEBUG_INDEXING
         private readonly Dictionary<string, HashSet<string>> m_DebugStringTable = new Dictionary<string, HashSet<string>>();
@@ -21,21 +50,23 @@ namespace Unity.QuickSearch.Providers
 
         private readonly QueryEngine<SearchResult> m_QueryEngine = new QueryEngine<SearchResult>(validateFilters: false);
         private readonly Dictionary<string, Query<SearchResult, object>> m_QueryPool = new Dictionary<string, Query<SearchResult, object>>();
+        private readonly Dictionary<Type, List<Action<CustomObjectIndexerTarget, ObjectIndexer>>> m_CustomObjectIndexers = new Dictionary<Type, List<Action<CustomObjectIndexerTarget, ObjectIndexer>>>();
 
         public event Action<int, string, float, bool> reportProgress;
 
-        public ObjectIndexer(string rootName, SearchDatabase.Settings settings)
+        internal ObjectIndexer(string rootName, SearchDatabase.Settings settings)
             : base(rootName)
         {
             this.name = settings?.name ?? name;
             this.settings = settings;
 
             m_QueryEngine.SetSearchDataCallback(e => null);
+            LoadCustomObjectIndexers();
         }
 
         public override IEnumerable<SearchResult> Search(string searchQuery, int maxScore = int.MaxValue, int patternMatchLimit = 2999)
         {
-            if (settings.disabled)
+            if (settings.options.disabled)
                 return Enumerable.Empty<SearchResult>();
 
             var query = BuildQuery(searchQuery, maxScore, patternMatchLimit);
@@ -47,7 +78,6 @@ namespace Unity.QuickSearch.Providers
             #endif
             {
                 return query.Apply(null).OrderBy(e => e.score).Distinct();
-                
             }
         }
 
@@ -63,9 +93,9 @@ namespace Unity.QuickSearch.Providers
 
         public override bool SkipEntry(string path, bool checkRoots = false)
         {
-            if (checkRoots && settings.roots != null && settings.roots.Length > 0)
+            if (checkRoots)
             {
-                if (!settings.roots.Any(r => path.StartsWith(r, StringComparison.OrdinalIgnoreCase)))
+                if (!GetRoots().Any(r => path.StartsWith(r, StringComparison.OrdinalIgnoreCase)))
                     return true;
             }
 
@@ -92,7 +122,9 @@ namespace Unity.QuickSearch.Providers
             return false;
         }
 
+        public abstract IEnumerable<string> GetRoots();
         public abstract List<string> GetDependencies();
+        public abstract Hash128 GetDcoumentHash(string id);
 
         public abstract override void IndexDocument(string id, bool checkIfDocumentExists);
 
@@ -140,14 +172,27 @@ namespace Unity.QuickSearch.Providers
             return query;
         }
 
+        internal static FilePattern GetFilePattern(string pattern)
+        {
+            if (!string.IsNullOrEmpty(pattern))
+            {
+                if (pattern[0] == '.')
+                    return FilePattern.Extension;
+                if (pattern[pattern.Length - 1] == '/')
+                    return FilePattern.Folder;
+            }
+            return FilePattern.File;
+        }
+
         private bool PatternChecks(string pattern, string ext, string dir, string fileName)
         {
+            var filePattern = GetFilePattern(pattern);
             // Extension check
-            if (pattern[0] == '.' && ext.Equals(pattern, StringComparison.OrdinalIgnoreCase))
+            if (filePattern == FilePattern.Extension && ext.Equals(pattern, StringComparison.OrdinalIgnoreCase))
                 return true;
 
             // Folder check
-            if (pattern[pattern.Length - 1] == '/')
+            if (filePattern == FilePattern.Folder)
             {
                 var icDir = pattern.Substring(0, pattern.Length - 1);
                 if (dir.IndexOf(icDir, StringComparison.OrdinalIgnoreCase) != -1)
@@ -155,7 +200,7 @@ namespace Unity.QuickSearch.Providers
             }
 
             // File name check
-            if (fileName.IndexOf(pattern, StringComparison.OrdinalIgnoreCase) != -1)
+            if (filePattern == FilePattern.File && fileName.IndexOf(pattern, StringComparison.OrdinalIgnoreCase) != -1)
                 return true;
 
             return false;
@@ -166,13 +211,13 @@ namespace Unity.QuickSearch.Providers
             return getEntryComponentsHandler(id, documentIndex).Where(c => c.Length > 0).ToArray();
         }
 
-        protected void IndexWordComponents(string id, int documentIndex, string word)
+        public void IndexWordComponents(string id, int documentIndex, string word)
         {
             foreach (var c in GetComponents(word, documentIndex))
                 IndexWord(id, c, documentIndex);
         }
 
-        protected void IndexPropertyComponents(string id, int documentIndex, string name, string value)
+        public void IndexPropertyComponents(string id, int documentIndex, string name, string value)
         {
             foreach (var c in GetComponents(value, documentIndex))
                 IndexProperty(id, name, c, documentIndex, saveKeyword: false);
@@ -200,7 +245,7 @@ namespace Unity.QuickSearch.Providers
             #endif
         }
 
-        protected void IndexWord(string id, string word, int documentIndex, int maxVariations, bool exact)
+        public void IndexWord(string id, string word, int documentIndex, int maxVariations, bool exact)
         {
             IndexDebugMatch(id, word);
             AddWord(word.ToLowerInvariant(), 2, maxVariations, settings.baseScore, documentIndex);
@@ -208,17 +253,17 @@ namespace Unity.QuickSearch.Providers
                 AddExactWord(word.ToLowerInvariant(), settings.baseScore-1, documentIndex);
         }
 
-        protected void IndexWord(string id, string word, int documentIndex, bool exact = false)
+        public void IndexWord(string id, string word, int documentIndex, bool exact = false)
         {
             IndexWord(id, word, documentIndex, word.Length, exact);
         }
 
-        protected void IndexProperty(string id, string name, string value, int documentIndex, bool saveKeyword)
+        public void IndexProperty(string id, string name, string value, int documentIndex, bool saveKeyword)
         {
             IndexProperty(id, name, value, documentIndex, saveKeyword, false);
         }
 
-        protected void IndexProperty(string id, string name, string value, int documentIndex, bool saveKeyword, bool exact)
+        public void IndexProperty(string id, string name, string value, int documentIndex, bool saveKeyword, bool exact)
         {
             if (String.IsNullOrEmpty(value))
                 return;
@@ -229,7 +274,7 @@ namespace Unity.QuickSearch.Providers
                 AddProperty(name, value.ToLowerInvariant(), settings.baseScore, documentIndex, saveKeyword);
         }
 
-        protected void IndexNumber(string id, string name, double number, int documentIndex)
+        public void IndexNumber(string id, string name, double number, int documentIndex)
         {
             IndexDebugMatch(id, name, number.ToString());
             AddNumber(name, number, settings.baseScore, documentIndex);
@@ -341,9 +386,140 @@ namespace Unity.QuickSearch.Providers
 
                         IndexDebugMatch(id, fcc, fieldValue.ToString());
                     }
-                    next = p.Next(false);
+
+                    AddReference(id, p, documentIndex);
+
+                    next = p.Next(p.hasVisibleChildren);
                 }
             }
+        }
+
+        private void AddReference(string id, SerializedProperty p, int documentIndex)
+        {
+            if (p.propertyType != SerializedPropertyType.ObjectReference || !p.objectReferenceValue)
+                return;
+
+            var refValue = AssetDatabase.GetAssetPath(p.objectReferenceValue);
+            if (!String.IsNullOrEmpty(refValue))
+            {
+                refValue = refValue.ToLowerInvariant();
+                IndexProperty(id, "ref", refValue, documentIndex, saveKeyword: false);
+                IndexProperty(id, "ref", Path.GetFileName(refValue), documentIndex, saveKeyword: false);
+            }
+        }
+
+        private void LoadCustomObjectIndexers()
+        {
+            var customIndexerMethodInfos = Utils.GetAllMethodsWithAttribute<CustomObjectIndexerAttribute>();
+            foreach (var customIndexerMethodInfo in customIndexerMethodInfos)
+            {
+                var customIndexerAttribute = customIndexerMethodInfo.GetCustomAttribute<CustomObjectIndexerAttribute>();
+                var indexerType = customIndexerAttribute.type;
+                if (indexerType == null)
+                    continue;
+
+                if (!ValidateCustomIndexerMethodSignature(customIndexerMethodInfo))
+                    continue;
+
+                var customIndexerAction = Delegate.CreateDelegate(typeof(Action<CustomObjectIndexerTarget, ObjectIndexer>), customIndexerMethodInfo) as Action<CustomObjectIndexerTarget, ObjectIndexer>;
+                if (customIndexerAction == null)
+                    continue;
+
+                if (!m_CustomObjectIndexers.TryGetValue(indexerType, out var indexerList))
+                {
+                    indexerList = new List<Action<CustomObjectIndexerTarget, ObjectIndexer>>();
+                    m_CustomObjectIndexers.Add(indexerType, indexerList);
+                }
+                indexerList.Add(customIndexerAction);
+            }
+        }
+
+        private static bool ValidateCustomIndexerMethodSignature(MethodInfo methodInfo)
+        {
+            if (methodInfo == null)
+                return false;
+
+            if (methodInfo.ReturnType != typeof(void))
+            {
+                Debug.LogFormat(LogType.Warning, LogOption.NoStacktrace, null, $"Method \"{methodInfo.Name}\" must return void.");
+                return false;
+            }
+
+            var paramTypes = new[] { typeof(CustomObjectIndexerTarget), typeof(ObjectIndexer) };
+            var parameterInfos = methodInfo.GetParameters();
+            if (parameterInfos.Length != paramTypes.Length)
+            {
+                Debug.LogFormat(LogType.Warning, LogOption.NoStacktrace, null, $"Method \"{methodInfo.Name}\" must have {paramTypes.Length} parameter{(paramTypes.Length > 1 ? "s" : "")}.");
+                return false;
+            }
+
+            for (var i = 0; i < paramTypes.Length; ++i)
+            {
+                if (parameterInfos[i].ParameterType != paramTypes[i])
+                {
+                    Debug.LogFormat(LogType.Warning, LogOption.NoStacktrace, null, $"The parameter \"{parameterInfos[i].Name}\" of method \"{methodInfo.Name}\" must be of type \"{paramTypes[i]}\".");
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        protected void IndexCustomProperties(string id, int documentIndex, Object obj)
+        {
+            using (var so = new SerializedObject(obj))
+            {
+                CallCustomIndexers(id, obj, documentIndex, so);
+            }
+        }
+
+        protected void CallCustomIndexers(string id, Object obj, int documentIndex, SerializedObject so, bool multiLevel = true)
+        {
+            var objectType = obj.GetType();
+            List<Action<CustomObjectIndexerTarget, ObjectIndexer>> customIndexers;
+            if (!multiLevel)
+            {
+                if (!m_CustomObjectIndexers.TryGetValue(objectType, out customIndexers))
+                    return;
+            }
+            else
+            {
+                customIndexers = new List<Action<CustomObjectIndexerTarget, ObjectIndexer>>();
+                var indexerTypes = m_CustomObjectIndexers.Keys;
+                foreach (var indexerType in indexerTypes)
+                {
+                    if (indexerType.IsAssignableFrom(objectType))
+                        customIndexers.AddRange(m_CustomObjectIndexers[indexerType]);
+                }
+            }
+
+            var indexerTarget = new CustomObjectIndexerTarget
+            {
+                id = id,
+                documentIndex = documentIndex,
+                target = obj,
+                serializedObject = so,
+                targetType = objectType
+            };
+
+            foreach (var customIndexer in customIndexers)
+            {
+                customIndexer(indexerTarget, this);
+            }
+        }
+
+        internal bool HasCustomIndexers(Type type, bool multiLevel = true)
+        {
+            if (!multiLevel)
+                return m_CustomObjectIndexers.ContainsKey(type);
+
+            var indexerTypes = m_CustomObjectIndexers.Keys;
+            foreach (var indexerType in indexerTypes)
+            {
+                if (indexerType.IsAssignableFrom(type))
+                    return true;
+            }
+            return false;
         }
     }
 }

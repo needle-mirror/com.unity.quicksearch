@@ -4,7 +4,7 @@ using System.Linq;
 using JetBrains.Annotations;
 using UnityEditor;
 
-namespace Unity.QuickSearch.Providers
+namespace Unity.QuickSearch
 {
     readonly struct AssetIndexChangeSet
     {
@@ -25,7 +25,7 @@ namespace Unity.QuickSearch.Providers
     {
         private static bool s_Enabled;
         private static double s_BatchStartTime;
-        
+
         private static HashSet<string> s_UpdatedItems = new HashSet<string>();
         private static HashSet<string> s_RemovedItems = new HashSet<string>();
         private static HashSet<string> s_MovedItems = new HashSet<string>();

@@ -12,40 +12,28 @@ namespace Unity.QuickSearch
     /// Asset storing a query that will be executable by a SearchEngine.
     /// </summary>
     [Serializable]
-    [CreateAssetMenu(menuName = "Search Query", order = 201)]
-    public class SearchQuery : ScriptableObject
+    class SearchQuery : ScriptableObject
     {
-        static List<SearchItem> s_SearchQueryItems;
+        static List<SearchQuery> s_SavedQueries;
 
-        public SearchQuery()
+        public static SearchQuery Create(SearchContext context, string description = null, Texture2D icon = null)
         {
+            return Create(context.searchText, context.providers.Select(p => p.name.id), description, icon);
         }
 
-        public static SearchQuery Create(SearchContext context, string title = null, string description = null, Texture2D icon = null)
-        {
-            return Create(context.searchText, context.providers.Select(p => p.name.id), title, description, icon);
-        }
-
-        public static SearchQuery Create(string searchQuery, IEnumerable<string> providerIds, string title = null, string description = null, Texture2D icon = null)
+        public static SearchQuery Create(string searchQuery, IEnumerable<string> providerIds, string description = null, Texture2D icon = null)
         {
             var queryAsset = CreateInstance<SearchQuery>();
             queryAsset.searchQuery = searchQuery;
             queryAsset.providerIds = providerIds.ToList();
-            queryAsset.title = title;
             queryAsset.description = description;
             queryAsset.icon = icon;
             return queryAsset;
         }
 
-        public static SearchQuery Create(string searchQuery, IEnumerable<SearchProvider> providers, string title = null, string description = null, Texture2D icon = null)
+        public static SearchQuery Create(string searchQuery, IEnumerable<SearchProvider> providers, string description = null, Texture2D icon = null)
         {
-            return Create(searchQuery, providers.Select(p => p.name.id), title, description, icon);
-        }
-
-        public SearchContext CreateContext()
-        {
-            var context = new SearchContext(providers, searchQuery);
-            return context;
+            return Create(searchQuery, providers.Select(p => p.name.id), description, icon);
         }
 
         public static void SaveQueryInDefaultFolder(SearchQuery asset)
@@ -67,7 +55,7 @@ namespace Unity.QuickSearch
 
             if (name == null)
             {
-                name = RemoveInvalidChars(asset.title ?? asset.searchQuery.Replace(":", "_").Replace(" ", "_"));
+                name = RemoveInvalidChars(asset.searchQuery.Replace(":", "_").Replace(" ", "_"));
             }
 
             name += ".asset";
@@ -76,30 +64,32 @@ namespace Unity.QuickSearch
             AssetDatabase.ImportAsset(fullPath);
         }
 
-        public static IEnumerable<SearchQuery> GetAllQueries()
+        public static List<SearchQuery> GetAllQueries()
         {
-            return AssetDatabase.FindAssets($"t:{nameof(SearchQuery)}")
-                .Select(guid => AssetDatabase.LoadAssetAtPath<SearchQuery>(AssetDatabase.GUIDToAssetPath(guid)))
-                .Where(asset => asset != null);
+            return AssetDatabase.FindAssets($"t:{nameof(SearchQuery)}").Select(AssetDatabase.GUIDToAssetPath)
+                .Select(path => AssetDatabase.LoadAssetAtPath<SearchQuery>(path))
+                .Where(asset => asset != null)
+                .OrderBy(asset => asset.name).ToList();
         }
 
-        public static List<SearchItem> GetAllSearchQueryItems()
+        public static List<SearchItem> GetAllSearchQueryItems(SearchContext context = null)
         {
+            s_SavedQueries = s_SavedQueries ?? GetAllQueries();
             var queryProvider = SearchService.GetProvider(Providers.Query.type);
-            return s_SearchQueryItems ?? (s_SearchQueryItems = SearchQuery.GetAllQueries().Select(query =>
+            return s_SavedQueries.Where(query => query && context == null || query.providerIds.Any(id => context.providers.Any(p => p.name.id == id))).Select(query =>
             {
                 var item = queryProvider.CreateItem(AssetDatabase.GetAssetPath(query.GetInstanceID()));
-                item.label = string.IsNullOrEmpty(query.title) ? query.name : query.title;
+                item.label = query.name;
                 item.thumbnail = query.icon ? query.icon : Icons.favorite;
                 item.description = string.IsNullOrEmpty(query.description) ? $"{query.searchQuery} - {AssetDatabase.GetAssetPath(query)}" : query.description;
                 item.data = query;
                 return item;
-            }).ToList());
+            }).ToList();
         }
 
         public static void ResetSearchQueryItems()
         {
-            s_SearchQueryItems = null;
+            s_SavedQueries = null;
         }
 
         [OnOpenAsset]
@@ -110,7 +100,8 @@ namespace Unity.QuickSearch
             {
                 var qsWindow = QuickSearch.Create();
                 ExecuteQuery(qsWindow, query);
-                qsWindow.ShowWindow();
+                qsWindow.ShowWindow(dockable: SearchSettings.dockable);
+                return true;
             }
 
             return false;
@@ -122,19 +113,10 @@ namespace Unity.QuickSearch
             view.SetSearchText(query.searchQuery);
         }
 
-        public string title;
         public string description;
         public Texture2D icon;
         public string searchQuery;
         public List<string> providerIds;
-
-        public IEnumerable<SearchProvider> providers
-        {
-            get
-            {
-                return providerIds.Select(SearchService.GetProvider).Where(p => p != null  && p.active);
-            }
-        }
     }
 }
 

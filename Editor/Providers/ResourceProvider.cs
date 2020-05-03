@@ -89,14 +89,17 @@ namespace Unity.QuickSearch.Providers
 
         static void OnEnable()
         {
-            s_QueryEngine = new QueryEngine<Object>();
-
-            foreach (var matchOperation in k_SubMatches)
+            if (s_QueryEngine == null)
             {
-                AddFilter(matchOperation);
-            }
+                s_QueryEngine = new QueryEngine<Object>();
 
-            s_QueryEngine.SetSearchDataCallback(DefaultSearchDataCallback);
+                foreach (var matchOperation in k_SubMatches)
+                {
+                    AddFilter(matchOperation);
+                }
+
+                s_QueryEngine.SetSearchDataCallback(DefaultSearchDataCallback);
+            }
         }
 
         static void AddFilter(IMatchOperation matchOperation)
@@ -175,7 +178,10 @@ namespace Unity.QuickSearch.Providers
 
         private static void DragItem(SearchItem item, SearchContext context)
         {
-            Utils.StartDrag(context.selection.Select(i => GetItemObject(i)).ToArray(), item.label);
+            if (context.selection.Count > 1)
+                Utils.StartDrag(context.selection.Select(i => GetItemObject(i)).ToArray(), item.label);
+            else
+                Utils.StartDrag(new [] { GetItemObject(item) }, item.label);
         }
 
         private static string FetchDescription(SearchItem item, SearchContext context)

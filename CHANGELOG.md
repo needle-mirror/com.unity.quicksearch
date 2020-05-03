@@ -1,6 +1,22 @@
 # Changelog
 
-## [1.6.0-preview.6] - 2020-04-03
+## [1.6.0-preview.7] - 2020-05-04
+- [UX] Save Quick Search settings per project instead of globally for all projects.
+- [UX] Improve the saved search query workflow (less field to fulfill).
+- [UX] Add the total asynchronous time a query took for all provider sessions in the Quick Search status bar.
+- [UX] Add more error reporting for invalid queries with the `QueryEngine`.
+- [UX] Add index manager to manage your project asset, prefab and scene indexes.
+- [UX] Add a search expression builder to create complex queries.
+- [UX] Add a compact list view.
+- [UX] Add "Show all results..." checkbox to run per search provider more queries to find even more results. In example for the AssetProvider, if this is checked we try to find more assets by using AssetDatabase.FindAssets. This can be unchecked in large project where the asset database can be very slow.
+- [FIX] Optimize the search menu and scene providers (about 4-5x faster).
+- [FIX] Fix the search field initial styling and position when opening Quick Search.
+- [API] Add support for spaces inside nested queries.
+- [API] Add support for nested queries with the `QueryEngine`.
+- [API] Add support for a search word transformer with the `QueryEngine`.
+- [API] Add a websocket client called SearchChannel to do search from a web application (20.3 or 21.1 required).
+
+## [1.6.0-preview.6] - 2020-04-09
 - [UX] Remove support for 2018.4.
 - [UX] Remove search provider sub categories. It simplifies the search view filter window.
 - [UX] Change Reset priorities button in Preferences to Reset to providers Defaults (which reset priority, active and default actions).
@@ -37,6 +53,7 @@
 - [API] Add the ability for the QueryEngine to skip unknown filters in a query.
 - [API] Add support to remove filters on the `QueryEngine`.
 - [API] Add support to override the string comparison options for word/phrase matching with the `QueryEngine`.
+- [API] Add support for custom object indexers.
 - [API] Add support for concurrent calls to the SearchApi engines with different SearchApi contexts.
 
 ## [1.5.3] - 2020-02-23

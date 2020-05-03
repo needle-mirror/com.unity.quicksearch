@@ -29,7 +29,7 @@ namespace Unity.QuickSearch.Providers
     public class SceneQueryEngineParameterTransformerAttribute : QueryEngineParameterTransformerAttribute { }
 
     [UsedImplicitly]
-    public class SceneQueryEngine
+    class SceneQueryEngine
     {
         private readonly GameObject[] m_GameObjects;
         private readonly Dictionary<int, GOD> m_GODS = new Dictionary<int, GOD>();
@@ -67,6 +67,7 @@ namespace Unity.QuickSearch.Providers
             public string tag;
             public string[] types;
             public string[] words;
+            public string[] refs;
 
             public int? layer;
             public float size = float.MaxValue;
@@ -131,6 +132,7 @@ namespace Unity.QuickSearch.Providers
             m_QueryEngine.AddFilter("size", GetSize);
             m_QueryEngine.AddFilter<string>("is", OnIsFilter, new []{":"});
             m_QueryEngine.AddFilter<string>("t", OnTypeFilter, new []{"=", ":"});
+            m_QueryEngine.AddFilter<string>("ref", GetReferences, new []{"=", ":"});
 
             m_QueryEngine.AddFilter("p", OnPropertyFilter, s => s, StringComparison.OrdinalIgnoreCase);
 
@@ -177,8 +179,7 @@ namespace Unity.QuickSearch.Providers
                 return ParseResult<PropertyRange>.none;
             });
 
-            m_QueryEngine.SetSearchDataCallback(OnSearchData, StringComparison.OrdinalIgnoreCase);
-
+            m_QueryEngine.SetSearchDataCallback(OnSearchData, s => s.ToLowerInvariant(), StringComparison.Ordinal);
             m_QueryEngine.AddFiltersFromAttribute<SceneQueryEngineFilterAttribute, SceneQueryEngineParameterTransformerAttribute>();
         }
 
@@ -215,18 +216,28 @@ namespace Unity.QuickSearch.Providers
             return comparer(v.text, s);
         }
 
-        public IEnumerable<GameObject> Search(string searchQuery)
+        public IEnumerable<GameObject> Search(SearchContext context)
         {
-            var query = m_QueryEngine.Parse(searchQuery);
+            var query = m_QueryEngine.Parse(context.searchQuery);
             if (!query.valid)
             {
                 #if QUICKSEARCH_DEBUG
                 foreach (var err in query.errors)
                     Debug.LogWarning($"Invalid search query. {err.reason} ({err.index},{err.length})");
                 #endif
-                return Enumerable.Empty<GameObject>();
+                yield break;
             }
-            return query.Apply(m_GameObjects.Where(g => g));//.ToList();
+
+            var progress = 0f;
+            var step = 1f / m_GameObjects.Length;
+            var goa = new GameObject[1];
+            foreach (var go in m_GameObjects)
+            {
+                goa[0] = go;
+                progress += step;
+                context.ReportProgress(progress, go.name);
+                yield return query.Apply(goa).FirstOrDefault();
+            }
         }
 
         public static GameObject[] FetchGameObjects()
@@ -468,10 +479,104 @@ namespace Unity.QuickSearch.Providers
                 god.types = types.ToArray();
             }
 
-            value = value.ToLowerInvariant();
+            return CompareWords(op, value.ToLowerInvariant(), god.types);
+        }
+
+        private void BuildReferences(UnityEngine.Object obj, ICollection<string> refs, int depth, int maxDepth)
+        {
+            if (depth > maxDepth)
+                return;
+
+            using (var so = new SerializedObject(obj))
+            {
+                var p = so.GetIterator();
+                var next = p.Next(true);
+                while (next)
+                {
+                    AddPropertyReferences(p, refs, depth, maxDepth);
+                    next = p.Next(p.hasVisibleChildren);
+                }
+            }
+        }
+
+        private void AddPropertyReferences(SerializedProperty p, ICollection<string> refs, int depth, int maxDepth)
+        {
+            if (p.propertyType != SerializedPropertyType.ObjectReference || !p.objectReferenceValue)
+                return;
+
+            var refValue = AssetDatabase.GetAssetPath(p.objectReferenceValue);
+            if (String.IsNullOrEmpty(refValue))
+            {
+                if (p.objectReferenceValue is GameObject go)
+                {
+                    refValue = SearchUtils.GetTransformPath(go.transform);
+                }
+            }
+
+            if (!String.IsNullOrEmpty(refValue))
+            {
+                if (!refs.Contains(refValue))
+                {
+                    AddReference(p.objectReferenceValue, refValue, refs);
+                    BuildReferences(p.objectReferenceValue, refs, depth + 1, maxDepth);
+                }
+            }
+
+            // Add custom object cases
+            if (p.objectReferenceValue is Material material)
+            {
+                if (material.shader)
+                    AddReference(material.shader, material.shader.name, refs);
+            }
+        }
+
+        private bool AddReference(UnityEngine.Object refObj, string refValue, ICollection<string> refs)
+        {
+            if (String.IsNullOrEmpty(refValue))
+                return false;
+
+            if (refValue[0] == '/')
+                refValue = refValue.Substring(1);
+
+            var refType = refObj?.GetType().Name;
+            if (refType != null)
+                refs.Add(refType.ToLowerInvariant());
+            refs.Add(refValue.ToLowerInvariant());
+
+            return true;
+        }
+
+        private bool GetReferences(GameObject go, string op, string value)
+        {
+            var god = GetGOD(go);
+
+            if (god.refs == null)
+            {
+                const int maxReferenceDepth = 3;
+                var refs = new HashSet<string>();
+
+                BuildReferences(go, refs, 0, maxReferenceDepth);
+
+                var gocs = go.GetComponents<Component>();
+                for (int componentIndex = 1; componentIndex < gocs.Length; ++componentIndex)
+                {
+                    var c = gocs[componentIndex];
+                    if (!c || c.hideFlags.HasFlag(HideFlags.HideInInspector))
+                        continue;
+                    BuildReferences(c, refs, 1, maxReferenceDepth);
+                }
+
+                god.refs = refs.ToArray();
+            }
+
+            return CompareWords(op, value.ToLowerInvariant(), god.refs);
+        }
+
+        private bool CompareWords(string op, string value, IEnumerable<string> words, StringComparison stringComparison = StringComparison.Ordinal)
+        {
             if (op == "=")
-                return god.types.Any(t => t.Equals(value, StringComparison.Ordinal));
-            return god.types.Any(t => t.IndexOf(value, StringComparison.Ordinal) != -1);
+                return words.Any(t => t.Equals(value, stringComparison));
+            return words.Any(t => t.IndexOf(value, stringComparison) != -1);
         }
 
         IEnumerable<string> OnSearchData(GameObject go)
@@ -482,6 +587,7 @@ namespace Unity.QuickSearch.Providers
             {
                 god.words = SplitWords(go.name, entrySeparators)
                     .Concat(buildKeywordComponents?.Invoke(go) ?? none)
+                    .Select(w => w.ToLowerInvariant())
                     .ToArray();
             }
 
@@ -495,8 +601,7 @@ namespace Unity.QuickSearch.Providers
             var fcc = scc.Aggregate("", (current, s) => current + s[0]);
             return new[] { fcc, entry }.Concat(scc.Where(s => s.Length > 1))
                                 .Where(s => s.Length > 0)
-                                .Distinct()
-                                .Select(w => w.ToLowerInvariant());
+                                .Distinct();
         }
 
         private static string CleanName(string s)

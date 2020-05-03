@@ -1,6 +1,12 @@
 //#define QUICKSEARCH_DEBUG
+
+#if UNITY_2020_1_OR_NEWER
+//#define SHOW_SEARCH_PROGRESS
+#endif
+
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using UnityEditor;
 
@@ -21,29 +27,6 @@ namespace Unity.QuickSearch
     }
 
     /// <summary>
-    /// Various search options used to fetch items.
-    /// </summary>
-    [Flags] public enum SearchFlags
-    {
-        /// <summary>
-        /// No specific search options.
-        /// </summary>
-        None = 0,
-
-        /// <summary>
-        /// Search items are fetch synchronously.
-        /// </summary>
-        Synchronous  = 1 << 0,
-
-        /// <summary>
-        /// Fetch items will be sorted by the search service.
-        /// </summary>
-        Sorted = 1 << 1,
-
-        Default = Sorted
-    }
-
-    /// <summary>
     /// Principal Quick Search API to initiate searches and fetch results.
     /// </summary>
     public static class SearchService
@@ -52,9 +35,9 @@ namespace Unity.QuickSearch
 
         const string k_ActionQueryToken = ">";
 
-        private const int k_MaxFetchTimeMs = 100;
+        private const int k_MaxFetchTimeMs = 50;
 
-        internal static Dictionary<string, List<string>> ActionIdToProviders { get; private set; } 
+        internal static Dictionary<string, List<string>> ActionIdToProviders { get; private set; }
 
         /// <summary>
         /// Returns the list of all providers (active or not)
@@ -101,7 +84,7 @@ namespace Unity.QuickSearch
         }
 
         /// <summary>
-        /// Activate or deactivate a search provider. 
+        /// Activate or deactivate a search provider.
         /// Call Refresh after this to take effect on the next search.
         /// </summary>
         /// <param name="providerId">Provider id to activate or deactivate</param>
@@ -111,7 +94,7 @@ namespace Unity.QuickSearch
             var provider = Providers.FirstOrDefault(p => p.name.id == providerId);
             if (provider == null)
                 return;
-            EditorPrefs.SetBool($"{prefKey}.{providerId}.active", active);
+            SearchSettings.GetProviderSettings(providerId).active = active;
             provider.active = active;
         }
 
@@ -162,19 +145,48 @@ namespace Unity.QuickSearch
         /// <param name="providerIds">List of provider id</param>
         /// <param name="searchQuery">seach Query</param>
         /// <returns>New SearchContext</returns>
-        public static SearchContext CreateContext(IEnumerable<string> providerIds, string searchText = "")
+        public static SearchContext CreateContext(IEnumerable<string> providerIds, string searchText = "", SearchFlags flags = SearchFlags.Default)
         {
-            return new SearchContext(providerIds.Select(id => GetProvider(id)).Where(p => p != null), searchText);
+            return new SearchContext(providerIds.Select(id => GetProvider(id)).Where(p => p != null), searchText, flags);
+        }
+
+        public static SearchContext CreateContext(IEnumerable<SearchProvider> providers, string searchText = "", SearchFlags flags = SearchFlags.Default)
+        {
+            return new SearchContext(providers, searchText, flags);
         }
 
         internal static SearchContext CreateContext(SearchProvider provider, string searchText = "")
         {
-            return new SearchContext(new [] {provider}, searchText);
+            return CreateContext(new [] {provider}, searchText);
         }
 
-        internal static SearchContext CreateContext(string providerId, string searchText = "")
+        internal static SearchContext CreateContext(string providerId, string searchText = "", SearchFlags flags = SearchFlags.Default)
         {
-            return CreateContext(new []{providerId}, searchText);
+            return CreateContext(new []{providerId}, searchText, flags);
+        }
+
+        internal static SearchContext CreateContext(string searchText)
+        {
+            return CreateContext(Providers.Where(p => p.active), searchText);
+        }
+
+        private static void OnSearchEnded(SearchContext context)
+        {
+            context.searchFinishTime = EditorApplication.timeSinceStartup;
+
+            #if SHOW_SEARCH_PROGRESS
+            if (context.progressId != -1 && Progress.Exists(context.progressId))
+                Progress.Finish(context.progressId, Progress.Status.Succeeded);
+            context.progressId = -1;
+            #endif
+        }
+
+        internal static void ReportProgress(SearchContext context, float progress = 0f, string status = null)
+        {
+            #if SHOW_SEARCH_PROGRESS
+            if (context.progressId != -1 && Progress.Exists(context.progressId))
+                Progress.Report(context.progressId, progress, status);
+            #endif
         }
 
         /// <summary>
@@ -186,6 +198,18 @@ namespace Unity.QuickSearch
         {
             // Stop all search sessions every time there is a new search.
             context.sessions.StopAllAsyncSearchSessions();
+            context.searchFinishTime = context.searchStartTime = EditorApplication.timeSinceStartup;
+            context.sessionEnded -= OnSearchEnded;
+            context.sessionEnded += OnSearchEnded;
+
+            #if SHOW_SEARCH_PROGRESS
+            if (Progress.Exists(context.progressId))
+                Progress.Finish(context.progressId, Progress.Status.Succeeded);
+            context.progressId = Progress.Start($"Searching...", options: Progress.Options.Indefinite);
+            #endif
+
+            if (options.HasFlag(SearchFlags.WantsMore))
+                context.wantsMore = true;
 
             var allItems = new List<SearchItem>(3);
             #if QUICKSEARCH_DEBUG
@@ -194,43 +218,42 @@ namespace Unity.QuickSearch
             #endif
             foreach (var provider in context.providers)
             {
-                using (var fetchTimer = new DebugTimer(null))
+                try
                 {
-                    try
+                    var watch = new System.Diagnostics.Stopwatch();
+                    watch.Start();
+                    var iterator = provider.fetchItems(context, allItems, provider);
+                    if (iterator != null && options.HasFlag(SearchFlags.Synchronous))
                     {
-                        var iterator = provider.fetchItems(context, allItems, provider);
-                        if (iterator != null)
+                        var stackedEnumerator = new StackedEnumerator<SearchItem>(iterator);
+                        while (stackedEnumerator.MoveNext())
                         {
-                            if (options.HasFlag(SearchFlags.Synchronous))
-                            {
-                                var stackedEnumerator = new StackedEnumerator<SearchItem>(iterator);
-                                while (stackedEnumerator.MoveNext())
-                                {
-                                    if (stackedEnumerator.Current != null)
-                                        allItems.Add(stackedEnumerator.Current);
-                                }
-                            }
-                            else
-                            {
-                                var session = context.sessions.GetProviderSession(provider.name.id);
-                                session.Reset(iterator, k_MaxFetchTimeMs);
-                                session.Start();
-                                if (!session.FetchSome(allItems, k_MaxFetchTimeMs))
-                                    session.Stop();
-                            }
+                            if (stackedEnumerator.Current != null)
+                                allItems.Add(stackedEnumerator.Current);
                         }
-                        provider.RecordFetchTime(fetchTimer.timeMs);
                     }
-                    catch (Exception ex)
+                    else
                     {
-                        UnityEngine.Debug.LogException(new Exception($"Failed to get fetch {provider.name.displayName} provider items.", ex));
+                        var session = context.sessions.GetProviderSession(context, provider.name.id);
+                        session.Reset(context, iterator, k_MaxFetchTimeMs);
+                        session.Start();
+                        var sessionEnded = !session.FetchSome(allItems, k_MaxFetchTimeMs);
+                        if (options.HasFlag(SearchFlags.FirstBatchAsync))
+                            session.SendItems(allItems);
+                        if (sessionEnded)
+                            session.Stop();
                     }
+                    provider.RecordFetchTime(watch.Elapsed.TotalMilliseconds);
+                }
+                catch (Exception ex)
+                {
+                    UnityEngine.Debug.LogException(new Exception($"Failed to get fetch {provider.name.displayName} provider items.", ex));
                 }
             }
 
             if (!options.HasFlag(SearchFlags.Sorted))
                 return allItems;
-            
+
             allItems.Sort(SortItemComparer);
             return allItems.GroupBy(i => i.id).Select(i => i.First()).ToList();
         }
@@ -285,8 +308,11 @@ namespace Unity.QuickSearch
                         fetchedProvider.loadTime = fetchLoadTimer.timeMs;
 
                         // Load per provider user settings
-                        fetchedProvider.active = EditorPrefs.GetBool($"{prefKey}.{fetchedProvider.name.id}.active", fetchedProvider.active);
-                        fetchedProvider.priority = EditorPrefs.GetInt($"{prefKey}.{fetchedProvider.name.id}.priority", fetchedProvider.priority);
+                        if (SearchSettings.TryGetProviderSettings(fetchedProvider.name.id, out var providerSettings))
+                        {
+                            fetchedProvider.active = providerSettings.active;
+                            fetchedProvider.priority = providerSettings.priority;
+                        }
                     }
                     return fetchedProvider;
                 }
@@ -317,6 +343,23 @@ namespace Unity.QuickSearch
                 providerIds.Add(provider.name.id);
             }
             SearchSettings.SortActionsPriority();
+        }
+
+        public static ISearchExpression LoadExpression(string expressionPath, SearchFlags options = SearchFlags.Default)
+        {
+            if (!File.Exists(expressionPath))
+                throw new ArgumentException($"Cannot find expression {expressionPath}", nameof(expressionPath));
+
+            var se = new SearchExpression(options);
+            se.Load(expressionPath);
+            return se;
+        }
+
+        public static ISearchExpression ParseExpression(string sjson, SearchFlags options = SearchFlags.Default)
+        {
+            var se = new SearchExpression(options);
+            se.Parse(sjson);
+            return se;
         }
     }
 }

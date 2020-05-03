@@ -18,7 +18,7 @@ namespace Unity.QuickSearch
             internal static string displayName = "Packages";
 
             private static ListRequest s_ListRequest = null;
-            private static SearchRequest s_SearchRequest = null;
+            private static UnityEditor.PackageManager.Requests.SearchRequest s_SearchRequest = null;
 
             [UsedImplicitly, SearchItemProvider]
             internal static SearchProvider CreateProvider()
@@ -27,6 +27,7 @@ namespace Unity.QuickSearch
                 {
                     priority = 90,
                     filterId = "pkg:",
+                    isExplicitProvider = true,
 
                     onEnable = () =>
                     {

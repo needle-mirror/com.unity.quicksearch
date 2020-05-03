@@ -27,9 +27,41 @@ namespace Unity.QuickSearch
             m_Handler = handler;
         }
 
-        public SearchIndexerQuery<T> Create(QueryGraph graph)
+        public SearchIndexerQuery<T> Create(QueryGraph graph, ICollection<QueryError> errors)
         {
+            ValidateGraph(graph.root, errors);
             return new SearchIndexerQuery<T>(graph, m_Handler);
+        }
+
+        private static void ValidateGraph(IQueryNode root, ICollection<QueryError> errors)
+        {
+            if (root == null)
+                return;
+
+            ValidateNode(root, errors);
+            if (root.leaf || root.children == null)
+                return;
+
+            foreach (var child in root.children)
+            {
+                ValidateGraph(child, errors);
+            }
+        }
+
+        private static void ValidateNode(IQueryNode node, ICollection<QueryError> errors)
+        {
+            switch (node.type)
+            {
+                case QueryNodeType.Aggregator:
+                case QueryNodeType.In:
+                case QueryNodeType.Intersection:
+                case QueryNodeType.Union:
+                case QueryNodeType.NestedQuery:
+                {
+                    errors.Add(new QueryError(node.queryStringPosition, "Nested queries are not supported."));
+                    break;
+                }
+            }
         }
     }
 
@@ -187,6 +219,11 @@ namespace Unity.QuickSearch
                 {
                     Assert.IsNotNull(node);
                     return new ResultInstruction(node, eval, payload, not);
+                }
+                case QueryNodeType.Where:
+                {
+                    Assert.IsFalse(node.leaf, "Where node cannot be leaf.");
+                    return BuildInstruction(node.children[0], eval, payload, not);
                 }
             }
 
@@ -363,9 +400,9 @@ namespace Unity.QuickSearch
                 var searchOperator = SearchIndexOperator.None;
                 if (node is FilterNode filterNode)
                 {
-                    searchName = filterNode.filterOperation.filterName;
-                    searchValue = filterNode.filterOperation.filterValue;
-                    searchOperator = ParseOperatorToken(filterNode.filterOperation.filterOperator.token);
+                    searchName = filterNode.filter.token;
+                    searchValue = filterNode.filterValue;
+                    searchOperator = ParseOperatorToken(filterNode.op.token);
                 }
                 else if (node is SearchNode searchNode)
                 {

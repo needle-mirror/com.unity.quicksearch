@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using UnityEngine;
@@ -10,13 +9,14 @@ namespace Unity.QuickSearch
     /// Indicates how the search item description needs to be formatted when presented to the user.
     /// </summary>
     [Flags]
-    public enum SearchItemDescriptionFormat
+    public enum SearchItemOptions
     {
         None = 0,
         Ellipsis = 1 << 0,
         RightToLeft = 1 << 1,
         Highlight = 1 << 2,
-        FuzzyHighlight = 1 << 3
+        FuzzyHighlight = 1 << 3,
+        Compacted = 1 << 4
     }
 
     /// <summary>
@@ -24,7 +24,7 @@ namespace Unity.QuickSearch
     /// The search item holds all the data that will be used to sort and present the search results.
     /// </summary>
     [DebuggerDisplay("{id} | {label}")]
-    public class SearchItem : IEqualityComparer<SearchItem>, IEquatable<SearchItem>
+    public class SearchItem : IEquatable<SearchItem>, IComparable<SearchItem>
     {
         /// <summary>Unique id of this item among this provider items.</summary>
         public readonly string id;
@@ -34,8 +34,8 @@ namespace Unity.QuickSearch
         public string label;
         /// <summary>If no description is provided, SearchProvider.fetchDescription will be called when the item is first displayed.</summary>
         public string description;
-        /// <summary>If true - description already has formatting / rich text</summary>
-        public SearchItemDescriptionFormat descriptionFormat;
+        /// <summary>Various flags that dictates how the search item is displayed and used.</summary>
+        public SearchItemOptions options;
         /// <summary>If no thumbnail are provider, SearchProvider.fetchThumbnail will be called when the item is first displayed.</summary>
         public Texture2D thumbnail;
         /// <summary>Large preview of the search item. Usually cached by fetchPreview.</summary>
@@ -45,6 +45,16 @@ namespace Unity.QuickSearch
         /// <summary>Search provider defined content. It can be used to transport any data to custom search provider handlers (i.e. `fetchDescription`).</summary>
         public object data;
 
+        private static readonly SearchProvider defaultProvider = new SearchProvider("default")
+        {
+            priority = int.MinValue,
+            toObject = (item, type) => null,
+            fetchLabel = (item, context) => item.label ?? item.id,
+            fetchDescription = (item, context) => item.label ?? item.id,
+            fetchThumbnail = (item, context) => item.thumbnail ?? Icons.logInfo,
+            actions = new[] { new SearchAction("select", "select", null, null, (SearchItem item, SearchContext context) => { }) }.ToList()
+        };
+
         /// <summary>
         /// A search item representing none, usually used to clear the selection.
         /// </summary>
@@ -53,13 +63,8 @@ namespace Unity.QuickSearch
             label = "None",
             description = "Clear the current value",
             score = int.MinValue,
-            provider = new SearchProvider("none")
-            {
-                priority = int.MinValue,
-                toObject = (item, type) => null,
-                fetchThumbnail = (item, context) => Icons.clear,
-                actions = new[] { new SearchAction("select", "select", null, null, (SearchItem item, SearchContext context) => {})}.ToList()
-            }
+            thumbnail = Icons.clear,
+            provider = defaultProvider
         };
 
         /// <summary>
@@ -69,6 +74,7 @@ namespace Unity.QuickSearch
         public SearchItem(string _id)
         {
             id = _id;
+            provider = defaultProvider;
         }
 
         /// <summary>
@@ -101,19 +107,29 @@ namespace Unity.QuickSearch
             return Utils.StripHTML(description);
         }
 
-        public bool Equals(SearchItem x, SearchItem y)
+        public int Compare(SearchItem x, SearchItem y)
         {
-            return x.id == y.id;
+            return x.id.CompareTo(y.id);
         }
 
-        public int GetHashCode(SearchItem obj)
+        public int CompareTo(SearchItem other)
         {
-            return obj.id.GetHashCode();
+            return Compare(this, other);
+        }
+
+        public override bool Equals(object other)
+        {
+            return other is SearchItem l && Equals(l);
+        }
+
+        public override int GetHashCode()
+        {
+            return id.GetHashCode();
         }
 
         public bool Equals(SearchItem other)
         {
-            return id == other.id;
+            return id.Equals(other.id);
         }
     }
 }

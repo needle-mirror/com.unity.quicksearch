@@ -12,6 +12,7 @@ using JetBrains.Annotations;
 using UnityEditor;
 using UnityEngine;
 using Debug = UnityEngine.Debug;
+using UnityEditorInternal;
 
 #if UNITY_2020_1_OR_NEWER
 using UnityEngine.UIElements;
@@ -21,7 +22,7 @@ using UnityEngine.UIElements;
 
 namespace Unity.QuickSearch
 {
-    internal static class Utils
+    static class Utils
     {
         const string packageName = "com.unity.quicksearch";
 
@@ -90,7 +91,7 @@ namespace Unity.QuickSearch
             return thumbnail ?? UnityEditorInternal.InternalEditorUtility.FindIconForFile(path);
         }
 
-        public static Texture2D GetAssetPreviewFromPath(string path, Vector2 previewSize, FetchPreviewOptions previewOptions)
+        public static Texture2D GetAssetPreviewFromPath(string path, FetchPreviewOptions previewOptions)
         {
             var tex = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
             if (tex)
@@ -106,10 +107,7 @@ namespace Unity.QuickSearch
             var obj = AssetDatabase.LoadMainAssetAtPath(path);
             if (obj == null)
                 return null;
-            tex = GetAssetPreview(obj, previewOptions);
-            if (!(obj is GameObject))
-                Resources.UnloadAsset(obj);
-            return tex;
+            return GetAssetPreview(obj, previewOptions);
         }
 
         public static Texture2D GetAssetPreview(UnityEngine.Object obj, FetchPreviewOptions previewOptions)
@@ -185,17 +183,17 @@ namespace Unity.QuickSearch
             return TypeCache.GetTypesDerivedFrom(aType).ToArray();
         }
 
-        internal static string FormatProviderList(IEnumerable<SearchProvider> providers, bool fullTimingInfo = false)
+        internal static string FormatProviderList(IEnumerable<SearchProvider> providers, bool fullTimingInfo = false, bool showFetchTime = true)
         {
             return string.Join(fullTimingInfo ? "\r\n" : ", ", providers.Select(p =>
             {
-                var avgTime = p.avgTime;
+                var fetchTime = p.fetchTime;
                 if (fullTimingInfo)
-                    return $"{p.name.displayName} ({avgTime:0.#} ms, Enable: {p.enableTime:0.#} ms, Init: {p.loadTime:0.#} ms)";
+                    return $"{p.name.displayName} ({fetchTime:0.#} ms, Enable: {p.enableTime:0.#} ms, Init: {p.loadTime:0.#} ms)";
 
                 var avgTimeLabel = String.Empty;
-                if (avgTime > 9.99)
-                    avgTimeLabel = $" ({avgTime:#} ms)";
+                if (showFetchTime && fetchTime > 9.99)
+                    avgTimeLabel = $" ({fetchTime:#} ms)";
                 return $"<b>{p.name.displayName}</b>{avgTimeLabel}";
             }));
         }
@@ -284,7 +282,7 @@ namespace Unity.QuickSearch
             return pos;
         }
 
-        internal static IEnumerable<MethodInfo> GetAllMethodsWithAttribute<T>(BindingFlags bindingFlags = BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic) where T : System.Attribute
+        internal static IEnumerable<MethodInfo> GetAllMethodsWithAttribute<T>() where T : System.Attribute
         {
             return TypeCache.GetMethodsWithAttribute<T>();
         }
@@ -413,6 +411,16 @@ namespace Unity.QuickSearch
         internal static bool IsDeveloperMode()
         {
             return Directory.Exists($"{packageFolderName}/.git");
+        }
+
+        public static string GetPackagePath(string relativePath)
+        {
+            return Path.Combine(packageFolderName, relativePath).Replace("\\", "/");
+        }
+
+        public static T LoadPackageAsset<T>(string relativePath) where T : UnityEngine.Object
+        {
+            return AssetDatabase.LoadAssetAtPath<T>(GetPackagePath(relativePath));
         }
 
         public static int LevenshteinDistance<T>(IEnumerable<T> lhs, IEnumerable<T> rhs) where T : System.IEquatable<T>
@@ -718,7 +726,7 @@ namespace Unity.QuickSearch
             return cleanPath.Substring(Application.dataPath.Length - 6);
         }
 
-        public static Texture2D GetSceneObjectPreview(GameObject obj, Vector2 size, FetchPreviewOptions options, Texture2D defaultThumbnail)
+        public static Texture2D GetSceneObjectPreview(GameObject obj, FetchPreviewOptions options, Texture2D defaultThumbnail)
         {
             var sr = obj.GetComponent<SpriteRenderer>();
             if (sr && sr.sprite && sr.sprite.texture)
@@ -737,7 +745,7 @@ namespace Unity.QuickSearch
             var assetPath = SearchUtils.GetHierarchyAssetPath(obj, true);
             if (String.IsNullOrEmpty(assetPath))
                 return defaultThumbnail;
-            return Utils.GetAssetPreviewFromPath(assetPath, size, options);
+            return Utils.GetAssetPreviewFromPath(assetPath, options);
         }
 
         private static object[] s_SearchFilterArgs;
@@ -761,6 +769,33 @@ namespace Unity.QuickSearch
             s_SearchFieldStringToFilterMethod.Invoke(s_SearchFilterArgs[0], new object[] { searchQuery });
             var properties = (IEnumerable<HierarchyProperty>)s_FindAllAssetsMethod.Invoke(null, s_SearchFilterArgs);
             return properties.Select(p => AssetDatabase.GUIDToAssetPath(p.guid));
+        }
+
+        public static bool TryGetNumber(object value, out double number)
+        {
+            number = double.NaN;
+            if (value is sbyte
+                    || value is byte
+                    || value is short
+                    || value is ushort
+                    || value is int
+                    || value is uint
+                    || value is long
+                    || value is ulong
+                    || value is float
+                    || value is double
+                    || value is decimal)
+            {
+                number = Convert.ToDouble(value);
+                return true;
+            }
+
+            return double.TryParse(Convert.ToString(value), out number);
+        }
+
+        public static bool IsRunningTests()
+        {
+            return !InternalEditorUtility.isHumanControllingUs || InternalEditorUtility.inBatchMode;
         }
     }
 }

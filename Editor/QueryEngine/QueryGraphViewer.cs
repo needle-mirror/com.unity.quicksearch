@@ -9,6 +9,22 @@ using UnityEngine.UIElements;
 
 namespace Unity.QuickSearch
 {
+    class GraphViewerQueryHandler : IQueryHandler<object, object>
+    {
+        public IEnumerable<object> Eval(object payload)
+        {
+            return new object[] { };
+        }
+    }
+
+    class GraphViewerQueryHandlerFactory : IQueryHandlerFactory<object, GraphViewerQueryHandler, IEnumerable<object>>
+    {
+        public GraphViewerQueryHandler Create(QueryGraph graph, ICollection<QueryError> errors)
+        {
+            return new GraphViewerQueryHandler();
+        }
+    }
+
     internal class QueryGraphViewWindow : GraphViewEditorWindow
     {
         private string m_QueryInput;
@@ -78,12 +94,12 @@ namespace Unity.QuickSearch
 
         private void UpdateGraphView()
         {
-            var query = m_QueryEngine.Parse(m_QueryInput);
+            var query = m_QueryEngine.Parse(m_QueryInput, new GraphViewerQueryHandlerFactory());
             if (!query.valid && !string.IsNullOrEmpty(m_QueryInput))
             {
                 foreach (var error in query.errors)
                 {
-                    Debug.LogFormat(LogType.Warning, LogOption.NoStacktrace, null, error.reason);
+                    Debug.LogWarning(error.reason);
                 }
                 return;
             }
@@ -147,6 +163,9 @@ namespace Unity.QuickSearch
                 var viewNode = AddNode(currentNode, m_QueryNodesToViewNodes);
                 m_QueryNodesToViewNodes.Add(currentNode, viewNode);
 
+                if (currentNode.leaf || currentNode.children == null)
+                    continue;
+
                 foreach (var child in currentNode.children)
                 {
                     nodesToProcess.Enqueue(child);
@@ -164,6 +183,9 @@ namespace Unity.QuickSearch
                 case QueryNodeType.And:
                 case QueryNodeType.Or:
                 case QueryNodeType.Not:
+                case QueryNodeType.Intersection:
+                case QueryNodeType.Union:
+                case QueryNodeType.Where:
                     visualElementNode.title = node.type.ToString();
                     break;
                 case QueryNodeType.Search:
@@ -172,8 +194,16 @@ namespace Unity.QuickSearch
                     break;
                 case QueryNodeType.Filter:
                     var filterNode = node as FilterNode;
-                    var filterOperation = filterNode.filterOperation;
-                    visualElementNode.title = filterOperation.ToString();
+                    visualElementNode.title = filterNode.identifier;
+                    break;
+                case QueryNodeType.NestedQuery:
+                case QueryNodeType.Aggregator:
+                    visualElementNode.title = node.identifier;
+                    break;
+                case QueryNodeType.In:
+                    var inFilterNode = node as InFilterNode;
+                    var paramString = string.IsNullOrEmpty(inFilterNode.paramValue) ? "" : $"({inFilterNode.paramValue})";
+                    visualElementNode.title = $"{inFilterNode.filter.token}{paramString}{inFilterNode.op.token} In";
                     break;
             }
             visualElementNode.expanded = false;
@@ -263,6 +293,9 @@ namespace Unity.QuickSearch
                     nodesByLevel.Add(currentLevel, new List<IQueryNode>());
                 }
                 nodesByLevel[currentLevel].Add(currentNode);
+
+                if (currentNode.leaf || currentNode.children == null)
+                    continue;
 
                 foreach (var child in currentNode.children)
                 {

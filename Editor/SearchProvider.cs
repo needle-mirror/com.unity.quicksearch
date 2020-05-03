@@ -149,8 +149,6 @@ namespace Unity.QuickSearch
             fetchLabel = (item, context) => item.label ?? item.id ?? String.Empty;
             fetchDescription = (item, context) => item.description ?? String.Empty;
             priority = 100;
-            fetchTimes = new double[10];
-            fetchTimeWriteIndex = 0;
             showDetails = false;
             showDetailsOptions = ShowDetailsOptions.Default;
             filterId = $"{id}:";
@@ -178,7 +176,7 @@ namespace Unity.QuickSearch
                 score = score,
                 label = label,
                 description = description,
-                descriptionFormat = SearchItemDescriptionFormat.Highlight | SearchItemDescriptionFormat.Ellipsis,
+                options = SearchItemOptions.Highlight | SearchItemOptions.Ellipsis,
                 thumbnail = thumbnail,
                 provider = this,
                 data = data
@@ -201,31 +199,7 @@ namespace Unity.QuickSearch
 
         internal void RecordFetchTime(double t)
         {
-            fetchTimes[fetchTimeWriteIndex] = t;
-            fetchTimeWriteIndex = Utils.Wrap(fetchTimeWriteIndex + 1, fetchTimes.Length);
-        }
-
-        /// <summary> Average time it takes to query that provider.</summary>
-        public double avgTime
-        {
-            get
-            {
-                double total = 0.0;
-                int validTimeCount = 0;
-                foreach (var t in fetchTimes)
-                {
-                    if (t > 0.0)
-                    {
-                        total += t;
-                        validTimeCount++;
-                    }
-                }
-
-                if (validTimeCount == 0)
-                    return 0.0;
-
-                return total / validTimeCount;
-            }
+            fetchTime  = t;
         }
 
         /// <summary> Unique id of the provider.</summary>
@@ -317,10 +291,9 @@ namespace Unity.QuickSearch
 
         // INTERNAL
         internal List<SearchAction> actions;
-        internal double[] fetchTimes;
+        internal double fetchTime;
         internal double loadTime;
         internal double enableTime;
-        internal int fetchTimeWriteIndex;
         int m_EnableLockCounter;
 
         internal void OnEnable(double enableTimeMs)

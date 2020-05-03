@@ -24,13 +24,13 @@ namespace Providers
                 isExplicitProvider = true,
                 fetchItems = (context, items, provider) =>
                 {
+                    var queryItems = SearchQuery.GetAllSearchQueryItems();
                     if (string.IsNullOrEmpty(context.searchQuery))
                     {
-                        items.AddRange(SearchQuery.GetAllSearchQueryItems());
+                        items.AddRange(queryItems);
                     }
                     else
                     {
-                        var queryItems = SearchQuery.GetAllSearchQueryItems();
                         foreach (var qi in queryItems)
                         {
                             if (SearchUtils.MatchSearchGroups(context, qi.label, true) ||

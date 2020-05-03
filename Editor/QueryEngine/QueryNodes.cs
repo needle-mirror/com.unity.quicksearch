@@ -1,6 +1,4 @@
 using System.Collections.Generic;
-using System.Text;
-using UnityEngine;
 
 namespace Unity.QuickSearch
 {
@@ -11,7 +9,13 @@ namespace Unity.QuickSearch
         Filter,
         Search,
         Not,
-        NoOp
+        NoOp,
+        NestedQuery,
+        Where,
+        In,
+        Union,
+        Intersection,
+        Aggregator
     }
 
     internal interface IQueryNode
@@ -22,22 +26,31 @@ namespace Unity.QuickSearch
         bool leaf { get; }
         string identifier { get; }
         int QueryHashCode();
+        int queryStringPosition { get; set; }
     }
 
     internal class FilterNode : IQueryNode
     {
-        public IFilterOperation filterOperation;
+        public IFilter filter;
 
         public IQueryNode parent { get; set; }
-        public QueryNodeType type => QueryNodeType.Filter;
-        public List<IQueryNode> children => new List<IQueryNode>();
-        public bool leaf => true;
+        public virtual QueryNodeType type => QueryNodeType.Filter;
+        public virtual List<IQueryNode> children => null;
+        public virtual bool leaf => true;
         public string identifier { get; }
+        public int queryStringPosition { get; set; }
 
-        public FilterNode(IFilterOperation operation, string filterString)
+        public FilterOperator op;
+        public string filterValue;
+        public string paramValue;
+
+        public FilterNode(IFilter filter, FilterOperator op, string filterValue, string paramValue, string filterString)
         {
-            filterOperation = operation;
+            this.filter = filter;
             identifier = filterString;
+            this.op = op;
+            this.filterValue = filterValue;
+            this.paramValue = paramValue;
         }
 
         public int QueryHashCode()
@@ -53,9 +66,10 @@ namespace Unity.QuickSearch
 
         public IQueryNode parent { get; set; }
         public QueryNodeType type => QueryNodeType.Search;
-        public List<IQueryNode> children => new List<IQueryNode>();
+        public List<IQueryNode> children => null;
         public bool leaf => true;
         public string identifier { get; private set; }
+        public int queryStringPosition { get; set; }
 
         public SearchNode(string searchValue, bool isExact)
         {
@@ -77,6 +91,7 @@ namespace Unity.QuickSearch
         public List<IQueryNode> children { get; }
         public bool leaf => children.Count == 0;
         public abstract string identifier { get; }
+        public int queryStringPosition { get; set; }
 
         protected CombinedNode()
         {
@@ -111,7 +126,7 @@ namespace Unity.QuickSearch
 
         public abstract void SwapChildNodes();
 
-        public int QueryHashCode()
+        public virtual int QueryHashCode()
         {
             var hc = 0;
             foreach (var child in children)
@@ -163,6 +178,84 @@ namespace Unity.QuickSearch
         { }
     }
 
+    internal class NestedQueryNode : IQueryNode
+    {
+        public IQueryNode parent { get; set; }
+        public QueryNodeType type => QueryNodeType.NestedQuery;
+        public List<IQueryNode> children { get; } = new List<IQueryNode>();
+        public bool leaf => true;
+        public string identifier { get; }
+        public string associatedFilter { get; }
+        public int queryStringPosition { get; set; }
+
+        public INestedQueryHandler nestedQueryHandler { get; }
+
+        public NestedQueryNode(string nestedQuery, INestedQueryHandler nestedQueryHandler)
+        {
+            identifier = nestedQuery;
+            this.nestedQueryHandler = nestedQueryHandler;
+        }
+
+        public NestedQueryNode(string nestedQuery, string filterToken, INestedQueryHandler nestedQueryHandler)
+            : this(nestedQuery, nestedQueryHandler)
+        {
+            associatedFilter = filterToken;
+        }
+
+        public int QueryHashCode()
+        {
+            return identifier.GetHashCode();
+        }
+    }
+
+    internal class WhereNode : CombinedNode
+    {
+        public override QueryNodeType type => QueryNodeType.Where;
+        public override string identifier => children[0].identifier;
+
+        public WhereNode()
+        { }
+
+        public override void SwapChildNodes()
+        { }
+    }
+
+    internal class InFilterNode : FilterNode
+    {
+        public override QueryNodeType type => QueryNodeType.In;
+        public override List<IQueryNode> children { get; } = new List<IQueryNode>();
+        public override bool leaf => children.Count == 0;
+
+        public InFilterNode(IFilter filter, FilterOperator op, string filterValue, string paramValue, string filterString)
+            : base(filter, op, filterValue, paramValue, filterString) { }
+    }
+
+    internal class UnionNode : OrNode
+    {
+        public override QueryNodeType type => QueryNodeType.Union;
+    }
+
+    internal class IntersectionNode : AndNode
+    {
+        public override QueryNodeType type => QueryNodeType.Intersection;
+    }
+
+    internal class AggregatorNode : CombinedNode
+    {
+        public override QueryNodeType type => QueryNodeType.Aggregator;
+        public override string identifier { get; }
+        public INestedQueryAggregator aggregator { get; }
+
+        public AggregatorNode(string token, INestedQueryAggregator aggregator)
+        {
+            identifier = token;
+            this.aggregator = aggregator;
+        }
+
+        public override void SwapChildNodes()
+        { }
+    }
+
     internal sealed class NoOpNode : IQueryNode
     {
         public IQueryNode parent { get; set; }
@@ -170,6 +263,7 @@ namespace Unity.QuickSearch
         public List<IQueryNode> children => new List<IQueryNode>();
         public bool leaf => true;
         public string identifier { get; }
+        public int queryStringPosition { get; set; }
 
         public NoOpNode(string identifier)
         {

@@ -1,7 +1,3 @@
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
 using JetBrains.Annotations;
 using UnityEditor;
 using UnityEngine;
@@ -12,7 +8,7 @@ namespace Unity.QuickSearch
     {
         internal static class Styles
         {
-            public static Vector2 windowSize = new Vector2(350, 155);
+            public static Vector2 windowSize = new Vector2(350, 50);
             public static readonly GUIStyle panelBorder = new GUIStyle("grey_border") { name = "quick-search-filter-panel-border" };
             public static readonly GUIStyle separator = new GUIStyle("sv_iconselector_sep") { margin = new RectOffset(1, 1, 4, 0) };
             public static readonly GUIStyle filterHeader = new GUIStyle(EditorStyles.boldLabel)
@@ -33,10 +29,9 @@ namespace Unity.QuickSearch
 
         private ISearchView m_SearchView;
         private SearchContext m_Context;
-        private bool m_BrowsePath;
+        private bool m_NeedFocus;
 
         private string m_Description;
-        private Texture2D m_Icon;
         private string m_QueryFileName;
         private string m_QueryFolder;
                 
@@ -53,7 +48,7 @@ namespace Unity.QuickSearch
 
         public static void ShowAtPosition(ISearchView quickSearchTool, SearchContext context, Rect screenRect)
         {
-            var window = ScriptableObject.CreateInstance<SearchQueryCreateWindow>();
+            var window = CreateInstance<SearchQueryCreateWindow>();
             window.m_SearchView = quickSearchTool;
             window.m_Context = context;
             
@@ -67,6 +62,7 @@ namespace Unity.QuickSearch
         [UsedImplicitly]
         void OnEnable()
         {
+            m_NeedFocus = true;
         }
 
         [UsedImplicitly]
@@ -98,34 +94,36 @@ namespace Unity.QuickSearch
 
             GUILayout.Label("Create New Search Query", Styles.filterHeader);
             GUILayout.Label(GUIContent.none, Styles.separator);
-
-            EditorGUI.BeginChangeCheck();
-            m_QueryFileName = EditorGUILayout.TextField("Asset file name", m_QueryFileName);
-            if (EditorGUI.EndChangeCheck())
-            {
-                m_QueryFileName = SearchQuery.RemoveInvalidChars(m_QueryFileName);
-            }
-
-            m_Description = EditorGUILayout.TextField(Styles.descriptionContent, m_Description);
-            m_Icon = EditorGUILayout.ObjectField("Icon", m_Icon, typeof(Texture2D), false) as Texture2D;
-
-            EditorGUIUtility.labelWidth = oldLabelWidth;
-
-            using (new EditorGUI.DisabledScope(string.IsNullOrEmpty(m_QueryFileName)))
             using (new EditorGUILayout.HorizontalScope())
             {
-                GUILayout.FlexibleSpace();
-                if (GUILayout.Button("Create"))
+                GUI.SetNextControlName("CreateSearchQueryTextField");
+                EditorGUI.BeginChangeCheck();
+                m_QueryFileName = EditorGUILayout.TextField("Asset file name", m_QueryFileName, GUILayout.ExpandWidth(true));
+                if (EditorGUI.EndChangeCheck())
                 {
-                    TryCreateSearchQuery();
+                    m_QueryFileName = SearchQuery.RemoveInvalidChars(m_QueryFileName);
                 }
-                GUILayout.FlexibleSpace();
+
+                if (m_NeedFocus)
+                {
+                    m_NeedFocus = true;
+                    EditorGUI.FocusTextInControl("CreateSearchQueryTextField");
+                }
+
+                EditorGUIUtility.labelWidth = oldLabelWidth;
+                using (new EditorGUI.DisabledScope(string.IsNullOrEmpty(m_QueryFileName)))
+                {
+                    if (GUILayout.Button("Create", GUILayout.ExpandWidth(false)))
+                    {
+                        TryCreateSearchQuery();
+                    }
+                }
             }
         }
 
         private void TryCreateSearchQuery()
         {
-            var sq = SearchQuery.Create(m_Context, m_Description, null, m_Icon);
+            var sq = SearchQuery.Create(m_Context, m_Description, null);
             SearchQuery.SaveQuery(sq, m_QueryFolder, m_QueryFileName);
             Selection.activeObject = sq;
             SearchQuery.ResetSearchQueryItems();

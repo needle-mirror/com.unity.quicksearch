@@ -14,7 +14,6 @@ namespace Unity.QuickSearch.Providers
     static class ObjectProvider
     {
         private const string type = "object";
-        private readonly static Vector2 k_PreviewSize = new Vector2(64, 64);
 
         private static List<SearchDatabase> m_ObjectIndexes;
         private static List<SearchDatabase> indexes
@@ -39,15 +38,15 @@ namespace Unity.QuickSearch.Providers
                 priority = 55,
                 filterId = "o:",
                 showDetails = true,
-                showDetailsOptions = ShowDetailsOptions.Inspector | ShowDetailsOptions.Description | ShowDetailsOptions.Actions,
+                showDetailsOptions = ShowDetailsOptions.Inspector | ShowDetailsOptions.Description | ShowDetailsOptions.Actions | ShowDetailsOptions.Preview,
 
-                isEnabledForContextualSearch = () => Utils.IsFocusedWindowTypeName("ProjectBrowser"),
                 toObject = (item, type) => ToObject(item, type),
                 fetchItems = (context, items, provider) => SearchObjects(context, provider),
                 fetchKeywords = (context, lastToken, keywords) => FetchKeywords(lastToken, keywords),
                 fetchLabel = (item, context) => FetchLabel(item),
                 fetchDescription = (item, context) => FetchDescription(item),
                 fetchThumbnail = (item, context) => FetchThumbnail(item),
+                fetchPreview = (item, context, size, options) => FetchPreview(item, options),
                 startDrag = (item, context) => StartDrag(item, context),
                 trackSelection = (item, context) => TrackSelection(item)
             };
@@ -71,12 +70,14 @@ namespace Unity.QuickSearch.Providers
 
         private static string FetchDescription(SearchItem item)
         {
+            if (item.options.HasFlag(SearchItemOptions.Compacted))
+                return FetchLabel(item);
+
+            if (!String.IsNullOrEmpty(item.description))
+                return item.description;
+
             if (!GlobalObjectId.TryParse(item.id, out var gid))
                 return null;
-
-            var go = GlobalObjectId.GlobalObjectIdentifierToObjectSlow(gid) as GameObject;
-            if (go)
-                return (item.description = $"Source: {SearchUtils.GetHierarchyPath(go)}");
 
             var sourceAssetPath = AssetDatabase.GUIDToAssetPath(gid.assetGUID.ToString());
             return (item.description = $"Source: {GetAssetDescription(sourceAssetPath)}");
@@ -87,12 +88,31 @@ namespace Unity.QuickSearch.Providers
             if (!GlobalObjectId.TryParse(item.id, out var gid))
                 return null;
             var sourceAssetPath = AssetDatabase.GUIDToAssetPath(gid.assetGUID.ToString());
-            return Utils.GetAssetPreviewFromPath(sourceAssetPath, k_PreviewSize, FetchPreviewOptions.Preview2D);
+            return AssetDatabase.GetCachedIcon(sourceAssetPath) as Texture2D;
+        }
+
+        private static Texture2D FetchPreview(SearchItem item, FetchPreviewOptions options)
+        {
+            if (!GlobalObjectId.TryParse(item.id, out var gid))
+                return null;
+
+            if (options.HasFlag(FetchPreviewOptions.Large))
+            {
+                var go = GlobalObjectId.GlobalObjectIdentifierToObjectSlow(gid) as GameObject;
+                if (go)
+                    return AssetPreview.GetAssetPreview(go);
+            }
+
+            var sourceAssetPath = AssetDatabase.GUIDToAssetPath(gid.assetGUID.ToString());
+            return AssetDatabase.GetCachedIcon(sourceAssetPath) as Texture2D;
         }
 
         private static void StartDrag(SearchItem item, SearchContext context)
         {
-            Utils.StartDrag(context.selection.Select(i => ToObject(i, typeof(Object))).ToArray(), item.GetLabel(context, true));
+            if (context.selection.Count > 1)
+                Utils.StartDrag(context.selection.Select(i => ToObject(i, typeof(Object))).ToArray(), item.GetLabel(context, true));
+            else
+                Utils.StartDrag(new [] { ToObject(item, typeof(Object)) }, item.GetLabel(context, true));
         }
 
         private static void TrackSelection(SearchItem item)
@@ -114,21 +134,27 @@ namespace Unity.QuickSearch.Providers
             if (!GlobalObjectId.TryParse(item.id, out var gid))
                 return null;
 
-            var obj = GlobalObjectId.GlobalObjectIdentifierToObjectSlow(gid);
-            if (obj)
-            {
-                if (type == null)
-                    return obj;
-                var objType = obj.GetType();
-                if (objType == type || objType.IsSubclassOf(type))
-                    return obj;
-
-                if (obj is GameObject go)
-                    return go.GetComponent(type);
-            }
-
             var assetPath = AssetDatabase.GUIDToAssetPath(gid.assetGUID.ToString());
-            return AssetDatabase.LoadMainAssetAtPath(assetPath);
+            return ToObjectType(GlobalObjectId.GlobalObjectIdentifierToObjectSlow(gid), type) ??
+                   ToObjectType(AssetDatabase.LoadAssetAtPath(assetPath, type), type) ??
+                   ToObjectType(AssetDatabase.LoadMainAssetAtPath(assetPath), type);
+        }
+
+        private static Object ToObjectType(Object obj, Type type)
+        {
+            if (!obj)
+                return null;
+
+            if (type == null)
+                return obj;
+            var objType = obj.GetType();
+            if (objType == type || objType.IsSubclassOf(type))
+                return obj;
+
+            if (obj is GameObject go)
+                return go.GetComponent(type);
+
+            return null;
         }
 
         private static IEnumerator SearchObjects(SearchContext context, SearchProvider provider)
@@ -136,25 +162,25 @@ namespace Unity.QuickSearch.Providers
             var searchQuery = context.searchQuery;
 
             if (searchQuery.Length > 0)
-                yield return indexes.Select(db => SearchIndexes(context, provider, db.index));
+                yield return indexes.Select(db => SearchIndexes(searchQuery, provider, db));
 
             if (context.wantsMore && context.filterType != null && !context.textFilters.Contains("t:"))
             {
-                var oldSearchText = context.searchText;
-                if (context.searchText.Length > 0)
-                    context.searchText = $"({context.searchText}) t:{context.filterType.Name}";
+                if (searchQuery.Length > 0)
+                    searchQuery = $"({context.searchText}) t:{context.filterType.Name}";
                 else
-                    context.searchText = $"t:{context.filterType.Name}";
-                yield return indexes.Select(db => SearchIndexes(context, provider, db.index, 999));
-                context.searchText = oldSearchText;
+                    searchQuery = $"t:{context.filterType.Name}";
+                yield return indexes.Select(db => SearchIndexes(searchQuery, provider, db, 999));
             }
         }
 
-        private static IEnumerator SearchIndexes(SearchContext context, SearchProvider provider, SearchIndexer index, int scoreModifier = 0)
+        private static IEnumerator SearchIndexes(string searchQuery, SearchProvider provider, SearchDatabase db, int scoreModifier = 0)
         {
-            var searchQuery = context.searchQuery;
+            while (db.index == null)
+                yield return null;
 
             // Search index
+            var index = db.index;
             while (!index.IsReady())
                 yield return null;
 
