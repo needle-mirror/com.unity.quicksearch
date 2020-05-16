@@ -34,8 +34,10 @@ namespace Unity.QuickSearch
             var limitCount = Math.Max(0, Math.Min(itemDisplayCount, itemCount - itemSkipCount));
             var totalSpace = itemCount * itemRowHeight;
             var scrollbarSpace = availableHeight <= totalSpace ? Styles.scrollbarWidth : 0f;
-            var viewRect = screenRect; viewRect.width -= scrollbarSpace; viewRect.height = totalSpace;
-            int selectionIndex = selection.Count == 0 ? -1 : selection.Last();
+
+            var viewRect = screenRect;
+            viewRect.width -= scrollbarSpace;
+            viewRect.height = totalSpace;
 
             m_ScrollPosition = GUI.BeginScrollView(screenRect, m_ScrollPosition, viewRect);
 
@@ -66,6 +68,7 @@ namespace Unity.QuickSearch
             }
 
             // Fix selected index display if out of virtual scrolling area
+            int selectionIndex = selection.Count == 0 ? -1 : selection.Last();
             if (Event.current.type == EventType.Repaint && focusSelectedItem && selectionIndex >= 0)
             {
                 ScrollListToItem(itemSkipCount + 1, itemSkipCount + itemDisplayCount - 2, selectionIndex, screenRect);
@@ -148,7 +151,7 @@ namespace Unity.QuickSearch
                 if (Event.current.type == EventType.MouseDown && actionHover)
                 {
                     var contextRect = new Rect(Event.current.mousePosition, new Vector2(1, 1));
-                    searchView.ShowItemContextualMenu(item, context, contextRect);
+                    searchView.ShowItemContextualMenu(item, contextRect);
                     GUIUtility.ExitGUI();
                 }
             }
@@ -171,10 +174,7 @@ namespace Unity.QuickSearch
                         item.preview = thumbnail;
                         m_FetchedPreview++;
                         if (m_FetchedPreview > 25)
-                        {
                             m_FetchedPreview = 0;
-                            Resources.UnloadUnusedAssets();
-                        }
                     }
                 }
             }

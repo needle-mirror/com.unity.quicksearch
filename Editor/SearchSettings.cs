@@ -15,8 +15,8 @@ namespace Unity.QuickSearch
         BasicIndexing,
         FullIndexing
     }
-	
-	internal enum ProjectSize
+
+    internal enum ProjectSize
     {
         Small,
         Medium,
@@ -40,9 +40,9 @@ namespace Unity.QuickSearch
             defaultAction = null;
         }
 
-        public object this[object key] 
-        { 
-            get 
+        public object this[object key]
+        {
+            get
             {
                 switch ((string)key)
                 {
@@ -93,7 +93,7 @@ namespace Unity.QuickSearch
         public const string defaultQueryFolder = "Assets/Editor/Queries";
 
         internal static string k_AssetIndexPath = $"{Utils.packageFolderName}/Templates/Assets.index.template";
-        
+
         // Per project settings
         public static bool trackSelection { get; private set; }
         public static bool fetchPreview { get; private set; }
@@ -104,6 +104,7 @@ namespace Unity.QuickSearch
         public static bool debug { get; internal set; }
         public static float itemIconSize { get; internal set; }
         public static bool onBoardingDoNotAskAgain { get; internal set; }
+        public static bool showPackageIndexes { get; internal set; }
         public static Dictionary<string, bool> filters { get; private set; }
         public static Dictionary<string, string> scopes { get; private set; }
         public static Dictionary<string, SearchProviderSettings> providers { get; private set; }
@@ -132,6 +133,7 @@ namespace Unity.QuickSearch
             assetIndexing = (SearchAssetIndexing)ReadSetting(settings, nameof(assetIndexing), (int)SearchAssetIndexing.BasicIndexing);
             queryFolder = ReadSetting(settings, nameof(queryFolder), defaultQueryFolder);
             onBoardingDoNotAskAgain = ReadSetting(settings, nameof(onBoardingDoNotAskAgain), false);
+            showPackageIndexes = ReadSetting(settings, nameof(showPackageIndexes), false);
             filters = ReadProperties<bool>(settings, nameof(filters));
             scopes = ReadProperties<string>(settings, nameof(scopes));
             providers = ReadProviderSettings(settings, nameof(providers));
@@ -150,6 +152,7 @@ namespace Unity.QuickSearch
                 [nameof(assetIndexing)] = (int)assetIndexing,
                 [nameof(queryFolder)] = queryFolder,
                 [nameof(onBoardingDoNotAskAgain)] = onBoardingDoNotAskAgain,
+                [nameof(showPackageIndexes)] = showPackageIndexes,
                 [nameof(filters)] = filters,
                 [nameof(scopes)] = scopes,
                 [nameof(providers)] = providers
@@ -197,6 +200,9 @@ namespace Unity.QuickSearch
             if (wantsMore)
                 options |= SearchFlags.WantsMore;
 
+            if (debug)
+                options |= SearchFlags.Debug;
+
             return options;
         }
 
@@ -227,7 +233,7 @@ namespace Unity.QuickSearch
                     GUILayout.Space(10);
                     EditorGUI.BeginChangeCheck();
                     {
-                        if (Utils.IsDeveloperMode() || debug)
+                        if (Utils.isDeveloperBuild || debug)
                         {
                             debug = EditorGUILayout.Toggle(Styles.debugContent, debug);
                         }
@@ -405,14 +411,14 @@ namespace Unity.QuickSearch
                 using (new EditorGUI.DisabledScope(p.actions.Count < 2))
                 {
                     EditorGUI.BeginChangeCheck();
-                    var items = p.actions.Select(a => new GUIContent(a.DisplayName, a.content.image,
+                    var items = p.actions.Select(a => new GUIContent(a.displayName, a.content.image,
                         p.actions.Count == 1 ?
                         $"Default action for {p.name.displayName} (Enter)" :
                         $"Set default action for {p.name.displayName} (Enter)")).ToArray();
                     var newDefaultAction = EditorGUILayout.Popup(0, items, GUILayout.ExpandWidth(true));
                     if (EditorGUI.EndChangeCheck())
                     {
-                        SetDefaultAction(p.name.id, p.actions[newDefaultAction].Id);
+                        SetDefaultAction(p.name.id, p.actions[newDefaultAction].id);
                         GUI.changed = true;
                     }
                 }
@@ -521,15 +527,15 @@ namespace Unity.QuickSearch
             var defaultActionId = GetProviderSettings(searchProvider.name.id).defaultAction;
             if (string.IsNullOrEmpty(defaultActionId))
                 return;
-            if (searchProvider.actions.Count == 0 || defaultActionId == searchProvider.actions[0].Id)
+            if (searchProvider.actions.Count == 0 || defaultActionId == searchProvider.actions[0].id)
                 return;
 
             searchProvider.actions.Sort((action1, action2) =>
             {
-                if (action1.Id == defaultActionId)
+                if (action1.id == defaultActionId)
                     return -1;
 
-                if (action2.Id == defaultActionId)
+                if (action2.id == defaultActionId)
                     return 1;
 
                 return 0;

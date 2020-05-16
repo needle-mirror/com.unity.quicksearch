@@ -69,7 +69,7 @@ namespace Unity.QuickSearch.Providers
                     var query = queryEngine.Parse(context.searchQuery);
                     if (!query.valid)
                         return null;
-                    return query.Apply(menus).Select(m => provider.CreateItem(m.path));
+                    return query.Apply(menus).Select(m => provider.CreateItem(context, m.path));
                 },
 
                 fetchLabel = (item, context) =>
@@ -120,7 +120,7 @@ namespace Unity.QuickSearch.Providers
             {
                 new SearchAction("menu", "select", null, "Execute shortcut...")
                 {
-                    handler = (item, context) =>
+                    handler = (item) =>
                     {
                         var menuId = item.id;
                         EditorApplication.delayCall += () => EditorApplication.ExecuteMenuItem(menuId);

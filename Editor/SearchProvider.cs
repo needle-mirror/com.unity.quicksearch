@@ -83,8 +83,9 @@ namespace Unity.QuickSearch
         /// <summary>
         /// Construct a new name identifier
         /// </summary>
-        /// <param name="id"></param>
-        /// <param name="displayName"></param>
+        /// <param name="id">Unique id of the Entry.</param>
+        /// <param name="displayName">Name to display in UI.</param>
+        /// <param name="enabled">Is the component enabled.</param>
         public NameEntry(string id, string displayName = null, bool enabled = true)
         {
             this.id = id;
@@ -110,31 +111,64 @@ namespace Unity.QuickSearch
     {
         internal const int k_RecentUserScore = -99;
 
+        internal SearchContext defaultContext;
+
+        /// <summary>
+        /// Create a new SearchProvider
+        /// </summary>
+        /// <param name="id">Search Provider unique id.</param>
         public SearchProvider(string id)
             : this(id, null, (Func<SearchContext, List<SearchItem>, SearchProvider, object>)null)
         {
         }
 
+        /// <summary>
+        /// Create a new SearchProvider
+        /// </summary>
+        /// <param name="id">Search Provider unique id.</param>
+        /// <param name="displayName">Provider pretty name, use to display in UI.</param>
         public SearchProvider(string id, string displayName)
             : this(id, displayName, (Func<SearchContext, List<SearchItem>, SearchProvider, object>)null)
         {
         }
 
+        /// <summary>
+        /// Create a new SearchProvider
+        /// </summary>
+        /// <param name="id">Search Provider unique id.</param>
+        /// <param name="fetchItemsHandler">Handler responsible to populate a list of SearchItems according to a query.</param>
         public SearchProvider(string id, Func<SearchContext, List<SearchItem>, SearchProvider, object> fetchItemsHandler)
             : this(id, null, fetchItemsHandler)
         {
         }
 
+        /// <summary>
+        /// Create a new SearchProvider
+        /// </summary>
+        /// <param name="id">Search Provider unique id.</param>
+        /// <param name="fetchItemsHandler">Handler responsible to populate a list of SearchItems according to a query.</param>
         public SearchProvider(string id, Func<SearchContext, SearchProvider, object> fetchItemsHandler)
             : this(id, null, (context, items, provider) => fetchItemsHandler(context, provider))
         {
         }
 
+        /// <summary>
+        /// Create a new SearchProvider
+        /// </summary>
+        /// <param name="id">Search Provider unique id.</param>
+        /// <param name="displayName">Provider pretty name, use to display in UI.</param>
+        /// <param name="fetchItemsHandler">Handler responsible to populate a list of SearchItems according to a query.</param>
         public SearchProvider(string id, string displayName, Func<SearchContext, SearchProvider, object> fetchItemsHandler)
             : this(id, displayName, (context, items, provider) => fetchItemsHandler(context, provider))
         {
         }
 
+        /// <summary>
+        /// Create a new SearchProvider
+        /// </summary>
+        /// <param name="id">Search Provider unique id.</param>
+        /// <param name="displayName">Provider pretty name, use to display in UI.</param>
+        /// <param name="fetchItemsHandler">Handler responsible to populate a list of SearchItems according to a query.</param>
         public SearchProvider(string id, string displayName, Func<SearchContext, List<SearchItem>, SearchProvider, object> fetchItemsHandler)
         {
             if (String.IsNullOrEmpty(id))
@@ -152,6 +186,8 @@ namespace Unity.QuickSearch
             showDetails = false;
             showDetailsOptions = ShowDetailsOptions.Default;
             filterId = $"{id}:";
+
+            defaultContext = new SearchContext(this);
         }
 
         /// <summary>
@@ -164,7 +200,7 @@ namespace Unity.QuickSearch
         /// <param name="thumbnail">The search item thumbnail is displayed left to the item label and description as a preview.</param>
         /// <param name="data">User data used to recover more information about a search item. Generally used in fetchLabel, fetchDescription, etc.</param>
         /// <returns>The newly created search item attached to the current search provider.</returns>
-        public SearchItem CreateItem(string id, int score, string label, string description, Texture2D thumbnail, object data)
+        public SearchItem CreateItem(SearchContext context, string id, int score, string label, string description, Texture2D thumbnail, object data)
         {
             #if false // Debug sorting
             description = $"DEBUG: id={id} - label={label} - description={description} - thumbnail={thumbnail} - data={data}";
@@ -178,9 +214,50 @@ namespace Unity.QuickSearch
                 description = description,
                 options = SearchItemOptions.Highlight | SearchItemOptions.Ellipsis,
                 thumbnail = thumbnail,
+                data = data,
                 provider = this,
-                data = data
+                context = context
             };
+        }
+
+        /// <summary>
+        /// Helper function to create a new search item for the current provider.
+        /// </summary>
+        public SearchItem CreateItem(string id, int score, string label, string description, Texture2D thumbnail, object data)
+        {
+            return CreateItem(defaultContext, id, score, label, description, thumbnail, data);
+        }
+
+        /// <summary>
+        /// Helper function to create a new search item for the current provider.
+        /// </summary>
+        public SearchItem CreateItem(SearchContext context, string id)
+        {
+            return CreateItem(context, id, 0, null, null, null, null);
+        }
+
+        /// <summary>
+        /// Helper function to create a new search item for the current provider.
+        /// </summary>
+        public SearchItem CreateItem(string id)
+        {
+            return CreateItem(defaultContext, id, 0, null, null, null, null);
+        }
+
+        /// <summary>
+        /// Helper function to create a new search item for the current provider.
+        /// </summary>
+        public SearchItem CreateItem(string id, string label)
+        {
+            return CreateItem(defaultContext, id, 0, label, null, null, null);
+        }
+
+        /// <summary>
+        /// Helper function to create a new search item for the current provider.
+        /// </summary>
+        public SearchItem CreateItem(string id, string label, string description, Texture2D thumbnail, object data)
+        {
+            return CreateItem(defaultContext, id, 0, label, description, thumbnail, data);
         }
 
         /// <summary>
@@ -192,9 +269,9 @@ namespace Unity.QuickSearch
         /// <param name="thumbnail">The search item thumbnail is displayed left to the item label and description as a preview.</param>
         /// <param name="data">User data used to recover more information about a search item. Generally used in fetchLabel, fetchDescription, etc.</param>
         /// <returns>New SearchItem</returns>
-        public SearchItem CreateItem(string id, string label = null, string description = null, Texture2D thumbnail = null, object data = null)
+        public SearchItem CreateItem(SearchContext context, string id, string label, string description, Texture2D thumbnail, object data)
         {
-            return CreateItem(id, 0, label, description, thumbnail, data);
+            return CreateItem(context, id, 0, label, description, thumbnail, data);
         }
 
         internal void RecordFetchTime(double t)
@@ -220,6 +297,7 @@ namespace Unity.QuickSearch
         public bool showDetails;
 
         /// <summary> Explicitly define details options to be shown</summary>
+        /// TODO: Move these options to the item options
         public ShowDetailsOptions showDetailsOptions = ShowDetailsOptions.Default;
 
         /// <summary> Handler used to fetch and format the label of a search item.</summary>
@@ -262,7 +340,7 @@ namespace Unity.QuickSearch
         /// <summary>
         /// This callback is used to open additional context for a given item.
         /// </summary>
-        public Func<SearchSelection, SearchContext, Rect, bool> openContextual;
+        public Func<SearchSelection, Rect, bool> openContextual;
 
         /// <summary>
         /// Provider can return a list of words that will help the user complete his search query

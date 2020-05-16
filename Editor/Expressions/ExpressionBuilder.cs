@@ -202,10 +202,11 @@ namespace Unity.QuickSearch
             toolbox.Add(new Button(() => m_ExpressionGraph.AddNode(ExpressionType.Union)) { text = "Union" });
             toolbox.Add(new Button(() => m_ExpressionGraph.AddNode(ExpressionType.Intersect)) { text = "Intersect" });
             toolbox.Add(new Button(() => m_ExpressionGraph.AddNode(ExpressionType.Except)) { text = "Except" });
+            toolbox.Add(new Button(() => m_ExpressionGraph.AddNode(ExpressionType.Expression)) { text = "Expression" });
 
             toolbox.Add(FlexibleSpace());
 
-            if (Utils.IsDeveloperMode())
+            if (Utils.isDeveloperBuild)
             {
                 toolbox.Add(new Button(ExportSJSON) { text = "Export", tooltip = "Copy expression as SJSON in the clipboard"});
                 toolbox.Add(new Button(Reload) { text = "Reload" });
@@ -242,6 +243,7 @@ namespace Unity.QuickSearch
                     case ExpressionType.Union:
                     case ExpressionType.Intersect:
                     case ExpressionType.Except:
+                    case ExpressionType.Expression:
                         m_Expression.EvaluateNode(ex);
                         break;
                     case ExpressionType.Value:
@@ -282,11 +284,17 @@ namespace Unity.QuickSearch
         private void Save()
         {
             if (String.IsNullOrEmpty(m_ExpressionPath))
-                m_ExpressionPath = EditorUtility.SaveFilePanel("Save search expression...", null, "expression", "qse");
+                m_ExpressionPath = EditorUtility.SaveFilePanel("Save search expression...", null, "expression", "qse").Replace("\\", "/");
             if (!String.IsNullOrEmpty(m_ExpressionPath))
             {
                 m_Expression.Save(m_ExpressionPath);
                 UpdateDocumentInfo();
+
+                if (m_ExpressionPath.StartsWith(Application.dataPath.Replace("\\", "/")))
+                {
+                    var relativepath = "Assets" + m_ExpressionPath.Substring(Application.dataPath.Replace("\\", "/").Length);
+                    AssetDatabase.ImportAsset(relativepath);
+                }
             }
         }
     }

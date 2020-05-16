@@ -78,12 +78,10 @@ namespace Unity.QuickSearch
             var queryProvider = SearchService.GetProvider(Providers.Query.type);
             return s_SavedQueries.Where(query => query && context == null || query.providerIds.Any(id => context.providers.Any(p => p.name.id == id))).Select(query =>
             {
-                var item = queryProvider.CreateItem(AssetDatabase.GetAssetPath(query.GetInstanceID()));
-                item.label = query.name;
-                item.thumbnail = query.icon ? query.icon : Icons.favorite;
-                item.description = string.IsNullOrEmpty(query.description) ? $"{query.searchQuery} - {AssetDatabase.GetAssetPath(query)}" : query.description;
-                item.data = query;
-                return item;
+                var id = GlobalObjectId.GetGlobalObjectIdSlow(query).ToString();
+                var description = string.IsNullOrEmpty(query.description) ? $"{query.searchQuery} - {AssetDatabase.GetAssetPath(query)}" : query.description;
+                var thumbnail = query.icon ? query.icon : Icons.favorite;
+                return queryProvider.CreateItem(context, id, query.name, description, thumbnail, query);
             }).ToList();
         }
 

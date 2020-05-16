@@ -85,13 +85,13 @@ namespace Unity.QuickSearch
         {
             selectCallback = (item) =>
             {
-                if (objectType == null || propertyName == null)
-                    return Enumerable.Empty<SearchItem>();
-
                 switch (selectField)
                 {
                     case ExpressionSelectField.Default:
                         return new SearchItem[] { item };
+
+                    case ExpressionSelectField.Type:
+                        return SelectTypes(item);
 
                     case ExpressionSelectField.Component:
                         return SelectComponent(item, objectType, propertyName);
@@ -106,9 +106,27 @@ namespace Unity.QuickSearch
             return this;
         }
 
+        private ISet<SearchItem> SelectTypes(SearchItem item)
+        {
+            var results = new HashSet<SearchItem>();
+            var obj = item.provider.toObject?.Invoke(item, typeof(UnityEngine.Object));
+            if (!obj)
+                return results;
+
+            if (obj is GameObject go)
+                results.UnionWith(go.GetComponents<Component>().Select(c => new SearchItem(c.GetType().Name)));
+            else
+                results.Add(new SearchItem(obj.GetType().Name));
+
+            return results;
+        }
+
         private ISet<SearchItem> SelectObject(SearchItem item, string objectTypeName, string objectPropertyName)
         {
             var results = new HashSet<SearchItem>();
+
+            if (objectTypeName == null || objectPropertyName == null)
+                return results;
 
             if (!s_TypeTable.TryGetValue(objectTypeName ?? "", out var objectType))
             {
@@ -134,6 +152,9 @@ namespace Unity.QuickSearch
         private ISet<SearchItem> SelectComponent(SearchItem item, string objectTypeName, string objectPropertyName)
         {
             var results = new HashSet<SearchItem>();
+
+            if (objectTypeName == null || objectPropertyName == null)
+                return results;
 
             var go = item.provider?.toObject(item, typeof(GameObject)) as GameObject;
             if (!go)
@@ -248,6 +269,9 @@ namespace Unity.QuickSearch
 
                 DebugLog($"Fetching items with <a>{r.searchQuery}</a>");
                 SearchService.GetItems(r, SearchFlags.FirstBatchAsync);
+
+                if (!r.searchInProgress)
+                    runningQueries.Remove(context);
             }
 
             UpdateState();

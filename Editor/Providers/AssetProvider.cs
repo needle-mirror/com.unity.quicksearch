@@ -52,7 +52,7 @@ namespace Unity.QuickSearch.Providers
                 fetchDescription = (item, context) => (item.description = GetAssetDescription(item.id)),
                 fetchThumbnail = (item, context) => Utils.GetAssetThumbnailFromPath(item.id),
                 fetchPreview = (item, context, size, options) => Utils.GetAssetPreviewFromPath(item.id, options),
-                openContextual = (selection, context, rect) => OpenContextualMenu(selection, rect),
+                openContextual = (selection, rect) => OpenContextualMenu(selection, rect),
                 startDrag = (item, context) => StartDrag(item, context),
                 trackSelection = (item, context) => Utils.PingAsset(item.id)
             };
@@ -118,19 +118,19 @@ namespace Unity.QuickSearch.Providers
 
             if (!String.IsNullOrEmpty(searchQuery))
             {
+                SetupIndexers(context);
+
                 if (context.options.HasFlag(SearchFlags.BasicIndexing))
                 {
-                    SetupIndexers(context);
                     while (!fileIndexer.IsReady())
                         yield return null;
 
-                    foreach (var item in SearchFiles(searchQuery, provider))
+                    foreach (var item in SearchFiles(context, provider))
                         yield return item;
                 }
                 else if (context.options.HasFlag(SearchFlags.FullIndexing))
                 {
-                    SetupIndexers(context);
-                    yield return assetIndexes.Select(db => SearchIndexes(context, provider, db));
+                    yield return assetIndexes.Select(db => SearchIndexes(context.searchQuery, context, provider, db));
                 }
 
                 // Search file system wild cards
@@ -141,37 +141,22 @@ namespace Unity.QuickSearch.Providers
                         globSearch = $"glob:\"{globSearch}\"";
                     yield return AssetDatabase.FindAssets(globSearch)
                         .Select(guid => AssetDatabase.GUIDToAssetPath(guid))
-                        .Select(path => provider.CreateItem(path, 999, Path.GetFileName(path), null, null, null));
+                        .Select(path => CreateItem(context, provider, "*", path, 999));
                 }
                 else
                 {
                     // Search by GUID
                     var guidPath = AssetDatabase.GUIDToAssetPath(searchQuery);
                     if (!String.IsNullOrEmpty(guidPath))
-                        yield return provider.CreateItem(guidPath, -1, $"{Path.GetFileName(guidPath)} ({searchQuery})", null, null, null);
+                        yield return provider.CreateItem(context, guidPath, -1, $"{Path.GetFileName(guidPath)} ({searchQuery})", null, null, null);
 
-                    if ((context.options & SearchFlags.IndexingMask) == 0)
+                    // Finally search the default asset database for any remaining results.
+                    if ((context.options & SearchFlags.IndexingMask) == 0 ||
+                        (context.wantsMore && !k_NonSimpleSearchTerms.Any(t => searchQuery.IndexOf(t, StringComparison.Ordinal) != -1)))
                     {
-                        // Finally search the default asset database for any remaining results.
-                        foreach (var assetPath in AssetDatabase.FindAssets(searchQuery).Select(guid => AssetDatabase.GUIDToAssetPath(guid)))
-                            yield return provider.CreateItem(assetPath, 998, Path.GetFileName(assetPath), null, null, null);
-                    }
-                    else if (context.wantsMore && !k_NonSimpleSearchTerms.Any(t => searchQuery.IndexOf(t, StringComparison.Ordinal) != -1))
-                    {
-                        IEnumerable<string> assetPaths = null;
-                        try
-                        {
-                            assetPaths = Utils.FindAssets(searchQuery);
-                        }
-                        catch
-                        {
-                            // Ignore these errors.
-                        }
-                        if (assetPaths != null)
-                        {
-                            foreach (var assetPath in assetPaths)
-                                yield return provider.CreateItem(assetPath, 998, Path.GetFileName(assetPath), null, null, null);
-                        }
+                        yield return AssetDatabase.FindAssets(searchQuery)
+                            .Select(guid => AssetDatabase.GUIDToAssetPath(guid))
+                            .Select(path => CreateItem(context, provider, "ADB", path, 998));
                     }
                 }
             }
@@ -180,11 +165,14 @@ namespace Unity.QuickSearch.Providers
             {
                 yield return AssetDatabase.FindAssets($"t:{context.filterType.Name}")
                     .Select(guid => AssetDatabase.GUIDToAssetPath(guid))
-                    .Select(path => provider.CreateItem(path, 999, Path.GetFileName(path), null, null, null));
+                    .Select(path => CreateItem(context, provider, "More", path, 999));
+
+                if (assetIndexes != null)
+                    yield return assetIndexes.Select(db => SearchIndexes($"has={context.filterType.Name}", context, provider, db));
             }
         }
 
-        private static IEnumerator SearchIndexes(SearchContext context, SearchProvider provider, SearchDatabase db)
+        private static IEnumerator SearchIndexes(string searchQuery, SearchContext context, SearchProvider provider, SearchDatabase db)
         {
             while (db.index == null)
                 yield return null;
@@ -194,35 +182,27 @@ namespace Unity.QuickSearch.Providers
             while (!index.IsReady())
                 yield return null;
 
-            var searchQuery = context.searchQuery;
-            yield return index.Search(searchQuery.ToLowerInvariant()).Select(e =>
-            {
-                var itemScore = e.score;
-                var words = context.searchPhrase;
-                var filenameNoExt = Path.GetFileNameWithoutExtension(e.id);
-                if (filenameNoExt.Equals(words, StringComparison.OrdinalIgnoreCase))
-                    itemScore = SearchProvider.k_RecentUserScore - 1;
-
-                var filename = Path.GetFileName(e.id);
-                string description = (index as AssetIndexer)?.GetDebugIndexStrings(e.id);
-                return provider.CreateItem(e.id, itemScore, filename, description, null, null);
-            });
+            yield return index.Search(searchQuery.ToLowerInvariant()).Select(e => CreateItem(context, provider, db.name, e.id, e.score));
         }
 
+        private static SearchItem CreateItem(SearchContext context, SearchProvider provider, string dbName, string assetPath, int itemScore)
+        {
+            var words = context.searchPhrase;
+            var filenameNoExt = Path.GetFileNameWithoutExtension(assetPath);
+            if (filenameNoExt.Equals(words, StringComparison.OrdinalIgnoreCase))
+                itemScore = SearchProvider.k_RecentUserScore - 1;
 
-        private static IEnumerable<SearchItem> SearchFiles(string searchQuery, SearchProvider provider)
+            var filename = Path.GetFileName(assetPath);
+            if (context.options.HasFlag(SearchFlags.Debug) && !String.IsNullOrEmpty(dbName))
+                filename += $" ({dbName}, {itemScore})";
+            return provider.CreateItem(context, assetPath, itemScore, filename, null, null, null);
+        }
+
+        private static IEnumerable<SearchItem> SearchFiles(SearchContext context, SearchProvider provider)
         {
             UnityEngine.Assertions.Assert.IsNotNull(fileIndexer);
-
-            return fileIndexer.Search(searchQuery).Select(e =>
-            {
-                var filename = Path.GetFileName(e.id);
-                var filenameNoExt = Path.GetFileNameWithoutExtension(e.id);
-                var itemScore = e.score;
-                if (filenameNoExt.Equals(searchQuery, StringComparison.OrdinalIgnoreCase))
-                    itemScore = SearchProvider.k_RecentUserScore + 1;
-                return provider.CreateItem(e.id, itemScore, filename, null, null, null);
-            });
+            var searchQuery = context.searchQuery;
+            return fileIndexer.Search(searchQuery).Select(e => CreateItem(context, provider, "Files", e.id, e.score));
         }
 
         internal static string GetAssetDescription(string assetPath)
@@ -249,12 +229,12 @@ namespace Unity.QuickSearch.Providers
             {
                 new SearchAction(type, "select", null, "Select asset...")
                 {
-                    handler = (item, context) => Utils.FrameAssetFromPath(item.id),
-                    execute = (context, items) => SearchUtils.SelectMultipleItems(items, focusProjectBrowser: true)
+                    handler = (item) => Utils.FrameAssetFromPath(item.id),
+                    execute = (items) => SearchUtils.SelectMultipleItems(items, focusProjectBrowser: true)
                 },
                 new SearchAction(type, "open", null, "Open asset...")
                 {
-                    handler = (item, context) =>
+                    handler = (item) =>
                     {
                         var asset = AssetDatabase.LoadAssetAtPath<Object>(item.id);
                         if (asset != null) AssetDatabase.OpenAsset(asset);
@@ -263,12 +243,12 @@ namespace Unity.QuickSearch.Providers
                 new SearchAction(type, "add_scene", null, "Add scene...")
                 {
                     // Only works in single selection and adds a scene to the current hierarchy.
-                    enabled = (context, items) => items.Count == 1 && items.Last().id.EndsWith(".unity", StringComparison.OrdinalIgnoreCase),
-                    handler = (item, context) => UnityEditor.SceneManagement.EditorSceneManager.OpenScene(item.id, UnityEditor.SceneManagement.OpenSceneMode.Additive)
+                    enabled = (items) => items.Count == 1 && items.Last().id.EndsWith(".unity", StringComparison.OrdinalIgnoreCase),
+                    handler = (item) => UnityEditor.SceneManagement.EditorSceneManager.OpenScene(item.id, UnityEditor.SceneManagement.OpenSceneMode.Additive)
                 },
                 new SearchAction(type, "reveal", null, k_RevealActionLabel)
                 {
-                    handler = (item, context) => EditorUtility.RevealInFinder(item.id)
+                    handler = (item) => EditorUtility.RevealInFinder(item.id)
                 }
             };
         }

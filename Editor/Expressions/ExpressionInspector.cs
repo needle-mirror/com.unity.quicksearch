@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using UnityEditor;
-using UnityEditor.Experimental.AssetImporters;
 using UnityEditorInternal;
 using UnityEngine;
 using UnityEngine.UIElements;
@@ -64,7 +63,7 @@ namespace Unity.QuickSearch
             public string label;
         }
 
-        private SearchExpressionNode m_Selection;
+        private SearchExpressionNode m_Node;
         private List<string> m_VariablesList = new List<string>();
         private ReorderableList m_VariablesReorderableList;
         private Vector2 m_ScrollPostion;
@@ -72,6 +71,7 @@ namespace Unity.QuickSearch
         private float m_ContentHeight = 0f;
         private Dictionary<Type, DerivedTypeInfo> m_DerivedTypes = new Dictionary<Type, DerivedTypeInfo>();
         private Dictionary<Type, List<PropertyInfo>> m_TypeProperties = new Dictionary<Type, List<PropertyInfo>>();
+        private string[] m_ExpressionPaths = new string[0];
 
         private bool hasScrollbar => m_ContentHeight > contentRect.height;
         private float scrollbarWidth => hasScrollbar ? Styles.scrollbarWidth : 0f;
@@ -116,8 +116,8 @@ namespace Unity.QuickSearch
                     m_VariablesList[index] = GUI.TextField(textFieldRect, oldValue);
                     if (has.changed)
                     {
-                        m_Selection.RenameVariable(oldValue, m_VariablesList[index]);
-                        variableRenamed?.Invoke(m_Selection, oldValue, m_VariablesList[index]);
+                        m_Node.RenameVariable(oldValue, m_VariablesList[index]);
+                        variableRenamed?.Invoke(m_Node, oldValue, m_VariablesList[index]);
                     }
                 }
             }
@@ -137,8 +137,8 @@ namespace Unity.QuickSearch
             while (m_VariablesList.Contains(uniqueVarName))
                 uniqueVarName = $"var{idx++}";
             m_VariablesList.Add(uniqueVarName);
-            var newVar = m_Selection.AddVariable(uniqueVarName, null);
-            variableAdded?.Invoke(m_Selection, newVar.name);
+            var newVar = m_Node.AddVariable(uniqueVarName, null);
+            variableAdded?.Invoke(m_Node, newVar.name);
         }
 
         private void OnRemoveVariable(ReorderableList list)
@@ -146,14 +146,37 @@ namespace Unity.QuickSearch
             var varName = m_VariablesList[m_VariablesReorderableList.index];
             if (m_VariablesList.Remove(varName))
             {
-                if (m_Selection.RemoveVariable(varName) >= 1)
-                    variableRemoved?.Invoke(m_Selection, varName);
+                if (m_Node.RemoveVariable(varName) >= 1)
+                    variableRemoved?.Invoke(m_Node, varName);
+            }
+        }
+
+        private void DrawNameEditor()
+        {
+            var name = EditorGUILayout.TextField("Name", m_Node.name, GUILayout.ExpandWidth(true));
+            if (name != m_Node.name)
+            {
+                if (!String.IsNullOrEmpty(name))
+                    m_Node.name = name;
+                else
+                    m_Node.name = null;
+                propertiesChanged?.Invoke(m_Node);
+            }
+        }
+
+        private void DrawCommonControls()
+        {
+            var newColor = EditorGUILayout.ColorField("Color", m_Node.color);
+            if (newColor != m_Node.color)
+            {
+                m_Node.color = newColor;
+                propertiesChanged?.Invoke(m_Node);
             }
         }
 
         private void OnGUI()
         {
-            if (m_Selection == null)
+            if (m_Node == null)
             {
                 CollapseEditor();
                 return;
@@ -163,13 +186,18 @@ namespace Unity.QuickSearch
             using (new EditorGUILayout.VerticalScope(GUILayout.MaxWidth(maxContentWidth)))
             {
                 EditorGUIUtility.labelWidth = 80f;
-                switch (m_Selection.type)
+
+                DrawCommonControls();
+
+                switch (m_Node.type)
                 {
                     case ExpressionType.Search:
+                        DrawNameEditor();
                         DrawSearchEditor();
                         break;
 
                     case ExpressionType.Value:
+                        DrawNameEditor();
                         DrawValueEditor();
                         break;
 
@@ -188,13 +216,27 @@ namespace Unity.QuickSearch
                         DrawSelectEditor();
                         break;
 
+                    case ExpressionType.Expression:
+                        DrawNestedExpressionEditor();
+                        break;
+
                     default:
-                        throw new NotSupportedException($"No inspector for {m_Selection.type} {m_Selection.id}");
+                        throw new NotSupportedException($"No inspector for {m_Node.type} {m_Node.id}");
                 }
 
                 ResizeEditor();
                 m_ScrollPostion = scope.scrollPosition;
             }
+        }
+
+        private void DrawNestedExpressionEditor()
+        {
+            string selectLabel = m_Node.value != null ? Convert.ToString(m_Node.value) : null;
+            DrawSelectionPopup("Expression", selectLabel ?? "Select expression...", m_ExpressionPaths, selectedIndex =>
+            {
+                m_Node.value = m_ExpressionPaths[selectedIndex];
+                propertiesChanged?.Invoke(m_Node);
+            });
         }
 
         private DerivedTypeInfo GetDerivedTypeInfo(Type type)
@@ -313,11 +355,11 @@ namespace Unity.QuickSearch
         private void DrawSelectEditor()
         {
             EditorGUI.BeginChangeCheck();
-            var selectType = (ExpressionSelectField)EditorGUILayout.EnumPopup("Select", m_Selection.selectField);
+            var selectType = (ExpressionSelectField)EditorGUILayout.EnumPopup("Select", m_Node.selectField);
             if (EditorGUI.EndChangeCheck())
             {
-                m_Selection.value = selectType.ToString().ToLowerInvariant();
-                propertiesChanged?.Invoke(m_Selection);
+                m_Node.value = selectType.ToString().ToLowerInvariant();
+                propertiesChanged?.Invoke(m_Node);
             }
 
             if (selectType == ExpressionSelectField.Asset)
@@ -337,14 +379,14 @@ namespace Unity.QuickSearch
         private void DrawSelectAssetEditor()
         {
             var derivedTypeInfo = GetDerivedTypeInfo(typeof(UnityEngine.Object));
-            var typeName = m_Selection.GetProperty<string>("type", null);
+            var typeName = m_Node.GetProperty<string>("type", null);
             var selectedTypeIndex = derivedTypeInfo.names.FindIndex(n => n == typeName);
             var typeLabel = selectedTypeIndex == -1 ? null : derivedTypeInfo.labels[selectedTypeIndex];
 
             DrawSelectionPopup("Type", typeLabel ?? "Select type...", derivedTypeInfo.labels, selectedIndex =>
             {
-                m_Selection.SetProperty("type", derivedTypeInfo.names[selectedIndex]);
-                propertiesChanged?.Invoke(m_Selection);
+                m_Node.SetProperty("type", derivedTypeInfo.names[selectedIndex]);
+                propertiesChanged?.Invoke(m_Node);
             });
             if (typeName != null)
             {
@@ -352,13 +394,13 @@ namespace Unity.QuickSearch
                 {
                     var selectedType = derivedTypeInfo.types[selectedTypeIndex];
                     var properties = GetTypePropertyNames(selectedType);
-                    var propertyName = m_Selection.GetProperty<string>("field", null);
+                    var propertyName = m_Node.GetProperty<string>("field", null);
                     var propertyLabel = properties.FirstOrDefault(p => p.name == propertyName).label;
 
                     DrawSelectionPopup("Property", propertyLabel ?? "Select property...", properties.Select(p => p.label), selectedIndex =>
                     {
-                        m_Selection.SetProperty("field", properties[selectedIndex].name);
-                        propertiesChanged?.Invoke(m_Selection);
+                        m_Node.SetProperty("field", properties[selectedIndex].name);
+                        propertiesChanged?.Invoke(m_Node);
                     });
                 }
             }
@@ -367,14 +409,14 @@ namespace Unity.QuickSearch
         private void DrawSelectComponentEditor()
         {
             var derivedTypeInfo = GetDerivedTypeInfo(typeof(Component));
-            var typeName = m_Selection.GetProperty<string>("type", null);
+            var typeName = m_Node.GetProperty<string>("type", null);
             var selectedTypeIndex = derivedTypeInfo.names.FindIndex(n => n == typeName);
             var typeLabel = selectedTypeIndex == -1 ? null : derivedTypeInfo.labels[selectedTypeIndex];
 
             DrawSelectionPopup("Type", typeLabel ?? "Select type...", derivedTypeInfo.labels, selectedIndex =>
             {
-                m_Selection.SetProperty("type", derivedTypeInfo.names[selectedIndex]);
-                propertiesChanged?.Invoke(m_Selection);
+                m_Node.SetProperty("type", derivedTypeInfo.names[selectedIndex]);
+                propertiesChanged?.Invoke(m_Node);
             });
             if (typeName != null)
             {
@@ -382,13 +424,13 @@ namespace Unity.QuickSearch
                 {
                     var selectedType = derivedTypeInfo.types[selectedTypeIndex];
                     var properties = GetTypePropertyNames(selectedType);
-                    var propertyName = m_Selection.GetProperty<string>("field", null);
+                    var propertyName = m_Node.GetProperty<string>("field", null);
                     var propertyLabel = properties.FirstOrDefault(p => p.name == propertyName).label;
 
                     DrawSelectionPopup("Property", propertyLabel ?? "Select property...", properties.Select(p => p.label), selectedIndex =>
                     {
-                        m_Selection.SetProperty("field", properties[selectedIndex].name);
-                        propertiesChanged?.Invoke(m_Selection);
+                        m_Node.SetProperty("field", properties[selectedIndex].name);
+                        propertiesChanged?.Invoke(m_Node);
                     });
                 }
             }
@@ -410,33 +452,39 @@ namespace Unity.QuickSearch
 
         private void DrawProviderEditor()
         {
-            var providerNames = SearchService.Providers.Select(p => p.name.displayName).ToArray();
-            var selectedIndex = SearchService.Providers.FindIndex(p => p.name.id == (string)m_Selection.value);
+            var providerNames = new string []{"Custom", ""}
+                .Concat(SearchService.Providers.Select(p => p.name.displayName)).ToArray();
+            var selectedIndex = SearchService.Providers.FindIndex(p => p.name.id == (string)m_Node.value);
             EditorGUI.BeginChangeCheck();
-            selectedIndex = EditorGUILayout.Popup("Provider", selectedIndex, providerNames);
+            selectedIndex = EditorGUILayout.Popup("Provider", selectedIndex+2, providerNames)-2;
             if (EditorGUI.EndChangeCheck())
             {
                 if (selectedIndex < 0)
-                    m_Selection.value = null;
+                    m_Node.value = null;
                 else
-                    m_Selection.value = SearchService.Providers.ElementAt(selectedIndex).name.id;
+                    m_Node.value = SearchService.Providers.ElementAt(selectedIndex).name.id;
 
-                propertiesChanged?.Invoke(m_Selection);
+                propertiesChanged?.Invoke(m_Node);
             }
+
+            if (selectedIndex < 0)
+            {
+                var customValue = EditorGUILayout.TextField("Source", Convert.ToString(m_Node.value), GUILayout.ExpandWidth(true));
+                if (!customValue.Equals(m_Node.value))
+                {
+                    if (!String.IsNullOrEmpty(customValue))
+                        m_Node.value = customValue;
+                    else
+                        m_Node.value = null;
+                    propertiesChanged?.Invoke(m_Node);
+                }
+            }
+            else
+                GUILayout.Space(20);
         }
 
         private void DrawValueEditor()
         {
-            var name = EditorGUILayout.TextField("Name", m_Selection.name, GUILayout.ExpandWidth(true));
-            if (name != m_Selection.name)
-            {
-                if (!String.IsNullOrEmpty(name))
-                    m_Selection.name = name;
-                else
-                    m_Selection.name = null;
-                propertiesChanged?.Invoke(m_Selection);
-            }
-
             using (new EditorGUILayout.HorizontalScope())
             using (var has = new EditorGUI.ChangeCheckScope())
             {
@@ -444,8 +492,8 @@ namespace Unity.QuickSearch
                 var booleanValue = false;
 
                 // Parse value;
-                var stringValue = Convert.ToString(m_Selection.value);
-                if (Utils.TryGetNumber(m_Selection.value, out var number))
+                var stringValue = Convert.ToString(m_Node.value);
+                if (Utils.TryGetNumber(m_Node.value, out var number))
                     selectedType = ValueType.Number;
                 else if ("true".Equals(stringValue, StringComparison.OrdinalIgnoreCase))
                 {
@@ -470,40 +518,40 @@ namespace Unity.QuickSearch
                         number = 0;
                     EditorGUIUtility.labelWidth = 70f;
                     number = EditorGUILayout.DoubleField("Value", number, GUILayout.ExpandWidth(true));
-                    m_Selection.value = number;
+                    m_Node.value = number;
                 }
                 else if (newSelectedType == ValueType.String)
                 {
                     if (selectedType != newSelectedType)
-                        m_Selection.value = "";
+                        m_Node.value = "";
 
-                    var newValue = GUILayout.TextField(Convert.ToString(m_Selection.value), GUILayout.ExpandWidth(true));
+                    var newValue = GUILayout.TextField(Convert.ToString(m_Node.value), GUILayout.ExpandWidth(true));
                     if (double.TryParse(newValue, out number))
-                        m_Selection.value = number;
+                        m_Node.value = number;
                     else
-                        m_Selection.value = newValue;
+                        m_Node.value = newValue;
                 }
                 else if (newSelectedType == ValueType.Boolean)
                 {
                     if (selectedType != newSelectedType)
-                        m_Selection.value = booleanValue;
+                        m_Node.value = booleanValue;
 
                     var newValue = GUILayout.Toggle(booleanValue, "Value", Styles.toggle, GUILayout.ExpandWidth(true));
                     if (booleanValue != newValue)
-                        m_Selection.value = newValue;
+                        m_Node.value = newValue;
                 }
                 else if (newSelectedType == ValueType.Asset)
                 {
                     if (selectedType != newSelectedType)
-                        m_Selection.value = "Assets";
+                        m_Node.value = "Assets";
 
-                    var constantAsset = AssetDatabase.LoadMainAssetAtPath((string)m_Selection.value);
+                    var constantAsset = AssetDatabase.LoadMainAssetAtPath((string)m_Node.value);
                     var selectedAsset = EditorGUILayout.ObjectField(constantAsset, typeof(UnityEngine.Object), false);
-                    m_Selection.value = AssetDatabase.GetAssetPath(selectedAsset);
+                    m_Node.value = AssetDatabase.GetAssetPath(selectedAsset);
                 }
 
                 if (has.changed)
-                    propertiesChanged?.Invoke(m_Selection);
+                    propertiesChanged?.Invoke(m_Node);
             }
         }
 
@@ -518,10 +566,9 @@ namespace Unity.QuickSearch
         {
             using (var has = new EditorGUI.ChangeCheckScope())
             {
-                GUILayout.Label("Query");
-                m_Selection.value = GUILayout.TextField((string)m_Selection.value, GUILayout.MaxWidth(maxContentWidth));
+                m_Node.value = EditorGUILayout.TextField("Query", (string)m_Node.value, GUILayout.MaxWidth(maxContentWidth));
                 if (has.changed)
-                    propertiesChanged?.Invoke(m_Selection);
+                    propertiesChanged?.Invoke(m_Node);
             }
             m_VariablesReorderableList.DoLayoutList();
         }
@@ -550,20 +597,22 @@ namespace Unity.QuickSearch
 
         public void SetSelection(SearchExpressionNode node)
         {
-            if (node == m_Selection)
+            if (node == m_Node)
                 return;
 
-            m_Selection = node;
-            if (m_Selection == null)
+            m_Node = node;
+            if (m_Node == null)
                 return;
 
             m_VariablesList.Clear();
 
-            if (m_Selection.type == ExpressionType.Search)
+            if (m_Node.type == ExpressionType.Search)
             {
-                if (m_Selection.variables != null)
-                    m_VariablesList.AddRange(m_Selection.variables.Select(v => v.name));
+                if (m_Node.variables != null)
+                    m_VariablesList.AddRange(m_Node.variables.Select(v => v.name));
             }
+
+            m_ExpressionPaths = AssetDatabase.FindAssets($"t:{nameof(SearchExpressionAsset)}").Select(AssetDatabase.GUIDToAssetPath).ToArray();
 
             resetHeight = true;
             MarkDirtyRepaint();
@@ -572,7 +621,7 @@ namespace Unity.QuickSearch
         public void ClearSelection()
         {
             resetHeight = true;
-            m_Selection = null;
+            m_Node = null;
             m_VariablesList.Clear();
             MarkDirtyRepaint();
         }

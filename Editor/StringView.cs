@@ -63,6 +63,11 @@ namespace Unity.QuickSearch
                 hc ^= m_BaseString[i].GetHashCode();
             return hc;
         }
+
+        public override string ToString()
+        {
+            return m_BaseString.Substring(m_StartIndex, Length);
+        }
     }
 
     static class StringExtensions

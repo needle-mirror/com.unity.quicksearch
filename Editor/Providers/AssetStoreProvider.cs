@@ -382,7 +382,7 @@ namespace Unity.QuickSearch.Providers
             #if QUICKSEARCH_DEBUG
             description += $" id: {doc.id}";
             #endif
-            var item = provider.CreateItem(doc.id, score, doc.name_en_US, description, null, doc);
+            var item = provider.CreateItem(context, doc.id, score, doc.name_en_US, description, null, doc);
 
             doc.productDetail = null;
             doc.url = $"https://assetstore.unity.com/packages/{doc.category_slug}/{doc.id}";
@@ -553,7 +553,7 @@ namespace Unity.QuickSearch.Providers
             {
                 new SearchAction("store", "open", null, "Open item")
                 {
-                    handler = (item, context) =>
+                    handler = (item) =>
                     {
                         var doc = (AssetDocument)item.data;
                         if (AssetStoreProvider.purchasePackageIds != null && AssetStoreProvider.purchasePackageIds.Contains(doc.id))
@@ -568,7 +568,7 @@ namespace Unity.QuickSearch.Providers
                 },
                 new SearchAction("store", "browse", null, "Browse item(s)")
                 {
-                    execute = (context, items) =>
+                    execute = (items) =>
                     {
                         foreach (var item in items)
                             BrowseAssetStoreItem(item);

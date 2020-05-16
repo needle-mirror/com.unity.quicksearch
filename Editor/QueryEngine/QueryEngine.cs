@@ -63,48 +63,10 @@ namespace Unity.QuickSearch
             this.success = success;
             this.parsedValue = value;
         }
-
+        /// <summary>
+        /// Default value when no ParsetResult are available.
+        /// </summary>
         public static readonly ParseResult<T> none = new ParseResult<T>(false, default(T));
-    }
-
-    /// <summary>
-    /// A QueryError holds the definition of a query parsing error.
-    /// </summary>
-    public class QueryError
-    {
-        /// <summary> Index where the error happened. </summary>
-        public int index { get; }
-
-        /// <summary> Length of the block that was being parsed. </summary>
-        public int length { get; }
-
-        /// <summary> Reason why the parsing failed. </summary>
-        public string reason { get; }
-
-        /// <summary>
-        /// Construct a new QueryError with a default length of 1.
-        /// </summary>
-        /// <param name="index">Index where the error happened.</param>
-        /// <param name="reason">Reason why the parsing failed.</param>
-        public QueryError(int index, string reason)
-        {
-            this.index = index;
-            this.reason = reason;
-            length = 1;
-        }
-
-        /// <summary>
-        /// Construct a new QueryError.
-        /// </summary>
-        /// <param name="index">Index where the error happened.</param>
-        /// <param name="length">Length of the block that was being parsed.</param>
-        /// <param name="reason">Reason why the parsing failed.</param>
-        public QueryError(int index, int length, string reason)
-        {
-            this.index = index;
-            this.reason = reason;
-            this.length = length;
-        }
     }
 
     internal interface IQueryEngineImplementation
@@ -130,7 +92,25 @@ namespace Unity.QuickSearch
         public bool skipUnknownFilters;
     }
 
-    internal sealed class QueryEngineImpl<TData> : IQueryEngineImplementation
+    class QueryEngineParserData
+    {
+        public List<IQueryNode> expressionNodes;
+        public NodesToStringPosition nodesToStringPosition;
+
+        public QueryEngineParserData()
+        {
+            expressionNodes = new List<IQueryNode>();
+            nodesToStringPosition = new NodesToStringPosition();
+        }
+
+        public QueryEngineParserData(NodesToStringPosition nodesToStringPosition)
+        {
+            expressionNodes = new List<IQueryNode>();
+            this.nodesToStringPosition = nodesToStringPosition;
+        }
+    }
+
+    internal sealed class QueryEngineImpl<TData> : QueryTokenizer<QueryEngineParserData>, IQueryEngineImplementation
     {
         private Dictionary<string, IFilter> m_Filters = new Dictionary<string, IFilter>();
         private Func<TData, string, string, string, bool> m_DefaultFilterHandler;
@@ -140,13 +120,6 @@ namespace Unity.QuickSearch
         Dictionary<Type, ITypeParser> m_DefaultTypeParsers = new Dictionary<Type, ITypeParser>();
         Dictionary<Type, IFilterOperationGenerator> m_FilterOperationGenerators = new Dictionary<Type, IFilterOperationGenerator>();
 
-        // To match a regex at a specific index, use \\G and Match(input, startIndex)
-        private static readonly Regex k_PhraseRx = new Regex("\\G!?\\\".*?\\\"");
-        private Regex m_FilterRx = new Regex("\\G([\\w]+)([:><=!]+)(\\\".*?\\\"|([a-zA-Z0-9]*?)(?:\\{(?:(?<c>\\{)|[^{}]+|(?<-c>\\}))*(?(c)(?!))\\})|[^\\s{}]+)");
-        private static readonly Regex k_WordRx = new Regex("\\G!?\\S+");
-        private static readonly Regex k_NestedQueryRx = new Regex("\\G([a-zA-Z0-9]*?)(\\{(?:(?<c>\\{)|[^{}]+|(?<-c>\\}))*(?(c)(?!))\\})");
-
-        private static readonly HashSet<char> k_WhiteSpaceChars = new HashSet<char>(" \f\n\r\t\v");
         private static readonly Dictionary<string, Func<IQueryNode>> k_CombiningTokenGenerators = new Dictionary<string, Func<IQueryNode>>
         {
             {"and", () => new AndNode()},
@@ -201,7 +174,6 @@ namespace Unity.QuickSearch
         public QueryValidationOptions validationOptions { get; set; }
 
         public StringComparison globalStringComparison { get; set; } = StringComparison.OrdinalIgnoreCase;
-
         public StringComparison searchDataStringComparison { get; private set; } = StringComparison.OrdinalIgnoreCase;
         public bool searchDataOverridesGlobalStringComparison { get; private set; }
 
@@ -458,34 +430,13 @@ namespace Unity.QuickSearch
 
         private IQueryNode BuildGraphRecursively(string text, int startIndex, int endIndex, ICollection<QueryError> errors, NodesToStringPosition nodesToStringPosition)
         {
-            var expressionNodes = new List<IQueryNode>();
-            var index = startIndex;
-            while (index < endIndex)
-            {
-                var matched = false;
-                foreach (var tokenConsumer in m_TokenConsumers)
-                {
-                    var consumed = tokenConsumer(text, index, endIndex, expressionNodes, errors, nodesToStringPosition, out var consumerMatched);
-                    if (!consumerMatched)
-                        continue;
-                    if (consumed == -1)
-                    {
-                        return null;
-                    }
-                    index += consumed;
-                    matched = true;
-                    break;
-                }
+            var userData = new QueryEngineParserData(nodesToStringPosition);
+            var result = Parse(text, startIndex, endIndex, errors, userData);
+            if (result != ParseState.Matched)
+                return null;
 
-                if (!matched)
-                {
-                    errors.Add(new QueryError(index, $"Error parsing string. No token could be deduced at {index}"));
-                    return null;
-                }
-            }
-
-            InsertAndIfNecessary(expressionNodes, nodesToStringPosition);
-            var rootNode = CombineNodesToTree(expressionNodes, errors, nodesToStringPosition);
+            InsertAndIfNecessary(userData.expressionNodes, nodesToStringPosition);
+            var rootNode = CombineNodesToTree(userData.expressionNodes, errors, nodesToStringPosition);
             return rootNode;
         }
 
@@ -514,172 +465,77 @@ namespace Unity.QuickSearch
             return new QueryGraph(rootNode);
         }
 
-        private static int ConsumeEmpty(string text, int startIndex, int endIndex, List<IQueryNode> nodes, ICollection<QueryError> errors, NodesToStringPosition nodesToStringPosition, out bool matched)
+        protected override bool ConsumeEmpty(string text, int startIndex, int endIndex, StringView sv, Match match, ICollection<QueryError> errors, QueryEngineParserData userData)
         {
-            var currentIndex = startIndex;
-            var lengthMatched = 0;
-            matched = false;
-            while (currentIndex < endIndex && IsWhiteSpaceChar(text[currentIndex]))
-            {
-                ++currentIndex;
-                ++lengthMatched;
-                matched = true;
-            }
-            return lengthMatched;
+            return true;
         }
 
-        private static bool IsWhiteSpaceChar(char c)
+        protected override bool ConsumeCombiningToken(string text, int startIndex, int endIndex, StringView sv, Match match, ICollection<QueryError> errors, QueryEngineParserData userData)
         {
-            return k_WhiteSpaceChars.Contains(c);
+            if (!k_CombiningTokenGenerators.TryGetValue(sv.ToString(), out var generator))
+                return false;
+            var newNode = generator();
+            newNode.queryStringPosition = startIndex;
+            userData.nodesToStringPosition.Add(newNode, new Tuple<int, int>(startIndex, sv.Length));
+            userData.expressionNodes.Add(newNode);
+            return true;
         }
 
-        private static int ConsumeCombiningToken(string text, int startIndex, int endIndex, List<IQueryNode> nodes, ICollection<QueryError> errors, NodesToStringPosition nodesToStringPosition, out bool matched)
+        protected override bool ConsumeFilter(string text, int startIndex, int endIndex, StringView sv, Match match, ICollection<QueryError> errors, QueryEngineParserData userData)
         {
-            var totalUsableLength = endIndex - startIndex;
-
-            foreach (var combiningTokenKVP in k_CombiningTokenGenerators)
-            {
-                var combiningToken = combiningTokenKVP.Key;
-                var tokenLength = combiningToken.Length;
-                if (tokenLength > totalUsableLength)
-                    continue;
-
-                var stringView = text.GetStringView(startIndex, startIndex + tokenLength);
-                if (stringView == combiningToken)
-                {
-                    matched = true;
-                    var newNode = combiningTokenKVP.Value();
-                    newNode.queryStringPosition = startIndex;
-                    nodesToStringPosition.Add(newNode, new Tuple<int, int>(startIndex, stringView.Length));
-                    nodes.Add(newNode);
-                    return stringView.Length;
-                }
-            }
-
-            matched = false;
-            return -1;
-        }
-
-        private int ConsumeFilter(string text, int startIndex, int endIndex, List<IQueryNode> nodes, ICollection<QueryError> errors, NodesToStringPosition nodesToStringPosition, out bool matched)
-        {
-            var match = m_FilterRx.Match(text, startIndex, endIndex - startIndex);
-            if (!match.Success)
-            {
-                matched = false;
-                return -1;
-            }
-
-            matched = true;
             var node = CreateFilterToken(match.Value, match, startIndex, errors);
-            if (node != null)
-            {
-                node.queryStringPosition = startIndex;
-                nodesToStringPosition.Add(node, new Tuple<int, int>(startIndex, match.Length));
-                nodes.Add(node);
-            }
+            if (node == null)
+                return false;
 
-            return match.Length;
+            node.queryStringPosition = startIndex;
+            userData.nodesToStringPosition.Add(node, new Tuple<int, int>(startIndex, match.Length));
+            userData.expressionNodes.Add(node);
+            return true;
         }
 
-        private int ConsumeWords(string text, int startIndex, int endIndex, List<IQueryNode> nodes, ICollection<QueryError> errors, NodesToStringPosition nodesToStringPosition, out bool matched)
+        protected override bool ConsumeWord(string text, int startIndex, int endIndex, StringView sv, Match match, ICollection<QueryError> errors, QueryEngineParserData userData)
         {
-            var match = k_PhraseRx.Match(text, startIndex, endIndex - startIndex);
-            if (!match.Success)
-                match = k_WordRx.Match(text, startIndex, endIndex - startIndex);
-            if (!match.Success)
-            {
-                matched = false;
-                return -1;
-            }
-
-            matched = true;
             if (validationOptions.validateFilters && searchDataCallback == null)
             {
                 errors.Add(new QueryError(startIndex, match.Length, "Cannot use a search word without setting the search data callback."));
-                return -1;
+                return false;
             }
 
             var node = CreateWordExpressionNode(match.Value);
-            if (node != null)
-            {
-                node.queryStringPosition = startIndex;
-                nodesToStringPosition.Add(node, new Tuple<int, int>(startIndex, match.Length));
-                nodes.Add(node);
-            }
+            if (node == null)
+                return false;
 
-            return match.Length;
+            node.queryStringPosition = startIndex;
+            userData.nodesToStringPosition.Add(node, new Tuple<int, int>(startIndex, match.Length));
+            userData.expressionNodes.Add(node);
+            return true;
         }
 
-        private int ConsumeGroup(string text, int groupStartIndex, int endIndex, List<IQueryNode> nodes, ICollection<QueryError> errors, NodesToStringPosition nodesToStringPosition, out bool matched)
+        protected override bool ConsumeGroup(string text, int startIndex, int endIndex, StringView sv, Match match, ICollection<QueryError> errors, QueryEngineParserData userData)
         {
-            if (groupStartIndex >= text.Length || text[groupStartIndex] != '(')
-            {
-                matched = false;
-                return -1;
-            }
+            var groupNode = BuildGraphRecursively(text, startIndex + 1, endIndex - 1, errors, userData.nodesToStringPosition);
+            if (groupNode == null)
+                return false;
 
-            matched = true;
-            if (groupStartIndex < 0 || groupStartIndex >= text.Length)
-            {
-                errors.Add(new QueryError(0, $"A group should have been found but index was {groupStartIndex}"));
-                return -1;
-            }
-
-            var charConsumed = 0;
-
-            var parenthesisCounter = 1;
-            var groupEndIndex = groupStartIndex + 1;
-            for (; groupEndIndex < text.Length && parenthesisCounter > 0; ++groupEndIndex)
-            {
-                if (text[groupEndIndex] == '(')
-                    ++parenthesisCounter;
-                else if (text[groupEndIndex] == ')')
-                    --parenthesisCounter;
-            }
-
-            // Because of the final ++groupEndIndex, decrement the index
-            --groupEndIndex;
-
-            if (parenthesisCounter != 0)
-            {
-                errors.Add(new QueryError(groupStartIndex, $"Unbalanced parenthesis"));
-                return -1;
-            }
-
-            charConsumed = groupEndIndex - groupStartIndex + 1;
-
-            var groupNode = BuildGraphRecursively(text, groupStartIndex + 1, groupEndIndex, errors, nodesToStringPosition);
-            if (groupNode != null)
-            {
-                groupNode.queryStringPosition = groupStartIndex;
-                nodes.Add(groupNode);
-            }
-
-            return charConsumed;
+            groupNode.queryStringPosition = startIndex;
+            userData.expressionNodes.Add(groupNode);
+            return true;
         }
 
-        private int ConsumeNestedQuery(string text, int startIndex, int endIndex, List<IQueryNode> nodes, ICollection<QueryError> errors, NodesToStringPosition nodesToStringPosition, out bool matched)
+        protected override bool ConsumeNestedQuery(string text, int startIndex, int endIndex, StringView sv, Match match, ICollection<QueryError> errors, QueryEngineParserData userData)
         {
-            var match = k_NestedQueryRx.Match(text, startIndex, endIndex - startIndex);
-            if (!match.Success)
-            {
-                matched = false;
-                return -1;
-            }
-
-            matched = true;
             if (validationOptions.validateFilters)
             {
                 if (m_NestedQueryHandler == null)
                 {
                     errors.Add(new QueryError(startIndex, match.Length, "Cannot use a nested query without setting the handler first."));
-                    return -1;
+                    return false;
                 }
 
                 if (m_NestedQueryHandler.enumerableType != typeof(TData))
                 {
                     errors.Add(new QueryError(startIndex, match.Length, "When not in a filter, a nested query must return the same type as the QueryEngine it is used in."));
-                    return -1;
+                    return false;
                 }
             }
 
@@ -690,27 +546,27 @@ namespace Unity.QuickSearch
             nestedQueryString = nestedQueryString.Trim();
             var nestedQueryNode = new NestedQueryNode(nestedQueryString, m_NestedQueryHandler);
             nestedQueryNode.queryStringPosition = startIndex;
-            nodesToStringPosition.Add(nestedQueryNode, new Tuple<int, int>(startIndex + (string.IsNullOrEmpty(nestedQueryAggregator) ? 0 : nestedQueryAggregator.Length), queryString.Length));
+            userData.nodesToStringPosition.Add(nestedQueryNode, new Tuple<int, int>(startIndex + (string.IsNullOrEmpty(nestedQueryAggregator) ? 0 : nestedQueryAggregator.Length), queryString.Length));
 
             if (string.IsNullOrEmpty(nestedQueryAggregator))
-                nodes.Add(nestedQueryNode);
+                userData.expressionNodes.Add(nestedQueryNode);
             else
             {
                 var lowerAggregator = nestedQueryAggregator.ToLowerInvariant();
                 if (!m_NestedQueryAggregators.TryGetValue(lowerAggregator, out var aggregator) && validationOptions.validateFilters)
                 {
                     errors.Add(new QueryError(startIndex, nestedQueryAggregator.Length, $"Unknown nested query aggregator \"{nestedQueryAggregator}\""));
-                    return -1;
+                    return false;
                 }
 
                 var aggregatorNode = new AggregatorNode(nestedQueryAggregator, aggregator);
-                nodesToStringPosition.Add(aggregatorNode, new Tuple<int, int>(startIndex, nestedQueryAggregator.Length));
+                userData.nodesToStringPosition.Add(aggregatorNode, new Tuple<int, int>(startIndex, nestedQueryAggregator.Length));
                 aggregatorNode.children.Add(nestedQueryNode);
                 nestedQueryNode.parent = aggregatorNode;
-                nodes.Add(aggregatorNode);
+                userData.expressionNodes.Add(aggregatorNode);
             }
 
-            return match.Length;
+            return true;
         }
 
         private static void InsertAndIfNecessary(List<IQueryNode> nodes, NodesToStringPosition nodesToStringPosition)
@@ -1231,18 +1087,7 @@ namespace Unity.QuickSearch
             var sortedOperators = m_FilterOperators.Keys.Select(Regex.Escape).ToList();
             sortedOperators.Sort((s, s1) => s1.Length.CompareTo(s.Length));
             var filterRx = $"\\G([\\w]+)(\\([^\\(\\)]+\\))?({string.Join("|", sortedOperators)}+)(\\\".*?\\\"|([a-zA-Z0-9]*?)(?:\\{{(?:(?<c>\\{{)|[^{{}}]+|(?<-c>\\}}))*(?(c)(?!))\\}})|[^\\s{{}}]+)";
-            m_FilterRx = new Regex(filterRx, RegexOptions.Compiled);
-
-            // The order of regex in this list is important. Keep it like that unless you know what you are doing!
-            m_TokenConsumers = new List<TokenConsumer>
-            {
-                ConsumeEmpty,
-                ConsumeCombiningToken,
-                ConsumeGroup,
-                ConsumeNestedQuery,
-                ConsumeFilter,
-                ConsumeWords
-            };
+            SetFilterRegex(new Regex(filterRx, RegexOptions.Compiled));
         }
 
         private IParseResult GenerateParseResultForType(string value, Type type)
@@ -1550,7 +1395,11 @@ namespace Unity.QuickSearch
                 m_Impl.validationOptions = options;
             }
         }
-
+        /// <summary>
+        /// Boolean indicating if unknown filters should be skipped.
+        /// If validateFilters is true and skipUnknownFilters is false, unknown filters will generate errors
+        /// if no default handler is provided.
+        /// </summary>
         public bool skipUnknownFilters
         {
             get => m_Impl.validationOptions.skipUnknownFilters;

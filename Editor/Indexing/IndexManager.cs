@@ -21,6 +21,7 @@ namespace Unity.QuickSearch
         {
             OpenWindow(-1);
         }
+
         public static void OpenWindow(int instanceID)
         {
             s_SelectedAssetOnOpen = instanceID;
@@ -102,7 +103,7 @@ namespace Unity.QuickSearch
             m_IndexSettingsFilePaths = new List<string>();
             m_IndexSettingsExists = new List<bool>();
 
-            int indexToSelect = AddSearchDatabases(true);
+            int indexToSelect = AddSearchDatabases(SearchSettings.showPackageIndexes);
 
             m_ListViewIndexSettings = new ListViewIndexSettings(m_IndexSettings, MakeIndexItem, BindIndexItem, CreateNewIndexSettingMenu, DeleteIndexSetting, 40) { name = "IndexListView" };
             #if UNITY_2020_1_OR_NEWER
@@ -115,24 +116,21 @@ namespace Unity.QuickSearch
             if (m_IndexSettings.Any())
                 CreateIndexDetailsElement();
 
-            var showPackagesToggle = new Toggle("Show Packages") { value = true };
+            var showPackagesToggle = new Toggle("Show package indexes") { value = SearchSettings.showPackageIndexes };
             showPackagesToggle.Q<Label>().style.marginRight = 10;
-            showPackagesToggle.RegisterValueChangedCallback(evt =>
-            {
-                OnPackageToggle(evt);
-            });
+            showPackagesToggle.style.marginBottom = 6;
+            showPackagesToggle.style.marginLeft = 8;
+            showPackagesToggle.RegisterValueChangedCallback(evt => OnPackageToggle(evt));
             m_ListViewIndexSettings.Add(showPackagesToggle);
 
             var splitter = new VisualSplitter(m_ListViewIndexSettings, m_IndexDetailsElement, FlexDirection.Row);
             rootVisualElement.Add(splitter);
-
 
             m_IndexSettingsTemplates = new List<SearchDatabase.Settings>();
             foreach (var path in Directory.EnumerateFiles(k_ProjectPath + "/Packages/com.unity.quicksearch/Templates", "*.template"))
             {
                 m_IndexSettingsTemplates.Add(ExtractIndexFromFile(path));
             }
-
 
             rootVisualElement.RegisterCallback<GeometryChangedEvent>(OnSizeChange);
 
@@ -190,6 +188,8 @@ namespace Unity.QuickSearch
             m_ListViewIndexSettings.ListView.Refresh();
             m_ListViewIndexSettings.SetSelection(indexToSelectToggle);
             m_ListViewIndexSettings.UpdateListView();
+
+            SearchSettings.showPackageIndexes = evt.newValue;
         }
 
         private int AddSearchDatabases(bool includePackages)
@@ -203,7 +203,7 @@ namespace Unity.QuickSearch
                 var searchDatabase = AssetDatabase.LoadAssetAtPath<SearchDatabase>(path);
                 m_IndexSettingsAssets.Add(searchDatabase);
                 m_IndexSettings.Add(new IndexManagerViewModel(searchDatabase.settings, false));
-                m_IndexSettingsFilePaths.Add(path);
+                m_IndexSettingsFilePaths.Add(searchDatabase.settings.path);
                 m_IndexSettingsExists.Add(true);
 
                 if (searchDatabase.GetInstanceID() == s_SelectedAssetOnOpen)
@@ -268,30 +268,33 @@ namespace Unity.QuickSearch
             buttonsContainer.Add(m_SaveButton = new Button(UpdateIndexSettings) { text = "Save", name = "SaveButton" });
             buttonsContainer.Add(m_CreateButton = new Button(CreateIndexSettings) { text = "Create", name = "CreateButton" });
 
-            m_IndexDetailsElementScrollView.Add(m_IndexFilePathTextField = new TextField("File Path") { name = "FilePathTextField", value = selectedItemPath });
+            m_IndexDetailsElementScrollView.Add(m_IndexFilePathTextField = new TextField("File Path") { name = "FilePathTextField",
+                tooltip = "The path to this index in the Project", value = selectedItemPath });
             m_IndexFilePathTextField.SetEnabled(false);
 
-            m_IndexDetailsElementScrollView.Add(m_IndexNameTextField = new TextField("Name") { name = "NameTextField", value = selectedItem.name });
+            m_IndexDetailsElementScrollView.Add(m_IndexNameTextField = new TextField("Name") { name = "NameTextField",
+                tooltip = "The name of this index (can be different than the file)", value = selectedItem.name });
             m_IndexNameTextField.RegisterValueChangedCallback(evt => { selectedItem.name = evt.newValue; });
 
-            m_IndexScore = new IntegerField("Score") { name = "IndexScore", tooltip = "Priority in case of multiple indexes", value = selectedItem.score };
+            m_IndexScore = new IntegerField("Score") { name = "IndexScore", 
+				tooltip = "When the Project has multiple indexes, those with higher scores take priority over those with lower scores", value = selectedItem.score };
             m_IndexScore.RegisterValueChangedCallback(evt => selectedItem.score = evt.newValue);
             m_IndexDetailsElementScrollView.Add(m_IndexScore);
 
             m_RootsFoldout = CreateFoldout("Roots");
-            m_RootsFoldout.tooltip = "Folders/Files to start indexing from";
+            m_RootsFoldout.tooltip = "List of root folders to start indexing from (can index single files too)";
             m_ListViewRoots = new ListViewIndexSettings(selectedItem.roots, MakeRootPathItem, BindRootPathItem, AddRootElement, RemoveRootElement);
             m_RootsFoldout.Add(m_ListViewRoots);
             m_IndexDetailsElementScrollView.Add(m_RootsFoldout);
 
             m_IncludesFoldout = CreateFoldout("Includes");
-            m_IncludesFoldout.tooltip = "Folders/Files/Extensions to include in the index";
+            m_IncludesFoldout.tooltip = "A list of files, folders, and/or file types (by extension) that this index must include";
             m_ListViewIncludes = new ListViewIndexSettings(selectedItem.includes, MakeIncludeItem, BindIncludeItem, AddIncludeElement, RemoveIncludeElement);
             m_IncludesFoldout.Add(m_ListViewIncludes);
             m_IndexDetailsElementScrollView.Add(m_IncludesFoldout);
 
             m_ExcludesFoldout = CreateFoldout("Excludes");
-            m_ExcludesFoldout.tooltip = "Folders/Files/Extensions to exclude from the index";
+            m_ExcludesFoldout.tooltip = "A list of files, folders, and/or file types (by extension) that this index must exclude";
             m_ListViewExcludes = new ListViewIndexSettings(selectedItem.excludes, MakeExcludeItem, BindExcludeItem, AddExcludeElement, RemoveExcludeElement);
             m_ExcludesFoldout.Add(m_ListViewExcludes);
             m_IndexDetailsElementScrollView.Add(m_ExcludesFoldout);
@@ -299,24 +302,7 @@ namespace Unity.QuickSearch
             m_OptionsFoldout = CreateFoldout("Options");
             m_IndexDetailsElementScrollView.Add(m_OptionsFoldout);
 
-
-            var serializedObject = new SerializedObject(selectedItem.options);
-            if (serializedObject != null)
-            {
-                // Loop through properties and create one field for each top level property.
-                SerializedProperty property = serializedObject.FindProperty("options");
-                property.NextVisible(true); // Expand the first child.
-                do
-                {
-                    // Create the UIElements PropertyField.
-                    var uieDefaultProperty = new PropertyField(property);
-                    m_OptionsFoldout.Add(uieDefaultProperty);
-                }
-                while (property.NextVisible(false));
-
-                m_OptionsFoldout.Bind(serializedObject);
-            }
-            UpdateOptionsVisualElements();
+            CreateOptionsVisualElements();
 
             m_SavedIndexDataNotLoadedYet = new Label("Loading the Index...") { name = "SavedIndexDataNotLoadedYet" };
             indexLoaded += OnIndexLoaded;
@@ -385,26 +371,56 @@ namespace Unity.QuickSearch
             }
         }
 
+        private void CreateOptionsVisualElements()
+        {
+            foreach (var field in typeof(Options).GetFields())
+            {
+                string name = char.ToUpper(field.Name[0]) + field.Name.Substring(1);
+                var toggle = new Toggle(name) { value = (bool)field.GetValue(selectedItem.options), name="OptionsToggle"+field.Name };
+                toggle.RegisterValueChangedCallback(evt =>
+                {
+                    field.SetValue(selectedItem.options, evt.newValue);
+                });
+
+                m_OptionsFoldout.Add(toggle);
+
+                
+                switch (field.Name)
+                {
+                    case "disabled":
+                        toggle.tooltip = "Toggles this index off so Quick Search does not use it"; 
+                        toggle.RegisterValueChangedCallback(evt =>
+                        {
+                            m_ListViewIndexSettings.ListView[selectedIndex].SetEnabled(!evt.newValue);
+                        });
+                        break;
+                    case "files":
+                        toggle.tooltip = "Include file paths in this index";
+                        break;
+                    case "directories":
+                        toggle.tooltip = "Include folder paths in this index";
+                        break;
+                    case "fstats":
+                        toggle.tooltip = "Include file statistics in this index";
+                        break;
+                    case "types":
+                        toggle.tooltip = "Include object type information in this index";
+                        break;
+                    case "properties":
+                        toggle.tooltip = "Include objects' serialized properties in this index";
+                        break;
+                    case "dependencies":
+                        toggle.tooltip = "Include information about objects' direct dependencies in this index";
+                        break;
+                }
+            }
+        }
         private void UpdateOptionsVisualElements()
         {
-            var disable = m_OptionsFoldout.Q<Toggle>("unity-input-options.disabled");
-            disable.tooltip = "Disable the index";
-            disable.RegisterValueChangedCallback(evt =>
+            foreach (var field in typeof(Options).GetFields())
             {
-                m_ListViewIndexSettings.ListView[selectedIndex].SetEnabled(!evt.newValue);
-            });
-            var files = m_OptionsFoldout.Q<Toggle>("unity-input-options.files");
-            files.tooltip = "Index file path";
-            var directories = m_OptionsFoldout.Q<Toggle>("unity-input-options.directories");
-            directories.tooltip = "Index folder path";
-            var fstats = m_OptionsFoldout.Q<Toggle>("unity-input-options.fstats");
-            fstats.tooltip = "Index file statistics";
-            var types = m_OptionsFoldout.Q<Toggle>("unity-input-options.types");
-            types.tooltip = "Index type information about objects";
-            var properties = m_OptionsFoldout.Q<Toggle>("unity-input-options.properties");
-            properties.tooltip = "Index all the serialized properties of objects";
-            var dependencies = m_OptionsFoldout.Q<Toggle>("unity-input-options.dependencies");
-            dependencies.tooltip = "Index all direct dependencies information regarding this asset";
+                m_OptionsFoldout.Q<Toggle>("OptionsToggle" + field.Name).value = (bool)field.GetValue(selectedItem.options);
+            }
         }
 
         private void PingAsset(IEnumerable<object> obj)
@@ -866,9 +882,6 @@ namespace Unity.QuickSearch
                     m_ListViewIncludes.UpdateListView();
                     m_ListViewExcludes.UpdateListView();
 
-                    var serializedObject = new SerializedObject(selectedItem.options);
-                    m_OptionsFoldout.Bind(serializedObject);
-
                     UpdateOptionsVisualElements();
 
                     UpdateDetailsForNewOrExistingSettings();
@@ -1147,7 +1160,7 @@ namespace Unity.QuickSearch
             public List<string> roots;
             public List<string> includes;
             public List<string> excludes;
-            public IndexManagerOptions options;
+            public Options options;
 
             public IndexManagerViewModel()
             {
@@ -1155,12 +1168,12 @@ namespace Unity.QuickSearch
                 this.roots = new List<string>();
                 this.includes = new List<string>();
                 this.excludes = new List<string>();
-                this.options = ScriptableObject.CreateInstance<IndexManagerOptions>();
+                this.options = new Options();
             }
 
             public IndexManagerViewModel(SearchDatabase.Settings searchDatabaseSettings, bool newItem) : this()
             {
-                this.name = !newItem ? searchDatabaseSettings.name : "";
+                this.name = !newItem ? searchDatabaseSettings.name : null;
                 type = (IndexType)Enum.Parse(typeof(IndexType), searchDatabaseSettings.type);
                 this.score = searchDatabaseSettings.baseScore;
                 this.roots = new List<string>();
@@ -1172,42 +1185,35 @@ namespace Unity.QuickSearch
                 this.excludes = new List<string>();
                 if (searchDatabaseSettings.excludes != null)
                     this.excludes.AddRange(searchDatabaseSettings.excludes);
-                IndexManagerOptions.SetOptions(this.options.options, searchDatabaseSettings.options);
+                SetOptions(this.options, searchDatabaseSettings.options);
             }
 
             internal void UpdateAsset(SearchDatabase searchDatabase, string path)
             {
                 if (name == Path.GetFileNameWithoutExtension(path))
-                {
-                    // we need to force to "" in that case (on creation it's not needed because searchDatabase.settings.name is empty but on an existing index, it has the filename by default)
-                    searchDatabase.settings.name = "";
-                }
+                    // we need to force to null in that case (on creation it's not needed because searchDatabase.settings.name is empty but on an existing index, it has the filename by default)
+                    searchDatabase.settings.name = null;
                 else
                     searchDatabase.settings.name = name;
-                searchDatabase.settings.path = path;
+                
+                // we don't change the path, the user can't change it from the UI, only modifying the Json directly
+                // it is null at creation, in that case, it is automatically set when importing
+                //searchDatabase.settings.path = path;
+
                 searchDatabase.settings.type = Enum.GetName(typeof(IndexType), type);
                 searchDatabase.settings.baseScore = score;
                 searchDatabase.settings.roots = roots.ToArray();
                 searchDatabase.settings.includes = includes.ToArray();
                 searchDatabase.settings.excludes = excludes.ToArray();
-                IndexManagerOptions.SetOptions(searchDatabase.settings.options, options.options);
-            }
-        }
-        internal class IndexManagerOptions : ScriptableObject
-        {
-            [SerializeField]
-            internal Options options;
-
-            public IndexManagerOptions()
-            {
-                options = new Options();
+                SetOptions(searchDatabase.settings.options, this.options);
             }
 
-            internal static void SetOptions(Options optionsToModify, Options input)
+            private static void SetOptions(Options optionsToModify, Options input)
             {
-                foreach (FieldInfo FI in typeof(Options).GetFields())
+                foreach (var field in typeof(Options).GetFields())
                 {
-                    FI.SetValue(optionsToModify, FI.GetValue(input));
+                    var value = field.GetValue(input);
+                    field.SetValue(optionsToModify, value);
                 }
             }
         }

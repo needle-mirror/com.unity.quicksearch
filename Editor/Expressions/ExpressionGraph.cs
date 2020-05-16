@@ -111,6 +111,9 @@ namespace Unity.QuickSearch
 
             node.title = FormatTitle(ex);
 
+            if (ex.color != Color.clear)
+                node.titleContainer.style.backgroundColor = ex.color;
+
             // Update result port
             if (ex.type == ExpressionType.Value ||
                 ex.type == ExpressionType.Provider)
@@ -139,28 +142,32 @@ namespace Unity.QuickSearch
                 return;
 
             int indexName = 1;
-            bool firstNullFound = false;
-            foreach (var v in ex.variables.ToArray())
+
+            if (ex.variables != null)
             {
-                var sourceName = indexName.ToString();
-                if (v.name != sourceName && RenameNodeVariable(ex, v.name, sourceName))
+                bool firstNullFound = false;
+                foreach (var v in ex.variables.ToArray())
                 {
-                    if (ex.RenameVariable(v.name, sourceName))
-                        v.name = indexName.ToString();
-                }
-
-                if (v.source == null)
-                {
-                    if (firstNullFound)
+                    var sourceName = indexName.ToString();
+                    if (v.name != sourceName && RenameNodeVariable(ex, v.name, sourceName))
                     {
-                        if (RemoveNodeVariable(ex, v.name))
-                            ex.RemoveVariable(v.name);
+                        if (ex.RenameVariable(v.name, sourceName))
+                            v.name = indexName.ToString();
                     }
-                    else
-                        firstNullFound = true;
-                }
 
-                ++indexName;
+                    if (v.source == null)
+                    {
+                        if (firstNullFound)
+                        {
+                            if (RemoveNodeVariable(ex, v.name))
+                                ex.RemoveVariable(v.name);
+                        }
+                        else
+                            firstNullFound = true;
+                    }
+
+                    ++indexName;
+                }
             }
 
             if (FindPort(node, "var", indexName.ToString()) == null)
@@ -324,11 +331,16 @@ namespace Unity.QuickSearch
         {
             switch (ex.type)
             {
+                case ExpressionType.Expression:
+                    return ex.value != null ? System.IO.Path.GetFileNameWithoutExtension(Convert.ToString(ex.value)) : ex.type.ToString();
+
                 case ExpressionType.Value:
                     return ex.name ?? ex.type.ToString();
 
                 case ExpressionType.Search:
-                    return Convert.ToString(ex.value);
+                    if (String.IsNullOrEmpty(ex.name))
+                        return Convert.ToString(ex.value);
+                    return ex.name;
 
                 case ExpressionType.Select:
                     return $"{ex.type} {ex.GetProperty("type", Convert.ToString(ex.value))}";
@@ -363,8 +375,12 @@ namespace Unity.QuickSearch
                 title = FormatTitle(ex),
                 name = ex.id,
                 expanded = true,
-                userData = ex
+                userData = ex,
+                tooltip = Convert.ToString(ex.value),
             };
+
+            if (ex.color != Color.clear)
+                node.titleContainer.style.backgroundColor = ex.color;
 
             node.SetPosition(new Rect(ex.position, Vector2.zero));
             node.RegisterCallback<GeometryChangedEvent>(OnNodeGeometryChanged);
@@ -381,6 +397,10 @@ namespace Unity.QuickSearch
                 case ExpressionType.Search:
                     AddInputPort(node, $"source-{ex.id}", "Source", typeof(ExpressionSource));
                     AddVariablePorts(node, ex);
+                    AddOutputPort(node, $"output-{ex.id}", "Results", typeof(ExpressionSet));
+                    break;
+
+                case ExpressionType.Expression:
                     AddOutputPort(node, $"output-{ex.id}", "Results", typeof(ExpressionSet));
                     break;
 
@@ -431,6 +451,7 @@ namespace Unity.QuickSearch
                 case ExpressionType.Intersect:
                 case ExpressionType.Except:
                 case ExpressionType.Results:
+                case ExpressionType.Expression:
                 {
                     if (ex.source != null)
                     {

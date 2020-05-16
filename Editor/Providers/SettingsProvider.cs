@@ -30,7 +30,7 @@ namespace Unity.QuickSearch.Providers
         }
 
         [UsedImplicitly, SearchItemProvider]
-        private static SearchProvider CreateProvider()
+        internal static SearchProvider CreateProvider()
         {
             return new SearchProvider(type, displayName)
             {
@@ -42,7 +42,7 @@ namespace Unity.QuickSearch.Providers
 
                     items.AddRange(SettingsPaths.value
                                     .Where(path => SearchUtils.MatchSearchGroups(context, path))
-                                    .Select(path => provider.CreateItem(path, null, path)));
+                                    .Select(path => provider.CreateItem(context, path, null, path, null, null)));
                     return null;
                 },
 
@@ -53,11 +53,11 @@ namespace Unity.QuickSearch.Providers
         }
 
         [UsedImplicitly, SearchActionsProvider]
-        private static IEnumerable<SearchAction> ActionHandlers()
+        internal static IEnumerable<SearchAction> ActionHandlers()
         {
             return new[]
             {
-                new SearchAction(type, "open", null, "Open project settings...", (context, items) =>
+                new SearchAction(type, "open", null, "Open project settings...", (items) =>
                 {
                     var item = items.Last();
                     if (item.id.StartsWith("Project/"))

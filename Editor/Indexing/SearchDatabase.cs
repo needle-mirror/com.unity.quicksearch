@@ -19,7 +19,8 @@ namespace Unity.QuickSearch
         // 2- Rename ADBIndex for SearchDatabase
         // 3- Add db name and type
         // 4- Add better ref: property indexing
-        public const int version = (4 << 8) ^ SearchIndexEntry.version;
+        // 5- Fix asset has= property indexing.
+        public const int version = (5 << 8) ^ SearchIndexEntry.version;
 
         public enum IndexType
         {
@@ -150,7 +151,7 @@ namespace Unity.QuickSearch
             if (!index.TryGetHash(path, out var hash))
                 return true;
 
-            if (hash != index.GetDcoumentHash(path))
+            if (hash != index.GetDocumentHash(path))
                 return true;
 
             return false;

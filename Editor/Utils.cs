@@ -27,12 +27,18 @@ namespace Unity.QuickSearch
         const string packageName = "com.unity.quicksearch";
 
         public static readonly string packageFolderName = $"Packages/{packageName}";
+        public static readonly bool isDeveloperBuild = false;
 
         private static string[] _ignoredAssemblies =
         {
             "^UnityScript$", "^System$", "^mscorlib$", "^netstandard$",
             "^System\\..*", "^nunit\\..*", "^Microsoft\\..*", "^Mono\\..*", "^SyntaxTree\\..*"
         };
+
+        static Utils()
+        {
+            isDeveloperBuild = Directory.Exists($"{packageFolderName}/.git");
+        }
 
         private static Type[] GetAllEditorWindowTypes()
         {
@@ -136,7 +142,7 @@ namespace Unity.QuickSearch
             {
                 EditorApplication.delayCall += () =>
                 {
-                    EditorWindow.FocusWindowIfItsOpen(Utils.GetProjectBrowserWindowType());
+                    EditorWindow.FocusWindowIfItsOpen(GetProjectBrowserWindowType());
                     EditorApplication.delayCall += () => EditorGUIUtility.PingObject(obj);
                 };
             }
@@ -156,7 +162,7 @@ namespace Unity.QuickSearch
             {
                 EditorApplication.delayCall += () =>
                 {
-                    EditorWindow.FocusWindowIfItsOpen(Utils.GetProjectBrowserWindowType());
+                    EditorWindow.FocusWindowIfItsOpen(GetProjectBrowserWindowType());
                     EditorApplication.delayCall += () => EditorGUIUtility.PingObject(asset);
                 };
             }
@@ -408,11 +414,6 @@ namespace Unity.QuickSearch
             return src.Substring(startIndex, index - startIndex);
         }
 
-        internal static bool IsDeveloperMode()
-        {
-            return Directory.Exists($"{packageFolderName}/.git");
-        }
-
         public static string GetPackagePath(string relativePath)
         {
             return Path.Combine(packageFolderName, relativePath).Replace("\\", "/");
@@ -554,7 +555,7 @@ namespace Unity.QuickSearch
 
             element.Focus();
 
-            Utils.DelayCall(1f, () =>
+            DelayCall(1f, () =>
             {
                 s.borderTopColor = oldBorderTopColor;
                 s.borderBottomColor = oldBorderBottomColor;
@@ -745,7 +746,7 @@ namespace Unity.QuickSearch
             var assetPath = SearchUtils.GetHierarchyAssetPath(obj, true);
             if (String.IsNullOrEmpty(assetPath))
                 return defaultThumbnail;
-            return Utils.GetAssetPreviewFromPath(assetPath, options);
+            return GetAssetPreviewFromPath(assetPath, options);
         }
 
         private static object[] s_SearchFilterArgs;
@@ -767,8 +768,17 @@ namespace Unity.QuickSearch
             }
 
             s_SearchFieldStringToFilterMethod.Invoke(s_SearchFilterArgs[0], new object[] { searchQuery });
-            var properties = (IEnumerable<HierarchyProperty>)s_FindAllAssetsMethod.Invoke(null, s_SearchFilterArgs);
-            return properties.Select(p => AssetDatabase.GUIDToAssetPath(p.guid));
+
+            IEnumerable<HierarchyProperty> properties = null;
+            try
+            {
+                properties = (IEnumerable<HierarchyProperty>)s_FindAllAssetsMethod.Invoke(null, s_SearchFilterArgs);
+            }
+            catch
+            {
+                // Ignore these errors.
+            }
+            return properties != null ? properties.Select(p => AssetDatabase.GUIDToAssetPath(p.guid)) : new string[0];
         }
 
         public static bool TryGetNumber(object value, out double number)

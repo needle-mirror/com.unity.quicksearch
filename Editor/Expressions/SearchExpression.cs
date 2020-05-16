@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using UnityEngine;
 
@@ -11,36 +12,39 @@ namespace Unity.QuickSearch
         Undefined = -1,
         Provider,         // Provide data from a search provider
         Value,            // Provide a dynamic or value value (i.e. function, blackboard, etc.) for a search variable
-        Constant = Value, // Same as a value, but explicitly defined as a constant value.
         Search,           // Evaluate a search request
         Union,            // Merge two search results together.
         Intersect,        // Intersect results from two sources.
         Except,           // Produces the set difference of two sequences.
         Select,           // Select operation to output specific value into a variable.
+        Expression,       // Nested expressions
         Results           // Final search expression results node.
     }
 
+    /// <summary>
+    /// A Search Expression can be populated with variables and providers. It can then be evaluated to yield a list of <see cref="SearchItem"/>
+    /// </summary>
     public interface ISearchExpression : ISearchList
     {
         /// <summary>
-        /// 
+        /// Evaluate the SearchExpression.
         /// </summary>
-        /// <returns></returns>
+        /// <returns>Returns the list of Items.</returns>
         ISearchList Evaluate();
 
         /// <summary>
-        /// 
+        /// Set the value of a variable with a specific name.
         /// </summary>
-        /// <param name="name"></param>
-        /// <param name="value"></param>
+        /// <param name="name">Name of the variable to assign to.</param>
+        /// <param name="value">Value to bind to the variable.</param>
         /// <returns></returns>
         ISearchExpression SetValue(string name, object value);
 
         /// <summary>
-        /// 
+        /// Assign a concrete provider in a SearchExpression.
         /// </summary>
-        /// <param name="v"></param>
-        /// <param name="customProvider"></param>
+        /// <param name="name">Name of the Provider </param>
+        /// <param name="provider">Actual provider</param>
         /// <returns></returns>
         ISearchExpression SetProvider(string name, SearchProvider provider);
     }
@@ -53,10 +57,12 @@ namespace Unity.QuickSearch
             public const string type = nameof(type);
             public const string source = nameof(source);
             public const string value = nameof(value);
-            public const string constant = nameof(constant);
             public const string variables = nameof(variables);
             public const string properties = nameof(properties);
+
+            // View model properties
             public const string position = nameof(position);
+            public const string color = nameof(color);
         }
 
         private readonly SearchContext m_EmptyContext = new SearchContext(new SearchProvider[0], String.Empty);
@@ -159,6 +165,11 @@ namespace Unity.QuickSearch
             m_Items.UnionWith(results);
         }
 
+        private void OnEvaluationEnded(SearchRequest exSearch)
+        {
+            m_Timer.Stop();
+        }
+
         private SearchRequest BuildRequest(SearchExpressionNode node)
         {
             switch (node.type)
@@ -169,15 +180,15 @@ namespace Unity.QuickSearch
                 case ExpressionType.Union: return BuildUnionRequest(node);
                 case ExpressionType.Intersect: return BuildIntersectRequest(node);
                 case ExpressionType.Except: return BuildExceptRequest(node);
+                
+                case ExpressionType.Expression: 
+                    if (node.source != null)
+                        return BuildRequest(node.source);
+                    return SearchRequest.empty;
 
                 default:
                     throw new ExpressionException($"Cannot evaluate {node.id} of type {node.type}");
             }
-        }
-
-        private void OnEvaluationEnded(SearchRequest exSearch)
-        {
-            m_Timer.Stop();
         }
 
         private SearchRequest BuildSelectRequest(SearchExpressionNode node)
@@ -192,52 +203,8 @@ namespace Unity.QuickSearch
             return sourceRequest.Select(selectField, objectType, propertyName);
         }
 
-        private SearchRequest BuildSearchRequest(SearchExpressionNode node)
+        private SearchRequest BuildFromSearchQuery(SearchExpressionNode node, string searchQuery)
         {
-            var searchQuery = Convert.ToString(node.value);
-
-            if (node.variables != null)
-            {
-                // Replace constants
-                foreach (var v in node.variables)
-                {
-                    if (v.type != ExpressionType.Value)
-                        continue;
-
-                    var constantValue = Convert.ToString(v.source.value);
-                    if (String.IsNullOrEmpty(constantValue))
-                        UnityEngine.Debug.LogWarning($"Constant value is null for {v.source.id}");
-
-                    searchQuery = searchQuery.Replace($"${v.name}", constantValue);
-                }
-
-                foreach (var v in node.variables)
-                {
-                    if (v.type == ExpressionType.Value)
-                        continue;
-
-                    switch (v.type)
-                    {
-                        case ExpressionType.Search:
-                        case ExpressionType.Select:
-                        {
-                            var varName = v.name;
-                            return BuildRequest(v.source).Join(varValue =>
-                            {
-                                var selectNode = new SearchExpressionNode(node.type, node.source, searchQuery.Replace($"${varName}", varValue));
-                                return BuildRequest(selectNode);
-                            });
-                        }
-
-                        case ExpressionType.Undefined:
-                            break;
-
-                        default:
-                            throw new NotSupportedException($"Evaluation of variable {v.name} of type {v.type} not supported");
-                    }
-                }
-            }
-
             var providers = new List<SearchProvider>();
             if (node.source?.type == ExpressionType.Provider)
             {
@@ -254,6 +221,99 @@ namespace Unity.QuickSearch
 
             requestCount++;
             return new SearchRequest(node.type, SearchService.CreateContext(providers, searchQuery, m_SearchOptions));
+        }
+
+        private SearchRequest BuildSearchRequest(SearchExpressionNode node)
+        {
+            List<ExpressionVariable> dynamicVariables = new List<ExpressionVariable>();
+            var searchQuery = Convert.ToString(node.value);
+
+            // Replace constants
+            if (node.variables != null)
+            {
+                foreach (var v in node.variables)
+                {
+                    if (v.type != ExpressionType.Value)
+                    {
+                        if (v.source != null)
+                            dynamicVariables.Add(v);
+                        continue;
+                    }
+                
+                    var constantValue = Convert.ToString(v.source.value);
+                    if (String.IsNullOrEmpty(constantValue))
+                        UnityEngine.Debug.LogWarning($"Constant value is null for {v.source.id}");
+                
+                    searchQuery = searchQuery.Replace($"${v.name}", constantValue);
+                }
+            }
+
+            if (dynamicVariables.Count == 0)
+                return BuildFromSearchQuery(node, searchQuery);
+            
+            var req = new SearchRequest(node.type);
+            var varFetchResolved = new Dictionary<string, bool>();
+            var varResults = new Dictionary<string, HashSet<string>>();
+
+            foreach (var v in dynamicVariables)
+                varFetchResolved[v.name] = false;
+
+            foreach (var v in dynamicVariables)
+            {
+                var varName = v.name;
+                var varRequest = BuildRequest(v.source);
+                
+                req.DependsOn(varRequest);
+                varRequest.Resolve(items =>
+                {
+                    if (!varResults.TryGetValue(varName, out var results))
+                    {
+                        results = new HashSet<string>();
+                        varResults[varName] = results;
+                    }
+
+                    results.UnionWith(items.Select(i => i.id));
+                }, r =>
+                {
+                    varFetchResolved[varName] = true;
+
+                    if (varFetchResolved.All(kvp => kvp.Value))
+                    {
+                        var totalRequest = 1;
+                        foreach (var vrs in varResults)
+                        {
+                            if (vrs.Value.Count == 0)
+                                continue;
+                            totalRequest *= vrs.Value.Count;
+                        }
+
+                        var queries = new string[totalRequest];
+                        for (int i = 0; i < totalRequest; ++i)
+                            queries[i] = searchQuery;
+
+                        foreach (var vrs in varResults)
+                        {
+                            if (vrs.Value.Count == 0)
+                                continue;
+
+                            for (int i = 0; i < totalRequest;)
+                            {
+                                foreach (var varValue in vrs.Value)
+                                {
+                                    queries[i] = queries[i].Replace($"${vrs.Key}", varValue);
+                                    ++i;
+                                }
+                            }
+                        }
+
+                        requestCount+=totalRequest;
+                        foreach (var q in queries)
+                            BuildFromSearchQuery(node, q).TransferTo(req);
+                    }
+                });
+            }
+
+            return req;
         }
 
         private SearchRequest BuildUnionRequest(SearchExpressionNode ex)
@@ -410,20 +470,39 @@ namespace Unity.QuickSearch
             if (SJSON.TryGetValue(info, ExpressionField.value, out var value))
                 node.value = value;
 
-            if (SJSON.TryGetValue(info, ExpressionField.source, out var source))
+            if (node.type == ExpressionType.Expression)
             {
-                if (source is IDictionary nestedSource)
-                    node.source = ParseNode(nestedSource);
-                else if (node.type == ExpressionType.Provider)
-                    node.value = (string)source;
-                else if (m_Nodes.TryGetValue((string)source, out var sourceNode))
-                    node.source = sourceNode;
-                else
-                    throw new ExpressionException($"Expression node {node.id} has an invalid source {source}");
+                var nestedExpression = new SearchExpression(m_SearchOptions);
+
+                if (node.value is string expressionPath && File.Exists(expressionPath))
+                    nestedExpression.Load(expressionPath);
+                else if (SJSON.TryGetValue(info, ExpressionField.source, out var source) && source is IDictionary sourceData)
+                    nestedExpression.Load(sourceData);
+
+                if (nestedExpression.m_EvalNode != null && nestedExpression.m_EvalNode.source != null)
+                    node.source = nestedExpression.m_EvalNode.source;
+            }
+            else
+            {
+                if (SJSON.TryGetValue(info, ExpressionField.source, out var source))
+                {
+                    if (source is IDictionary nestedSource)
+                        node.source = ParseNode(nestedSource);
+                    else if (source is string sourceString && m_Nodes.TryGetValue(sourceString, out var sourceNode))
+                        node.source = sourceNode;
+                    else
+                        node.value = source;
+                }
             }
 
             if (SJSON.TryGetValue(info, ExpressionField.position, out var _obj) && _obj is object[] position && position.Length == 2)
                 node.position = new Vector2((float)(double)position[0], (float)(double)position[1]);
+
+            if (SJSON.TryGetValue(info, ExpressionField.color, out var _color) 
+                && ColorUtility.TryParseHtmlString("#"+Convert.ToString(_color), out var color))
+            {
+                node.color = color;
+            }
 
             if (SJSON.TryGetValue(info, ExpressionField.variables, out var variablesData))
             {
@@ -471,29 +550,25 @@ namespace Unity.QuickSearch
             {
                 var nodeData = new Dictionary<string, object>() { { ExpressionField.type, node.type.ToString().ToLowerInvariant() } };
 
-                if (node.type == ExpressionType.Provider)
-                {
-                    nodeData[ExpressionField.source] = node.value;
-                }
-                else
-                {
-                    if (node.name != null)
-                        nodeData[ExpressionField.name] = node.name;
+                if (node.name != null)
+                    nodeData[ExpressionField.name] = node.name;
 
-                    if (node.source != null)
-                        nodeData[ExpressionField.source] = node.source.id;
+                if (node.source != null && nodes.Any(n => n.id == node.source.id))
+                    nodeData[ExpressionField.source] = node.source.id;
 
-                    if (node.value != null)
-                        nodeData[ExpressionField.value] = node.value;
+                if (node.value != null)
+                    nodeData[ExpressionField.value] = node.value;
 
-                    if (node.variables != null)
-                        nodeData[ExpressionField.variables] = node.variables.ToDictionary(v => v.name, v => v.source?.id);
+                if (node.variables != null)
+                    nodeData[ExpressionField.variables] = node.variables.ToDictionary(v => v.name, v => v.source?.id);
 
-                    if (node.properties != null)
-                        nodeData[ExpressionField.properties] = node.properties;
-                }
+                if (node.properties != null)
+                    nodeData[ExpressionField.properties] = node.properties;
 
                 nodeData[ExpressionField.position] = new object[] { node.position.x, node.position.y };
+
+                if (node.color != Color.clear && node.color != SearchExpressionNode.GetNodeTypeColor(node.type))
+                    nodeData[ExpressionField.color] = ColorUtility.ToHtmlStringRGB(node.color);
 
                 expressionData.Add(node.id, nodeData);
             }

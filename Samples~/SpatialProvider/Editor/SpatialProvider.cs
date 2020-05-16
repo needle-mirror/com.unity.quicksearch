@@ -10,6 +10,9 @@ using UnityEditor.Experimental.SceneManagement;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
+/// <summary>
+/// Custom provider showing how to implement a custom Query Engine supporting a Spatial search filter.
+/// </summary>
 public static class SpatialProvider
 {
     internal static string type = "spl";
@@ -88,7 +91,7 @@ public static class SpatialProvider
     static string FetchDescription(SearchItem item, SearchContext context)
     {
         var go = ObjectFromItem(item);
-        return (item.description = GetHierarchyPath(go));
+        return (item.description = SearchUtils.GetHierarchyPath(go));
     }
 
     static Texture2D FetchThumbnail(SearchItem item, SearchContext context)
@@ -106,7 +109,7 @@ public static class SpatialProvider
         if (obj == null)
             return item.thumbnail;
 
-        var assetPath = GetHierarchyAssetPath(obj, true);
+        var assetPath = SearchUtils.GetHierarchyAssetPath(obj, true);
         if (String.IsNullOrEmpty(assetPath))
             return item.thumbnail;
         return AssetPreview.GetAssetPreview(obj) ?? GetAssetPreviewFromPath(assetPath, size, options);
@@ -184,71 +187,6 @@ public static class SpatialProvider
         if (tform.parent == null)
             return "/" + tform.name;
         return GetTransformPath(tform.parent) + "/" + tform.name;
-    }
-
-    public static string GetHierarchyPath(GameObject gameObject, bool includeScene = true)
-    {
-        if (gameObject == null)
-            return String.Empty;
-
-        StringBuilder sb;
-        if (_SbPool.Count > 0)
-        {
-            sb = _SbPool.Pop();
-            sb.Clear();
-        }
-        else
-        {
-            sb = new StringBuilder(200);
-        }
-
-        try
-        {
-            if (includeScene)
-            {
-                var sceneName = gameObject.scene.name;
-                if (sceneName == string.Empty)
-                {
-                    var prefabStage = PrefabStageUtility.GetPrefabStage(gameObject);
-                    if (prefabStage != null)
-                    {
-                        sceneName = "Prefab Stage";
-                    }
-                    else
-                    {
-                        sceneName = "Unsaved Scene";
-                    }
-                }
-
-                sb.Append("<b>" + sceneName + "</b>");
-            }
-
-            sb.Append(GetTransformPath(gameObject.transform));
-
-            var path = sb.ToString();
-            sb.Clear();
-            return path;
-        }
-        finally
-        {
-            _SbPool.Push(sb);
-        }
-    }
-
-    public static string GetHierarchyAssetPath(GameObject gameObject, bool prefabOnly = false)
-    {
-        if (gameObject == null)
-            return String.Empty;
-
-        bool isPrefab = PrefabUtility.GetPrefabAssetType(gameObject.gameObject) != PrefabAssetType.NotAPrefab;
-        var assetPath = string.Empty;
-        if (isPrefab)
-            return PrefabUtility.GetPrefabAssetPathOfNearestInstanceRoot(gameObject);
-
-        if (prefabOnly)
-            return null;
-
-        return gameObject.scene.path;
     }
 
     static Texture2D GetThumbnailForGameObject(GameObject go)

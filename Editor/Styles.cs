@@ -79,7 +79,8 @@ namespace Unity.QuickSearch
         public static readonly GUIContent filterButtonContent = new GUIContent("", Icons.filter, "Open search filter window (Alt + Left)");
         public static readonly GUIContent moreActionsContent = new GUIContent("", Icons.more, "Open actions menu (Alt + Right)");
 
-        public static readonly float scrollbarWidth = new GUIStyle("VerticalScrollbar").fixedWidth;
+        public static readonly GUIStyle scrollbar = new GUIStyle("VerticalScrollbar");
+        public static readonly float scrollbarWidth = scrollbar.fixedWidth + scrollbar.margin.horizontal;
 
         public static readonly GUIStyle itemBackground1 = new GUIStyle
         {
@@ -208,8 +209,6 @@ namespace Unity.QuickSearch
             fixedHeight = 8f,
             fixedWidth = 8f
         };
-
-        public static readonly GUIStyle scrollbar = new GUIStyle("VerticalScrollbar");
 
         public static readonly GUIStyle versionLabel = new GUIStyle(statusLabel)
         {

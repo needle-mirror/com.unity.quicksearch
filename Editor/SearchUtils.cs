@@ -10,12 +10,23 @@ using UnityEngine;
 
 namespace Unity.QuickSearch
 {
+    /// <summary>
+    /// Utilities used by multiple components of QuickSearch.
+    /// </summary>
     public static class SearchUtils
     {
+        /// <summary>
+        /// Separators used to split an entry into indexable tokens.
+        /// </summary>
         public static readonly char[] entrySeparators = { '/', ' ', '_', '-', '.' };
 
         private static readonly Stack<StringBuilder> _SbPool = new Stack<StringBuilder>();
 
+        /// <summary>
+        /// Extract all variations on a word.
+        /// </summary>
+        /// <param name="word"></param>
+        /// <returns></returns>
         public static string[] FindShiftLeftVariations(string word)
         {
             if (word.Length <= 1)
@@ -30,7 +41,7 @@ namespace Unity.QuickSearch
 
             return variations.ToArray();
         }
-        
+
         /// <summary>
         /// Tokenize a string each Capital letter.
         /// </summary>
@@ -41,6 +52,12 @@ namespace Unity.QuickSearch
             return Regex.Split(source, @"(?<!^)(?=[A-Z0-9])");
         }
 
+        /// <summary>
+        /// Split an entry according to a specified list of separators.
+        /// </summary>
+        /// <param name="entry">Entry to split.</param>
+        /// <param name="entrySeparators">List of separators that indicate split points.</param>
+        /// <returns>Returns list of tokens in lowercase</returns>
         public static IEnumerable<string> SplitEntryComponents(string entry, char[] entrySeparators)
         {
             var nameTokens = entry.Split(entrySeparators).Distinct();
@@ -52,15 +69,21 @@ namespace Unity.QuickSearch
                                 .Distinct();
         }
 
+        /// <summary>
+        /// Split a file entry according to a list of separators and find all the variations on the entry name.
+        /// </summary>
+        /// <param name="path"></param>
+        /// <param name="entrySeparators"></param>
+        /// <returns>Returns list of tokens and variations in lowercase</returns>
         public static IEnumerable<string> SplitFileEntryComponents(string path, char[] entrySeparators)
         {
-            var name = Path.GetFileNameWithoutExtension(path);
+            var name = Path.GetFileName(path);
             var nameTokens = name.Split(entrySeparators).Distinct().ToArray();
             var scc = nameTokens.SelectMany(s => SplitCamelCase(s)).Where(s => s.Length > 0).ToArray();
             var fcc = scc.Aggregate("", (current, s) => current + s[0]);
             return Enumerable.Empty<string>()
                              .Concat(scc.Where(s => s.Length > 1))
-                             .Concat(new[] { Path.GetExtension(path).Replace(".", "") })
+                             .Concat(new[] { name, Path.GetExtension(path).Replace(".", "") })
                              .Concat(FindShiftLeftVariations(fcc))
                              .Concat(nameTokens)
                              .Concat(path.Split(entrySeparators).Reverse())
@@ -69,6 +92,11 @@ namespace Unity.QuickSearch
                              .Distinct();
         }
 
+        /// <summary>
+        /// Format the pretty name of a Transform component by appending all the parents hierarchy names.
+        /// </summary>
+        /// <param name="tform">Transform to extract name from.</param>
+        /// <returns>Returns a transform name using "/" as hierarchy separator.</returns>
         public static string GetTransformPath(Transform tform)
         {
             if (tform.parent == null)
@@ -76,6 +104,11 @@ namespace Unity.QuickSearch
             return GetTransformPath(tform.parent) + "/" + tform.name;
         }
 
+        /// <summary>
+        /// Get the path of a Unity Object. If it is a GameObject or a Component it is the <see cref="SearchUtils.GetTransformPath(Transform)"/>. Else it is the asset name.
+        /// </summary>
+        /// <param name="obj"></param>
+        /// <returns>Returns the path of an object.</returns>
         public static string GetObjectPath(UnityEngine.Object obj)
         {
             if (obj is GameObject go)
@@ -85,6 +118,12 @@ namespace Unity.QuickSearch
             return obj.name;
         }
 
+        /// <summary>
+        /// Get the hierarchy path of a GameObject possibly including the scene name.
+        /// </summary>
+        /// <param name="gameObject">GameObject to extract a path from.</param>
+        /// <param name="includeScene">If true, will append the scene name to the path.</param>
+        /// <returns>Returns the path of a GameObject.</returns>
         public static string GetHierarchyPath(GameObject gameObject, bool includeScene = true)
         {
             if (gameObject == null)
@@ -130,6 +169,12 @@ namespace Unity.QuickSearch
             }
         }
 
+        /// <summary>
+        /// Get the path of the scene (or prefab) containing a GameObject.
+        /// </summary>
+        /// <param name="gameObject">GameObject to find the scene path.</param>
+        /// <param name="prefabOnly">If true, will return a path only if the GameObject is a prefab.</param>
+        /// <returns>Returns the path of a scene or prefab</returns>
         public static string GetHierarchyAssetPath(GameObject gameObject, bool prefabOnly = false)
         {
             if (gameObject == null)
@@ -145,6 +190,11 @@ namespace Unity.QuickSearch
             return gameObject.scene.path;
         }
 
+        /// <summary>
+        /// Select and ping multiple objects in the Project Browser.
+        /// </summary>
+        /// <param name="items">Search Items to select and ping.</param>
+        /// <param name="focusProjectBrowser">If true, will focus the project browser before pining the objects.</param>
         public static void SelectMultipleItems(IEnumerable<SearchItem> items, bool focusProjectBrowser = false)
         {
             Selection.objects = items.Select(i => i.provider.toObject(i, typeof(UnityEngine.Object))).Where(o=>o).ToArray();
@@ -163,7 +213,7 @@ namespace Unity.QuickSearch
         /// </summary>
         /// <param name="context">Search context containing the searchQuery that we try to match.</param>
         /// <param name="content">String content that will be tokenized and use to match the search query.</param>
-        /// <param name="useLowerTokens">Perform matching ignoring casing.</param>
+        /// <param name="ignoreCase">Perform matching ignoring casing.</param>
         /// <returns>Has a match occurred.</returns>
         public static bool MatchSearchGroups(SearchContext context, string content, bool ignoreCase = false)
         {

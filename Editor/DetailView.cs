@@ -115,7 +115,7 @@ namespace Unity.QuickSearch
             var firstItem = selection.First();
             GUILayout.Space(10);
 
-            foreach (var action in firstItem.provider.actions.Where(a => a.enabled(context, selection)))
+            foreach (var action in firstItem.provider.actions.Where(a => a.enabled(selection)))
             {
                 if (action == null || action.content == null)
                     continue;
@@ -123,9 +123,9 @@ namespace Unity.QuickSearch
                 if (selection.Count > 1 && action.execute == null)
                     continue;
 
-                if (GUILayout.Button(new GUIContent(action.DisplayName, action.content.image, action.content.tooltip), GUILayout.ExpandWidth(true)))
+                if (GUILayout.Button(new GUIContent(action.displayName, action.content.image, action.content.tooltip), GUILayout.ExpandWidth(true)))
                 {
-                    m_SearchView.ExecuteAction(action, selection.ToArray(), context, true);
+                    m_SearchView.ExecuteAction(action, selection.ToArray(), true);
                     GUIUtility.ExitGUI();
                 }
             }

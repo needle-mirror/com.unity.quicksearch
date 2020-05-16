@@ -36,7 +36,7 @@ namespace Unity.QuickSearch
             m_Selection.AddRange(selection.Where(s => !m_Selection.Contains(s)));
         }
 
-        public void ExecuteAction(SearchAction action, SearchItem[] items, SearchContext context, bool endSearch = true)
+        public void ExecuteAction(SearchAction action, SearchItem[] items, bool endSearch = true)
         {
             selectCallback?.Invoke(items.FirstOrDefault(), false);
         }
@@ -63,7 +63,7 @@ namespace Unity.QuickSearch
             m_Selection.AddRange(selection);
         }
 
-        public void ShowItemContextualMenu(SearchItem item, SearchContext context, Rect contextualActionPosition)
+        public void ShowItemContextualMenu(SearchItem item, Rect contextualActionPosition)
         {
             // Nothing to do.
         }
@@ -84,11 +84,11 @@ namespace Unity.QuickSearch
                 return;
 
             var provider = selectedItem.provider;
-            var selectAction = provider.actions.FirstOrDefault(a => a.Id == "select");
+            var selectAction = provider.actions.FirstOrDefault(a => a.id == "select");
             if (selectAction != null && selectAction.handler != null)
-                selectAction.handler(selectedItem, context);
+                selectAction.handler(selectedItem);
             else if (selectAction != null && selectAction.execute != null)
-                selectAction.execute(context, new SearchItem[] { selectedItem });
+                selectAction.execute(new SearchItem[] { selectedItem });
             else
                 selectedItem.provider?.trackSelection?.Invoke(selectedItem, context);
         }

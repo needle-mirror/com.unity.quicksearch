@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics;
 using System.Linq;
+using JetBrains.Annotations;
 using UnityEngine;
 
 namespace Unity.QuickSearch
@@ -11,11 +12,17 @@ namespace Unity.QuickSearch
     [Flags]
     public enum SearchItemOptions
     {
+        /// <summary>Use default description.</summary>
         None = 0,
+        /// <summary>If the description is too long truncate it and add an ellipsis.</summary>
         Ellipsis = 1 << 0,
+        /// <summary>If the description is too long keep the right part.</summary>
         RightToLeft = 1 << 1,
+        /// <summary>Highlight parts of the description that match the Search Query</summary>
         Highlight = 1 << 2,
+        /// <summary>Highlight parts of the description that match the Fuzzy Search Query</summary>
         FuzzyHighlight = 1 << 3,
+        /// <summary>Use Label instead of description for shorter display.</summary>
         Compacted = 1 << 4
     }
 
@@ -26,24 +33,55 @@ namespace Unity.QuickSearch
     [DebuggerDisplay("{id} | {label}")]
     public class SearchItem : IEquatable<SearchItem>, IComparable<SearchItem>
     {
-        /// <summary>Unique id of this item among this provider items.</summary>
+        /// <summary>
+        /// Unique id of this item among this provider items.
+        /// </summary>
         public readonly string id;
-        /// <summary>The item score can affect how the item gets sorted within the same provider.</summary>
+
+        /// <summary>
+        /// The item score can affect how the item gets sorted within the same provider.
+        /// </summary>
         public int score;
-        /// <summary>Display name of the item</summary>
-        public string label;
-        /// <summary>If no description is provided, SearchProvider.fetchDescription will be called when the item is first displayed.</summary>
-        public string description;
-        /// <summary>Various flags that dictates how the search item is displayed and used.</summary>
+
+        /// <summary>
+        /// Display name of the item
+        /// </summary>
+        [CanBeNull] public string label;
+
+        /// <summary>
+        /// If no description is provided, SearchProvider.fetchDescription will be called when the item is first displayed.
+        /// </summary>
+        [CanBeNull] public string description;
+
+        /// <summary>
+        /// Various flags that dictates how the search item is displayed and used.
+        /// </summary>
         public SearchItemOptions options;
-        /// <summary>If no thumbnail are provider, SearchProvider.fetchThumbnail will be called when the item is first displayed.</summary>
-        public Texture2D thumbnail;
-        /// <summary>Large preview of the search item. Usually cached by fetchPreview.</summary>
-        public Texture2D preview;
-        /// <summary>Back pointer to the provider.</summary>
-        public SearchProvider provider;
-        /// <summary>Search provider defined content. It can be used to transport any data to custom search provider handlers (i.e. `fetchDescription`).</summary>
-        public object data;
+
+        /// <summary>
+        /// If no thumbnail are provider, SearchProvider.fetchThumbnail will be called when the item is first displayed.
+        /// </summary>
+        [CanBeNull] public Texture2D thumbnail;
+
+        /// <summary>
+        /// Large preview of the search item. Usually cached by fetchPreview.
+        /// </summary>
+        [CanBeNull] public Texture2D preview;
+
+        /// <summary>
+        /// Search provider defined content. It can be used to transport any data to custom search provider handlers (i.e. `fetchDescription`).
+        /// </summary>
+        [CanBeNull] public object data;
+
+        /// <summary>
+        /// Back pointer to the provider.
+        /// </summary>
+        [CanBeNull] public SearchProvider provider;
+
+        /// <summary>
+        /// Context used to create that item.
+        /// </summary>
+        [CanBeNull] public SearchContext context;
 
         private static readonly SearchProvider defaultProvider = new SearchProvider("default")
         {
@@ -52,7 +90,7 @@ namespace Unity.QuickSearch
             fetchLabel = (item, context) => item.label ?? item.id,
             fetchDescription = (item, context) => item.label ?? item.id,
             fetchThumbnail = (item, context) => item.thumbnail ?? Icons.logInfo,
-            actions = new[] { new SearchAction("select", "select", null, null, (SearchItem item, SearchContext context) => { }) }.ToList()
+            actions = new[] { new SearchAction("select", "select", null, null, (SearchItem item) => { }) }.ToList()
         };
 
         /// <summary>
@@ -107,26 +145,51 @@ namespace Unity.QuickSearch
             return Utils.StripHTML(description);
         }
 
+        /// <summary>
+        /// Check if 2 SearchItems have the same id.
+        /// </summary>
+        /// <param name="x"></param>
+        /// <param name="y"></param>
+        /// <returns>Returns true if SearchItem have the same id.</returns>
         public int Compare(SearchItem x, SearchItem y)
         {
             return x.id.CompareTo(y.id);
         }
 
+        /// <summary>
+        /// Check if 2 SearchItems have the same id.
+        /// </summary>
+        /// <param name="other"></param>
+        /// <returns>Returns true if SearchItem have the same id.</returns>
         public int CompareTo(SearchItem other)
         {
             return Compare(this, other);
         }
 
+        /// <summary>
+        /// Check if 2 SearchItems have the same id.
+        /// </summary>
+        /// <param name="other"></param>
+        /// <returns>>Returns true if SearchItem have the same id.</returns>
         public override bool Equals(object other)
         {
             return other is SearchItem l && Equals(l);
         }
 
+        /// <summary>
+        /// Default Hash of a SearchItem
+        /// </summary>
+        /// <returns>A hash code for the current SearchItem</returns>
         public override int GetHashCode()
         {
             return id.GetHashCode();
         }
 
+        /// <summary>
+        /// Check if 2 SearchItems have the same id.
+        /// </summary>
+        /// <param name="other"></param>
+        /// <returns>>Returns true if SearchItem have the same id.</returns>
         public bool Equals(SearchItem other)
         {
             return id.Equals(other.id);

@@ -89,7 +89,7 @@ namespace Unity.QuickSearch
             return GetRoots().Where(path => !base.SkipEntry(path, false)).ToList();
         }
 
-        public override Hash128 GetDcoumentHash(string path)
+        public override Hash128 GetDocumentHash(string path)
         {
             return AssetDatabase.GetAssetDependencyHash(path);
         }
@@ -100,7 +100,7 @@ namespace Unity.QuickSearch
                 IndexScene(scenePath, checkIfDocumentExists);
             else if (scenePath.EndsWith(".prefab", StringComparison.OrdinalIgnoreCase))
                 IndexPrefab(scenePath, checkIfDocumentExists);
-            AddDocumentHash(scenePath, GetDcoumentHash(scenePath));
+            AddDocumentHash(scenePath, GetDocumentHash(scenePath));
         }
 
         private void IndexObjects(GameObject[] objects, string type, string containerName, bool checkIfDocumentExists)

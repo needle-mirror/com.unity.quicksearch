@@ -31,13 +31,13 @@ namespace Unity.QuickSearch
     ///     QuickSearch.Open();
     /// }
     /// </example>
-    public class QuickSearch : EditorWindow, ISearchView
+    public class QuickSearch : EditorWindow, ISearchView, IDisposable
     {
         const int k_ResetSelectionIndex = -1;
         const string k_LastSearchPrefKey = "last_search";
 
         private static readonly string[] k_Dots = { ".", "..", "..." };
-        private static readonly bool isDeveloperMode = Utils.IsDeveloperMode();
+        private static readonly bool isDeveloperMode = Utils.isDeveloperBuild;
         private static EditorWindow s_FocusedWindow;
 
         // Selection state
@@ -46,6 +46,7 @@ namespace Unity.QuickSearch
         private int m_DelayedCurrentSelection = k_ResetSelectionIndex;
         private bool m_FocusSelectedItem = false;
 
+        private bool m_Disposed = false;
         private EditorWindow lastFocusedWindow;
         private bool m_SearchBoxFocus;
         private bool m_ShowFilterWindow = false;
@@ -56,27 +57,67 @@ namespace Unity.QuickSearch
         private DetailView m_DetailView;
         private IResultView m_ResultView;
         private bool m_DetailsViewSplitterResize = false;
-        private float m_DetailsViewSplitterPos = -1f;
+
+        [SerializeField] private Vector3 m_WindowSize;
+        [SerializeField] private float m_DetailsViewSplitterPos = -1f;
 
         internal event Action nextFrame;
+        internal event Action<Vector2, Vector2> resized;
         internal string searchTopic { get; set; }
         internal bool sendAnalyticsEvent { get; set; }
         internal bool saveFilters { get; set; }
 
-        public Action<SearchItem, bool> selectCallback { get; private set; }
-        public Func<SearchItem, bool> filterCallback { get; private set; }
-        public Action<SearchItem> trackingCallback { get; private set; }
+        /// <summary>
+        /// When QuickSearch is used in Object Picker mode, this callback is triggered when an object is selected.
+        /// </summary>
+        public Action<SearchItem, bool> selectCallback { get; set; }
+
+        /// <summary>
+        /// When QuickSearch is used in Object Picker mode, this callback is triggered when the search item list is 
+        /// computed from the query allowing a user to apply further filtering on the object set.
+        /// </summary>
+        public Func<SearchItem, bool> filterCallback { get; set; }
+
+        /// <summary>
+        /// Callback used to override the tracking behavior.
+        /// </summary>
+        public Action<SearchItem> trackingCallback { get; set; }
+
+        /// <summary>
+        /// Returns the selected item in the view
+        /// </summary>
         public SearchSelection selection { get => new SearchSelection(m_Selection, m_FilteredItems); }
+
+        /// <summary>
+        /// Returns the current view search context
+        /// </summary>
         public SearchContext context { get; private set; }
+
+        /// <summary>
+        /// Return the list of all search results.
+        /// </summary>
         public ISearchList results => m_FilteredItems;
+
+        /// <summary>
+        /// Indicates how the data is displayed in the UI.
+        /// </summary>
         public DisplayMode displayMode { get => IsDisplayGrid() ? DisplayMode.Grid : DisplayMode.List; }
+
+        /// <summary>
+        /// Defines the size of items in the search view.
+        /// </summary>
         public float itemIconSize { get => m_ItemSize; set => UpdateItemSize(value); }
+
+        /// <summary>
+        /// Allow multi-selection or not.
+        /// </summary>
         [SerializeField] public bool multiselect { get; set; }
 
         /// <summary>
-        /// Set the search text and refresh search results.
+        /// Sets the search query text.
         /// </summary>
-        /// <param name="searchText">New search text</param>
+        /// <param name="searchText">Text to be displayed in the search view.</param>
+        /// <param name="moveCursor">Where to place the cursor after having set the search text</param>
         public void SetSearchText(string searchText, TextCursorPlacement moveCursor = TextCursorPlacement.Default)
         {
             context.searchText = searchText ?? String.Empty;
@@ -94,6 +135,9 @@ namespace Unity.QuickSearch
             nextFrame += () => m_ShowFilterWindow = true;
         }
 
+        /// <summary>
+        /// Open the Search Query creation window.
+        /// </summary>
         public void PopSearchQueryCreateWindow()
         {
             nextFrame += () => m_ShowCreateWindow = true;
@@ -125,6 +169,7 @@ namespace Unity.QuickSearch
         /// <summary>
         /// Creates a new instance of a Quick Search window but does not show it immediately allowing a user to setup filter before showing the window.
         /// </summary>
+        /// <param name="reuseExisting">If true, try to reuse an already existing instance of QuickSearch. If false will create a new QuickSearch window.</param>
         /// <returns>Returns the Quick Search editor window instance.</returns>
         public static QuickSearch Create(bool reuseExisting = false)
         {
@@ -142,6 +187,8 @@ namespace Unity.QuickSearch
         /// </summary>
         /// <param name="defaultWidth">Initial width of the window.</param>
         /// <param name="defaultHeight">Initial height of the window.</param>
+        /// <param name="dockable">If true, creates a dockable QuickSearch Window (that will be closed when an item is activated). If false, it will create a DropDown (borderless, undockable and unmovable) version of QuickSearch.</param>
+        /// <param name="reuseExisting">If true, try to reuse an already existing instance of QuickSearch. If false will create a new QuickSearch window.</param>
         /// <returns>Returns the Quick Search editor window instance.</returns>
         public static QuickSearch Open(float defaultWidth = 850, float defaultHeight = 539, bool dockable = false, bool reuseExisting = false)
         {
@@ -151,7 +198,8 @@ namespace Unity.QuickSearch
         /// <summary>
         /// Open the quick search window using a specific context (activating specific filters and such).
         /// </summary>
-        /// <param name="providerId">Unique name of the provider to start the quick search in.</param>
+        /// <param name="providerIds">Unique ids of providers to enable when popping QuickSearch.</param>
+        /// <returns>Returns a new shown instance of QuickSearch.</returns>
         /// <example>
         /// [MenuItem("Tools/Search Menus _F1")]
         /// public static void SearchMenuItems()
@@ -184,6 +232,7 @@ namespace Unity.QuickSearch
         /// </summary>
         /// <param name="defaultWidth">Initial width of the window.</param>
         /// <param name="defaultHeight">Initial height of the window.</param>
+        /// <param name="dockable">If true, creates a dockable QuickSearch Window (that will be closed when an item is activated). If false, it will create a DropDown (borderless, undockable and unmovable) version of QuickSearch.</param>
         /// <returns>Returns the Quick Search editor window instance.</returns>
         public QuickSearch ShowWindow(float defaultWidth = 850, float defaultHeight = 538, bool dockable = false)
         {
@@ -199,14 +248,15 @@ namespace Unity.QuickSearch
         /// <summary>
         /// Use Quick Search to as an object picker to select any object based on the specified filter type.
         /// </summary>
-        /// <param name="selectHandler"></param>
-        /// <param name="trackingHandler"></param>
-        /// <param name="pickerConstraintHandler"></param>
-        /// <param name="searchText"></param>
-        /// <param name="typeName"></param>
-        /// <param name="filterType"></param>
-        /// <param name="defaultWidth"></param>
-        /// <param name="defaultHeight"></param>
+        /// <param name="selectHandler">Callback to trigger when a user selects an item.</param>
+        /// <param name="trackingHandler">Callback to trigger when the user is modifying QuickSearch selection (i.e. tracking the currently selected item)</param>
+        /// <param name="pickerConstraintHandler">Callback that is called to provide additionnal filtering when QuickSearch is populating its object list.</param>
+        /// <param name="searchText">Initial search text for QuickSearch.</param>
+        /// <param name="typeName">Type name of the object to select. Can be used to replace filterType.</param>
+        /// <param name="filterType">Type of the object to select.</param>
+        /// <param name="defaultWidth">Initial width of the window.</param>
+        /// <param name="defaultHeight">Initial height of the window.</param>
+        /// <param name="dockable">If true, creates a dockable QuickSearch Window (that will be closed when an item is activated). If false, it will create a DropDown (borderless, undockable and unmovable) version of QuickSearch.</param>
         /// <returns></returns>
         public static QuickSearch ShowObjectPicker(
             Action<UnityEngine.Object, bool> selectHandler,
@@ -250,6 +300,144 @@ namespace Unity.QuickSearch
             return qs;
         }
 
+        /// <summary>
+        /// Set which items are selected in the view.
+        /// </summary>
+        /// <param name="selection">List containing indices of items to select.</param>
+        public void SetSelection(params int[] selection)
+        {
+            if (!multiselect && selection.Length > 1)
+                throw new Exception("Multi selection is not allowed.");
+
+            var lastIndexAdded = k_ResetSelectionIndex;
+
+            m_Selection.Clear();
+            foreach (var idx in selection)
+            {
+                if (!IsItemValid(idx))
+                    continue;
+
+                m_Selection.Add(idx);
+                lastIndexAdded = idx;
+            }
+
+            if (lastIndexAdded != k_ResetSelectionIndex)
+                TrackSelection(lastIndexAdded);
+            else
+                SearchField.ResetAutoComplete();
+        }
+        /// <summary>
+        /// Add items to the current selection.
+        /// </summary>
+        /// <param name="selection">List containing indices of items to add to current selection.</param>
+        public void AddSelection(params int[] selection)
+        {
+            if (!multiselect && m_Selection.Count == 1)
+                throw new Exception("Multi selection is not allowed.");
+
+            var lastIndexAdded = k_ResetSelectionIndex;
+
+            if (!(Event.current.keyCode == KeyCode.DownArrow || Event.current.keyCode == KeyCode.UpArrow))
+            {
+                if (m_Selection.Count > 1)
+                {
+                    m_Selection.RemoveRange(1, m_Selection.Count - 1);
+                }
+            }
+
+            foreach (var idx in selection)
+            {
+                if (!IsItemValid(idx))
+                    continue;
+
+                if (m_Selection.Contains(idx))
+                {
+                    m_Selection.Remove(idx);
+                }
+                else
+                {
+                    m_Selection.Add(idx);
+                    lastIndexAdded = idx;
+                }
+            }
+
+            if (lastIndexAdded != k_ResetSelectionIndex)
+                TrackSelection(lastIndexAdded);
+        }
+        
+        /// <summary>
+        /// Execute a Search Action on a given list of items.
+        /// </summary>
+        /// <param name="action">Action to execute.</param>
+        /// <param name="items">Items to apply the action on.</param>
+        /// <param name="endSearch">If true, executing this action will close the Quicksearch window.</param>
+        public void ExecuteAction(SearchAction action, SearchItem[] items, bool endSearch = true)
+        {
+            var item = items.LastOrDefault();
+            if (item == null)
+                return;
+
+            SendSearchEvent(item, action);
+            EditorApplication.delayCall -= DelayTrackSelection;
+
+            if (selectCallback != null)
+            {
+                selectCallback(item, false);
+                selectCallback = null;
+            }
+            else
+            {
+                if (endSearch)
+                    SearchField.UpdateLastSearchText(context.searchText);
+
+                if (action.execute != null)
+                    action.execute(items);
+                else action.handler?.Invoke(item);
+            }
+
+            if (endSearch && action.closeWindowAfterExecution)
+                CloseSearchWindow();
+        }
+
+        /// <summary>
+        /// Show a contextual menu for the specified item.
+        /// </summary>
+        /// <param name="item">Item affected by the contextual menu.</param>
+        /// <param name="position">Where the menu should be drawn on screen (generally item position)</param>
+        public void ShowItemContextualMenu(SearchItem item, Rect position)
+        {
+            var menu = new GenericMenu();
+            var shortcutIndex = 0;
+            var currentSelection = new[] { item };
+            foreach (var action in item.provider.actions.Where(a => a.enabled(currentSelection)))
+            {
+                var itemName = action.content.tooltip;
+                if (shortcutIndex == 0)
+                {
+                    itemName += " _enter";
+                }
+                else if (shortcutIndex == 1)
+                {
+                    itemName += " _&enter";
+                }
+                else if (shortcutIndex == 2)
+                {
+                    itemName += " _&%enter";
+                }
+                else if (shortcutIndex == 3)
+                {
+                    itemName += " _&%#enter";
+                }
+                menu.AddItem(new GUIContent(itemName, action.content.image), false, () => ExecuteAction(action, currentSelection));
+                ++shortcutIndex;
+            }
+
+            if (position == default)
+                menu.ShowAsContext();
+            else
+                menu.DropDown(position);
+        }
+
         [UsedImplicitly]
         internal void OnEnable()
         {
@@ -276,6 +464,8 @@ namespace Unity.QuickSearch
             m_DetailView = new DetailView(this);
             m_DebounceTime = 1f;
 
+            resized += OnWindowResized;
+
             DebugInfo.Enable(this);
         }
 
@@ -286,6 +476,8 @@ namespace Unity.QuickSearch
 
             s_FocusedWindow = null;
 
+            resized = null;
+            nextFrame = null;
             EditorApplication.update -= UpdateAsyncResults;
             EditorApplication.update -= DebouncedRefresh;
             EditorApplication.delayCall -= DelayTrackSelection;
@@ -302,7 +494,8 @@ namespace Unity.QuickSearch
             context.Dispose();
             context = null;
 
-            Resources.UnloadUnusedAssets();
+            if (!Utils.IsRunningTests())
+                Resources.UnloadUnusedAssets();
         }
 
         [UsedImplicitly]
@@ -313,6 +506,14 @@ namespace Unity.QuickSearch
 
             if (Event.current.type == EventType.Repaint)
             {
+                var newWindowSize = position.size;
+                if (!newWindowSize.Equals(m_WindowSize))
+                {
+                    if (m_WindowSize.x > 0)
+                        resized?.Invoke(m_WindowSize, newWindowSize);
+                    m_WindowSize = newWindowSize;
+                }
+
                 nextFrame?.Invoke();
                 nextFrame = null;
             }
@@ -329,7 +530,7 @@ namespace Unity.QuickSearch
                 {
                     var showDetails = selectCallback == null && m_DetailView.HasDetails(context);
                     if (m_DetailsViewSplitterPos < 0f)
-                        m_DetailsViewSplitterPos = position.width - Styles.previewSize.x;
+                        SetDetailsViewSplitterPosition(position.width - Styles.previewSize.x);
 
                     DrawItems(showDetails ? m_DetailsViewSplitterPos-2f : position.width);
 
@@ -449,8 +650,11 @@ namespace Unity.QuickSearch
                 msg += $" and found <b>{items.Count}</b> result";
                 if (items.Count > 1)
                     msg += "s";
-                if (!context.searchInProgress && context.searchElapsedTime > 1.0)
-                    msg += $" in {PrintTime(context.searchElapsedTime)}";
+                if (!context.searchInProgress)
+                {
+                    if (context.searchElapsedTime > 1.0)
+                        msg += $" in {PrintTime(context.searchElapsedTime)}";
+                }
                 else
                     msg += " so far";
             }
@@ -532,56 +736,7 @@ namespace Unity.QuickSearch
             var selectionIndex = m_Selection.Count == 0 ? k_ResetSelectionIndex : m_Selection.Last();
             return IsItemValid(selectionIndex);
         }
-
-        public void SetSelection(params int[] selection)
-        {
-            if (!multiselect && selection.Length > 1)
-                throw new Exception("Multi selection is not allowed.");
-
-            var lastIndexAdded = k_ResetSelectionIndex;
-
-            m_Selection.Clear();
-            foreach (var idx in selection)
-            {
-                if (!IsItemValid(idx))
-                    continue;
-
-                m_Selection.Add(idx);
-                lastIndexAdded = idx;
-            }
-
-            if (lastIndexAdded != k_ResetSelectionIndex)
-                TrackSelection(lastIndexAdded);
-            else
-                SearchField.ResetAutoComplete();
-        }
-
-        public void AddSelection(params int[] selection)
-        {
-            if (!multiselect && m_Selection.Count == 1)
-                throw new Exception("Multi selection is not allowed.");
-
-            var lastIndexAdded = k_ResetSelectionIndex;
-            foreach (var idx in selection)
-            {
-                if (!IsItemValid(idx))
-                    continue;
-
-                if (m_Selection.Contains(idx))
-                {
-                    m_Selection.Remove(idx);
-                }
-                else
-                {
-                    m_Selection.Add(idx);
-                    lastIndexAdded = idx;
-                }
-            }
-
-            if (lastIndexAdded != k_ResetSelectionIndex)
-                TrackSelection(lastIndexAdded);
-        }
-
+        
         private void DelayTrackSelection()
         {
             if (m_FilteredItems.Count == 0)
@@ -673,9 +828,20 @@ namespace Unity.QuickSearch
                         evt.Use();
                     }
                 }
-                else if (evt.keyCode == KeyCode.PageDown)
+                else if (ctrl && evt.keyCode == KeyCode.End || evt.keyCode == KeyCode.PageDown)
                 {
-                    var jumpAtIndex = Math.Min(selectedIndex + m_ResultView.GetDisplayItemCount() - 1, m_FilteredItems.Count-1);
+                    selectedIndex = m_Selection.Count == 0 ? k_ResetSelectionIndex : m_Selection.First();
+                    var jumpAtIndex = k_ResetSelectionIndex;
+
+                    if (evt.keyCode == KeyCode.PageDown)
+                    {
+                        jumpAtIndex = Math.Min(selectedIndex + m_ResultView.GetDisplayItemCount() - 1, m_FilteredItems.Count - 1);
+                    }
+                    else if (ctrl && evt.keyCode == KeyCode.End)
+                    {
+                        jumpAtIndex = m_FilteredItems.Count - 1;
+                    }
+
                     if (multiselect && evt.modifiers.HasFlag(EventModifiers.Shift) && m_Selection.Count > 0)
                     {
                         var r = 0;
@@ -690,9 +856,20 @@ namespace Unity.QuickSearch
                     }
                     evt.Use();
                 }
-                else if (evt.keyCode == KeyCode.PageUp)
+                else if (ctrl && evt.keyCode == KeyCode.Home || evt.keyCode == KeyCode.PageUp)
                 {
-                    var jumpAtIndex = Math.Max(0, selectedIndex - m_ResultView.GetDisplayItemCount());
+                    selectedIndex = m_Selection.Count == 0 ? k_ResetSelectionIndex : m_Selection.First();
+                    var jumpAtIndex = k_ResetSelectionIndex;
+
+                    if (evt.keyCode == KeyCode.PageUp)
+                    {
+                        jumpAtIndex = Math.Max(0, selectedIndex - m_ResultView.GetDisplayItemCount());
+                    }
+                    else if (ctrl && evt.keyCode == KeyCode.Home)
+                    {
+                        jumpAtIndex = 0;
+                    }
+
                     if (multiselect && evt.modifiers.HasFlag(EventModifiers.Shift) && m_Selection.Count > 0)
                     {
                         var r = 0;
@@ -714,7 +891,7 @@ namespace Unity.QuickSearch
                     {
                         var item = m_FilteredItems.ElementAt(selectedIndex);
                         var menuPositionY = (selectedIndex+1) * Styles.itemRowHeight - m_ResultView.scrollPosition.y + Styles.itemRowHeight/2.0f;
-                        ShowItemContextualMenu(item, context, new Rect(m_ResultView.rect.xMax - Styles.actionButtonSize, menuPositionY, 1, 1));
+                        ShowItemContextualMenu(item, new Rect(m_ResultView.rect.xMax - Styles.actionButtonSize, menuPositionY, 1, 1));
                         evt.Use();
                     }
                 }
@@ -755,7 +932,7 @@ namespace Unity.QuickSearch
                             {
                                 evt.Use();
                                 m_CurrentSearchEvent.endSearchWithKeyboard = true;
-                                ExecuteAction(action, selection.ToArray(), context);
+                                ExecuteAction(action, selection.ToArray());
                                 GUIUtility.ExitGUI();
                             }
                         }
@@ -842,6 +1019,23 @@ namespace Unity.QuickSearch
             }
         }
 
+        private void SetDetailsViewSplitterPosition(float newPos)
+        {
+            var minSize = Mathf.Max(100f, position.width * 0.2f);
+            var maxSize = position.width * 0.9f;
+            var previousSize = m_DetailsViewSplitterPos;
+            m_DetailsViewSplitterPos = Mathf.Max(minSize, Mathf.Min(newPos, maxSize));
+            if (previousSize != m_DetailsViewSplitterPos)
+                Repaint();
+        }
+
+        private void OnWindowResized(Vector2 oldSize, Vector2 newSize)
+        {
+            var widthDiff = newSize.x - oldSize.x;
+            if (m_DetailsViewSplitterPos > 0f)
+                SetDetailsViewSplitterPosition(m_DetailsViewSplitterPos + widthDiff);
+        }
+
         private void DrawDetailsViewSplitter()
         {
             var sliderRect = new Rect(m_DetailsViewSplitterPos - 2f, m_ResultView.rect.y, 3f, m_ResultView.rect.height);
@@ -851,43 +1045,12 @@ namespace Unity.QuickSearch
                 m_DetailsViewSplitterResize = true;
 
             if (m_DetailsViewSplitterResize)
-            {
-                m_DetailsViewSplitterPos = Mathf.Min(Event.current.mousePosition.x, position.width-5f);
-                Repaint();
-            }
+                SetDetailsViewSplitterPosition(Event.current.mousePosition.x);
 
             if (Event.current.type == EventType.MouseUp)
                 m_DetailsViewSplitterResize = false;
         }
-
-        public void ExecuteAction(SearchAction action, SearchItem[] items, SearchContext context, bool endSearch = true)
-        {
-            var item = items.LastOrDefault();
-            if (item == null)
-                return;
-
-            SendSearchEvent(item, action);
-            EditorApplication.delayCall -= DelayTrackSelection;
-
-            if (selectCallback != null)
-            {
-                selectCallback(item, false);
-                selectCallback = null;
-            }
-            else
-            {
-                if (endSearch)
-                    SearchField.UpdateLastSearchText(context.searchText);
-
-                if (action.execute != null)
-                    action.execute(context, items);
-                else action.handler?.Invoke(item, context);
-            }
-
-            if (endSearch && action.closeWindowAfterExecution)
-                CloseSearchWindow();
-        }
-
+        
         private Rect DrawToolbar(SearchContext context)
         {
             if (context == null)
@@ -978,41 +1141,7 @@ namespace Unity.QuickSearch
                     m_DebounceTime = currentTime;
                 EditorApplication.update += DebouncedRefresh;
             }
-        }
-
-        public void ShowItemContextualMenu(SearchItem item, SearchContext context, Rect position)
-        {
-            var menu = new GenericMenu();
-            var shortcutIndex = 0;
-            var currentSelection = new [] { item };
-            foreach (var action in item.provider.actions.Where(a => a.enabled(context, currentSelection)))
-            {
-                var itemName = action.content.tooltip;
-                if (shortcutIndex == 0)
-                {
-                    itemName += " _enter";
-                }
-                else if (shortcutIndex == 1)
-                {
-                    itemName += " _&enter";
-                }
-                else if (shortcutIndex == 2)
-                {
-                    itemName += " _&%enter";
-                }
-                else if (shortcutIndex == 3)
-                {
-                    itemName += " _&%#enter";
-                }
-                menu.AddItem(new GUIContent(itemName, action.content.image), false, () => ExecuteAction(action, currentSelection, context));
-                ++shortcutIndex;
-            }
-
-            if (position == default)
-                menu.ShowAsContext();
-            else
-                menu.DropDown(position);
-        }
+        }        
 
         private static bool IsObjectMatchingType(SearchItem item, Type filterType)
         {
@@ -1027,6 +1156,8 @@ namespace Unity.QuickSearch
 
         private bool LoadSessionSettings()
         {
+            if (Utils.IsRunningTests())
+                return false;
             context.ResetFilter(true);
             foreach (var f in SearchSettings.filters)
                 context.SetFilter(f.Key, f.Value);
@@ -1036,6 +1167,9 @@ namespace Unity.QuickSearch
 
         private void SaveSessionSettings()
         {
+            if (Utils.IsRunningTests())
+                return;
+
             SearchSettings.SetScopeValue(k_LastSearchPrefKey, context.scopeHash, context.searchText);
             if (saveFilters)
             {
@@ -1069,7 +1203,16 @@ namespace Unity.QuickSearch
             var hasQuickSearchFirstUseToken = System.IO.File.Exists(quickSearchFirstUseTokenPath);
 
             if (!SearchSettings.onBoardingDoNotAskAgain)
-                EditorApplication.delayCall += () => OnBoardingWindow.OpenWindow();
+            {
+                EditorApplication.delayCall += () => 
+                {
+                    if (AssetDatabase.FindAssets($"t:{nameof(SearchDatabase)} a:assets").Length == 0)
+                        EditorApplication.delayCall += () => OnBoardingWindow.OpenWindow();
+
+                    SearchSettings.onBoardingDoNotAskAgain = true;
+                    SearchSettings.Save();
+                };
+            }
             else if (System.IO.File.Exists(quickSearchFirstUseTokenPath))
                 EditorApplication.delayCall += () => OpenQuickSearch();
 
@@ -1099,6 +1242,22 @@ namespace Unity.QuickSearch
         {
             var contextualProviders = SearchService.Providers.Where(p => p.active && (p.isEnabledForContextualSearch?.Invoke() ?? false));
             OpenWithContextualProvider(contextualProviders.Select(p => p.name.id).ToArray());
+        }
+
+        protected virtual void Dispose(bool disposing)
+        {
+            if (m_Disposed)
+                return;
+            
+            if (disposing)
+                Close();
+
+            m_Disposed = true;
+        }
+
+        public void Dispose()
+        {
+            Dispose(true);
         }
     }
 }

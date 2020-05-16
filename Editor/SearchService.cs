@@ -80,7 +80,7 @@ namespace Unity.QuickSearch
         {
             if (provider == null)
                 return null;
-            return provider.actions.Find(a => a.Id == actionId);
+            return provider.actions.Find(a => a.id == actionId);
         }
 
         /// <summary>
@@ -143,56 +143,31 @@ namespace Unity.QuickSearch
         /// Create context from a list of provider id.
         /// </summary>
         /// <param name="providerIds">List of provider id</param>
-        /// <param name="searchQuery">seach Query</param>
+        /// <param name="searchText">seach Query</param>
+        /// <param name="flags">Options defining how the query will be performed</param>
         /// <returns>New SearchContext</returns>
         public static SearchContext CreateContext(IEnumerable<string> providerIds, string searchText = "", SearchFlags flags = SearchFlags.Default)
         {
             return new SearchContext(providerIds.Select(id => GetProvider(id)).Where(p => p != null), searchText, flags);
         }
 
+        /// <summary>
+        /// Create context from a list of providers.
+        /// </summary>
+        /// <param name="providers">List of providers</param>
+        /// <param name="searchText">seach Query</param>
+        /// <param name="flags">Options defining how the query will be performed</param>
+        /// <returns>New SearchContext</returns>
         public static SearchContext CreateContext(IEnumerable<SearchProvider> providers, string searchText = "", SearchFlags flags = SearchFlags.Default)
         {
             return new SearchContext(providers, searchText, flags);
-        }
-
-        internal static SearchContext CreateContext(SearchProvider provider, string searchText = "")
-        {
-            return CreateContext(new [] {provider}, searchText);
-        }
-
-        internal static SearchContext CreateContext(string providerId, string searchText = "", SearchFlags flags = SearchFlags.Default)
-        {
-            return CreateContext(new []{providerId}, searchText, flags);
-        }
-
-        internal static SearchContext CreateContext(string searchText)
-        {
-            return CreateContext(Providers.Where(p => p.active), searchText);
-        }
-
-        private static void OnSearchEnded(SearchContext context)
-        {
-            context.searchFinishTime = EditorApplication.timeSinceStartup;
-
-            #if SHOW_SEARCH_PROGRESS
-            if (context.progressId != -1 && Progress.Exists(context.progressId))
-                Progress.Finish(context.progressId, Progress.Status.Succeeded);
-            context.progressId = -1;
-            #endif
-        }
-
-        internal static void ReportProgress(SearchContext context, float progress = 0f, string status = null)
-        {
-            #if SHOW_SEARCH_PROGRESS
-            if (context.progressId != -1 && Progress.Exists(context.progressId))
-                Progress.Report(context.progressId, progress, status);
-            #endif
         }
 
         /// <summary>
         /// Initiate a search and return all search items matching the search context. Other items can be found later using the asynchronous searches.
         /// </summary>
         /// <param name="context">The current search context</param>
+        /// <param name="options">Options defining how the query will be performed</param>
         /// <returns>A list of search items matching the search query.</returns>
         public static List<SearchItem> GetItems(SearchContext context, SearchFlags options = SearchFlags.Default)
         {
@@ -211,6 +186,7 @@ namespace Unity.QuickSearch
             if (options.HasFlag(SearchFlags.WantsMore))
                 context.wantsMore = true;
 
+            int fetchProviderCount = 0;
             var allItems = new List<SearchItem>(3);
             #if QUICKSEARCH_DEBUG
             var debugProviderList = context.providers.ToList();
@@ -222,6 +198,7 @@ namespace Unity.QuickSearch
                 {
                     var watch = new System.Diagnostics.Stopwatch();
                     watch.Start();
+                    fetchProviderCount++;
                     var iterator = provider.fetchItems(context, allItems, provider);
                     if (iterator != null && options.HasFlag(SearchFlags.Synchronous))
                     {
@@ -251,6 +228,12 @@ namespace Unity.QuickSearch
                 }
             }
 
+            if (fetchProviderCount == 0)
+            {
+                OnSearchEnded(context);
+                context.sessions.StopAllAsyncSearchSessions();
+            }
+
             if (!options.HasFlag(SearchFlags.Sorted))
                 return allItems;
 
@@ -262,6 +245,7 @@ namespace Unity.QuickSearch
         /// Execute a search request that will fetch search results asynchronously.
         /// </summary>
         /// <param name="context">Search context used to track asynchronous request.</param>
+        /// <param name="options">Options defining how the query will be performed</param>
         /// <returns>Asynchronous list of search items.</returns>
         public static ISearchList Request(SearchContext context, SearchFlags options = SearchFlags.None)
         {
@@ -279,6 +263,69 @@ namespace Unity.QuickSearch
 
             results.AddItems(GetItems(context, options));
             return results;
+        }
+
+        /// <summary>
+        /// Load a search expression asset.
+        /// </summary>
+        /// <param name="expressionPath">Asset path of the search expression</param>
+        /// <param name="options">Options defining how the query will be performed</param>
+        /// <returns>Returns a SearchExpression ready to be evaluated.</returns>
+        public static ISearchExpression LoadExpression(string expressionPath, SearchFlags options = SearchFlags.Default)
+        {
+            if (!File.Exists(expressionPath))
+                throw new ArgumentException($"Cannot find expression {expressionPath}", nameof(expressionPath));
+
+            var se = new SearchExpression(options);
+            se.Load(expressionPath);
+            return se;
+        }
+
+        /// <summary>
+        /// Parse a simple json document string as a SearchExpression.
+        /// </summary>
+        /// <param name="sjson">Simple Json string defining a SearchExpression</param>
+        /// <param name="options">Options defining how the query will be performed</param>
+        /// <returns>Returns a SearchExpression ready to be evaluated.</returns>
+        public static ISearchExpression ParseExpression(string sjson, SearchFlags options = SearchFlags.Default)
+        {
+            var se = new SearchExpression(options);
+            se.Parse(sjson);
+            return se;
+        }
+
+        internal static SearchContext CreateContext(SearchProvider provider, string searchText = "")
+        {
+            return CreateContext(new[] { provider }, searchText);
+        }
+
+        internal static SearchContext CreateContext(string providerId, string searchText = "", SearchFlags flags = SearchFlags.Default)
+        {
+            return CreateContext(new[] { providerId }, searchText, flags);
+        }
+
+        internal static SearchContext CreateContext(string searchText)
+        {
+            return CreateContext(Providers.Where(p => p.active), searchText);
+        }
+
+        private static void OnSearchEnded(SearchContext context)
+        {
+            context.searchFinishTime = EditorApplication.timeSinceStartup;
+
+            #if SHOW_SEARCH_PROGRESS
+            if (context.progressId != -1 && Progress.Exists(context.progressId))
+                Progress.Finish(context.progressId, Progress.Status.Succeeded);
+            context.progressId = -1;
+            #endif
+        }
+
+        internal static void ReportProgress(SearchContext context, float progress = 0f, string status = null)
+        {
+            #if SHOW_SEARCH_PROGRESS
+            if (context.progressId != -1 && Progress.Exists(context.progressId))
+                Progress.Report(context.progressId, progress, status);
+            #endif
         }
 
         private static int SortItemComparer(SearchItem item1, SearchItem item2)
@@ -335,31 +382,14 @@ namespace Unity.QuickSearch
                 if (provider == null)
                     continue;
                 provider.actions.Add(action);
-                if (!ActionIdToProviders.TryGetValue(action.Id, out var providerIds))
+                if (!ActionIdToProviders.TryGetValue(action.id, out var providerIds))
                 {
                     providerIds = new List<string>();
-                    ActionIdToProviders[action.Id] = providerIds;
+                    ActionIdToProviders[action.id] = providerIds;
                 }
                 providerIds.Add(provider.name.id);
             }
             SearchSettings.SortActionsPriority();
-        }
-
-        public static ISearchExpression LoadExpression(string expressionPath, SearchFlags options = SearchFlags.Default)
-        {
-            if (!File.Exists(expressionPath))
-                throw new ArgumentException($"Cannot find expression {expressionPath}", nameof(expressionPath));
-
-            var se = new SearchExpression(options);
-            se.Load(expressionPath);
-            return se;
-        }
-
-        public static ISearchExpression ParseExpression(string sjson, SearchFlags options = SearchFlags.Default)
-        {
-            var se = new SearchExpression(options);
-            se.Parse(sjson);
-            return se;
         }
     }
 }

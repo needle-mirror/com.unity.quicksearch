@@ -210,7 +210,7 @@ namespace Unity.QuickSearch
         public static void SendSearchEvent(SearchEvent evt, SearchContext searchContext)
         {
             evt.useOverrideFilter = searchContext.filterId != null;
-            evt.isDeveloperMode = Utils.IsDeveloperMode();
+            evt.isDeveloperMode = Utils.isDeveloperBuild;
             evt.preferences = new PreferenceData()
             {
                 closeWindowByDefault = true,

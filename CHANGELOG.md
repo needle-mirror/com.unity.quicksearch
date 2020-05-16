@@ -1,25 +1,21 @@
 # Changelog
 
-## [1.6.0-preview.7] - 2020-05-04
-- [UX] Save Quick Search settings per project instead of globally for all projects.
-- [UX] Improve the saved search query workflow (less field to fulfill).
-- [UX] Add the total asynchronous time a query took for all provider sessions in the Quick Search status bar.
-- [UX] Add more error reporting for invalid queries with the `QueryEngine`.
-- [UX] Add index manager to manage your project asset, prefab and scene indexes.
-- [UX] Add a search expression builder to create complex queries.
-- [UX] Add a compact list view.
-- [UX] Add "Show all results..." checkbox to run per search provider more queries to find even more results. In example for the AssetProvider, if this is checked we try to find more assets by using AssetDatabase.FindAssets. This can be unchecked in large project where the asset database can be very slow.
-- [FIX] Optimize the search menu and scene providers (about 4-5x faster).
-- [FIX] Fix the search field initial styling and position when opening Quick Search.
-- [API] Add support for spaces inside nested queries.
-- [API] Add support for nested queries with the `QueryEngine`.
-- [API] Add support for a search word transformer with the `QueryEngine`.
-- [API] Add a websocket client called SearchChannel to do search from a web application (20.3 or 21.1 required).
+## [1.6.0-preview.8] - 2020-05-17
+- [UX] Add support for regular selection as well as multi selection using end and home keys.
+- [UX] Add nested search expression nodes support in the Expression Builder.
+- [UX] Add `dir:DIR_NAME` to asset indexing to filter assets by their direct parent folder name.
+- [FIX] Fix scrollbar overflow (more visible in the light theme).
+- [FIX] Fix details view min and max size.
+- [DOC] Update API documentation.
 
-## [1.6.0-preview.6] - 2020-04-09
+## [1.6.0-preview.7] - 2020-05-08
+- [UX] Add onboarding workflow the first time you launch Quick Search
+- [UX] Save Quick Search settings per project instead of globally for all projects.
 - [UX] Remove support for 2018.4.
 - [UX] Remove search provider sub categories. It simplifies the search view filter window.
+- [UX] Improve the saved search query workflow (less field to fulfill).
 - [UX] Change Reset priorities button in Preferences to Reset to providers Defaults (which reset priority, active and default actions).
+- [UX] Add the total asynchronous time a query took for all provider sessions in the Quick Search status bar.
 - [UX] Add the ability to fetch items on a specific provider.
 - [UX] Add support to override the default object picker using Quick Search.
 - [UX] Add support for multiple asset indexes.
@@ -29,12 +25,19 @@
 - [UX] Add new scene provider filters (i.e. id:<string>, path:<string/string> size:<number>, layer:<number>, tag:<string>, t:<type>, is:[visible|hidden|leaf|root|child])
 - [UX] Add new create Search Query Button. If search queries exist in the project, this is what we show instead of hardcoded help string.
 - [UX] Add multi selection support
+- [UX] Add more error reporting for invalid queries with the `QueryEngine`.
+- [UX] Add index manager to manage your project asset, prefab and scene indexes.
 - [UX] Add grid view support to display search results in a grid of thumbnails.
 - [UX] Add Creation Window to for Search Query.
 - [UX] Add background scene asset indexing.
 - [UX] Add an embedded inspector for objects returned by the resource and scene search providers.
+- [UX] Add a search expression builder to create complex queries.
+- [UX] Add a compact list view.
+- [UX] Add "Show all results..." checkbox to run per search provider more queries to find even more results. In example for the AssetProvider, if this is checked we try to find more assets by using AssetDatabase.FindAssets. This can be unchecked in large project where the asset database can be very slow.
 - [FIX] Remove the asset store provider for Unity version before 2019.3.
+- [FIX] Optimize the search menu and scene providers (about 4-5x faster).
 - [FIX] Fix Unity crash when dragging and dropping from quick search (case 1215420)
+- [FIX] Fix the search field initial styling and position when opening Quick Search.
 - [FIX] Fix Quick Search fails to find assets when more than 16 characters are entered into the search field (case 1225947)
 - [FIX] Fix Progress API usage.
 - [FIX] Fix filter override application.
@@ -53,8 +56,12 @@
 - [API] Add the ability for the QueryEngine to skip unknown filters in a query.
 - [API] Add support to remove filters on the `QueryEngine`.
 - [API] Add support to override the string comparison options for word/phrase matching with the `QueryEngine`.
+- [API] Add support for spaces inside nested queries.
+- [API] Add support for nested queries with the `QueryEngine`.
 - [API] Add support for custom object indexers.
 - [API] Add support for concurrent calls to the SearchApi engines with different SearchApi contexts.
+- [API] Add support for a search word transformer with the `QueryEngine`.
+- [API] Add a websocket client called SearchChannel to do search from a web application (20.3 or 21.1 required).
 
 ## [1.5.3] - 2020-02-23
 - [FIX] Increase word character variation indexing to 32.

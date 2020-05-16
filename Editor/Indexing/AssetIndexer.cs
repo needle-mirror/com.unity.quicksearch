@@ -67,7 +67,7 @@ namespace Unity.QuickSearch
                 .Distinct().Where(path => !SkipEntry(path)).ToList();
         }
 
-        public override Hash128 GetDcoumentHash(string path)
+        public override Hash128 GetDocumentHash(string path)
         {
             return AssetDatabase.GetAssetDependencyHash(path);
         }
@@ -75,7 +75,7 @@ namespace Unity.QuickSearch
         public override void IndexDocument(string path, bool checkIfDocumentExists)
         {
             var documentIndex = AddDocument(path, checkIfDocumentExists);
-            AddDocumentHash(path, GetDcoumentHash(path));
+            AddDocumentHash(path, GetDocumentHash(path));
             if (documentIndex < 0)
                 return;
 
@@ -90,12 +90,12 @@ namespace Unity.QuickSearch
                 IndexProperty(path, "id", path, documentIndex, saveKeyword: false, exact: true);
 
                 if (path.StartsWith("Packages/", StringComparison.Ordinal))
-                    IndexProperty(path, "a", "packages", documentIndex, saveKeyword: true);
+                    IndexProperty(path, "a", "packages", documentIndex, saveKeyword: true, exact: true);
                 else
-                    IndexProperty(path, "a", "assets", documentIndex, saveKeyword: true);
+                    IndexProperty(path, "a", "assets", documentIndex, saveKeyword: true, exact: true);
 
                 if (!String.IsNullOrEmpty(name))
-                    IndexProperty(path, "a", name, documentIndex, saveKeyword: true);
+                    IndexProperty(path, "a", name, documentIndex, saveKeyword: true, exact: true);
 
                 if (settings.options.fstats)
                 {
@@ -105,6 +105,7 @@ namespace Unity.QuickSearch
                         IndexNumber(path, "size", (double)fi.Length, documentIndex);
                         IndexProperty(path, "ext", fi.Extension.Replace(".", "").ToLowerInvariant(), documentIndex, saveKeyword: false);
                         IndexNumber(path, "age", (DateTime.Now - fi.LastWriteTime).TotalDays, documentIndex);
+                        IndexProperty(path, "dir", fi.Directory.Name.ToLowerInvariant(), documentIndex, saveKeyword: false);
                     }
                 }
 
@@ -129,7 +130,8 @@ namespace Unity.QuickSearch
                         IndexWord(path, at.Name, documentIndex);
                         while (at != null && at != typeof(Object))
                         {
-                            IndexProperty(path, "t", at.Name, documentIndex, saveKeyword: true);
+                            if (at != typeof(GameObject))
+                                IndexProperty(path, "t", at.Name, documentIndex, saveKeyword: true);
                             at = at.BaseType;
                         }
 
@@ -142,18 +144,18 @@ namespace Unity.QuickSearch
                             IndexProperty(path, "l", label, documentIndex, saveKeyword: true);
 
                         if (settings.options.properties)
-                        {
                             IndexObject(path, mainAsset, documentIndex);
 
-                            if (mainAsset is GameObject go)
+                        if (mainAsset is GameObject go)
+                        {
+                            foreach (var v in go.GetComponents(typeof(Component)))
                             {
-                                foreach (var v in go.GetComponents(typeof(Component)))
-                                {
-                                    if (!v)
-                                        continue;
-                                    IndexPropertyComponents(path, documentIndex, "has", v.GetType().Name);
-                                    IndexObject(path, v, documentIndex);
-                                }
+                                if (!v || v.GetType() == typeof(Transform))
+                                    continue;
+                                IndexPropertyComponents(path, documentIndex, "has", v.GetType().Name);
+                                
+                                if (settings.options.properties)
+                                    IndexObject(path, v, documentIndex, dependencies: settings.options.dependencies);
                             }
                         }
                     }

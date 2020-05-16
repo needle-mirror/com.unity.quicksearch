@@ -24,11 +24,11 @@ namespace Unity.QuickSearch
                     isExplicitProvider = true,
                     fetchItems = (context, items, provider) =>
                     {
-                        var item = context.searchQuery;
+                        var expression = context.searchQuery;
                         if (Evaluate(context.searchQuery, out var result))
-                            item += " = " + result;
+                            expression += " = " + result;
 
-                        items.Add(provider.CreateItem(type, "compute", item));
+                        items.Add(provider.CreateItem(context, Guid.NewGuid().ToString("N"), "compute", expression, null, null));
                         return null;
                     },
 
@@ -42,9 +42,9 @@ namespace Unity.QuickSearch
                 return new[]
                 {
                     new SearchAction(type, "exec", null, "Compute...") {
-                        handler = (item, context) =>
+                        handler = (item) =>
                         {
-                            if (Evaluate(context.searchQuery, out var result))
+                            if (Evaluate(item.context.searchQuery, out var result))
                             {
                                 UnityEngine.Debug.Log(result);
                                 EditorGUIUtility.systemCopyBuffer = result.ToString(CultureInfo.InvariantCulture);

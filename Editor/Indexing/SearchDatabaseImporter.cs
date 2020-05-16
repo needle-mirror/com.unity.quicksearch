@@ -69,11 +69,6 @@ namespace Unity.QuickSearch.Providers
             return s_DelayImport;
         }
 
-        private void Cleanup()
-        {
-            Resources.UnloadUnusedAssets();
-        }
-
         private bool Reimport(string assetPath)
         {
             if (!SearchDatabase.incrementalIndexCache.TryGetValue(assetPath, out var cachedIndexBytes))
@@ -99,8 +94,6 @@ namespace Unity.QuickSearch.Providers
             finally
             {
                 db.index.reportProgress -= ReportProgress;
-                EditorApplication.delayCall -= Cleanup;
-                EditorApplication.delayCall += Cleanup;
             }
         }
 

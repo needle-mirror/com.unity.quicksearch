@@ -66,7 +66,7 @@ namespace Unity.QuickSearch
                     if (p.keywords.Contains(context.searchQuery) ||
                         SearchUtils.MatchSearchGroups(context, p.description.ToLowerInvariant(), true) ||
                         SearchUtils.MatchSearchGroups(context, p.name.ToLowerInvariant(), true))
-                        yield return provider.CreateItem(p.packageId, String.IsNullOrEmpty(p.resolvedPath) ? 0 : 1, FormatLabel(p), FormatDescription(p), null, p);
+                        yield return provider.CreateItem(context, p.packageId, String.IsNullOrEmpty(p.resolvedPath) ? 0 : 1, FormatLabel(p), FormatDescription(p), null, p);
                 }
             }
 
@@ -118,7 +118,7 @@ namespace Unity.QuickSearch
                     #if UNITY_2020_1_OR_NEWER
                     new SearchAction(type, "open", null, "Open in Package Manager...")
                     {
-                        handler = (item, context) =>
+                        handler = (item) =>
                         {
                             var packageInfo = (UnityEditor.PackageManager.PackageInfo)item.data;
                         
@@ -128,7 +128,7 @@ namespace Unity.QuickSearch
                     #endif
                     new SearchAction(type, "install", null, "Install...")
                     {
-                        handler = (item, context) =>
+                        handler = (item) =>
                         {
                             var packageInfo = (UnityEditor.PackageManager.PackageInfo)item.data;
                             if (EditorUtility.DisplayDialog("About to install package " + item.id,
@@ -141,7 +141,7 @@ namespace Unity.QuickSearch
                     },
                     new SearchAction(type, "browse", null, "Browse...")
                     {
-                        handler = (item, context) =>
+                        handler = (item) =>
                         {
                             var packageInfo = (UnityEditor.PackageManager.PackageInfo)item.data;
                             if (String.IsNullOrEmpty(packageInfo.author.url))
@@ -152,7 +152,7 @@ namespace Unity.QuickSearch
                     },
                     new SearchAction(type, "remove", null, "Remove")
                     {
-                        handler = (item, context) =>
+                        handler = (item) =>
                         {
                             var packageInfo = (UnityEditor.PackageManager.PackageInfo)item.data;
                             WaitForRequestBase(UnityEditor.PackageManager.Client.Remove(packageInfo.name), $"Removing {packageInfo.packageId}...", 1);

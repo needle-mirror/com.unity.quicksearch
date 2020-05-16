@@ -46,24 +46,18 @@ namespace Providers
         }
 
         [UsedImplicitly, SearchActionsProvider]
-        private static IEnumerable<SearchAction> ActionHandlers()
+        internal static IEnumerable<SearchAction> ActionHandlers()
         {
             return new[]
             {
                 new SearchAction(type, "exec", null, "Execute search query")
                 {
                     closeWindowAfterExecution = false,
-                    handler = (item, context) =>
-                    {
-                        SearchQuery.ExecuteQuery(context.searchView, (SearchQuery)item.data);
-                    }
+                    handler = (item) => SearchQuery.ExecuteQuery(item?.context.searchView, (SearchQuery)item.data)
                 },
                 new SearchAction(type, "select", null, "Select search query")
                 {
-                    handler = (item, context) =>
-                    {
-                        Utils.FrameAssetFromPath(item.id);
-                    }
+                    handler = (item) => Utils.FrameAssetFromPath(item.id)
                 }
             };
         }

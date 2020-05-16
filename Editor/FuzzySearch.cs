@@ -1,14 +1,26 @@
-﻿//#define QUICKSERACH_DEBUG
+﻿//#define QUICKSEARCH_DEBUG
 using System;
 using System.Collections.Generic;
 using UnityEditor;
+
+#if QUICKSEARCH_DEBUG
 using UnityEngine.Profiling;
+#endif
 
 namespace Unity.QuickSearch
 {
+    /// <summary>
+    /// Utility class to perform matching against query text using a fuzzy search algorithm.
+    /// </summary>
     public static class FuzzySearch
     {
+        /// <summary>
+        /// Color for matching text when using fuzzy search.
+        /// </summary>
         public static string HighlightColorTag = EditorGUIUtility.isProSkin ? "<color=#FF6100>" : "<color=#EE4400>";
+        /// <summary>
+        /// Color for special tags when using fuzzy search.
+        /// </summary>
         public static string HighlightColorTagSpecial = EditorGUIUtility.isProSkin ? "<color=#FF6100>" : "<color=#BB1100>";
 
         struct ScoreIndx

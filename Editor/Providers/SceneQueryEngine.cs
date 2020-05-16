@@ -11,21 +11,54 @@ using UnityEngine.SceneManagement;
 
 namespace Unity.QuickSearch.Providers
 {
+    /// <summary>
+    /// This is a <see cref="QueryEngineFilterAttribute"/> use for query in a scene provider.
+    /// </summary>
     public class SceneQueryEngineFilterAttribute : QueryEngineFilterAttribute
     {
+        /// <summary>
+        /// Create a filter with the corresponding token and supported operators.
+        /// </summary>
+        /// <param name="token">The identifier of the filter. Typically what precedes the operator in a filter (i.e. "id" in "id>=2").</param>
+        /// <param name="supportedOperators">List of supported operator tokens. Null for all operators.</param>
         public SceneQueryEngineFilterAttribute(string token, string[] supportedOperators = null)
             : base(token, supportedOperators) { }
 
+        /// <summary>
+        /// Create a filter with the corresponding token, string comparison options and supported operators.
+        /// </summary>
+        /// <param name="token">The identifier of the filter. Typically what precedes the operator in a filter (i.e. "id" in "id>=2").</param>
+        /// <param name="options">String comparison options.</param>
+        /// <param name="supportedOperators">List of supported operator tokens. Null for all operators.</param>
+        /// <remarks>This sets the flag overridesStringComparison to true.</remarks>
         public SceneQueryEngineFilterAttribute(string token, StringComparison options, string[] supportedOperators = null)
             : base(token, options, supportedOperators) { }
 
+        /// <summary>
+        /// Create a filter with the corresponding token, parameter transformer function and supported operators.
+        /// </summary>
+        /// <param name="token">The identifier of the filter. Typically what precedes the operator in a filter (i.e. "id" in "id>=2").</param>
+        /// <param name="paramTransformerFunction">Name of the parameter transformer function to use with this filter. Tag the parameter transformer function with the appropriate ParameterTransformer attribute.</param>
+        /// <param name="supportedOperators">List of supported operator tokens. Null for all operators.</param>
+        /// <remarks>Sets the flag useParamTransformer to true.</remarks>
         public SceneQueryEngineFilterAttribute(string token, string paramTransformerFunction, string[] supportedOperators = null)
             : base(token, paramTransformerFunction, supportedOperators) { }
 
+        /// <summary>
+        /// Create a filter with the corresponding token, parameter transformer function, string comparison options and supported operators.
+        /// </summary>
+        /// <param name="token">The identifier of the filter. Typically what precedes the operator in a filter (i.e. "id" in "id>=2").</param>
+        /// <param name="paramTransformerFunction">Name of the parameter transformer function to use with this filter. Tag the parameter transformer function with the appropriate ParameterTransformer attribute.</param>
+        /// <param name="options">String comparison options.</param>
+        /// <param name="supportedOperators">List of supported operator tokens. Null for all operators.</param>
+        /// <remarks>Sets both overridesStringComparison and useParamTransformer flags to true.</remarks>
         public SceneQueryEngineFilterAttribute(string token, string paramTransformerFunction, StringComparison options, string[] supportedOperators = null)
             : base(token, paramTransformerFunction, options, supportedOperators) { }
     }
 
+    /// <summary>
+    /// Attribute class that defines a custom parameter transformer function applied for query running in a scene provider.
+    /// </summary>
     public class SceneQueryEngineParameterTransformerAttribute : QueryEngineParameterTransformerAttribute { }
 
     [UsedImplicitly]

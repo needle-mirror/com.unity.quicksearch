@@ -10,16 +10,34 @@ using UnityEngine;
 
 namespace Unity.QuickSearch.Providers
 {
+    /// <summary>
+    /// Scene provider. Can be used as a base class if you want to enhance the scene searching capabilities of QuickSearch.
+    /// </summary>
     [UsedImplicitly]
     public class SceneProvider : SearchProvider
     {
+        /// <summary>
+        /// Fetch all the scene GameObjects.
+        /// </summary>
         protected Func<GameObject[]> fetchGameObjects { get; set; }
+        /// <summary>
+        /// Build a list of keywords for all of the different components found in the scene.
+        /// </summary>
         protected Func<GameObject, string[]> buildKeywordComponents { get; set; }
+        /// <summary>
+        /// Has the hierarchy since last search.
+        /// </summary>
         protected bool m_HierarchyChanged = true;
 
         private GameObject[] m_GameObjects = null;
         private SceneQueryEngine m_SceneQueryEngine { get; set; }
 
+        /// <summary>
+        /// Create a new SceneProvider.
+        /// </summary>
+        /// <param name="providerId">Unique Id for the scene provider.</param>
+        /// <param name="filterId">Filter token id use to search only with this provider.</param>
+        /// <param name="displayName">Provider display name used in UI.</param>
         public SceneProvider(string providerId, string filterId, string displayName)
             : base(providerId, displayName)
         {
@@ -111,6 +129,41 @@ namespace Unity.QuickSearch.Providers
             fetchGameObjects = SceneQueryEngine.FetchGameObjects;
             buildKeywordComponents = SceneQueryEngine.BuildKeywordComponents;
         }
+        /// <summary>
+        /// Create default action handles for scene SearchItem. See <see cref="SearchAction"/>.
+        /// </summary>
+        /// <param name="providerId">Provider Id registered for the action.</param>
+        /// <returns>A collection of SearchActions working for a Scene SearchItem.</returns>
+        public static IEnumerable<SearchAction> CreateActionHandlers(string providerId)
+        {
+            return new SearchAction[]
+            {
+                new SearchAction(providerId, "select", null, "Select object(s) in scene...")
+                {
+                    execute = (items) =>
+                    {
+                        FrameObjects(items.Select(i => i.provider.toObject(i, typeof(GameObject))).Where(i=>i).ToArray());
+                    }
+                },
+
+                new SearchAction(providerId, "open", null, "Select containing asset...")
+                {
+                    handler = (item) =>
+                    {
+                        var pingedObject = PingItem(item);
+                        if (pingedObject != null)
+                        {
+                            var go = pingedObject as GameObject;
+                            var assetPath = SearchUtils.GetHierarchyAssetPath(go);
+                            if (!String.IsNullOrEmpty(assetPath))
+                                Utils.FrameAssetFromPath(assetPath);
+                            else
+                                FrameObject(go);
+                        }
+                    }
+                }
+            };
+        }
 
         private IEnumerator SearchItems(SearchContext context, SearchProvider provider)
         {
@@ -127,23 +180,23 @@ namespace Unity.QuickSearch.Providers
                 {
                     if (!gameObject)
                         return null;
-                    return AddResult(provider, gameObject.GetInstanceID().ToString(), 0, false);
+                    return AddResult(context, provider, gameObject.GetInstanceID().ToString(), 0, false);
                 });
             }
             else if (context.wantsMore && context.filterType != null && String.IsNullOrEmpty(context.searchQuery))
             {
                 yield return GameObject.FindObjectsOfType(context.filterType)
-                    .Select(go => AddResult(provider, go.GetInstanceID().ToString(), 999, false));
+                    .Select(go => AddResult(context, provider, go.GetInstanceID().ToString(), 999, false));
             }
         }
 
-        private static SearchItem AddResult(SearchProvider provider, string id, int score, bool useFuzzySearch)
+        private static SearchItem AddResult(SearchContext context, SearchProvider provider, string id, int score, bool useFuzzySearch)
         {
             string description = null;
             #if false
             description = $"F:{useFuzzySearch} {id} ({score})";
             #endif
-            var item = provider.CreateItem(id, score, null, description, null, null);
+            var item = provider.CreateItem(context, id, score, null, description, null, null);
             return SetItemDescriptionFormat(item, useFuzzySearch);
         }
 
@@ -184,37 +237,6 @@ namespace Unity.QuickSearch.Providers
             var obj = EditorUtility.InstanceIDToObject(instanceID) as GameObject;
             return obj;
         }
-
-        public static IEnumerable<SearchAction> CreateActionHandlers(string providerId)
-        {
-            return new SearchAction[]
-            {
-                new SearchAction(providerId, "select", null, "Select object(s) in scene...")
-                {
-                    execute = (context, items) =>
-                    {
-                        FrameObjects(items.Select(i => i.provider.toObject(i, typeof(GameObject))).Where(i=>i).ToArray());
-                    }
-                },
-
-                new SearchAction(providerId, "open", null, "Select containing asset...")
-                {
-                    handler = (item, context) =>
-                    {
-                        var pingedObject = PingItem(item);
-                        if (pingedObject != null)
-                        {
-                            var go = pingedObject as GameObject;
-                            var assetPath = SearchUtils.GetHierarchyAssetPath(go);
-                            if (!String.IsNullOrEmpty(assetPath))
-                                Utils.FrameAssetFromPath(assetPath);
-                            else
-                                FrameObject(go);
-                        }
-                    }
-                }
-            };
-        }
     }
 
     static class BuiltInSceneObjectsProvider
@@ -234,7 +256,7 @@ namespace Unity.QuickSearch.Providers
         }
 
         [UsedImplicitly, Shortcut("Help/Quick Search/Scene")]
-        private static void OpenQuickSearch()
+        internal static void OpenQuickSearch()
         {
             QuickSearch.OpenWithContextualProvider(k_DefaultProviderId);
         }

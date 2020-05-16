@@ -11,6 +11,9 @@ using Unity.QuickSearch.Providers;
 using UnityEditor;
 using UnityEngine;
 
+/// <summary>
+/// CustomizedSceneProvider use to showcase <see cref="SceneQueryEngineFilter"/> and <see cref="SceneQueryEngineParameterTransformer"/>
+/// </summary>
 public static class CustomizedSceneProvider
 {
     // Add a new filter function "dist" that returns the distance between an object and a point. This filter

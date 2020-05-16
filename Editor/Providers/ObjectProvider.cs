@@ -162,7 +162,7 @@ namespace Unity.QuickSearch.Providers
             var searchQuery = context.searchQuery;
 
             if (searchQuery.Length > 0)
-                yield return indexes.Select(db => SearchIndexes(searchQuery, provider, db));
+                yield return indexes.Select(db => SearchIndexes(searchQuery, context, provider, db));
 
             if (context.wantsMore && context.filterType != null && !context.textFilters.Contains("t:"))
             {
@@ -170,11 +170,11 @@ namespace Unity.QuickSearch.Providers
                     searchQuery = $"({context.searchText}) t:{context.filterType.Name}";
                 else
                     searchQuery = $"t:{context.filterType.Name}";
-                yield return indexes.Select(db => SearchIndexes(searchQuery, provider, db, 999));
+                yield return indexes.Select(db => SearchIndexes(searchQuery, context, provider, db, 999));
             }
         }
 
-        private static IEnumerator SearchIndexes(string searchQuery, SearchProvider provider, SearchDatabase db, int scoreModifier = 0)
+        private static IEnumerator SearchIndexes(string searchQuery, SearchContext context, SearchProvider provider, SearchDatabase db, int scoreModifier = 0)
         {
             while (db.index == null)
                 yield return null;
@@ -187,7 +187,7 @@ namespace Unity.QuickSearch.Providers
             yield return index.Search(searchQuery.ToLowerInvariant()).Select(e =>
             {
                 var itemScore = e.score + scoreModifier;
-                return provider.CreateItem(e.id, itemScore, null, null, null, index.GetDocument(e.index));
+                return provider.CreateItem(context, e.id, itemScore, null, null, null, index.GetDocument(e.index));
             });
         }
 
@@ -202,7 +202,7 @@ namespace Unity.QuickSearch.Providers
             return $"{assetPath} ({EditorUtility.FormatBytes(fileSize)})";
         }
 
-        private static void SelectItems(SearchContext context, SearchItem[] items)
+        private static void SelectItems(SearchItem[] items)
         {
             Selection.instanceIDs = items.Select(i => ToObject(i, typeof(Object))).Where(o => o).Select(o=>o.GetInstanceID()).ToArray();
             if (Selection.instanceIDs.Length == 0)
@@ -214,7 +214,7 @@ namespace Unity.QuickSearch.Providers
             };
         }
 
-        private static void OpenItem(SearchItem item, SearchContext context)
+        private static void OpenItem(SearchItem item)
         {
             if (!SelectObjectbyId(item.id, out var assetGUID))
             {

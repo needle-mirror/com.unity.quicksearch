@@ -4,7 +4,7 @@ using UnityEngine.Assertions;
 
 namespace Unity.QuickSearch
 {
-    public enum Combine
+    enum Combine
     {
         None,
         Intersection,

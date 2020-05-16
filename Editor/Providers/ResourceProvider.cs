@@ -80,7 +80,7 @@ namespace Unity.QuickSearch.Providers
                 fetchDescription = FetchDescription,
                 fetchThumbnail = FetchThumbnail,
                 fetchPreview = FetchPreview,
-                trackSelection = TrackSelection,
+                trackSelection = (item, context) => TrackSelection(item),
                 fetchKeywords = FetchKeywords,
                 startDrag = (item, context) => DragItem(item, context),
                 onEnable = OnEnable
@@ -131,9 +131,9 @@ namespace Unity.QuickSearch.Providers
         {
             return new[]
             {
-                new SearchAction(type, "select", null, "Select resource...") { handler = (item, context) => TrackSelection(item, context) },
+                new SearchAction(type, "select", null, "Select resource...") { handler = (item) => TrackSelection(item) },
                 #if UNITY_2020_1_OR_NEWER
-                new SearchAction(type, "inspect", null, "Open property editor...") { handler = (item, context) => OpenPropertyEditor(item) }
+                new SearchAction(type, "inspect", null, "Open property editor...") { handler = item => OpenPropertyEditor(item) }
                 #endif
             };
         }
@@ -168,7 +168,9 @@ namespace Unity.QuickSearch.Providers
 
             foreach (var obj in filteredObjects)
             {
-                yield return provider.CreateItem(obj.GetInstanceID().ToString(), $"{obj.name} [{obj.GetType()}] ({obj.GetInstanceID()})", null, null, obj.GetInstanceID());
+                var id = obj.GetInstanceID().ToString();
+                var label = $"{obj.name} [{obj.GetType()}] ({obj.GetInstanceID()})";
+                yield return provider.CreateItem(context, id, label, null, null, obj.GetInstanceID());
             }
 
             // Put back the default search callback
@@ -218,7 +220,7 @@ namespace Unity.QuickSearch.Providers
             return descriptor == null ? Icons.quicksearch : descriptor.GetPreview(obj, (int)size.x, (int)size.y);
         }
 
-        private static void TrackSelection(SearchItem item, SearchContext context)
+        private static void TrackSelection(SearchItem item)
         {
             var obj = GetItemObject(item);
             var descriptor = k_Descriptors.FirstOrDefault(desc => desc.Match(obj));

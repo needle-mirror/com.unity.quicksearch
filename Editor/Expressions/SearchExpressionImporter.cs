@@ -39,7 +39,7 @@ namespace Unity.QuickSearch
         {
             if (m_ExpressionResultView == null)
                 m_ExpressionResultView = new ExpressionResultView(m_Expression);
-            
+
             m_ExpressionResultView.RegisterCallback<GeometryChangedEvent>(OnSizeChange);
             EditorApplication.delayCall += () => m_ExpressionResultView.style.height = 500;
 
@@ -102,7 +102,7 @@ namespace Unity.QuickSearch
             using (new EditorGUIUtility.IconSizeScope(new Vector2(16, 16)))
                 GUILayout.Label(m_ExpressionTitle);
             GUILayout.FlexibleSpace();
-            if (Utils.IsDeveloperMode())
+            if (Utils.isDeveloperBuild)
             {
                 if (GUILayout.Button("Refresh"))
                     m_Expression.Evaluate();
@@ -120,15 +120,15 @@ namespace Unity.QuickSearch
         }
     }
 
-    [ExcludeFromPreset, ScriptedImporter(version: 1, ext: "qse")]
+    [ExcludeFromPreset, ScriptedImporter(version: 2, ext: "qse")]
     class SearchExpressionImporter : ScriptedImporter
     {
         public override void OnImportAsset(AssetImportContext ctx)
         {
-            var text = new TextAsset(File.ReadAllText(ctx.assetPath));
-            text.hideFlags |= HideFlags.HideInInspector;
-            ctx.AddObjectToAsset("expression", text, Icons.quicksearch);
-            ctx.SetMainObject(text);
+            var so = ScriptableObject.CreateInstance<SearchExpressionAsset>();
+            so.hideFlags |= HideFlags.HideInInspector;
+            ctx.AddObjectToAsset("expression", so, Icons.quicksearch);
+            ctx.SetMainObject(so);
         }
 
         [UnityEditor.Callbacks.OnOpenAsset]

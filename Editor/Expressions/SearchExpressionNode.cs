@@ -9,6 +9,7 @@ namespace Unity.QuickSearch
     enum ExpressionSelectField
     {
         Default,
+        Type,
         Object,
         Asset = Object,
         Component
@@ -50,6 +51,7 @@ namespace Unity.QuickSearch
         public string name { get; set; }
         public object value { get; set; }
         public Vector2 position { get; set; }
+        public Color color { get; set; }
         public SearchExpressionNode source { get; internal set; }
         public List<ExpressionVariable> variables { get; internal set; }
         public Dictionary<string, object> properties { get; private set; }
@@ -85,6 +87,26 @@ namespace Unity.QuickSearch
         {
             this.id = id;
             this.type = type;
+
+            color = GetNodeTypeColor(type);
+        }
+
+        internal static Color GetNodeTypeColor(ExpressionType type)
+        {
+            switch (type)
+            {
+                case ExpressionType.Provider: return new Color(80/255f, 99/255f, 93/255f, 0.99f);
+                case ExpressionType.Value: return new Color(35/255f, 35/255f, 35/255f, 0.79f);
+                case ExpressionType.Search: return new Color(20/255f, 87/255f, 132/255f, 0.99f);
+                case ExpressionType.Select: return new Color(18/255f, 57/255f, 126/255f, 0.99f);
+                case ExpressionType.Union: return new Color(160/255f, 99/255f, 31/255f, 0.99f);
+                case ExpressionType.Intersect: return new Color(120/255f, 99/255f, 33/255f, 0.99f);
+                case ExpressionType.Except: return new Color(142/255f, 34/255f, 10/255f, 0.99f);
+                case ExpressionType.Results: return new Color(9/255f, 99/255f, 9/255f, 0.99f);
+                case ExpressionType.Expression: return new Color(75/255f, 111/255f, 75/255f, 0.99f);
+            }
+
+            return Color.clear;
         }
 
         public bool HasVariable(string name)

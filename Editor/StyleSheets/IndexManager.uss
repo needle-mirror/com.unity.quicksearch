@@ -28,6 +28,10 @@
     border-width: 1px;
     border-color: var(--unity-colors-default-border);
     border-radius: var(--unity-metrics-default-border_radius);
+    border-top-width: 0;
+    border-left-width: 0;
+    border-top-left-radius: 0;
+    border-top-right-radius: 0;
 }
 #ListViewIndexSettingsContent > ListView > ScrollView {
     padding-top: 3px;

@@ -16,28 +16,46 @@ using Unity.QuickSearch;
 using UnityEngine.Assertions;
 using Random = UnityEngine.Random;
 
+/// <summary>
+/// CustomObject type use to show how to use a custom QueryEngine.
+/// </summary>
 public class MyCustomObjectType
 {
+    /// <summary>Id</summary>
     public int Id { get; set; }
+    /// <summary>Position</summary>
     public Vector2 Position { get; set; }
 
+    /// <summary>
+    ///  Create a new instance of MyCustomObjectType
+    /// </summary>
     public MyCustomObjectType()
     {
         Id = 0;
         Position = Vector2.zero;
     }
 
+    /// <summary>
+    ///  Get string representation of MyCustomObjectType
+    /// </summary>
+    /// <returns>Returns a string representation of MyCustomObjectType</returns>
     public override string ToString()
     {
         return $"({Id}, ({Position.x}, {Position.y}))";
     }
 }
 
+/// <summary>
+/// Sample QueryEngine able to perform simple query on MyObjectType
+/// </summary>
 public class QueryEngineCustomOperators
 {
     QueryEngine<MyCustomObjectType> m_QueryEngine;
     List<MyCustomObjectType> m_Data;
 
+    /// <summary>
+    /// Create a query engine to showcase how custom operators work.
+    /// </summary>
     public QueryEngineCustomOperators()
     {
         GenerateData(1000);
@@ -126,7 +144,9 @@ public class QueryEngineCustomOperators
 
         return false;
     }
-
+    /// <summary>
+    /// Test function that runs the Query engine on a list of queries.
+    /// </summary>
     public void TestFiltering()
     {
         void PrintFilteredData(IEnumerable<MyCustomObjectType> data)
@@ -153,7 +173,11 @@ public class QueryEngineCustomOperators
         filteredData = FilterData("is:high-priority");
         PrintFilteredData(filteredData);
     }
-
+    /// <summary>
+    /// Filter data according to a specific inputQuery.
+    /// </summary>
+    /// <param name="inputQuery">Text query</param>
+    /// <returns>Yields a list of matching MyObjectType.</returns>
     public IEnumerable<MyCustomObjectType> FilterData(string inputQuery)
     {
         // Parse the query string into a query operation

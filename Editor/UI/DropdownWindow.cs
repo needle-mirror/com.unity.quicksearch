@@ -7,7 +7,7 @@ using UnityEngine;
 
 namespace Unity.QuickSearch
 {
-    public abstract class DropdownWindow<T> : EditorWindow
+    abstract class DropdownWindow<T> : EditorWindow
     {
         internal static bool requestShowWindow;
         internal static double s_CloseTime;

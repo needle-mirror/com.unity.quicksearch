@@ -13,14 +13,23 @@ using UnityEngine;
 using Unity.QuickSearch;
 using UnityEngine.Assertions;
 
-
+/// <summary>
+/// Example type
+/// </summary>
 public class MyObjectType
 {
+    /// <summary>Id</summary>
     public int Id { get; set; }
+    /// <summary>Name</summary>
     public string Name { get; set; }
+    /// <summary>Position</summary>
     public Vector2 Position { get; set; }
+    /// <summary>Active</summary>
     public bool Active { get; set; }
 
+    /// <summary>
+    /// Create a new object
+    /// </summary>
     public MyObjectType()
     {
         Id = 0;
@@ -29,17 +38,27 @@ public class MyObjectType
         Active = false;
     }
 
+    /// <summary>
+    /// Returns string representation.
+    /// </summary>
+    /// <returns></returns>
     public override string ToString()
     {
         return $"({Id}, {Name}, ({Position.x}, {Position.y}), {Active})";
     }
 }
 
+/// <summary>
+/// Sample QueryEngine able to perform simple query on MyObjectType
+/// </summary>
 public class QueryEngineBasic
 {
     QueryEngine<MyObjectType> m_QueryEngine;
     List<MyObjectType> m_Data;
 
+    /// <summary>
+    /// Create a sample QueryEngine able to perform simple query on MyObjectType
+    /// </summary>
     public QueryEngineBasic()
     {
         GenerateData(1000);
@@ -62,6 +81,9 @@ public class QueryEngineBasic
         m_QueryEngine.SetSearchDataCallback(myObj => new []{myObj.Id.ToString(), myObj.Name});
     }
 
+    /// <summary>
+    /// Test function that runs the Query engine on a list of queries.
+    /// </summary>
     public void TestFiltering()
     {
         void PrintFilteredData(IEnumerable<MyObjectType> data)
@@ -85,6 +107,11 @@ public class QueryEngineBasic
         PrintFilteredData(filteredData);
     }
 
+    /// <summary>
+    /// Filter data according to a specific inputQuery.
+    /// </summary>
+    /// <param name="inputQuery">Text query</param>
+    /// <returns>Yields a list of matching MyObjectType.</returns>
     public IEnumerable<MyObjectType> FilterData(string inputQuery)
     {
         // Parse the query string into a query operation

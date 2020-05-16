@@ -171,12 +171,6 @@ namespace Unity.QuickSearch
             return space;
         }
 
-        private void OnDisable()
-        {
-            SearchSettings.onBoardingDoNotAskAgain = true;
-            SearchSettings.Save();
-        }
-
         private void ApplySettings(ProjectSize projectSize, IndexCreationInfo indexCreationInfo)
         {
             bool fetchPreview = false;
