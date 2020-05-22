@@ -119,9 +119,6 @@ namespace Unity.QuickSearch
     {
         const string k_TestFileName = "Tests/Editor/Content/test_material_42.mat";
 
-        private bool m_WasUsingNewIndex = false;
-
-
         internal static void SetProviderActive(string providerId, bool isActive)
         {
             var provider = SearchService.Providers.FirstOrDefault(p => p.name.id == providerId);
@@ -135,7 +132,6 @@ namespace Unity.QuickSearch
         [SetUp]
         public void EnableService()
         {
-            m_WasUsingNewIndex = SearchSettings.useUberIndexing;
             SearchService.SaveFilters();
             SearchService.Enable(SearchContext.Empty);
             SearchService.Filter.ResetFilter(true);
@@ -148,7 +144,6 @@ namespace Unity.QuickSearch
         {
             SearchService.Disable(SearchContext.Empty);
             SearchService.LoadFilters();
-            SearchSettings.useUberIndexing = m_WasUsingNewIndex;
         }
 
         [UnityTest]

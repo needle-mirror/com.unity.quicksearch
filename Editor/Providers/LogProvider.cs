@@ -27,6 +27,7 @@ namespace Unity.QuickSearch
 
             private static volatile int s_LogIndex = 0;
             private static List<LogEntry> s_Logs = new List<LogEntry>();
+            private static volatile bool s_Initialized = false;
 
             [UsedImplicitly, SearchItemProvider]
             private static SearchProvider CreateProvider()
@@ -35,8 +36,6 @@ namespace Unity.QuickSearch
                 if (string.IsNullOrEmpty(consoleLogPath) || !File.Exists(consoleLogPath))
                     return null;
 
-                Application.logMessageReceived -= HandleLog;
-                Application.logMessageReceived += HandleLog;
                 var readConsoleLogThread = new Thread(() =>
                 {
                     using (var logStream = new FileStream(consoleLogPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
@@ -98,10 +97,10 @@ namespace Unity.QuickSearch
                 s = s.Trim();
                 return new LogEntry
                 {
-                    id = "__log_" + s_LogIndex, 
-                    lineNumber = ++s_LogIndex, 
-                    msg = s, 
-                    msgLowerCased = s.ToLowerInvariant(), 
+                    id = "__log_" + s_LogIndex,
+                    lineNumber = ++s_LogIndex,
+                    msg = s,
+                    msgLowerCased = s.ToLowerInvariant(),
                     logType = logType
                 };
             }
@@ -110,6 +109,12 @@ namespace Unity.QuickSearch
             {
                 lock (s_Logs)
                 {
+                    if (!s_Initialized)
+                    {
+                        s_Initialized = true;
+                        Application.logMessageReceived -= HandleLog;
+                        Application.logMessageReceived += HandleLog;
+                    }
                     for (int logIndex = 0; logIndex < s_Logs.Count; ++logIndex)
                         yield return SearchLogEntry(context, provider, s_Logs[logIndex]);
                 }

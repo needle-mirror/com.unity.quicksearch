@@ -13,13 +13,10 @@ using JetBrains.Annotations;
 using UnityEditor;
 using UnityEngine;
 using Debug = UnityEngine.Debug;
+using UnityEditorInternal;
 
 #if UNITY_2020_1_OR_NEWER
 using UnityEngine.UIElements;
-#endif
-
-#if QUICKSEARCH_DEBUG
-using UnityEditorInternal;
 #endif
 
 [assembly: InternalsVisibleTo("com.unity.quicksearch.tests")]
@@ -585,6 +582,11 @@ namespace Unity.QuickSearch
             DragAndDrop.PrepareStartDrag();
             DragAndDrop.objectReferences = new[] { s_LastDraggedObject };
             DragAndDrop.StartDrag(label ?? s_LastDraggedObject.name);
+        }
+
+        public static bool IsRunningTests()
+        {
+            return !InternalEditorUtility.isHumanControllingUs || InternalEditorUtility.inBatchMode;
         }
     }
 

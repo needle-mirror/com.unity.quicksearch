@@ -1750,7 +1750,10 @@ namespace Unity.QuickSearch
 
             var windowSize = new Vector2(defaultWidth, defaultHeight);
             var qsWindow = CreateInstance<QuickSearch>();
-            qsWindow.ShowDropDown(windowSize);
+            if (!Utils.IsRunningTests())
+                qsWindow.ShowDropDown(windowSize);
+            else
+                qsWindow.Show(true);
 
             qsWindow.m_SearchTopic = "anything";
             // Ensure we won't send events while doing a domain reload.

@@ -470,6 +470,7 @@ namespace Unity.QuickSearch.Providers
             {
                 #if UNITY_2020_1_OR_NEWER
                 active = true,
+                isExplicitProvider = true,
                 #else
                 active = false,
                 #endif
@@ -478,7 +479,7 @@ namespace Unity.QuickSearch.Providers
                 showDetails = true,
                 fetchItems = (context, items, provider) => SearchStore(context, provider),
                 fetchThumbnail = (item, context) => FetchImage(((AssetDocument)item.data).icon, false, s_Previews),
-                fetchPreview = (item, context, size, options) => 
+                fetchPreview = (item, context, size, options) =>
                 {
                     if (!options.HasFlag(FetchPreviewOptions.Large))
                         return null;
@@ -638,7 +639,7 @@ namespace Unity.QuickSearch.Providers
         static double GetEpochSeconds()
         {
             return (DateTime.UtcNow - new DateTime(1970, 1, 1)).TotalSeconds;
-        } 
+        }
 
         static bool IsTokenValid(double expirationStart, long expiresIn)
         {
@@ -661,7 +662,7 @@ namespace Unity.QuickSearch.Providers
                     done(null, exception.ToString());
                     return;
                 }
-                RequestAccessToken(authCode, (accessTokenData, error) => 
+                RequestAccessToken(authCode, (accessTokenData, error) =>
                 {
                     if (accessTokenData == null)
                     {
@@ -691,7 +692,7 @@ namespace Unity.QuickSearch.Providers
                     done(null, error);
                     return;
                 }
-                RequestAccessTokenInfo(accessTokenData.access_token, (tokenInfo, tokenInfoError) => 
+                RequestAccessTokenInfo(accessTokenData.access_token, (tokenInfo, tokenInfoError) =>
                 {
                     s_TokenInfo = tokenInfo;
                     s_TokenInfo.expiration = long.Parse(s_TokenInfo.expires_in);
@@ -715,7 +716,7 @@ namespace Unity.QuickSearch.Providers
                     done(null, error);
                     return;
                 }
-                RequestUserInfo(accessTokenInfo.access_token, accessTokenInfo.sub, (userInfo, userInfoError) => 
+                RequestUserInfo(accessTokenInfo.access_token, accessTokenInfo.sub, (userInfo, userInfoError) =>
                 {
                     s_UserInfo = userInfo;
                     done(userInfo, userInfoError);

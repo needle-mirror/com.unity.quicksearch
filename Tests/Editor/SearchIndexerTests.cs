@@ -7,6 +7,7 @@ using UnityEditor;
 using UnityEngine;
 using UnityEngine.TestTools;
 
+#if false // Disable in 1.5, full indexing will be in 1.6
 namespace Unity.QuickSearch
 {
     class SearchIndexerTests
@@ -108,3 +109,4 @@ namespace Unity.QuickSearch
         }
     }
 }
+#endif

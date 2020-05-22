@@ -46,16 +46,6 @@ namespace Unity.QuickSearch.Providers
 
         private static readonly char[] k_InvalidSearchFileChars = Path.GetInvalidFileNameChars().Where(c => c != '*').ToArray();
 
-        [InitializeOnLoadMethod]
-        internal static void DelayInitializeUberIndex()
-        {
-            if (SearchSettings.useUberIndexing)
-            {
-                EditorApplication.delayCall -= ADBIndex.Initialize;
-                EditorApplication.delayCall += ADBIndex.Initialize;
-            }
-        }
-
         [UsedImplicitly, SearchItemProvider]
         internal static SearchProvider CreateProvider()
         {
@@ -73,7 +63,7 @@ namespace Unity.QuickSearch.Providers
 
                 onEnable = () =>
                 {
-                    if (!SearchSettings.useUberIndexing && fileIndexer == null)
+                    if (fileIndexer == null)
                     {
                         var packageRoots = Utils.GetPackagesPaths().Select(p => new SearchIndexerRoot(Path.GetFullPath(p).Replace('\\', '/'), p));
                         var roots = new[] { new SearchIndexerRoot(Application.dataPath, "Assets") }.Concat(packageRoots);
@@ -121,67 +111,35 @@ namespace Unity.QuickSearch.Providers
                     yield return provider.CreateItem(gui2Path, -1, $"{Path.GetFileName(gui2Path)} ({searchQuery})", null, null, null);
             }
 
-            if (SearchSettings.useUberIndexing)
+            var fileIndexerReady = fileIndexer.IsReady();
+            if (fileIndexerReady)
             {
-                var adbIndex = ADBIndex.Get();
-
-                if (!adbIndex.IsReady())
+                if (searchQuery.IndexOfAny(k_InvalidIndexedChars) == -1)
                 {
-                    foreach (var assetEntry in AssetDatabase.FindAssets(searchQuery)
-                        .Select(AssetDatabase.GUIDToAssetPath)
-                        .Select(path => provider.CreateItem(path, Path.GetFileName(path))))
-                        yield return assetEntry;
-                }
-
-                // Search index
-                while (!adbIndex.IsReady())
-                    yield return null;
-
-                yield return adbIndex.Search(searchQuery).Select(e =>
-                {
-                    var filename = Path.GetFileName(e.path);
-                    var filenameNoExt = Path.GetFileNameWithoutExtension(e.path);
-                    var itemScore = e.score;
-                    var words = context.searchPhrase;
-                    if (filenameNoExt.Equals(words, StringComparison.OrdinalIgnoreCase))
-                        itemScore = SearchProvider.k_RecentUserScore + 1;
-
-                    string description = adbIndex.GetDebugIndexStrings(e.path);
-                    return provider.CreateItem(e.path, itemScore, filename, description, null, null);
-                });
-            }
-            else
-            {
-                var fileIndexerReady = fileIndexer.IsReady();
-                if (fileIndexerReady)
-                {
-                    if (searchQuery.IndexOfAny(k_InvalidIndexedChars) == -1)
-                    {
-                        foreach (var item in SearchFileIndex(searchQuery, searchPackages, provider))
-                            yield return item;
-                        if (!context.wantsMore)
-                            yield break;
-                    }
-                }
-
-                if (!searchPackages)
-                {
-                    if (!searchQuery.Contains("a:assets"))
-                        searchQuery = "a:assets " + searchQuery;
-                }
-
-                foreach (var assetEntry in AssetDatabase.FindAssets(searchQuery).Select(AssetDatabase.GUIDToAssetPath).Select(path => provider.CreateItem(path, Path.GetFileName(path))))
-                    yield return assetEntry;
-
-                if (!fileIndexerReady)
-                {
-                    // Indicate to the user that we are still building the index.
-                    while (!fileIndexer.IsReady())
-                        yield return null;
-
                     foreach (var item in SearchFileIndex(searchQuery, searchPackages, provider))
                         yield return item;
+                    if (!context.wantsMore)
+                        yield break;
                 }
+            }
+
+            if (!searchPackages)
+            {
+                if (!searchQuery.Contains("a:assets"))
+                    searchQuery = "a:assets " + searchQuery;
+            }
+
+            foreach (var assetEntry in AssetDatabase.FindAssets(searchQuery).Select(AssetDatabase.GUIDToAssetPath).Select(path => provider.CreateItem(path, Path.GetFileName(path))))
+                yield return assetEntry;
+
+            if (!fileIndexerReady)
+            {
+                // Indicate to the user that we are still building the index.
+                while (!fileIndexer.IsReady())
+                    yield return null;
+
+                foreach (var item in SearchFileIndex(searchQuery, searchPackages, provider))
+                    yield return item;
             }
 
             // Search file system wildcards

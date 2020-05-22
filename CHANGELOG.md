@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.5.4] - 2020-05-22
+- [UX] Remove experimental indexing in 1.5 as it will be officially released in version 1.6
+- [FIX] Remove usage of Progress.RunTask
+
 ## [1.5.3] - 2020-02-23
 - [FIX] Increase word character variation indexing to 32.
 - [FIX] Ensure package and store search providers are not enabled while runnign tests.

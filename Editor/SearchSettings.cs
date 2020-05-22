@@ -13,20 +13,17 @@ namespace Unity.QuickSearch
         public const string settingsPreferencesKey = "Preferences/Quick Search";
         public static bool trackSelection { get; private set; }
         public static bool fetchPreview { get; private set; }
-        public static bool useUberIndexing { get; internal set; }
 
         static SearchSettings()
         {
             trackSelection = EditorPrefs.GetBool($"{k_KeyPrefix}.{nameof(trackSelection)}", true);
             fetchPreview = EditorPrefs.GetBool($"{k_KeyPrefix}.{nameof(fetchPreview)}", true);
-            useUberIndexing = EditorPrefs.GetBool($"{k_KeyPrefix}.{nameof(useUberIndexing)}", false);
         }
 
         private static void Save()
         {
             EditorPrefs.SetBool($"{k_KeyPrefix}.{nameof(trackSelection)}", trackSelection);
             EditorPrefs.SetBool($"{k_KeyPrefix}.{nameof(fetchPreview)}", fetchPreview);
-            EditorPrefs.SetBool($"{k_KeyPrefix}.{nameof(useUberIndexing)}", useUberIndexing);
         }
 
         [UsedImplicitly, SettingsProvider]
@@ -48,15 +45,6 @@ namespace Unity.QuickSearch
                             {
                                 trackSelection = EditorGUILayout.Toggle(Styles.trackSelectionContent, trackSelection);
                                 fetchPreview = EditorGUILayout.Toggle(Styles.fetchPreviewContent, fetchPreview);
-                                useUberIndexing = EditorGUILayout.Toggle(Styles.useUberIndexingContent, useUberIndexing);
-                                if (useUberIndexing)
-                                {
-                                    GUILayout.BeginHorizontal();
-                                    GUILayout.Space(420);
-                                    if (GUILayout.Button(Styles.rebuildIndexButtonContent, GUILayout.MaxWidth(100)))
-                                        ADBIndex.RebuildIndex();
-                                    GUILayout.EndHorizontal();
-                                }
                                 GUILayout.Space(10);
                                 DrawProviderSettings();
                             }
