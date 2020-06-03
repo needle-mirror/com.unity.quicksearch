@@ -272,7 +272,7 @@ namespace Unity.QuickSearch
 
         public int QueryHashCode()
         {
-            return identifier.GetHashCode();
+            return identifier?.GetHashCode() ?? 0;
         }
     }
 }

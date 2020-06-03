@@ -30,7 +30,7 @@ namespace Unity.QuickSearch.Providers
         protected bool m_HierarchyChanged = true;
 
         private GameObject[] m_GameObjects = null;
-        private SceneQueryEngine m_SceneQueryEngine { get; set; }
+        private SceneQueryEngine m_SceneQueryEngine;
 
         /// <summary>
         /// Create a new SceneProvider.
@@ -43,7 +43,7 @@ namespace Unity.QuickSearch.Providers
         {
             priority = 50;
             this.filterId = filterId;
-            this.showDetails = true;
+            showDetails = true;
             showDetailsOptions = ShowDetailsOptions.Inspector | ShowDetailsOptions.Actions;
 
             isEnabledForContextualSearch = () =>
@@ -126,9 +126,10 @@ namespace Unity.QuickSearch.Providers
 
             trackSelection = (item, context) => PingItem(item);
 
-            fetchGameObjects = SceneQueryEngine.FetchGameObjects;
+            fetchGameObjects = SearchUtils.FetchGameObjects;
             buildKeywordComponents = SceneQueryEngine.BuildKeywordComponents;
         }
+
         /// <summary>
         /// Create default action handles for scene SearchItem. See <see cref="SearchAction"/>.
         /// </summary>

@@ -9,21 +9,7 @@ using UnityEngine;
 
 namespace Unity.QuickSearch
 {
-    internal enum SearchAssetIndexing
-    {
-        NoIndexing,
-        BasicIndexing,
-        FullIndexing
-    }
-
-    internal enum ProjectSize
-    {
-        Small,
-        Medium,
-        Large
-    }
-
-    internal class SearchProviderSettings : IDictionary
+    class SearchProviderSettings : IDictionary
     {
         public bool active;
         public int priority;
@@ -84,30 +70,28 @@ namespace Unity.QuickSearch
         public void Remove(object key) { throw new NotSupportedException(); }
     }
 
-    internal static class SearchSettings
+    static class SearchSettings
     {
-        internal const string k_RootIndexPath = "Assets/Assets.index";
-        private const string k_ProjectUserSettingsPath = "UserSettings/QuickSearch.settings";
-
+        const string k_ProjectUserSettingsPath = "UserSettings/QuickSearch.settings";
         public const string settingsPreferencesKey = "Preferences/Quick Search";
         public const string defaultQueryFolder = "Assets/Editor/Queries";
 
-        internal static string k_AssetIndexPath = $"{Utils.packageFolderName}/Templates/Assets.index.template";
-
         // Per project settings
-        public static bool trackSelection { get; private set; }
-        public static bool fetchPreview { get; private set; }
-        public static bool wantsMore { get; internal set; }
+        public static bool trackSelection { get; set; }
+        public static bool fetchPreview { get; set; }
+        public static bool wantsMore { get; set; }
         public static string queryFolder { get; private set; }
-        public static SearchAssetIndexing assetIndexing { get; internal set; }
-        public static bool dockable { get; internal set; }
-        public static bool debug { get; internal set; }
-        public static float itemIconSize { get; internal set; }
-        public static bool onBoardingDoNotAskAgain { get; internal set; }
-        public static bool showPackageIndexes { get; internal set; }
+        public static bool dockable { get; set; }
+        public static bool debug { get; set; }
+        public static float itemIconSize { get; set; }
+        public static bool onBoardingDoNotAskAgain { get; set; }
+        public static bool showPackageIndexes { get; set; }
+        public static int debounceMs { get; set; }
         public static Dictionary<string, bool> filters { get; private set; }
         public static Dictionary<string, string> scopes { get; private set; }
         public static Dictionary<string, SearchProviderSettings> providers { get; private set; }
+
+        [Obsolete] public static int assetIndexing { get; set; }
 
         static SearchSettings()
         {
@@ -130,16 +114,20 @@ namespace Unity.QuickSearch
             dockable = ReadSetting(settings, nameof(dockable), false);
             debug = ReadSetting(settings, nameof(debug), false);
             itemIconSize = ReadSetting(settings, nameof(itemIconSize), 1.0f);
-            assetIndexing = (SearchAssetIndexing)ReadSetting(settings, nameof(assetIndexing), (int)SearchAssetIndexing.BasicIndexing);
             queryFolder = ReadSetting(settings, nameof(queryFolder), defaultQueryFolder);
             onBoardingDoNotAskAgain = ReadSetting(settings, nameof(onBoardingDoNotAskAgain), false);
             showPackageIndexes = ReadSetting(settings, nameof(showPackageIndexes), false);
+            debounceMs = ReadSetting(settings, nameof(debounceMs), 250);
             filters = ReadProperties<bool>(settings, nameof(filters));
             scopes = ReadProperties<string>(settings, nameof(scopes));
             providers = ReadProviderSettings(settings, nameof(providers));
+
+            #pragma warning disable CS0612 // Type or member is obsolete
+            assetIndexing = ReadSetting(settings, nameof(assetIndexing), 1);
+            #pragma warning restore CS0612 // Type or member is obsolete
         }
 
-        internal static void Save()
+        public static void Save()
         {
             var settings = new Dictionary<string, object>
             {
@@ -149,24 +137,28 @@ namespace Unity.QuickSearch
                 [nameof(dockable)] = dockable,
                 [nameof(debug)] = debug,
                 [nameof(itemIconSize)] = itemIconSize,
-                [nameof(assetIndexing)] = (int)assetIndexing,
                 [nameof(queryFolder)] = queryFolder,
                 [nameof(onBoardingDoNotAskAgain)] = onBoardingDoNotAskAgain,
                 [nameof(showPackageIndexes)] = showPackageIndexes,
+                [nameof(debounceMs)] = debounceMs,
                 [nameof(filters)] = filters,
                 [nameof(scopes)] = scopes,
-                [nameof(providers)] = providers
+                [nameof(providers)] = providers,
+                
+                #pragma warning disable CS0612 // Type or member is obsolete
+                [nameof(assetIndexing)] = assetIndexing,
+                #pragma warning restore CS0612 // Type or member is obsolete
             };
 
             SJSON.Save(settings, k_ProjectUserSettingsPath);
         }
 
-        internal static void SetScopeValue(string prefix, int hash, string value)
+        public static void SetScopeValue(string prefix, int hash, string value)
         {
-            SearchSettings.scopes[$"{prefix}.{hash:X8}"] = value;
+            scopes[$"{prefix}.{hash:X8}"] = value;
         }
 
-        internal static string GetScopeValue(string prefix, int hash, string defaultValue)
+        public static string GetScopeValue(string prefix, int hash, string defaultValue)
         {
             if (scopes.TryGetValue($"{prefix}.{hash:X8}", out var value))
                 return value;
@@ -176,11 +168,6 @@ namespace Unity.QuickSearch
         public static SearchFlags GetContextOptions()
         {
             SearchFlags options = SearchFlags.Default;
-            options &= ~SearchFlags.IndexingMask;
-            if (assetIndexing == SearchAssetIndexing.BasicIndexing)
-                options |= SearchFlags.BasicIndexing;
-            else if (assetIndexing == SearchAssetIndexing.FullIndexing)
-                options |= SearchFlags.FullIndexing;
             if (wantsMore)
                 options |= SearchFlags.WantsMore;
             return options;
@@ -188,15 +175,6 @@ namespace Unity.QuickSearch
 
         public static SearchFlags ApplyContextOptions(SearchFlags options)
         {
-            if ((options & SearchFlags.IndexingMask) == 0)
-            {
-                options &= ~SearchFlags.IndexingMask;
-                if (assetIndexing == SearchAssetIndexing.BasicIndexing)
-                    options |= SearchFlags.BasicIndexing;
-                else if (assetIndexing == SearchAssetIndexing.FullIndexing)
-                    options |= SearchFlags.FullIndexing;
-            }
-
             if (wantsMore)
                 options |= SearchFlags.WantsMore;
 
@@ -241,21 +219,7 @@ namespace Unity.QuickSearch
                         dockable = EditorGUILayout.Toggle(Styles.dockableContent, dockable);
                         trackSelection = EditorGUILayout.Toggle(Styles.trackSelectionContent, trackSelection);
                         fetchPreview = EditorGUILayout.Toggle(Styles.fetchPreviewContent, fetchPreview);
-                        GUILayout.BeginHorizontal();
-                        assetIndexing = (SearchAssetIndexing)EditorGUILayout.EnumPopup(Styles.assetIndexingLabel, assetIndexing, GUILayout.MaxWidth(475f));
-                        if (assetIndexing == SearchAssetIndexing.FullIndexing)
-                        {
-                            if (!File.Exists(k_RootIndexPath))
-                            {
-                                GUILayout.Space(10);
-                                if (GUILayout.Button(Styles.createRootIndexButtonContent, GUILayout.MaxWidth(100)))
-                                    CreateRootIndex();
-                            }
-                            GUILayout.Space(10);
-                            if (GUILayout.Button(Styles.openIndexManagerButtonContent, GUILayout.MaxWidth(130)))
-                                IndexManager.OpenWindow();
-                        }
-                        GUILayout.EndHorizontal();
+                        debounceMs = EditorGUILayout.IntSlider( Styles.debounceThreshold, debounceMs, 0, 1000);
 
                         DrawQueryFolder();
 
@@ -434,7 +398,7 @@ namespace Unity.QuickSearch
             GUILayout.EndHorizontal();
         }
 
-        internal static SearchProviderSettings GetProviderSettings(string providerId)
+        public static SearchProviderSettings GetProviderSettings(string providerId)
         {
             if (TryGetProviderSettings(providerId, out var settings))
                 return settings;
@@ -447,7 +411,7 @@ namespace Unity.QuickSearch
             return providers[providerId];
         }
 
-        internal static bool TryGetProviderSettings(string providerId, out SearchProviderSettings settings)
+        public static bool TryGetProviderSettings(string providerId, out SearchProviderSettings settings)
         {
             return providers.TryGetValue(providerId, out settings);
         }
@@ -513,7 +477,7 @@ namespace Unity.QuickSearch
             SortActionsPriority();
         }
 
-        internal static void SortActionsPriority()
+        public static void SortActionsPriority()
         {
             foreach (var searchProvider in SearchService.Providers)
                 SortActionsPriority(searchProvider);
@@ -542,21 +506,6 @@ namespace Unity.QuickSearch
             });
         }
 
-        private static void CreateRootIndex()
-        {
-            File.Copy(k_AssetIndexPath, k_RootIndexPath);
-            AssetDatabase.ImportAsset(k_RootIndexPath, ImportAssetOptions.ForceSynchronousImport);
-        }
-
-        internal static void SetSettingsFromProjectSize(bool newFetchPreview, bool newTrackSelection, bool newWantsMore, SearchAssetIndexing newAssetIndexing)
-        {
-            fetchPreview = newFetchPreview;
-            trackSelection = newTrackSelection;
-            wantsMore = newWantsMore;
-            assetIndexing = newAssetIndexing;
-            Save();
-        }
-
         static class Styles
         {
             public static GUIStyle priorityButton = new GUIStyle("Button")
@@ -570,25 +519,12 @@ namespace Unity.QuickSearch
                 richText = true
             };
 
-            public static GUIStyle browseBtn = new GUIStyle("Button")
-            {
-                fixedWidth = 70
-            };
-
-            public static GUIStyle textFiedl = new GUIStyle(EditorStyles.textField);
+            public static GUIStyle browseBtn = new GUIStyle("Button") { fixedWidth = 70 };
 
             public static GUIContent toggleActiveContent = new GUIContent("", "Enable or disable this provider. Disabled search provider will be completely ignored by the search service.");
             public static GUIContent resetDefaultsContent = new GUIContent("Reset Providers Settings", "All search providers will restore their initial preferences (priority, active, default action)");
             public static GUIContent increasePriorityContent = new GUIContent("\u2191", "Increase the provider's priority");
             public static GUIContent decreasePriorityContent = new GUIContent("\u2193", "Decrease the provider's priority");
-
-            public static GUIContent useDockableWindowContent = new GUIContent("Use a dockable window (instead of a modal popup window, not recommended)");
-            public static GUIContent closeWindowByDefaultContent = new GUIContent("Automatically close the window when an action is executed");
-            public static GUIContent useFilePathIndexerContent = new GUIContent(
-                "Enable fast indexing of file system entries under your project (experimental)",
-                "This indexing system takes around 1 and 10 seconds to build the first time you launch the quick search window. " +
-                "It can take up to 30-40 mb of memory, but it provides very fast search for large projects. " +
-                "Note that if you want to use standard asset database filtering, you will need to rely on `t:`, `a:`, etc.");
             public static GUIContent trackSelectionContent = new GUIContent(
                 "Track the current selection in the quick search",
                 "Tracking the current selection can alter other window state, such as pinging the project browser or the scene hierarchy window.");
@@ -597,9 +533,7 @@ namespace Unity.QuickSearch
                 "Fetching the preview of the items can consume more memory and make searches within very large project slower.");
             public static GUIContent dockableContent = new GUIContent("Open Quick Search as dockable window");
             public static GUIContent debugContent = new GUIContent("[DEV] Display additional debugging information");
-            public static GUIContent assetIndexingLabel = new GUIContent("Asset indexing mode","");
-            public static GUIContent createRootIndexButtonContent = new GUIContent("Create index");
-            public static GUIContent openIndexManagerButtonContent = new GUIContent("Index Manager");
+            public static GUIContent debounceThreshold = new GUIContent("Select the typing debounce threshold (ms)");
         }
     }
 }

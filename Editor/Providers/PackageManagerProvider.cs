@@ -121,7 +121,7 @@ namespace Unity.QuickSearch
                         handler = (item) =>
                         {
                             var packageInfo = (UnityEditor.PackageManager.PackageInfo)item.data;
-                        
+
                             UnityEditor.PackageManager.UI.Window.Open(packageInfo.name);
                         }
                     },

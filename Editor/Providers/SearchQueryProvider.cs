@@ -24,7 +24,7 @@ namespace Providers
                 isExplicitProvider = true,
                 fetchItems = (context, items, provider) =>
                 {
-                    var queryItems = SearchQuery.GetAllSearchQueryItems();
+                    var queryItems = SearchQuery.GetAllSearchQueryItems(context, getAllQueries: true);
                     if (string.IsNullOrEmpty(context.searchQuery))
                     {
                         items.AddRange(queryItems);

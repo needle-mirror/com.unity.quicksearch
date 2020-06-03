@@ -204,7 +204,7 @@ namespace Unity.QuickSearch.Providers
             public ImageDesc[] images;
 
         }
-#pragma warning restore CS0649
+        #pragma warning restore CS0649
 
         class PreviewData
         {
@@ -326,43 +326,42 @@ namespace Unity.QuickSearch.Providers
                 switch (qp.type)
                 {
                     case QueryParamType.kBoolean:
+                    {
+                        var isOn = false;
+                        if (filterTokens.Length == 2)
                         {
-                            var isOn = false;
-                            if (filterTokens.Length == 2)
-                            {
-                                isOn = TryConvert.ToBool(filterTokens[1]);
-                            }
-                            else
-                            {
-                                isOn = true;
-                            }
-                            request.Add(qp.queryName, isOn);
-                            break;
+                            isOn = TryConvert.ToBool(filterTokens[1]);
                         }
+                        else
+                        {
+                            isOn = true;
+                        }
+                        request.Add(qp.queryName, isOn);
+                        break;
+                    }
                     case QueryParamType.kInteger:
-                        {
-                            var value = TryConvert.ToInt(filterTokens[1]);
-                            request.Add(qp.queryName, value);
-                            break;
-                        }
+                    {
+                        var value = TryConvert.ToInt(filterTokens[1]);
+                        request.Add(qp.queryName, value);
+                        break;
+                    }
                     case QueryParamType.kFloat:
-                        {
-                            var value = TryConvert.ToFloat(filterTokens[1]);
-                            request.Add(qp.queryName, value);
-                            break;
-                        }
+                    {
+                        var value = TryConvert.ToFloat(filterTokens[1]);
+                        request.Add(qp.queryName, value);
+                        break;
+                    }
                     case QueryParamType.kString:
-                        {
-                            request.Add(qp.queryName, filterTokens[1]);
-                            break;
-                        }
+                    {
+                        request.Add(qp.queryName, filterTokens[1]);
+                        break;
+                    }
                     case QueryParamType.kStringArray:
-                        {
-                            request.Add(qp.queryName, new object[] { filterTokens[1] });
-                            break;
-                        }
+                    {
+                        request.Add(qp.queryName, new object[] { filterTokens[1] });
+                        break;
+                    }
                 }
-
             }
         }
 
@@ -463,10 +462,12 @@ namespace Unity.QuickSearch.Providers
             });
         }
 
+        const string k_ProviderId = "store";
+
         [UsedImplicitly, SearchItemProvider]
         internal static SearchProvider CreateProvider()
         {
-            return new SearchProvider("store", "Asset Store")
+            return new SearchProvider(k_ProviderId, "Asset Store")
             {
                 #if UNITY_2020_1_OR_NEWER
                 active = true,
@@ -551,7 +552,7 @@ namespace Unity.QuickSearch.Providers
         {
             return new[]
             {
-                new SearchAction("store", "open", null, "Open item")
+                new SearchAction(k_ProviderId, "open", null, "Open item")
                 {
                     handler = (item) =>
                     {
@@ -566,7 +567,7 @@ namespace Unity.QuickSearch.Providers
                         }
                     }
                 },
-                new SearchAction("store", "browse", null, "Browse item(s)")
+                new SearchAction(k_ProviderId, "browse", null, "Browse item(s)")
                 {
                     execute = (items) =>
                     {
@@ -928,6 +929,16 @@ namespace Unity.QuickSearch.Providers
             };
         }
         #endregion
+
+        [MenuItem("Help/Search Asset Store", priority = 270)]
+        internal static void SearchAssetStoreMenu()
+        {
+            var storeContext = SearchService.CreateContext(SearchService.GetProvider(k_ProviderId));
+            var qs = QuickSearch.Create(storeContext, topic: "asset store", saveFilters: false, multiselect: false);
+            qs.itemIconSize = 128;
+            qs.SetSearchText(String.Empty);
+            qs.ShowWindow();
+        }
 
         #if QUICKSEARCH_DEBUG
         // GetAuthCode -> GetAccessToken -> GetTokenInfo -> GetUserInfo

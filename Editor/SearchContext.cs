@@ -45,19 +45,9 @@ namespace Unity.QuickSearch
         Debug = 1 << 4,
 
         /// <summary>
-        /// Search results using basic indexing capabilities
+        /// Prevent the search to use any indexing
         /// </summary>
-        BasicIndexing = 1 << 5,
-
-        /// <summary>
-        /// Search results using complete indexing capabilities
-        /// </summary>
-        FullIndexing = 1 << 6,
-
-        /// <summary>
-        /// Mask used to match the type of Indexing.
-        /// </summary>
-        IndexingMask = BasicIndexing | FullIndexing,
+        NoIndexing = 1 << 5,
 
         /// <summary>
         /// Default Search Flag
@@ -493,7 +483,7 @@ namespace Unity.QuickSearch
         /// </summary>
         internal int scopeHash => filters.Where(d => d.isEnabled && !d.provider.isExplicitProvider)
                 .Select(d => d.provider.filterId.GetHashCode())
-                .Aggregate((h1, h2) => (h1 ^ h2).GetHashCode());
+                .Aggregate(0, (h1, h2) => (h1 ^ h2).GetHashCode());
 
         /// <summary>
         /// An instance of MultiProviderAsyncSearchSession holding all the async search sessions associated with this search context.

@@ -25,7 +25,7 @@ public static class CustomizedSceneProvider
     }
 
     // Identify this function as a parameter transformer with the attribute SceneQueryEngineParameterTransformer.
-    // This transformer handles the text inside the paranthesis of the filter function, i.e. "dist([10, 15])<10" this function will receive
+    // This transformer handles the text inside the parenthesis of the filter function, i.e. "dist([10, 15])<10" this function will receive
     // "[10,15]" as parameter.
     [SceneQueryEngineParameterTransformer]
     static Vector3 DistanceParamHandler(string param)
@@ -52,4 +52,45 @@ public static class CustomizedSceneProvider
             return Vector3.zero;
         return obj.transform.position;
     }
+
+    /// <summary>
+    /// Computes how many lights are affecting a given mesh
+    /// </summary>
+    /// <param name="go"></param>
+    /// <returns>If valid, we return how many lights affects a mesh</returns>
+    [SceneQueryEngineFilter("lights", new[] { "=", "!=", "<", ">", "<=", ">=" })]
+    internal static int? MeshRendererAffectedByLightsSceneFilter(GameObject go)
+    {
+        if (!go.TryGetComponent<MeshRenderer>(out var meshRenderer))
+            return null;
+
+        if (!meshRenderer.isVisible)
+            return null;
+
+        var lightEffectCount = 0;
+        var gp = go.transform.position;
+        foreach (var light in Object.FindObjectsOfType<Light>())
+        {
+            if (!light.isActiveAndEnabled)
+                continue;
+
+            var lp = light.transform.position;
+
+            var distance = Vector3.Distance(gp, lp);
+            if (distance > light.range)
+                continue;
+
+            if (light.type == UnityEngine.LightType.Spot)
+            {
+                var da = Vector3.Dot(light.transform.forward, lp - gp);
+                if (da > Mathf.Deg2Rad * light.spotAngle)
+                    continue;
+            }
+
+            lightEffectCount++;
+        }
+
+        return lightEffectCount;
+    }
+
 }

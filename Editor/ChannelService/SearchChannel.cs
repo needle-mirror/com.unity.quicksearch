@@ -1,6 +1,3 @@
-#if (UNITY_2021_1_OR_NEWER || UNITY_2020_3)
-#define QUICKSEARCH_SEARCH_CHANNEL
-#endif
 #if QUICKSEARCH_SEARCH_CHANNEL
 using System;
 using System.Collections.Generic;
@@ -83,7 +80,7 @@ namespace Unity.QuickSearch
             if (!ChannelService.IsRunning())
                 ChannelService.Start();
 
-            Debug.Log($"ChannelService Running: {ChannelService.GetAddress()}:{ChannelService.GetPort()}");
+            Console.WriteLine($"ChannelService Running: {ChannelService.GetAddress()}:{ChannelService.GetPort()}");
 
             // Create search view context
             s_SearchRequestsById = new Dictionary<int, ClientSearchRequest>();

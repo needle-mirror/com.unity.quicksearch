@@ -5,9 +5,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text.RegularExpressions;
 using UnityEditor;
-using UnityEditor.Experimental.SceneManagement;
 using UnityEngine;
-using UnityEngine.SceneManagement;
 
 namespace Unity.QuickSearch.Providers
 {
@@ -196,6 +194,20 @@ namespace Unity.QuickSearch.Providers
             m_QueryEngine.AddOperatorHandler(">", (GOP v, string s, StringComparison sc) => PropertyStringCompare(v, s, (f, r) => string.Compare(f, r, sc) > 0));
             m_QueryEngine.AddOperatorHandler(">=", (GOP v, string s, StringComparison sc) => PropertyStringCompare(v, s, (f, r) => string.Compare(f, r, sc) >= 0));
 
+            m_QueryEngine.AddOperatorHandler("=", (int? ev, int fv) => ev.HasValue && ev == fv);
+            m_QueryEngine.AddOperatorHandler("!=", (int? ev, int fv) => ev.HasValue && ev != fv);
+            m_QueryEngine.AddOperatorHandler("<=", (int? ev, int fv) => ev.HasValue && ev <= fv);
+            m_QueryEngine.AddOperatorHandler("<", (int? ev, int fv) => ev.HasValue && ev < fv);
+            m_QueryEngine.AddOperatorHandler(">=", (int? ev, int fv) => ev.HasValue && ev >= fv);
+            m_QueryEngine.AddOperatorHandler(">", (int? ev, int fv) => ev.HasValue && ev > fv);
+
+            m_QueryEngine.AddOperatorHandler("=", (float? ev, float fv) => ev.HasValue && ev == fv);
+            m_QueryEngine.AddOperatorHandler("!=", (float? ev, float fv) => ev.HasValue && ev != fv);
+            m_QueryEngine.AddOperatorHandler("<=", (float? ev, float fv) => ev.HasValue && ev <= fv);
+            m_QueryEngine.AddOperatorHandler("<", (float? ev, float fv) => ev.HasValue && ev < fv);
+            m_QueryEngine.AddOperatorHandler(">=", (float? ev, float fv) => ev.HasValue && ev >= fv);
+            m_QueryEngine.AddOperatorHandler(">", (float? ev, float fv) => ev.HasValue && ev > fv);
+
             m_QueryEngine.AddTypeParser(arg =>
             {
                 if (arg.Length > 0 && arg.Last() == ']')
@@ -210,6 +222,15 @@ namespace Unity.QuickSearch.Providers
                 }
 
                 return ParseResult<PropertyRange>.none;
+            });
+
+            m_QueryEngine.AddTypeParser(s =>
+            {
+                if (s == "on")
+                    return new ParseResult<bool>(true, true);
+                if (s == "off")
+                    return new ParseResult<bool>(true, false);
+                return new ParseResult<bool>(false, false);
             });
 
             m_QueryEngine.SetSearchDataCallback(OnSearchData, s => s.ToLowerInvariant(), StringComparison.Ordinal);
@@ -271,28 +292,6 @@ namespace Unity.QuickSearch.Providers
                 context.ReportProgress(progress, go.name);
                 yield return query.Apply(goa).FirstOrDefault();
             }
-        }
-
-        public static GameObject[] FetchGameObjects()
-        {
-            var prefabStage = PrefabStageUtility.GetCurrentPrefabStage();
-            if (prefabStage != null)
-                return SceneModeUtility.GetObjects(new[] { prefabStage.prefabContentsRoot }, true);
-
-            var goRoots = new List<UnityEngine.Object>();
-            for (int i = 0; i < SceneManager.sceneCount; ++i)
-            {
-                var scene = SceneManager.GetSceneAt(i);
-                if (!scene.IsValid() || !scene.isLoaded)
-                    continue;
-
-                var sceneRootObjects = scene.GetRootGameObjects();
-                if (sceneRootObjects != null && sceneRootObjects.Length > 0)
-                    goRoots.AddRange(sceneRootObjects);
-            }
-
-            return SceneModeUtility.GetObjects(goRoots.ToArray(), true)
-                .Where(o => !o.hideFlags.HasFlag(HideFlags.HideInHierarchy)).ToArray();
         }
 
         public static string[] BuildKeywordComponents(GameObject go)

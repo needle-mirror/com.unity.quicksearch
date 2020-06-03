@@ -17,9 +17,6 @@ namespace Unity.QuickSearch.Providers
         private const string type = "asset";
         private const string displayName = "Asset";
 
-        private static List<SearchDatabase> assetIndexes;
-        private static FileSearchIndexer fileIndexer;
-
         private static readonly string[] baseTypeFilters = new[]
         {
             "DefaultAsset", "AnimationClip", "AudioClip", "AudioMixer", "ComputeShader", "Font", "GUISKin", "Material", "Mesh",
@@ -34,6 +31,8 @@ namespace Unity.QuickSearch.Providers
                 .OrderBy(n => n)).ToArray();
 
         private static readonly string[] k_NonSimpleSearchTerms = new string[] {"(", ")", "-", "=", "<", ">"};
+
+        private static List<SearchDatabase> assetIndexes;
 
         [UsedImplicitly, SearchItemProvider]
         internal static SearchProvider CreateProvider()
@@ -78,38 +77,31 @@ namespace Unity.QuickSearch.Providers
             if (context.selection.Count > 1)
             {
                 var selectedObjects = context.selection.Select(i => AssetDatabase.LoadAssetAtPath<Object>(i.id));
-                Utils.StartDrag(selectedObjects.ToArray(), item.GetLabel(context, true));
+                var paths = context.selection.Select(i => i.id).ToArray();
+                Utils.StartDrag(selectedObjects.ToArray(), paths, item.GetLabel(context, true));
             }
             else
-                Utils.StartDrag(new [] { AssetDatabase.LoadAssetAtPath<Object>(item.id) }, item.GetLabel(context, true));
+                Utils.StartDrag(new [] { AssetDatabase.LoadAssetAtPath<Object>(item.id) }, new []{ item.id }, item.GetLabel(context, true));
         }
 
         private static void FetchKeywords(in SearchContext context, in string lastToken, List<string> keywords)
         {
-            if (assetIndexes == null || !lastToken.Contains(":"))
+            if (!lastToken.Contains(":"))
                 return;
-            if (context.options.HasFlag(SearchFlags.FullIndexing))
+            if (assetIndexes != null && !context.options.HasFlag(SearchFlags.NoIndexing))
                 keywords.AddRange(assetIndexes.SelectMany(db => db.index.GetKeywords()));
             else
                 keywords.AddRange(typeFilter.Select(t => "t:" + t));
         }
 
-        private static void SetupIndexers(SearchContext context)
+        private static void SetupIndexers()
         {
-            if (context.options.HasFlag(SearchFlags.BasicIndexing) && fileIndexer == null)
-            {
-                var packageRoots = Utils.GetPackagesPaths().Select(p => new SearchIndexerRoot(Path.GetFullPath(p).Replace('\\', '/'), p));
-                var roots = new[] { new SearchIndexerRoot(Application.dataPath, "Assets") }.Concat(packageRoots);
-                fileIndexer = new FileSearchIndexer(type, roots);
-                fileIndexer.Build();
-            }
-            else if (context.options.HasFlag(SearchFlags.FullIndexing) && assetIndexes == null)
-            {
-                assetIndexes = SearchDatabase.Enumerate("asset").ToList();
-                foreach (var db in assetIndexes)
-                    db.IncrementalUpdate();
-                AssetPostprocessorIndexer.contentRefreshed += TrackAssetIndexChanges;
-            }
+            if (assetIndexes != null)
+                return;
+            assetIndexes = SearchDatabase.Enumerate("asset").ToList();
+            foreach (var db in assetIndexes)
+                db.IncrementalUpdate();
+            AssetPostprocessorIndexer.contentRefreshed += TrackAssetIndexChanges;
         }
 
         private static IEnumerator SearchAssets(SearchContext context, SearchProvider provider)
@@ -118,18 +110,9 @@ namespace Unity.QuickSearch.Providers
 
             if (!String.IsNullOrEmpty(searchQuery))
             {
-                SetupIndexers(context);
-
-                if (context.options.HasFlag(SearchFlags.BasicIndexing))
+                if (!context.options.HasFlag(SearchFlags.NoIndexing))
                 {
-                    while (!fileIndexer.IsReady())
-                        yield return null;
-
-                    foreach (var item in SearchFiles(context, provider))
-                        yield return item;
-                }
-                else if (context.options.HasFlag(SearchFlags.FullIndexing))
-                {
+                    SetupIndexers();
                     yield return assetIndexes.Select(db => SearchIndexes(context.searchQuery, context, provider, db));
                 }
 
@@ -151,7 +134,7 @@ namespace Unity.QuickSearch.Providers
                         yield return provider.CreateItem(context, guidPath, -1, $"{Path.GetFileName(guidPath)} ({searchQuery})", null, null, null);
 
                     // Finally search the default asset database for any remaining results.
-                    if ((context.options & SearchFlags.IndexingMask) == 0 ||
+                    if (context.options.HasFlag(SearchFlags.NoIndexing) ||
                         (context.wantsMore && !k_NonSimpleSearchTerms.Any(t => searchQuery.IndexOf(t, StringComparison.Ordinal) != -1)))
                     {
                         yield return AssetDatabase.FindAssets(searchQuery)
@@ -196,13 +179,6 @@ namespace Unity.QuickSearch.Providers
             if (context.options.HasFlag(SearchFlags.Debug) && !String.IsNullOrEmpty(dbName))
                 filename += $" ({dbName}, {itemScore})";
             return provider.CreateItem(context, assetPath, itemScore, filename, null, null, null);
-        }
-
-        private static IEnumerable<SearchItem> SearchFiles(SearchContext context, SearchProvider provider)
-        {
-            UnityEngine.Assertions.Assert.IsNotNull(fileIndexer);
-            var searchQuery = context.searchQuery;
-            return fileIndexer.Search(searchQuery).Select(e => CreateItem(context, provider, "Files", e.id, e.score));
         }
 
         internal static string GetAssetDescription(string assetPath)

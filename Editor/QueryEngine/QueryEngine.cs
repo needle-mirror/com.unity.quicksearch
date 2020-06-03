@@ -9,20 +9,20 @@ using NodesToStringPosition = System.Collections.Generic.Dictionary<Unity.QuickS
 
 namespace Unity.QuickSearch
 {
-    internal interface IParseResult
+    interface IParseResult
     {
         bool success { get; }
     }
 
-    internal interface ITypeParser
+    interface ITypeParser
     {
         Type type { get; }
         IParseResult Parse(string value);
     }
 
-    internal readonly struct TypeParser<T> : ITypeParser
+    readonly struct TypeParser<T> : ITypeParser
     {
-        private readonly Func<string, ParseResult<T>> m_Parser;
+        readonly Func<string, ParseResult<T>> m_Parser;
 
         public Type type => typeof(T);
 
@@ -69,7 +69,7 @@ namespace Unity.QuickSearch
         public static readonly ParseResult<T> none = new ParseResult<T>(false, default(T));
     }
 
-    internal interface IQueryEngineImplementation
+    interface IQueryEngineImplementation
     {
         void AddFilterOperationGenerator<T>();
     }
@@ -96,31 +96,27 @@ namespace Unity.QuickSearch
     {
         public List<IQueryNode> expressionNodes;
         public NodesToStringPosition nodesToStringPosition;
+        public ICollection<string> tokens;
 
-        public QueryEngineParserData()
-        {
-            expressionNodes = new List<IQueryNode>();
-            nodesToStringPosition = new NodesToStringPosition();
-        }
-
-        public QueryEngineParserData(NodesToStringPosition nodesToStringPosition)
+        public QueryEngineParserData(NodesToStringPosition nodesToStringPosition, ICollection<string> tokens)
         {
             expressionNodes = new List<IQueryNode>();
             this.nodesToStringPosition = nodesToStringPosition;
+            this.tokens = tokens;
         }
     }
 
-    internal sealed class QueryEngineImpl<TData> : QueryTokenizer<QueryEngineParserData>, IQueryEngineImplementation
+    sealed class QueryEngineImpl<TData> : QueryTokenizer<QueryEngineParserData>, IQueryEngineImplementation
     {
-        private Dictionary<string, IFilter> m_Filters = new Dictionary<string, IFilter>();
-        private Func<TData, string, string, string, bool> m_DefaultFilterHandler;
-        private Func<TData, string, string, string, string, bool> m_DefaultParamFilterHandler;
-        private Dictionary<string, FilterOperator> m_FilterOperators = new Dictionary<string, FilterOperator>();
-        private List<ITypeParser> m_TypeParsers = new List<ITypeParser>();
+        Dictionary<string, IFilter> m_Filters = new Dictionary<string, IFilter>();
+        Func<TData, string, string, string, bool> m_DefaultFilterHandler;
+        Func<TData, string, string, string, string, bool> m_DefaultParamFilterHandler;
+        Dictionary<string, FilterOperator> m_FilterOperators = new Dictionary<string, FilterOperator>();
+        List<ITypeParser> m_TypeParsers = new List<ITypeParser>();
         Dictionary<Type, ITypeParser> m_DefaultTypeParsers = new Dictionary<Type, ITypeParser>();
         Dictionary<Type, IFilterOperationGenerator> m_FilterOperationGenerators = new Dictionary<Type, IFilterOperationGenerator>();
 
-        private static readonly Dictionary<string, Func<IQueryNode>> k_CombiningTokenGenerators = new Dictionary<string, Func<IQueryNode>>
+        static readonly Dictionary<string, Func<IQueryNode>> k_CombiningTokenGenerators = new Dictionary<string, Func<IQueryNode>>
         {
             {"and", () => new AndNode()},
             {"or", () => new OrNode()},
@@ -164,9 +160,9 @@ namespace Unity.QuickSearch
             }
         }
 
-        private delegate int TokenConsumer(string text, int tokenIndexStart, int tokenEndIndex, List<IQueryNode> nodes, ICollection<QueryError> errors, NodesToStringPosition nodesToStringPosition, out bool matched);
+        delegate int TokenConsumer(string text, int tokenIndexStart, int tokenEndIndex, List<IQueryNode> nodes, ICollection<QueryError> errors, NodesToStringPosition nodesToStringPosition, out bool matched);
 
-        private List<TokenConsumer> m_TokenConsumers;
+        List<TokenConsumer> m_TokenConsumers;
 
         public Func<TData, IEnumerable<string>> searchDataCallback { get; private set; }
         public Func<string, string> searchWordTransformerCallback { get; private set; }
@@ -177,8 +173,8 @@ namespace Unity.QuickSearch
         public StringComparison searchDataStringComparison { get; private set; } = StringComparison.OrdinalIgnoreCase;
         public bool searchDataOverridesGlobalStringComparison { get; private set; }
 
-        private INestedQueryHandler m_NestedQueryHandler;
-        private Dictionary<string, INestedQueryAggregator> m_NestedQueryAggregators = new Dictionary<string, INestedQueryAggregator>();
+        INestedQueryHandler m_NestedQueryHandler;
+        Dictionary<string, INestedQueryAggregator> m_NestedQueryAggregators = new Dictionary<string, INestedQueryAggregator>();
 
         public QueryEngineImpl()
             : this(new QueryValidationOptions())
@@ -231,7 +227,7 @@ namespace Unity.QuickSearch
             BuildDefaultTypeParsers();
         }
 
-        private bool CompareObjects(object ev, object fv, StringComparison sc, DefaultOperator op, string opToken)
+        bool CompareObjects(object ev, object fv, StringComparison sc, DefaultOperator op, string opToken)
         {
             if (ev == null || fv == null)
                 return false;
@@ -304,7 +300,7 @@ namespace Unity.QuickSearch
             return AddOperator(op, true);
         }
 
-        private FilterOperator AddOperator(string op, bool rebuildFilterRegex)
+        FilterOperator AddOperator(string op, bool rebuildFilterRegex)
         {
             if (m_FilterOperators.ContainsKey(op))
                 return m_FilterOperators[op];
@@ -428,9 +424,9 @@ namespace Unity.QuickSearch
             return m_FilterOperationGenerators[type];
         }
 
-        private IQueryNode BuildGraphRecursively(string text, int startIndex, int endIndex, ICollection<QueryError> errors, NodesToStringPosition nodesToStringPosition)
+        IQueryNode BuildGraphRecursively(string text, int startIndex, int endIndex, ICollection<QueryError> errors, ICollection<string> tokens, NodesToStringPosition nodesToStringPosition)
         {
-            var userData = new QueryEngineParserData(nodesToStringPosition);
+            var userData = new QueryEngineParserData(nodesToStringPosition, tokens);
             var result = Parse(text, startIndex, endIndex, errors, userData);
             if (result != ParseState.Matched)
                 return null;
@@ -440,10 +436,10 @@ namespace Unity.QuickSearch
             return rootNode;
         }
 
-        internal QueryGraph BuildGraph(string text, ICollection<QueryError> errors)
+        internal QueryGraph BuildGraph(string text, ICollection<QueryError> errors, ICollection<string> tokens)
         {
             var nodesToStringPosition = new NodesToStringPosition();
-            var rootNode = BuildGraphRecursively(text, 0, text.Length, errors, nodesToStringPosition);
+            var rootNode = BuildGraphRecursively(text, 0, text.Length, errors, tokens, nodesToStringPosition);
 
             // Final simplification
             RemoveNoOpNodes(ref rootNode, errors, nodesToStringPosition);
@@ -472,12 +468,14 @@ namespace Unity.QuickSearch
 
         protected override bool ConsumeCombiningToken(string text, int startIndex, int endIndex, StringView sv, Match match, ICollection<QueryError> errors, QueryEngineParserData userData)
         {
-            if (!k_CombiningTokenGenerators.TryGetValue(sv.ToString(), out var generator))
+            var token = sv.ToString();
+            if (!k_CombiningTokenGenerators.TryGetValue(token, out var generator))
                 return false;
             var newNode = generator();
             newNode.queryStringPosition = startIndex;
             userData.nodesToStringPosition.Add(newNode, new Tuple<int, int>(startIndex, sv.Length));
             userData.expressionNodes.Add(newNode);
+            userData.tokens.Add(token);
             return true;
         }
 
@@ -490,6 +488,7 @@ namespace Unity.QuickSearch
             node.queryStringPosition = startIndex;
             userData.nodesToStringPosition.Add(node, new Tuple<int, int>(startIndex, match.Length));
             userData.expressionNodes.Add(node);
+            userData.tokens.Add(match.Value);
             return true;
         }
 
@@ -508,12 +507,14 @@ namespace Unity.QuickSearch
             node.queryStringPosition = startIndex;
             userData.nodesToStringPosition.Add(node, new Tuple<int, int>(startIndex, match.Length));
             userData.expressionNodes.Add(node);
+            if (node.type != QueryNodeType.NoOp)
+                userData.tokens.Add(match.Value);
             return true;
         }
 
         protected override bool ConsumeGroup(string text, int startIndex, int endIndex, StringView sv, Match match, ICollection<QueryError> errors, QueryEngineParserData userData)
         {
-            var groupNode = BuildGraphRecursively(text, startIndex + 1, endIndex - 1, errors, userData.nodesToStringPosition);
+            var groupNode = BuildGraphRecursively(text, startIndex + 1, endIndex - 1, errors, userData.tokens, userData.nodesToStringPosition);
             if (groupNode == null)
                 return false;
 
@@ -547,6 +548,7 @@ namespace Unity.QuickSearch
             var nestedQueryNode = new NestedQueryNode(nestedQueryString, m_NestedQueryHandler);
             nestedQueryNode.queryStringPosition = startIndex;
             userData.nodesToStringPosition.Add(nestedQueryNode, new Tuple<int, int>(startIndex + (string.IsNullOrEmpty(nestedQueryAggregator) ? 0 : nestedQueryAggregator.Length), queryString.Length));
+            userData.tokens.Add(match.Value);
 
             if (string.IsNullOrEmpty(nestedQueryAggregator))
                 userData.expressionNodes.Add(nestedQueryNode);
@@ -569,7 +571,7 @@ namespace Unity.QuickSearch
             return true;
         }
 
-        private static void InsertAndIfNecessary(List<IQueryNode> nodes, NodesToStringPosition nodesToStringPosition)
+        static void InsertAndIfNecessary(List<IQueryNode> nodes, NodesToStringPosition nodesToStringPosition)
         {
             if (nodes.Count <= 1)
                 return;
@@ -593,7 +595,7 @@ namespace Unity.QuickSearch
             }
         }
 
-        private IQueryNode CreateFilterToken(string token, Match match, int index, ICollection<QueryError> errors)
+        IQueryNode CreateFilterToken(string token, Match match, int index, ICollection<QueryError> errors)
         {
             if (match.Groups.Count != 7) // There is 6 groups plus the balancing group
             {
@@ -794,7 +796,7 @@ namespace Unity.QuickSearch
             return parseResult;
         }
 
-        private IParseResult ParseSpecificType(string filterValue, Type type)
+        IParseResult ParseSpecificType(string filterValue, Type type)
         {
             foreach (var typeParser in m_TypeParsers)
             {
@@ -807,7 +809,7 @@ namespace Unity.QuickSearch
             return GenerateParseResultForType(filterValue, type);
         }
 
-        private IQueryNode CreateWordExpressionNode(string token)
+        IQueryNode CreateWordExpressionNode(string token)
         {
             var isExact = token.StartsWith("!");
             if (isExact)
@@ -818,10 +820,12 @@ namespace Unity.QuickSearch
             if (searchWordTransformerCallback != null)
                 token = searchWordTransformerCallback(token);
 
+            if (string.IsNullOrEmpty(token))
+                return new NoOpNode(token);
             return new SearchNode(token, isExact);
         }
 
-        private static IQueryNode CombineNodesToTree(List<IQueryNode> expressionNodes, ICollection<QueryError> errors, NodesToStringPosition nodesToStringPosition)
+        static IQueryNode CombineNodesToTree(List<IQueryNode> expressionNodes, ICollection<QueryError> errors, NodesToStringPosition nodesToStringPosition)
         {
             var count = expressionNodes.Count;
             if (count == 0)
@@ -837,7 +841,7 @@ namespace Unity.QuickSearch
             return root;
         }
 
-        private static void CombineNotNodes(List<IQueryNode> expressionNodes, ICollection<QueryError> errors, NodesToStringPosition nodesToStringPosition)
+        static void CombineNotNodes(List<IQueryNode> expressionNodes, ICollection<QueryError> errors, NodesToStringPosition nodesToStringPosition)
         {
             var count = expressionNodes.Count;
             if (count == 0)
@@ -867,7 +871,7 @@ namespace Unity.QuickSearch
             }
         }
 
-        private static void CombineAndOrNodes(QueryNodeType nodeType, List<IQueryNode> expressionNodes, ICollection<QueryError> errors, NodesToStringPosition nodesToStringPosition)
+        static void CombineAndOrNodes(QueryNodeType nodeType, List<IQueryNode> expressionNodes, ICollection<QueryError> errors, NodesToStringPosition nodesToStringPosition)
         {
             var count = expressionNodes.Count;
             if (count == 0)
@@ -910,7 +914,7 @@ namespace Unity.QuickSearch
             }
         }
 
-        private static void TransformAndOrToIntersectUnion(ref IQueryNode root, ICollection<QueryError> errors, NodesToStringPosition nodesToStringPosition)
+        static void TransformAndOrToIntersectUnion(ref IQueryNode root, ICollection<QueryError> errors, NodesToStringPosition nodesToStringPosition)
         {
             if (root.type != QueryNodeType.And && root.type != QueryNodeType.Or)
                 return;
@@ -975,7 +979,7 @@ namespace Unity.QuickSearch
             }
         }
 
-        private static void RemoveNoOpNodes(ref IQueryNode node, ICollection<QueryError> errors, NodesToStringPosition nodesToStringPosition)
+        static void RemoveNoOpNodes(ref IQueryNode node, ICollection<QueryError> errors, NodesToStringPosition nodesToStringPosition)
         {
             if (node == null)
                 return;
@@ -1043,7 +1047,7 @@ namespace Unity.QuickSearch
             }
         }
 
-        private static void ValidateGraph(IQueryNode root, ICollection<QueryError> errors, NodesToStringPosition nodesToStringPosition)
+        static void ValidateGraph(IQueryNode root, ICollection<QueryError> errors, NodesToStringPosition nodesToStringPosition)
         {
             if (root == null)
             {
@@ -1082,7 +1086,7 @@ namespace Unity.QuickSearch
             }
         }
 
-        private void BuildFilterRegex()
+        void BuildFilterRegex()
         {
             var sortedOperators = m_FilterOperators.Keys.Select(Regex.Escape).ToList();
             sortedOperators.Sort((s, s1) => s1.Length.CompareTo(s.Length));
@@ -1090,7 +1094,7 @@ namespace Unity.QuickSearch
             SetFilterRegex(new Regex(filterRx, RegexOptions.Compiled));
         }
 
-        private IParseResult GenerateParseResultForType(string value, Type type)
+        IParseResult GenerateParseResultForType(string value, Type type)
         {
             // Check if we have a default type parser before doing the expensive reflection call
             if (m_DefaultTypeParsers.ContainsKey(type))
@@ -1105,7 +1109,7 @@ namespace Unity.QuickSearch
             return typedMethod.Invoke(this, new object[] { value }) as IParseResult;
         }
 
-        private ParseResult<T> ParseData<T>(string value)
+        ParseResult<T> ParseData<T>(string value)
         {
             if (Utils.TryConvertValue(value, out T parsedValue))
             {
@@ -1118,7 +1122,7 @@ namespace Unity.QuickSearch
             return ParseResult<T>.none;
         }
 
-        private void BuildDefaultTypeParsers()
+        void BuildDefaultTypeParsers()
         {
             AddDefaultTypeParser(s => int.TryParse(s, out var value) ? new ParseResult<int>(true, value) : ParseResult<int>.none);
             AddDefaultTypeParser(s => float.TryParse(s, NumberStyles.Number, NumberFormatInfo.InvariantInfo, out var value) ? new ParseResult<float>(true, value) : ParseResult<float>.none);
@@ -1126,7 +1130,7 @@ namespace Unity.QuickSearch
             AddDefaultTypeParser(s => double.TryParse(s, NumberStyles.Number, NumberFormatInfo.InvariantInfo, out var value) ? new ParseResult<double>(true, value) : ParseResult<double>.none);
         }
 
-        private void AddDefaultTypeParser<T>(Func<string, ParseResult<T>> parser)
+        void AddDefaultTypeParser<T>(Func<string, ParseResult<T>> parser)
         {
             if (m_DefaultTypeParsers.ContainsKey(typeof(T)))
             {
@@ -1137,7 +1141,7 @@ namespace Unity.QuickSearch
             AddFilterOperationGenerator<T>();
         }
 
-        private void AddDefaultEnumTypeParser<T>()
+        void AddDefaultEnumTypeParser<T>()
         {
             AddDefaultTypeParser(s =>
             {
@@ -1173,7 +1177,7 @@ namespace Unity.QuickSearch
             }
         }
 
-        private IFilter CreateFilterFromFilterAttribute<TFilterAttribute, TTransformerAttribute>(MethodInfo mi)
+        IFilter CreateFilterFromFilterAttribute<TFilterAttribute, TTransformerAttribute>(MethodInfo mi)
             where TFilterAttribute : QueryEngineFilterAttribute
             where TTransformerAttribute : QueryEngineParameterTransformerAttribute
         {
@@ -1272,7 +1276,7 @@ namespace Unity.QuickSearch
             }
         }
 
-        private IFilter CreateFilterForMethodInfo(FilterCreationParams creationParams, MethodInfo mi, bool filterFunction, bool resolver, params Type[] methodTypes)
+        IFilter CreateFilterForMethodInfo(FilterCreationParams creationParams, MethodInfo mi, bool filterFunction, bool resolver, params Type[] methodTypes)
         {
             var methodName = $"CreateFilter{(filterFunction ? "Function" : "")}{(resolver ? "Resolver" : "")}ForMethodInfoTyped";
             var thisClassType = typeof(QueryEngineImpl<TData>);
@@ -1281,7 +1285,7 @@ namespace Unity.QuickSearch
             return typedMethod.Invoke(this, new object[] { creationParams, mi }) as IFilter;
         }
 
-        private IFilter CreateFilterForMethodInfoTyped<TFilter>(FilterCreationParams creationParams, MethodInfo mi)
+        IFilter CreateFilterForMethodInfoTyped<TFilter>(FilterCreationParams creationParams, MethodInfo mi)
         {
             var methodFunc = Delegate.CreateDelegate(typeof(Func<TData, TFilter>), mi) as Func<TData, TFilter>;
             if (creationParams.overridesGlobalComparisonOptions)
@@ -1289,13 +1293,13 @@ namespace Unity.QuickSearch
             return new Filter<TData, TFilter>(creationParams.token, creationParams.supportedOperators, methodFunc);
         }
 
-        private IFilter CreateFilterResolverForMethodInfoTyped<TFilter>(FilterCreationParams creationParams, MethodInfo mi)
+        IFilter CreateFilterResolverForMethodInfoTyped<TFilter>(FilterCreationParams creationParams, MethodInfo mi)
         {
             var methodFunc = Delegate.CreateDelegate(typeof(Func<TData, string, TFilter, bool>), mi) as Func<TData, string, TFilter, bool>;
             return new Filter<TData, TFilter>(creationParams.token, creationParams.supportedOperators, methodFunc);
         }
 
-        private IFilter CreateFilterFunctionForMethodInfoTyped<TParam, TFilter>(FilterCreationParams creationParams, MethodInfo mi)
+        IFilter CreateFilterFunctionForMethodInfoTyped<TParam, TFilter>(FilterCreationParams creationParams, MethodInfo mi)
         {
             var methodFunc = Delegate.CreateDelegate(typeof(Func<TData, TParam, TFilter>), mi) as Func<TData, TParam, TFilter>;
 
@@ -1312,7 +1316,7 @@ namespace Unity.QuickSearch
             return new Filter<TData, TParam, TFilter>(creationParams.token, creationParams.supportedOperators, methodFunc);
         }
 
-        private IFilter CreateFilterFunctionResolverForMethodInfoTyped<TParam, TFilter>(FilterCreationParams creationParams, MethodInfo mi)
+        IFilter CreateFilterFunctionResolverForMethodInfoTyped<TParam, TFilter>(FilterCreationParams creationParams, MethodInfo mi)
         {
             var methodFunc = Delegate.CreateDelegate(typeof(Func<TData, TParam, string, TFilter, bool>), mi) as Func<TData, TParam, string, TFilter, bool>;
 
@@ -1324,7 +1328,7 @@ namespace Unity.QuickSearch
             return new Filter<TData, TParam, TFilter>(creationParams.token, creationParams.supportedOperators, methodFunc);
         }
 
-        private static Func<string, TParam> GetParameterTransformerFunction<TParam>(MethodInfo mi, string functionName, Type transformerAttributeType)
+        static Func<string, TParam> GetParameterTransformerFunction<TParam>(MethodInfo mi, string functionName, Type transformerAttributeType)
         {
             var transformerMethod = Utils.GetAllMethodsWithAttribute(transformerAttributeType)
                 .Where(transformerMethodInfo =>
@@ -1344,7 +1348,7 @@ namespace Unity.QuickSearch
             return Delegate.CreateDelegate(typeof(Func<string, TParam>), transformerMethod) as Func<string, TParam>;
         }
 
-        private static bool IsEnumerableNode(IQueryNode node)
+        static bool IsEnumerableNode(IQueryNode node)
         {
             if (node == null)
                 return false;
@@ -1360,7 +1364,7 @@ namespace Unity.QuickSearch
             }
         }
 
-        private static IQueryNode InsertWhereNode(IQueryNode rootNode, ICollection<QueryError> errors, NodesToStringPosition nodesToStringPosition)
+        static IQueryNode InsertWhereNode(IQueryNode rootNode, ICollection<QueryError> errors, NodesToStringPosition nodesToStringPosition)
         {
             if (rootNode == null || IsEnumerableNode(rootNode))
                 return rootNode;
@@ -1380,7 +1384,7 @@ namespace Unity.QuickSearch
     /// <typeparam name="TData">The filtered data type.</typeparam>
     public class QueryEngine<TData>
     {
-        private QueryEngineImpl<TData> m_Impl;
+        QueryEngineImpl<TData> m_Impl;
 
         /// <summary>
         /// Get of set if the engine must validate filters when parsing the query. Defaults to true.
@@ -1698,7 +1702,7 @@ namespace Unity.QuickSearch
         /// Set the callback to be used to fetch the data that will be matched against the search words, plus a transformer on those words.
         /// </summary>
         /// <param name="getSearchDataCallback">Callback used to get the data to be matched against the search words. Takes an object of type TData and return an IEnumerable of strings.</param>
-        /// <param name="searchWordTransformerCallback">Callback used to transform a search word during the query parsing. Useful when doing lowercase or uppercase comparison.</param>
+        /// <param name="searchWordTransformerCallback">Callback used to transform a search word during the query parsing. Useful when doing lowercase or uppercase comparison. Can return null or an empty string to remove the word from the query.</param>
         /// <param name="stringComparison">String comparison options.</param>
         public void SetSearchDataCallback(Func<TData, IEnumerable<string>> getSearchDataCallback, Func<string, string> searchWordTransformerCallback, StringComparison stringComparison)
         {
@@ -1722,24 +1726,25 @@ namespace Unity.QuickSearch
         public Query<TData> Parse(string text)
         {
             var handlerFactory = new DefaultQueryHandlerFactory<TData>(this);
-            return BuildQuery(text, handlerFactory, (graph, errors, handler) => new Query<TData>(graph, errors, handler));
+            return BuildQuery(text, handlerFactory, (graph, errors, tokens, handler) => new Query<TData>(graph, errors, tokens, handler));
         }
 
         internal Query<TData, TPayload> Parse<TQueryHandler, TPayload>(string text, IQueryHandlerFactory<TData, TQueryHandler, TPayload> queryHandlerFactory)
             where TQueryHandler : IQueryHandler<TData, TPayload>
             where TPayload : class
         {
-            return BuildQuery(text, queryHandlerFactory, (graph, errors, handler) => new Query<TData, TPayload>(graph, errors, handler));
+            return BuildQuery(text, queryHandlerFactory, (graph, errors, tokens, handler) => new Query<TData, TPayload>(graph, errors, tokens, handler));
         }
 
-        private QueryType BuildQuery<QueryType, TQueryHandler, TPayload>(string text, IQueryHandlerFactory<TData, TQueryHandler, TPayload> queryHandlerFactory, Func<QueryGraph, ICollection<QueryError>, TQueryHandler, QueryType> queryCreator)
+        QueryType BuildQuery<QueryType, TQueryHandler, TPayload>(string text, IQueryHandlerFactory<TData, TQueryHandler, TPayload> queryHandlerFactory, Func<QueryGraph, ICollection<QueryError>, ICollection<string>, TQueryHandler, QueryType> queryCreator)
             where TQueryHandler : IQueryHandler<TData, TPayload>
             where TPayload : class
             where QueryType : Query<TData, TPayload>
         {
             var errors = new List<QueryError>();
-            var graph = m_Impl.BuildGraph(text, errors);
-            return queryCreator(graph, errors, queryHandlerFactory.Create(graph, errors));
+            var tokens = new List<string>();
+            var graph = m_Impl.BuildGraph(text, errors, tokens);
+            return queryCreator(graph, errors, tokens, queryHandlerFactory.Create(graph, errors));
         }
 
         /// <summary>

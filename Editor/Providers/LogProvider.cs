@@ -97,10 +97,10 @@ namespace Unity.QuickSearch
                 s = s.Trim();
                 return new LogEntry
                 {
-                    id = "__log_" + s_LogIndex, 
-                    lineNumber = ++s_LogIndex, 
-                    msg = s, 
-                    msgLowerCased = s.ToLowerInvariant(), 
+                    id = "__log_" + s_LogIndex,
+                    lineNumber = ++s_LogIndex,
+                    msg = s,
+                    msgLowerCased = s.ToLowerInvariant(),
                     logType = logType
                 };
             }

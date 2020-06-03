@@ -1,6 +1,6 @@
 //#define QUICKSEARCH_DEBUG
-#if (UNITY_2020_3 || UNITY_2021_1_OR_NEWER)
-#define USE_SEARCH_ENGINE_API
+#if (UNITY_2020_2_OR_NEWER)
+//#define USE_SEARCH_ENGINE_API
 #endif
 
 using System;
@@ -39,6 +39,7 @@ namespace Unity.QuickSearch
         private static readonly string[] k_Dots = { ".", "..", "..." };
         private static readonly bool isDeveloperMode = Utils.isDeveloperBuild;
         private static EditorWindow s_FocusedWindow;
+        private static SearchContext s_GlobalContext = null;
 
         // Selection state
         private SortedSearchList m_FilteredItems;
@@ -73,7 +74,7 @@ namespace Unity.QuickSearch
         public Action<SearchItem, bool> selectCallback { get; set; }
 
         /// <summary>
-        /// When QuickSearch is used in Object Picker mode, this callback is triggered when the search item list is 
+        /// When QuickSearch is used in Object Picker mode, this callback is triggered when the search item list is
         /// computed from the query allowing a user to apply further filtering on the object set.
         /// </summary>
         public Func<SearchItem, bool> filterCallback { get; set; }
@@ -150,6 +151,8 @@ namespace Unity.QuickSearch
         {
             SearchSettings.ApplyContextOptions(context);
 
+            DebugInfo.refreshCount++;
+
             #if QUICKSEARCH_DEBUG
             Debug.LogWarning($"Searching {context.searchQuery} with {context.options}");
             #endif
@@ -173,12 +176,30 @@ namespace Unity.QuickSearch
         /// <returns>Returns the Quick Search editor window instance.</returns>
         public static QuickSearch Create(bool reuseExisting = false)
         {
+            return Create(null, topic: "anything", saveFilters: true, reuseExisting: reuseExisting, multiselect: true);
+        }
+
+        /// <summary>
+        /// Create a new quick search window that will be initialized with a specific context.
+        /// </summary>
+        /// <param name="context">Search context to start with</param>
+        /// <param name="topic">Topic to seached</param>
+        /// <param name="saveFilters">True if user provider filters should be saved for next search session</param>
+        /// <param name="reuseExisting">True if we should reuse an opened window</param>
+        /// <param name="multiselect">True if the search support multi-seleciton or not.</param>
+        /// <returns></returns>
+        public static QuickSearch Create(SearchContext context, string topic = "anything", bool saveFilters = true, bool reuseExisting = false, bool multiselect = true)
+        {
+            s_GlobalContext = context;
             s_FocusedWindow = focusedWindow;
+            
             var qsWindow = reuseExisting && HasOpenInstances<QuickSearch>() ? GetWindow<QuickSearch>() : CreateInstance<QuickSearch>();
-            qsWindow.multiselect = true;
-            qsWindow.saveFilters = true;
-            qsWindow.searchTopic = "anything";
-            qsWindow.sendAnalyticsEvent = true; // Ensure we won't send events while doing a domain reload.
+            qsWindow.multiselect = multiselect;
+            qsWindow.saveFilters = saveFilters;
+            qsWindow.searchTopic = topic;
+
+            // Ensure we won't send events while doing a domain reload.
+            qsWindow.sendAnalyticsEvent = true; 
             return qsWindow;
         }
 
@@ -216,14 +237,12 @@ namespace Unity.QuickSearch
                 return OpenDefaultQuickSearch();
             }
 
-            var qsWindow = Create();
-            if (providerIds.Length > 0)
-            {
-                qsWindow.saveFilters = false;
-                qsWindow.context.SetFilteredProviders(providers.Select(p => p.name.id));
-                qsWindow.searchTopic = String.Join(", ", providers.Select(p => p.name.displayName.ToLower()));
-                qsWindow.SetSearchText(SearchSettings.GetScopeValue(k_LastSearchPrefKey, qsWindow.context.scopeHash, ""));
-            }
+            if (providerIds.Length == 0)
+                return Open(dockable: SearchSettings.dockable);
+
+            var context = SearchService.CreateContext(providers);
+            var qsWindow = Create(context, saveFilters: false, topic: String.Join(", ", providers.Select(p => p.name.displayName.ToLower())));
+            qsWindow.SetSearchText(SearchSettings.GetScopeValue(k_LastSearchPrefKey, qsWindow.context.scopeHash, ""));
             return qsWindow.ShowWindow(dockable: SearchSettings.dockable);
         }
 
@@ -364,7 +383,7 @@ namespace Unity.QuickSearch
             if (lastIndexAdded != k_ResetSelectionIndex)
                 TrackSelection(lastIndexAdded);
         }
-        
+
         /// <summary>
         /// Execute a Search Action on a given list of items.
         /// </summary>
@@ -452,7 +471,18 @@ namespace Unity.QuickSearch
             SearchSettings.SortActionsPriority();
 
             // Create search view context
-            context = new SearchContext(SearchService.Providers.Where(p => p.active)) { focusedWindow = lastFocusedWindow, searchView = this };
+            if (s_GlobalContext == null)
+            {
+                var activeProviders = SearchService.Providers.Where(p => p.active);
+                context = new SearchContext(activeProviders) { focusedWindow = lastFocusedWindow, searchView = this };
+            }
+            else
+            {
+                context = s_GlobalContext;
+                context.searchView = this;
+                s_GlobalContext = null;
+            }
+            context.asyncItemReceived -= OnAsyncItemsReceived;
             context.asyncItemReceived += OnAsyncItemsReceived;
             m_FilteredItems = new SortedSearchList(context);
 
@@ -504,8 +534,12 @@ namespace Unity.QuickSearch
             if (context == null)
                 return;
 
-            if (Event.current.type == EventType.Repaint)
+            var eventType = Event.current.rawType;
+
+            if (eventType == EventType.Repaint)
             {
+                DebugInfo.repaintCount++;
+
                 var newWindowSize = position.size;
                 if (!newWindowSize.Equals(m_WindowSize))
                 {
@@ -523,6 +557,8 @@ namespace Unity.QuickSearch
             var windowBorder = SearchSettings.dockable ? GUIStyle.none : Styles.panelBorder;
             using (new EditorGUILayout.VerticalScope(windowBorder))
             {
+                if (eventType == EventType.Repaint)
+                    DebugInfo.gcDraw = GC.GetTotalMemory(false);
                 var rect = DrawToolbar(context);
                 if (context == null)
                     return;
@@ -541,6 +577,8 @@ namespace Unity.QuickSearch
                     }
                 }
 
+                if (eventType == EventType.Repaint)
+                    DebugInfo.gcDraw = GC.GetTotalMemory(false) - DebugInfo.gcDraw;
                 DebugInfo.Draw();
                 DrawStatusBar();
                 SearchField.AutoCompletion(rect, context, this);
@@ -622,28 +660,15 @@ namespace Unity.QuickSearch
 
         private static string FormatStatusMessage(SearchContext context, ICollection<SearchItem> items)
         {
-            var msg = "";
-            if (context.actionId != null)
-                msg = $"Executing action for {context.actionId} ";
-
             var providers = context.providers.ToList();
             if (providers.Count == 0)
                 return "There is no activated search provider";
 
-            if (providers.All(p => p.isExplicitProvider))
-            {
-                if (msg.Length == 0)
-                    msg = "Activate ";
-
-                msg += Utils.FormatProviderList(providers);
-            }
-            else
-            {
-                if (msg.Length == 0)
-                    msg = "Searching ";
-
+            var msg = context.actionId != null ? $"Executing action for {context.actionId} " : "Searching ";
+            if (providers.Count > 1)
                 msg += Utils.FormatProviderList(providers.Where(p => !p.isExplicitProvider), showFetchTime: !context.searchInProgress);
-            }
+            else
+                msg += Utils.FormatProviderList(providers);
 
             if (items != null && items.Count > 0)
             {
@@ -736,7 +761,7 @@ namespace Unity.QuickSearch
             var selectionIndex = m_Selection.Count == 0 ? k_ResetSelectionIndex : m_Selection.Last();
             return IsItemValid(selectionIndex);
         }
-        
+
         private void DelayTrackSelection()
         {
             if (m_FilteredItems.Count == 0)
@@ -1050,7 +1075,7 @@ namespace Unity.QuickSearch
             if (Event.current.type == EventType.MouseUp)
                 m_DetailsViewSplitterResize = false;
         }
-        
+
         private Rect DrawToolbar(SearchContext context)
         {
             if (context == null)
@@ -1129,8 +1154,14 @@ namespace Unity.QuickSearch
             if (!this)
                 return;
 
+            if (SearchSettings.debounceMs == 0)
+            {
+                Refresh();
+                return;
+            }
+
             var currentTime = EditorApplication.timeSinceStartup;
-            if (m_DebounceTime != 0 && currentTime - m_DebounceTime > 0.250)
+            if (m_DebounceTime != 0 && currentTime - m_DebounceTime > (SearchSettings.debounceMs / 1000.0f))
             {
                 Refresh();
                 m_DebounceTime = 0;
@@ -1141,7 +1172,7 @@ namespace Unity.QuickSearch
                     m_DebounceTime = currentTime;
                 EditorApplication.update += DebouncedRefresh;
             }
-        }        
+        }
 
         private static bool IsObjectMatchingType(SearchItem item, Type filterType)
         {
@@ -1204,7 +1235,7 @@ namespace Unity.QuickSearch
 
             if (!SearchSettings.onBoardingDoNotAskAgain)
             {
-                EditorApplication.delayCall += () => 
+                EditorApplication.delayCall += () =>
                 {
                     if (AssetDatabase.FindAssets($"t:{nameof(SearchDatabase)} a:assets").Length == 0)
                         EditorApplication.delayCall += () => OnBoardingWindow.OpenWindow();
@@ -1248,7 +1279,7 @@ namespace Unity.QuickSearch
         {
             if (m_Disposed)
                 return;
-            
+
             if (disposing)
                 Close();
 

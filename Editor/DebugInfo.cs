@@ -10,10 +10,6 @@ namespace Unity.QuickSearch
 {
     class DebugInfo
     {
-        public int objectCount;
-        public int textureCount;
-        public long gcTotalMemory;
-        public long totalMemory;
         private readonly StringBuilder m_StatsBuilder = new StringBuilder();
 
         private static DebugInfo s_InitialStats;
@@ -24,6 +20,16 @@ namespace Unity.QuickSearch
 
         // Scan leaks
         private static UnityEngine.Object[] s_Objects = null;
+
+        public static int repaintCount;
+        public static int refreshCount;
+        public static long gcFetch;
+        public static long gcDraw;
+
+        public int objectCount;
+        public int textureCount;
+        public long gcTotalMemory;
+        public long totalMemory;
 
         public DebugInfo()
         {
@@ -44,8 +50,10 @@ namespace Unity.QuickSearch
                 return "No initial stats";
 
             m_StatsBuilder.Clear();
+            m_StatsBuilder.Append($"<b>#</b> {SearchProvider.sessionCounter}  ");
+            m_StatsBuilder.Append($"<b>Repaint</b>: {repaintCount} ({EditorUtility.FormatBytes(gcDraw)})  ");
+            m_StatsBuilder.Append($"<b>Refresh</b>: {refreshCount} ({EditorUtility.FormatBytes(gcFetch)})  ");
             m_StatsBuilder.Append($"<b>Mem.</b>: {DiffBytes(totalMemory, d.totalMemory)}  ");
-            m_StatsBuilder.Append($"<b>GC</b>: {DiffBytes(gcTotalMemory, d.gcTotalMemory)}  ");
             m_StatsBuilder.Append($"<b>Objects</b>: {objectCount}/{d.objectCount} ({Diff(objectCount, d.objectCount)})  ");
             m_StatsBuilder.Append($"<b>Textures</b>: {textureCount}/{d.textureCount} ({Diff(textureCount, d.textureCount)})  ");
 
@@ -73,6 +81,11 @@ namespace Unity.QuickSearch
             Resources.UnloadUnusedAssets();
 
             s_InitialStats = new DebugInfo();
+
+            repaintCount = 0;
+            refreshCount = 0;
+            gcDraw = 0;
+            gcFetch = 0;
         }
 
         public static void Enable(ISearchView view)
@@ -124,7 +137,6 @@ namespace Unity.QuickSearch
 
                 if (GUILayout.Button("Refresh", Styles.debugToolbarButton))
                 {
-                    SearchService.Refresh();
                     Refresh();
                     searchView.Refresh();
                 }

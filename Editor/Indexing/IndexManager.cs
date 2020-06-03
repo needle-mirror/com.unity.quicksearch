@@ -3,7 +3,6 @@ using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Reflection;
 using UnityEditor;
 using UnityEditor.UIElements;
 using UnityEngine;
@@ -76,7 +75,7 @@ namespace Unity.QuickSearch
         private static string k_ProjectPath { get { return Application.dataPath.Substring(0, Application.dataPath.Length - "/Assets".Length); } }
 
         private static int s_SelectedAssetOnOpen;
-        int m_PreviousSelectedIndex = -1;
+        private int m_PreviousSelectedIndex = -1;
         private int m_IndexToInsertPackagesOnToggle = -1;
 
         int selectedIndex => m_ListViewIndexSettings != null ? m_ListViewIndexSettings.selectedIndex : -1;
@@ -203,7 +202,7 @@ namespace Unity.QuickSearch
                 var searchDatabase = AssetDatabase.LoadAssetAtPath<SearchDatabase>(path);
                 m_IndexSettingsAssets.Add(searchDatabase);
                 m_IndexSettings.Add(new IndexManagerViewModel(searchDatabase.settings, false));
-                m_IndexSettingsFilePaths.Add(searchDatabase.settings.path);
+                m_IndexSettingsFilePaths.Add(AssetDatabase.GetAssetPath(searchDatabase));
                 m_IndexSettingsExists.Add(true);
 
                 if (searchDatabase.GetInstanceID() == s_SelectedAssetOnOpen)
@@ -276,8 +275,12 @@ namespace Unity.QuickSearch
                 tooltip = "The name of this index (can be different than the file)", value = selectedItem.name });
             m_IndexNameTextField.RegisterValueChangedCallback(evt => { selectedItem.name = evt.newValue; });
 
-            m_IndexScore = new IntegerField("Score") { name = "IndexScore", 
-				tooltip = "When the Project has multiple indexes, those with higher scores take priority over those with lower scores", value = selectedItem.score };
+            m_IndexScore = new IntegerField("Score")
+            {
+                name = "IndexScore",
+                tooltip = "When the Project has multiple indexes, those with higher scores take priority over those with lower scores",
+                value = selectedItem.score
+            };
             m_IndexScore.RegisterValueChangedCallback(evt => selectedItem.score = evt.newValue);
             m_IndexDetailsElementScrollView.Add(m_IndexScore);
 
@@ -384,11 +387,11 @@ namespace Unity.QuickSearch
 
                 m_OptionsFoldout.Add(toggle);
 
-                
+
                 switch (field.Name)
                 {
                     case "disabled":
-                        toggle.tooltip = "Toggles this index off so Quick Search does not use it"; 
+                        toggle.tooltip = "Toggles this index off so Quick Search does not use it";
                         toggle.RegisterValueChangedCallback(evt =>
                         {
                             m_ListViewIndexSettings.ListView[selectedIndex].SetEnabled(!evt.newValue);
@@ -475,7 +478,7 @@ namespace Unity.QuickSearch
                         documentTitle = "Documents";
                     }
 
-                    UpdateIndexPreviewListView(selectedItemAsset.index.GetDocuments().OrderBy(p => p).ToList(), m_DocumentsListView);
+                    UpdateIndexPreviewListView(selectedItemAsset.index.GetDocuments().OrderBy(p => p.id).Select(d => d.id).ToList(), m_DocumentsListView);
                     m_DocumentsButton.text = $"{selectedItemAsset.index.documentCount} {documentTitle}";
 
                     UpdateIndexPreviewListView(selectedItemAsset.index.GetKeywords().OrderBy(p => p).ToList(), m_KeywordsListView);
@@ -492,8 +495,8 @@ namespace Unity.QuickSearch
                 var totalContainerHeight = m_IndexDetailsElementScrollView.resolvedStyle.height;
                 var usedSpace = m_IndexDetailsElementScrollView.Q<VisualElement>("unity-content-container").resolvedStyle.height;
 
-                // The available space is the total container height (the entire scrollview) - the needed space (the content of the scrollview) + the current listview height
-                // if the space is not big enough, there is still a fixed height for the listview (in that case there will be a scrollbar)
+                // The available space is the total container height (the entire scrollview) - the needed space (the content of the scrollview) + the current list view height
+                // if the space is not big enough, there is still a fixed height for the list view (in that case there will be a scrollbar)
                 var availableSpace = Math.Max((totalContainerHeight - usedSpace) + container.resolvedStyle.height, 150);
                 container.style.height = availableSpace;// - 30;
             }
@@ -615,7 +618,7 @@ namespace Unity.QuickSearch
                 AssetDatabase.ImportAsset(selectedItemPath);
                 m_IndexSettingsAssets[selectedIndex] = (SearchDatabase)AssetDatabase.LoadAssetAtPath(selectedItemPath, typeof(SearchDatabase));
 
-                m_IndexNameTextField.value = selectedItem.name; // Update the textfield with the file name 
+                m_IndexNameTextField.value = selectedItem.name; // Update the textfield with the file name
                 m_ListViewIndexSettings.ListView.Refresh();
                 UpdateDetailsForNewOrExistingSettings();
             }
@@ -838,8 +841,10 @@ namespace Unity.QuickSearch
                         menu.AddItem(new GUIContent("Open JSon"), false, () => { EditorUtility.OpenWithDefaultApp(m_IndexSettingsFilePaths[index]); });
                         menu.ShowAsContext();
                     }
-                }
-                );
+                });
+
+                if (m_IndexSettings[index].options.disabled)
+                    element.SetEnabled(false);
             }
             else
             {
@@ -1195,7 +1200,7 @@ namespace Unity.QuickSearch
                     searchDatabase.settings.name = null;
                 else
                     searchDatabase.settings.name = name;
-                
+
                 // we don't change the path, the user can't change it from the UI, only modifying the Json directly
                 // it is null at creation, in that case, it is automatically set when importing
                 //searchDatabase.settings.path = path;

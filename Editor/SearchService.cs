@@ -171,6 +171,8 @@ namespace Unity.QuickSearch
         /// <returns>A list of search items matching the search query.</returns>
         public static List<SearchItem> GetItems(SearchContext context, SearchFlags options = SearchFlags.Default)
         {
+            DebugInfo.gcFetch = GC.GetTotalMemory(false);
+
             // Stop all search sessions every time there is a new search.
             context.sessions.StopAllAsyncSearchSessions();
             context.searchFinishTime = context.searchStartTime = EditorApplication.timeSinceStartup;
@@ -233,6 +235,8 @@ namespace Unity.QuickSearch
                 OnSearchEnded(context);
                 context.sessions.StopAllAsyncSearchSessions();
             }
+
+            DebugInfo.gcFetch = GC.GetTotalMemory(false) - DebugInfo.gcFetch;
 
             if (!options.HasFlag(SearchFlags.Sorted))
                 return allItems;
@@ -339,7 +343,7 @@ namespace Unity.QuickSearch
             return String.Compare(item1.id, item2.id, StringComparison.Ordinal);
         }
 
-        internal static void RefreshProviders()
+        private static void RefreshProviders()
         {
             Providers = Utils.GetAllMethodsWithAttribute<SearchItemProviderAttribute>().Select(methodInfo =>
             {
@@ -371,7 +375,7 @@ namespace Unity.QuickSearch
             }).Where(provider => provider != null).ToList();
         }
 
-        internal static void RefreshProviderActions()
+        private static void RefreshProviderActions()
         {
             ActionIdToProviders = new Dictionary<string, List<string>>();
             foreach (var action in Utils.GetAllMethodsWithAttribute<SearchActionsProviderAttribute>()

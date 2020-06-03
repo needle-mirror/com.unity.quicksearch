@@ -7,6 +7,7 @@ using System.Text.RegularExpressions;
 using UnityEditor;
 using UnityEditor.Experimental.SceneManagement;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 namespace Unity.QuickSearch
 {
@@ -81,15 +82,14 @@ namespace Unity.QuickSearch
             var nameTokens = name.Split(entrySeparators).Distinct().ToArray();
             var scc = nameTokens.SelectMany(s => SplitCamelCase(s)).Where(s => s.Length > 0).ToArray();
             var fcc = scc.Aggregate("", (current, s) => current + s[0]);
-            return Enumerable.Empty<string>()
-                             .Concat(scc.Where(s => s.Length > 1))
-                             .Concat(new[] { name, Path.GetExtension(path).Replace(".", "") })
-                             .Concat(FindShiftLeftVariations(fcc))
-                             .Concat(nameTokens)
-                             .Concat(path.Split(entrySeparators).Reverse())
-                             .Where(s => s.Length > 1)
-                             .Select(s => s.ToLowerInvariant())
-                             .Distinct();
+            return new[] { name, Path.GetExtension(path).Replace(".", "") }
+                .Concat(scc.Where(s => s.Length > 1))
+                .Concat(FindShiftLeftVariations(fcc))
+                .Concat(nameTokens)
+                .Concat(path.Split(entrySeparators).Reverse())
+                .Where(s => s.Length > 1)
+                .Select(s => s.ToLowerInvariant())
+                .Distinct();
         }
 
         /// <summary>
@@ -259,5 +259,48 @@ namespace Unity.QuickSearch
             return startIndex != -1 && endIndex != -1;
         }
 
+        /// <summary>
+        /// Utility function to fetch all the game objects in a particular scene.
+        /// </summary>
+        /// <param name="scene">Scene to get objects from.</param>
+        /// <returns>The array of game objects in the scene.</returns>
+        public static GameObject[] FetchGameObjects(Scene scene)
+        {
+            var goRoots = new List<UnityEngine.Object>();
+            if (!scene.IsValid() || !scene.isLoaded)
+                return new GameObject[0];
+            var sceneRootObjects = scene.GetRootGameObjects();
+            if (sceneRootObjects != null && sceneRootObjects.Length > 0)
+                goRoots.AddRange(sceneRootObjects);
+
+            return SceneModeUtility.GetObjects(goRoots.ToArray(), true)
+                .Where(o => !o.hideFlags.HasFlag(HideFlags.HideInHierarchy)).ToArray();
+        }
+
+        /// <summary>
+        /// Utility function to fetch all the game objects for the current stage (i.e. scene or prefab)
+        /// </summary>
+        /// <returns>The array of game objects in the current stage.</returns>
+        public static GameObject[] FetchGameObjects()
+        {
+            var prefabStage = PrefabStageUtility.GetCurrentPrefabStage();
+            if (prefabStage != null)
+                return SceneModeUtility.GetObjects(new[] { prefabStage.prefabContentsRoot }, true);
+
+            var goRoots = new List<UnityEngine.Object>();
+            for (int i = 0; i < SceneManager.sceneCount; ++i)
+            {
+                var scene = SceneManager.GetSceneAt(i);
+                if (!scene.IsValid() || !scene.isLoaded)
+                    continue;
+
+                var sceneRootObjects = scene.GetRootGameObjects();
+                if (sceneRootObjects != null && sceneRootObjects.Length > 0)
+                    goRoots.AddRange(sceneRootObjects);
+            }
+
+            return SceneModeUtility.GetObjects(goRoots.ToArray(), true)
+                .Where(o => !o.hideFlags.HasFlag(HideFlags.HideInHierarchy)).ToArray();
+        }
     }
 }

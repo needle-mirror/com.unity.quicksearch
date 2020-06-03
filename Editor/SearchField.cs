@@ -604,6 +604,9 @@ namespace Unity.QuickSearch
 
         public static bool UpdateBlinkCursorState(double time)
         {
+            if (SearchSettings.debug)
+                return false;
+
             if (time >= s_NextBlinkTime)
             {
                 s_NextBlinkTime = time + 0.5;

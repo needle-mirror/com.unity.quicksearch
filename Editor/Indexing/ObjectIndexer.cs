@@ -46,7 +46,7 @@ namespace Unity.QuickSearch
     }
 
     /// <summary>
-    /// Allow a user to register a custom Indexing function for a specific type. The registered function must be of type: 
+    /// Allow a user to register a custom Indexing function for a specific type. The registered function must be of type:
     /// static void Function(<see cref="CustomObjectIndexerTarget"/> context, <see cref="ObjectIndexer"/> indexer);
     /// <example>
     /// <code>
@@ -92,13 +92,10 @@ namespace Unity.QuickSearch
     /// </summary>
     public abstract class ObjectIndexer : SearchIndexer
     {
+        const int k_MinWordIndexationLength = 2;
         private static readonly string[] k_FieldNamesNoKeywords = {"name", "text"};
 
         internal SearchDatabase.Settings settings { get; private set; }
-
-        #if DEBUG_INDEXING
-        private readonly Dictionary<string, HashSet<string>> m_DebugStringTable = new Dictionary<string, HashSet<string>>();
-        #endif
 
         private readonly QueryEngine<SearchResult> m_QueryEngine = new QueryEngine<SearchResult>(validateFilters: false);
         private readonly Dictionary<string, Query<SearchResult, object>> m_QueryPool = new Dictionary<string, Query<SearchResult, object>>();
@@ -110,13 +107,16 @@ namespace Unity.QuickSearch
         /// </summary>
         public event Action<int, string, float, bool> reportProgress;
 
-        internal ObjectIndexer(string rootName, SearchDatabase.Settings settings)
-            : base(rootName)
+        internal ObjectIndexer(string name, SearchDatabase.Settings settings)
+            : base(name)
         {
-            this.name = settings?.name ?? name;
             this.settings = settings;
-
-            m_QueryEngine.SetSearchDataCallback(e => null);
+            m_QueryEngine.SetSearchDataCallback(e => null, s =>
+            {
+                if (s.Length < k_MinWordIndexationLength)
+                    return null;
+                return s;
+            }, StringComparison.Ordinal);
             LoadCustomObjectIndexers();
         }
 
@@ -144,7 +144,9 @@ namespace Unity.QuickSearch
             }
         }
 
-        /// <summary>Build the index into a separate thread.</summary>
+        /// <summary>
+        /// Build the index into a separate thread.
+        /// </summary>
         public override void Build()
         {
             if (LoadIndexFromDisk(null, true))
@@ -197,6 +199,7 @@ namespace Unity.QuickSearch
         /// </summary>
         /// <returns>Returns a list of root paths.</returns>
         public abstract IEnumerable<string> GetRoots();
+
         /// <summary>
         /// Get all documents that would be indexed.
         /// </summary>
@@ -218,33 +221,43 @@ namespace Unity.QuickSearch
         public abstract override void IndexDocument(string id, bool checkIfDocumentExists);
 
         /// <summary>
-        /// Split a word into multiple components (see <see cref="SearchIndexer.getEntryComponentsHandler"/>) and index each component individually.
+        /// Split a word into multiple components.
         /// </summary>
         /// <param name="id">Debug information</param>
         /// <param name="documentIndex">Document where the indexed word was found.</param>
         /// <param name="word">Word to add to the index.</param>
-        public void IndexWordComponents(string id, int documentIndex, string word)
+        public void IndexWordComponents(int documentIndex, string word)
         {
-            foreach (var c in GetComponents(word, documentIndex))
-                IndexWord(id, c, documentIndex);
+            int scoreModifier = 0;
+            foreach (var c in GetEntryComponents(word, documentIndex))
+                IndexWord(documentIndex, c, scoreModifier: scoreModifier++);
         }
 
         /// <summary>
-        /// Split a value into multiple components (see <see cref="SearchIndexer.getEntryComponentsHandler"/>) and index each component individually as value of a specific property name.
+        /// Split a value into multiple components.
         /// </summary>
         /// <param name="id">Debug information</param>
         /// <param name="documentIndex">Document where the indexed word was found.</param>
         /// <param name="name">Key used to retrieve the value. See <see cref="SearchIndexer.AddProperty"/></param>
         /// <param name="value">Value to add to the index.</param>
-        public void IndexPropertyComponents(string id, int documentIndex, string name, string value)
+        public void IndexPropertyComponents(int documentIndex, string name, string value)
         {
-            foreach (var c in GetComponents(value, documentIndex))
-            {
-                IndexDebugMatch(id, name, c);
-                AddProperty(name, c, settings.baseScore, documentIndex, saveKeyword: true, exact: false);
-            }
-            IndexDebugMatch(id, name, value);
+            int scoreModifier = 0;
+            foreach (var c in GetEntryComponents(value, documentIndex))
+                AddProperty(name, c, settings.baseScore + scoreModifier++, documentIndex, saveKeyword: true, exact: false);
             AddExactProperty(name, value.ToLowerInvariant(), settings.baseScore, documentIndex, saveKeyword: false);
+        }
+
+        /// <summary>
+        /// Splits a string into multiple words that will be indexed.
+        /// It works with paths and UpperCamelCase strings.
+        /// </summary>
+        /// <param name="entry">The string to be split.</param>
+        /// <param name="documentIndex">The document index that will index that entry.</param>
+        /// <returns>The entry components.</returns>
+        protected virtual IEnumerable<string> GetEntryComponents(string entry, int documentIndex)
+        {
+            return SearchUtils.SplitFileEntryComponents(entry, SearchUtils.entrySeparators);
         }
 
         /// <summary>
@@ -255,12 +268,12 @@ namespace Unity.QuickSearch
         /// <param name="documentIndex">Document where the indexed word was found.</param>
         /// <param name="maxVariations">Maximum number of variations to compute. Cannot be higher than the length of the word.</param>
         /// <param name="exact">If true, we will store also an exact match entry for this word.</param>
-        public void IndexWord(string id, string word, int documentIndex, int maxVariations, bool exact)
+        public void IndexWord(int documentIndex, string word, int maxVariations, bool exact, int scoreModifier = 0)
         {
-            IndexDebugMatch(id, word);
-            AddWord(word.ToLowerInvariant(), 2, maxVariations, settings.baseScore, documentIndex);
+            var modifiedScore = settings.baseScore + scoreModifier;
+            AddWord(word.ToLowerInvariant(), k_MinWordIndexationLength, maxVariations, modifiedScore, documentIndex);
             if (exact)
-                AddExactWord(word.ToLowerInvariant(), settings.baseScore - 1, documentIndex);
+                AddExactWord(word.ToLowerInvariant(), modifiedScore, documentIndex);
         }
 
         /// <summary>
@@ -270,9 +283,9 @@ namespace Unity.QuickSearch
         /// <param name="word">Word to add to the index.</param>
         /// <param name="documentIndex">Document where the indexed word was found.</param>
         /// <param name="exact">If true, we will store also an exact match entry for this word.</param>
-        public void IndexWord(string id, string word, int documentIndex, bool exact = false)
+        public void IndexWord(int documentIndex, string word, bool exact = false, int scoreModifier = 0)
         {
-            IndexWord(id, word, documentIndex, word.Length, exact);
+            IndexWord(documentIndex, word, word.Length, exact, scoreModifier: scoreModifier);
         }
 
         /// <summary>
@@ -284,11 +297,10 @@ namespace Unity.QuickSearch
         /// <param name="documentIndex">Document where the indexed word was found.</param>
         /// <param name="saveKeyword">Define if we store this key in the keyword registry of the index. See <see cref="SearchIndexer.GetKeywords"/>.</param>
         /// <param name="exact">If exact is true, only the exact match of the value will be stored in the index (not the variations).</param>
-        public void IndexProperty(string id, string name, string value, int documentIndex, bool saveKeyword, bool exact = false)
+        public void IndexProperty(int documentIndex, string name, string value, bool saveKeyword, bool exact = false)
         {
             if (String.IsNullOrEmpty(value))
                 return;
-            IndexDebugMatch(id, name, value);
             var valueLower = value.ToLowerInvariant();
             if (exact)
             {
@@ -297,6 +309,7 @@ namespace Unity.QuickSearch
             else
                 AddProperty(name, valueLower, settings.baseScore, documentIndex, saveKeyword: saveKeyword);
         }
+
         /// <summary>
         /// Add a key-number value pair to the index. The key won't be added with variations. See <see cref="SearchIndexer.AddNumber"/>.
         /// </summary>
@@ -304,11 +317,11 @@ namespace Unity.QuickSearch
         /// <param name="name">Key used to retrieve the value.</param>
         /// <param name="number">Number value to store in the index.</param>
         /// <param name="documentIndex">Document where the indexed value was found.</param>
-        public void IndexNumber(string id, string name, double number, int documentIndex)
+        public void IndexNumber(int documentIndex, string name, double number)
         {
-            IndexDebugMatch(id, name, number.ToString());
             AddNumber(name, number, settings.baseScore, documentIndex);
         }
+
         /// <summary>
         /// Report progress of indexing.
         /// </summary>
@@ -320,6 +333,7 @@ namespace Unity.QuickSearch
         {
             reportProgress?.Invoke(progressId, value, progressReport, finished);
         }
+
         /// <summary>
         /// Build Index asynchronously (in a thread).
         /// </summary>
@@ -349,8 +363,8 @@ namespace Unity.QuickSearch
                     SearchResultCollection subset = null;
                     if (args.andSet != null)
                         subset = new SearchResultCollection(args.andSet);
-
                     var results = SearchTerm(args.name, args.value, args.op, args.exclude, maxScore, subset, patternMatchLimit);
+
                     if (args.orSet != null)
                         results = results.Concat(args.orSet);
 
@@ -399,55 +413,6 @@ namespace Unity.QuickSearch
             return false;
         }
 
-        private string[] GetComponents(string id, int documentIndex)
-        {
-            return getEntryComponentsHandler(id, documentIndex).Where(c => c.Length > 0).ToArray();
-        }
-
-        /// <summary>
-        /// Store a key value pair in the debug string table of the Indexer. This is an internal QuickSearch debugging function.
-        /// </summary>
-        /// <param name="id">Entry id</param>
-        /// <param name="name">Key used to retrieve the value. See <see cref="SearchIndexer.AddProperty"/></param>
-        /// <param name="value">Value to add to the index.</param>
-        [System.Diagnostics.Conditional("DEBUG_INDEXING")]
-        protected void IndexDebugMatch(string id, string name, string value)
-        {
-            IndexDebugMatch(id, $"{name}:{value}");
-        }
-
-        /// <summary>
-        /// Store a key value pair in the debug string table of the Indexer. This is an internal QuickSearch debugging function.
-        /// </summary>
-        /// <param name="id">Entry id</param>
-        /// <param name="word">Word to index.</param>
-        [System.Diagnostics.Conditional("DEBUG_INDEXING")]
-        protected void IndexDebugMatch(string id, string word)
-        {
-            #if DEBUG_INDEXING
-            HashSet<string> words;
-            if (m_DebugStringTable.TryGetValue(id, out words))
-            {
-                words.Add(word);
-            }
-            else
-            {
-                m_DebugStringTable[id] = new HashSet<string> { word };
-            }
-            #endif
-        }
-
-        internal string GetDebugIndexStrings(string id)
-        {
-            #if DEBUG_INDEXING
-            if (!m_DebugStringTable.ContainsKey(id))
-                return null;
-
-            return String.Join(" ", m_DebugStringTable[id].ToArray());
-            #else
-            return null;
-            #endif
-        }
         /// <summary>
         /// Get the property value of a specific property. This will converts the property to either a double or a string.
         /// </summary>
@@ -497,7 +462,7 @@ namespace Unity.QuickSearch
         /// <param name="obj">Object to index.</param>
         /// <param name="documentIndex">Document where the indexed object was found.</param>
         /// <param name="dependencies">Index dependencies.</param>
-        protected void IndexObject(string id, Object obj, int documentIndex, bool dependencies = false)
+        protected void IndexObject(int documentIndex, Object obj, bool dependencies = false)
         {
             using (var so = new SerializedObject(obj))
             {
@@ -521,28 +486,26 @@ namespace Unity.QuickSearch
                         if (sfv != null)
                         {
                             if (sfv != "")
-                                IndexProperty(id, fcc, sfv.Replace(" ", "").ToLowerInvariant(), documentIndex, saveKeyword);
+                                IndexProperty(documentIndex, fcc, sfv.Replace(" ", "").ToLowerInvariant(), saveKeyword);
                             else
-                                IndexWord(id, $"@{fcc}", documentIndex);
+                                IndexWord(documentIndex, $"@{fcc}");
                         }
                         else if (fieldValue is double)
                         {
                             var nfv = (double)fieldValue;
-                            IndexNumber(id, fcc.ToLowerInvariant(), nfv, documentIndex);
+                            IndexNumber(documentIndex, fcc.ToLowerInvariant(), nfv);
                         }
-
-                        IndexDebugMatch(id, fcc, fieldValue.ToString());
                     }
 
                     if (dependencies)
-                        AddReference(id, p, documentIndex);
+                        AddReference(documentIndex, p);
 
-                    next = p.Next(p.hasVisibleChildren);
+                    next = p.Next(p.hasVisibleChildren && !p.isArray);
                 }
             }
         }
 
-        private void AddReference(string id, SerializedProperty p, int documentIndex)
+        private void AddReference(int documentIndex, SerializedProperty p)
         {
             if (p.propertyType != SerializedPropertyType.ObjectReference || !p.objectReferenceValue)
                 return;
@@ -551,8 +514,8 @@ namespace Unity.QuickSearch
             if (!String.IsNullOrEmpty(refValue))
             {
                 refValue = refValue.ToLowerInvariant();
-                IndexProperty(id, "ref", refValue, documentIndex, saveKeyword: false);
-                IndexProperty(id, "ref", Path.GetFileName(refValue), documentIndex, saveKeyword: false);
+                IndexProperty(documentIndex, "ref", refValue, saveKeyword: false);
+                IndexProperty(documentIndex, "ref", Path.GetFileName(refValue), saveKeyword: false);
             }
         }
 
@@ -569,8 +532,8 @@ namespace Unity.QuickSearch
                 if (!ValidateCustomIndexerMethodSignature(customIndexerMethodInfo))
                     continue;
 
-                var customIndexerAction = Delegate.CreateDelegate(typeof(Action<CustomObjectIndexerTarget, ObjectIndexer>), customIndexerMethodInfo) as Action<CustomObjectIndexerTarget, ObjectIndexer>;
-                if (customIndexerAction == null)
+                if (!(Delegate.CreateDelegate(typeof(Action<CustomObjectIndexerTarget, ObjectIndexer>), customIndexerMethodInfo)
+                    is Action<CustomObjectIndexerTarget, ObjectIndexer> customIndexerAction))
                     continue;
 
                 if (!m_CustomObjectIndexers.TryGetValue(indexerType, out var indexerList))
@@ -612,19 +575,21 @@ namespace Unity.QuickSearch
 
             return true;
         }
+
         /// <summary>
         /// Call all the registered custom indexer for a specific object. See <see cref="CustomObjectIndexerAttribute"/>.
         /// </summary>
         /// <param name="id">Object id.</param>
         /// <param name="obj">Object to index.</param>
         /// <param name="documentIndex">Document where the indexed object was found.</param>
-        protected void IndexCustomProperties(string id, int documentIndex, Object obj)
+        protected void IndexCustomProperties(string documentId, int documentIndex, Object obj)
         {
             using (var so = new SerializedObject(obj))
             {
-                CallCustomIndexers(id, obj, documentIndex, so);
+                CallCustomIndexers(documentId, documentIndex, obj, so);
             }
         }
+
         /// <summary>
         /// Call all the registered custom indexer for an object of a specific type. See <see cref="CustomObjectIndexerAttribute"/>.
         /// </summary>
@@ -633,7 +598,7 @@ namespace Unity.QuickSearch
         /// <param name="documentIndex">Document where the indexed object was found.</param>
         /// <param name="so">SerializedObject representation of obj.</param>
         /// <param name="multiLevel">If true, calls all the indexer that would fit the type of the object (all assignable type). If false only check for an indexer registered for the exact type of the Object.</param>
-        protected void CallCustomIndexers(string id, Object obj, int documentIndex, SerializedObject so, bool multiLevel = true)
+        protected void CallCustomIndexers(string documentId, int documentIndex, Object obj, SerializedObject so, bool multiLevel = true)
         {
             var objectType = obj.GetType();
             List<Action<CustomObjectIndexerTarget, ObjectIndexer>> customIndexers;
@@ -655,7 +620,7 @@ namespace Unity.QuickSearch
 
             var indexerTarget = new CustomObjectIndexerTarget
             {
-                id = id,
+                id = documentId,
                 documentIndex = documentIndex,
                 target = obj,
                 serializedObject = so,
@@ -668,7 +633,13 @@ namespace Unity.QuickSearch
             }
         }
 
-        internal bool HasCustomIndexers(Type type, bool multiLevel = true)
+        /// <summary>
+        /// Checks if we have a custom indexer for the specified type.
+        /// </summary>
+        /// <param name="type">Type to lookup</param>
+        /// <param name="multiLevel">Check for subtypes too.</param>
+        /// <returns>True if a custom indexer exists, otherwise false is returned.</returns>
+        protected bool HasCustomIndexers(Type type, bool multiLevel = true)
         {
             if (!multiLevel)
                 return m_CustomObjectIndexers.ContainsKey(type);

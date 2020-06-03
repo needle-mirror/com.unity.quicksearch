@@ -41,7 +41,7 @@ namespace Unity.QuickSearch.Providers
                         return null;
 
                     items.AddRange(SettingsPaths.value
-                                    .Where(path => SearchUtils.MatchSearchGroups(context, path))
+                                    .Where(path => SearchUtils.MatchSearchGroups(context, path, true))
                                     .Select(path => provider.CreateItem(context, path, null, path, null, null)));
                     return null;
                 },

@@ -626,6 +626,17 @@ namespace Unity.QuickSearch
             DragAndDrop.StartDrag(label);
         }
 
+        internal static void StartDrag(UnityEngine.Object[] objects, string[] paths, string label = null)
+        {
+            s_LastDraggedObjects = objects;
+            if (paths == null || paths.Length == 0)
+                return;
+            DragAndDrop.PrepareStartDrag();
+            DragAndDrop.objectReferences = s_LastDraggedObjects;
+            DragAndDrop.paths = paths;
+            DragAndDrop.StartDrag(label);
+        }
+
         private static MethodInfo s_GetFieldInfoFromProperty;
         internal static FieldInfo GetFieldInfoFromProperty(SerializedProperty property, out Type requiredType)
         {

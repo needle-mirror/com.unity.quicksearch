@@ -72,11 +72,11 @@ namespace Unity.QuickSearch
                 .OrderBy(asset => asset.name).ToList();
         }
 
-        public static List<SearchItem> GetAllSearchQueryItems(SearchContext context = null)
+        public static List<SearchItem> GetAllSearchQueryItems(SearchContext context, bool getAllQueries = false)
         {
             s_SavedQueries = s_SavedQueries ?? GetAllQueries();
             var queryProvider = SearchService.GetProvider(Providers.Query.type);
-            return s_SavedQueries.Where(query => query && context == null || query.providerIds.Any(id => context.providers.Any(p => p.name.id == id))).Select(query =>
+            return s_SavedQueries.Where(query => query && getAllQueries || query.providerIds.Any(id => context.providers.Any(p => p.name.id == id))).Select(query =>
             {
                 var id = GlobalObjectId.GetGlobalObjectIdSlow(query).ToString();
                 var description = string.IsNullOrEmpty(query.description) ? $"{query.searchQuery} - {AssetDatabase.GetAssetPath(query)}" : query.description;

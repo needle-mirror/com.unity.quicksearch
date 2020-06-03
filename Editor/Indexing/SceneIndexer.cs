@@ -7,22 +7,14 @@ using System.Linq;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
-using UnityEngine.SceneManagement;
-using Object = UnityEngine.Object;
 
 namespace Unity.QuickSearch
 {
     class SceneIndexer : ObjectIndexer
     {
         public SceneIndexer(SearchDatabase.Settings settings)
-            : base("objects", settings)
+            : base(String.IsNullOrEmpty(settings.name) ? "objects" : settings.name, settings)
         {
-            getEntryComponentsHandler = GetEntryComponents;
-        }
-
-        public IEnumerable<string> GetEntryComponents(string path, int index)
-        {
-            return SearchUtils.SplitFileEntryComponents(path, entrySeparators);
         }
 
         public override bool SkipEntry(string path, bool checkRoots = false)
@@ -50,12 +42,12 @@ namespace Unity.QuickSearch
                 catch (Exception ex)
                 {
                     Debug.LogFormat(LogType.Exception, LogOption.NoStacktrace, null,
-                        $"Failed to index scene {scenePath}.\r\n{ex.ToString()}");
+                        $"Failed to index scene {scenePath}.\r\n{ex}");
                 }
                 yield return null;
             }
 
-            Finish((bytes) => {}, null, false);
+            Finish();
             while (!IsReady())
                 yield return null;
 
@@ -67,8 +59,7 @@ namespace Unity.QuickSearch
             var scenePaths = new List<string>();
             if (settings.roots == null || settings.roots.Length == 0)
             {
-                var sceneDirPath = Path.GetDirectoryName(settings.path).Replace("\\", "/");
-                scenePaths.AddRange(AssetDatabase.FindAssets("t:" + settings.type, new string[] { sceneDirPath }).Select(AssetDatabase.GUIDToAssetPath));
+                scenePaths.AddRange(AssetDatabase.FindAssets("t:" + settings.type, new string[] { settings.root }).Select(AssetDatabase.GUIDToAssetPath));
             }
             else
             {
@@ -124,15 +115,15 @@ namespace Unity.QuickSearch
                 var documentIndex = AddDocument(id, path, checkIfDocumentExists);
 
                 if (!String.IsNullOrEmpty(name))
-                    IndexProperty(id, "a", name, documentIndex, saveKeyword: true);
+                    IndexProperty(documentIndex, "a", name, saveKeyword: true);
 
                 var depth = GetObjectDepth(obj);
-                IndexNumber(id, "depth", depth, documentIndex);
+                IndexNumber(documentIndex, "depth", depth);
 
-                IndexWordComponents(id, documentIndex, path);
-                IndexProperty(id, "from", type, documentIndex, saveKeyword: true, exact: true);
-                IndexProperty(id, type, containerName, documentIndex, saveKeyword: true);
-                IndexGameObject(id, documentIndex, obj, options);
+                IndexWordComponents(documentIndex, path);
+                IndexProperty(documentIndex, "from", type, saveKeyword: true, exact: true);
+                IndexProperty(documentIndex, type, containerName, saveKeyword: true);
+                IndexGameObject(documentIndex, obj, options);
                 IndexCustomGameObjectProperties(id, documentIndex, obj);
             }
         }
@@ -180,7 +171,7 @@ namespace Unity.QuickSearch
                 if (scene == null || !scene.isLoaded)
                     return;
 
-                var objects = FetchGameObjects(scene);
+                var objects = SearchUtils.FetchGameObjects(scene);
                 IndexObjects(objects, "scene", scene.name, checkIfDocumentExists);
             }
             finally
@@ -190,20 +181,20 @@ namespace Unity.QuickSearch
             }
         }
 
-        private void IndexGameObject(string id, int documentIndex, GameObject go, SearchDatabase.Options options)
+        private void IndexGameObject(int documentIndex, GameObject go, SearchDatabase.Options options)
         {
             if (options.fstats)
             {
                 if (go.transform.root != go.transform)
-                    IndexProperty(id, "is", "child", documentIndex, saveKeyword: true, exact: true);
+                    IndexProperty(documentIndex, "is", "child", saveKeyword: true, exact: true);
                 else
-                    IndexProperty(id, "is", "root", documentIndex, saveKeyword: true, exact: true);
+                    IndexProperty(documentIndex, "is", "root", saveKeyword: true, exact: true);
 
                 if (go.transform.childCount == 0)
-                    IndexProperty(id, "is", "leaf", documentIndex, saveKeyword: true, exact: true);
+                    IndexProperty(documentIndex, "is", "leaf", saveKeyword: true, exact: true);
 
-                IndexNumber(id, "layer", go.layer, documentIndex);
-                IndexProperty(id, "tag", go.tag, documentIndex, saveKeyword: true);
+                IndexNumber(documentIndex, "layer", go.layer);
+                IndexProperty(documentIndex, "tag", go.tag, saveKeyword: true);
             }
 
             if (options.types || options.properties || options.dependencies)
@@ -213,23 +204,23 @@ namespace Unity.QuickSearch
                     var ptype = PrefabUtility.GetPrefabAssetType(go);
                     if (ptype == PrefabAssetType.Regular || ptype == PrefabAssetType.Variant)
                     {
-                        IndexProperty(id, "t", "prefab", documentIndex, saveKeyword: true, exact: true);
+                        IndexProperty(documentIndex, "t", "prefab", saveKeyword: true, exact: true);
 
                         if (options.dependencies)
                         {
                             var prefabPath = PrefabUtility.GetPrefabAssetPathOfNearestInstanceRoot(go);
                             var prefabName = Path.GetFileNameWithoutExtension(prefabPath);
-                            IndexProperty(id, "ref", prefabName, documentIndex, saveKeyword: true);
+                            IndexProperty(documentIndex, "ref", prefabName, saveKeyword: true);
                         }
                     }
                 }
 
                 if (options.properties)
-                    IndexObject(id, go, documentIndex);
+                    IndexObject(documentIndex, go);
 
                 var gocs = go.GetComponents<Component>();
 
-                IndexNumber(id, "components", gocs.Length, documentIndex);
+                IndexNumber(documentIndex, "components", gocs.Length);
 
                 for (int componentIndex = 1; componentIndex < gocs.Length; ++componentIndex)
                 {
@@ -238,10 +229,10 @@ namespace Unity.QuickSearch
                         continue;
 
                     if (options.types)
-                        IndexProperty(id, "t", c.GetType().Name.ToLowerInvariant(), documentIndex, saveKeyword: true);
+                        IndexProperty(documentIndex, "t", c.GetType().Name.ToLowerInvariant(), saveKeyword: true);
 
                     if (options.properties)
-                        IndexObject(id, c, documentIndex);
+                        IndexObject(documentIndex, c);
                 }
             }
         }
@@ -252,29 +243,14 @@ namespace Unity.QuickSearch
                 IndexCustomProperties(id, documentIndex, go);
 
             var gocs = go.GetComponents<Component>();
-            // Why begin at 1?
             for (var componentIndex = 0; componentIndex < gocs.Length; ++componentIndex)
             {
                 var c = gocs[componentIndex];
-                // Should we skip HideInInspector components?
                 if (!c)
                     continue;
                 if (HasCustomIndexers(c.GetType()))
                     IndexCustomProperties(id, documentIndex, c);
             }
-        }
-
-        public static GameObject[] FetchGameObjects(Scene scene)
-        {
-            var goRoots = new List<Object>();
-            if (!scene.IsValid() || !scene.isLoaded)
-                return new GameObject[0];
-            var sceneRootObjects = scene.GetRootGameObjects();
-            if (sceneRootObjects != null && sceneRootObjects.Length > 0)
-                goRoots.AddRange(sceneRootObjects);
-
-            return SceneModeUtility.GetObjects(goRoots.ToArray(), true)
-                .Where(o => !o.hideFlags.HasFlag(HideFlags.HideInHierarchy)).ToArray();
         }
     }
 }

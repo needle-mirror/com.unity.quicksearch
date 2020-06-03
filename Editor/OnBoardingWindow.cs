@@ -9,21 +9,28 @@ using UnityEngine.UIElements;
 
 namespace Unity.QuickSearch
 {
-    internal enum IndexToCreateType
+    enum ProjectSize
+    {
+        Small,
+        Medium,
+        Large
+    }
+
+    enum IndexToCreateType
     {
         Minimal,
         Default,
         Extended
     }
 
-    internal enum IndexOptions
+    enum IndexOptions
     {
         None,
         Dependencies,
         PropertiesAndDependencies
     }
 
-    internal struct IndexCreationInfo
+    struct IndexCreationInfo
     {
         internal IndexToCreateType type { get; private set; }
         internal IndexOptions optionsToAdd;
@@ -42,8 +49,8 @@ namespace Unity.QuickSearch
             this.optionsToAdd = optionsToAdd;
         }
 
-        internal string text 
-        { 
+        internal string text
+        {
             get
             {
                 if (type == IndexToCreateType.Minimal)
@@ -62,16 +69,19 @@ namespace Unity.QuickSearch
         }
     }
 
-    internal class OnBoardingWindow : EditorWindow
+    class OnBoardingWindow : EditorWindow
     {
+        const string k_RootIndexPath = "Assets/Assets.index";
+        static string k_AssetIndexPath = $"{Utils.packageFolderName}/Templates/Assets.index.template";
+
         [MenuItem("Window/Quick Search/Setup Wizard")]
         public static void OpenWindow()
         {
             var window = CreateWindow<OnBoardingWindow>();
             var windowSize = new Vector2(600f, 420f);
             window.minSize = window.maxSize = windowSize;
-            window.ShowAuxWindow();
             window.position = Utils.GetMainWindowCenteredPosition(windowSize);
+            window.Show();
             window.Focus();
         }
 
@@ -176,7 +186,6 @@ namespace Unity.QuickSearch
             bool fetchPreview = false;
             bool trackSelection = false;
             bool wantsMore = false;
-            SearchAssetIndexing assetIndexing = SearchAssetIndexing.NoIndexing;
             switch (projectSize)
             {
                 case ProjectSize.Small:
@@ -186,14 +195,9 @@ namespace Unity.QuickSearch
                     switch (indexCreationInfo.type)
                     {
                         case IndexToCreateType.Minimal:
-                            assetIndexing = SearchAssetIndexing.NoIndexing;
                             break;
                         case IndexToCreateType.Default:
-                            assetIndexing = SearchAssetIndexing.FullIndexing;
-                            GenerateIndex(indexCreationInfo.optionsToAdd);
-                            break;
                         case IndexToCreateType.Extended:
-                            assetIndexing = SearchAssetIndexing.FullIndexing;
                             GenerateIndex(indexCreationInfo.optionsToAdd);
                             break;
                     }
@@ -205,14 +209,9 @@ namespace Unity.QuickSearch
                     switch (indexCreationInfo.type)
                     {
                         case IndexToCreateType.Minimal:
-                            assetIndexing = SearchAssetIndexing.BasicIndexing;
                             break;
                         case IndexToCreateType.Default:
-                            assetIndexing = SearchAssetIndexing.FullIndexing;
-                            GenerateIndex(indexCreationInfo.optionsToAdd);
-                            break;
                         case IndexToCreateType.Extended:
-                            assetIndexing = SearchAssetIndexing.FullIndexing;
                             GenerateIndex(indexCreationInfo.optionsToAdd);
                             break;
                     }
@@ -224,27 +223,29 @@ namespace Unity.QuickSearch
                     {
                         case IndexToCreateType.Minimal:
                             wantsMore = true;
-                            assetIndexing = SearchAssetIndexing.BasicIndexing;
                             break;
                         case IndexToCreateType.Default:
-                            wantsMore = false;
-                            assetIndexing = SearchAssetIndexing.FullIndexing;
-                            GenerateIndex(indexCreationInfo.optionsToAdd);
-                            break;
                         case IndexToCreateType.Extended:
                             wantsMore = false;
-                            assetIndexing = SearchAssetIndexing.FullIndexing;
                             GenerateIndex(indexCreationInfo.optionsToAdd);
                             break;
                     }
                     break;
             }
-            SearchSettings.SetSettingsFromProjectSize(fetchPreview, trackSelection, wantsMore, assetIndexing);
+            SetSettingsFromProjectSize(fetchPreview, trackSelection, wantsMore);
+        }
+
+        private static void SetSettingsFromProjectSize(bool newFetchPreview, bool newTrackSelection, bool newWantsMore)
+        {
+            SearchSettings.fetchPreview = newFetchPreview;
+            SearchSettings.trackSelection = newTrackSelection;
+            SearchSettings.wantsMore = newWantsMore;
+            SearchSettings.Save();
         }
 
         private static void GenerateIndex(IndexOptions optionsToAdd)
         {
-            var indexSettings = IndexManager.ExtractIndexFromFile(SearchSettings.k_AssetIndexPath);
+            var indexSettings = IndexManager.ExtractIndexFromFile(k_AssetIndexPath);
             if (optionsToAdd == IndexOptions.Dependencies)
                 indexSettings.options.dependencies = true;
             else if (optionsToAdd == IndexOptions.PropertiesAndDependencies)
@@ -255,8 +256,8 @@ namespace Unity.QuickSearch
             try
             {
                 var json = JsonUtility.ToJson(indexSettings, true);
-                File.WriteAllText(SearchSettings.k_RootIndexPath, json);
-                AssetDatabase.ImportAsset(SearchSettings.k_RootIndexPath, ImportAssetOptions.ForceSynchronousImport);
+                File.WriteAllText(k_RootIndexPath, json);
+                AssetDatabase.ImportAsset(k_RootIndexPath, ImportAssetOptions.ForceSynchronousImport);
             }
             catch (Exception e)
             {
@@ -264,7 +265,7 @@ namespace Unity.QuickSearch
             }
         }
 
-        private abstract class ToggleWithTitleAndDescription : ToolbarToggle
+        abstract class ToggleWithTitleAndDescription : ToolbarToggle
         {
             protected Label m_TitleLabel;
             protected Label m_DescriptionLabel;
@@ -307,7 +308,8 @@ namespace Unity.QuickSearch
             {
             }
         }
-        private class IndexToggle : ToggleWithTitleAndDescription
+
+        class IndexToggle : ToggleWithTitleAndDescription
         {
             IndexCreationInfo m_IndexCreationInfo;
             internal IndexCreationInfo indexCreationInfo
@@ -323,7 +325,8 @@ namespace Unity.QuickSearch
                 this.indexCreationInfo = indexCreationInfo;
             }
         }
-        private class ProjectSizeToggle : ToggleWithTitleAndDescription
+
+        class ProjectSizeToggle : ToggleWithTitleAndDescription
         {
             IndexToggle m_ExtendedIndexToggle;
             internal ProjectSize projectSize { get; private set; }

@@ -2,12 +2,12 @@ using System.Collections.Generic;
 
 namespace Unity.QuickSearch
 {
-    internal interface IQueryHandler<out TData, in TPayload>
+    interface IQueryHandler<out TData, in TPayload>
     {
         IEnumerable<TData> Eval(TPayload payload);
     }
 
-    internal interface IQueryHandlerFactory<TData, out TQueryHandler, TPayload>
+    interface IQueryHandlerFactory<TData, out TQueryHandler, TPayload>
         where TQueryHandler : IQueryHandler<TData, TPayload>
     {
         TQueryHandler Create(QueryGraph graph, ICollection<QueryError> errors);
@@ -27,18 +27,24 @@ namespace Unity.QuickSearch
         /// <summary> List of QueryErrors. </summary>
         public ICollection<QueryError> errors { get; }
 
+        /// <summary>
+        /// List of tokens found in the query.
+        /// </summary>
+        public ICollection<string> tokens { get; }
+
         internal IQueryHandler<TData, TPayload> graphHandler { get; set; }
 
         internal QueryGraph graph { get; }
 
-        internal Query(QueryGraph graph, ICollection<QueryError> errors)
+        internal Query(QueryGraph graph, ICollection<QueryError> errors, ICollection<string> tokens)
         {
             this.graph = graph;
             this.errors = errors;
+            this.tokens = tokens;
         }
 
-        internal Query(QueryGraph graph, ICollection<QueryError> errors, IQueryHandler<TData, TPayload> graphHandler)
-            : this(graph, errors)
+        internal Query(QueryGraph graph, ICollection<QueryError> errors, ICollection<string> tokens, IQueryHandler<TData, TPayload> graphHandler)
+            : this(graph, errors, tokens)
         {
             if (valid)
             {
@@ -75,8 +81,8 @@ namespace Unity.QuickSearch
     /// <typeparam name="T">The filtered data type.</typeparam>
     public class Query<T> : Query<T, IEnumerable<T>>
     {
-        internal Query(QueryGraph graph, ICollection<QueryError> errors, IQueryHandler<T, IEnumerable<T>> graphHandler)
-            : base(graph, errors, graphHandler)
+        internal Query(QueryGraph graph, ICollection<QueryError> errors, ICollection<string> tokens, IQueryHandler<T, IEnumerable<T>> graphHandler)
+            : base(graph, errors, tokens, graphHandler)
         { }
 
         /// <summary>

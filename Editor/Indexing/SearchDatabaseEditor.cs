@@ -48,8 +48,8 @@ namespace Unity.QuickSearch
             m_DocumentsFoldout = EditorGUILayout.Foldout(m_DocumentsFoldout, $"{documentTitle} (Count={m_DB.index.documentCount})", true);
             if (m_DocumentsFoldout)
             {
-                foreach (var documentEntry in m_DB.index.GetDocuments().OrderBy(p=>p))
-                    EditorGUILayout.LabelField(documentEntry);
+                foreach (var documentEntry in m_DB.index.GetDocuments().OrderBy(p=>p.id))
+                    EditorGUILayout.LabelField(documentEntry.id);
             }
 
             m_KeywordsFoldout = EditorGUILayout.Foldout(m_KeywordsFoldout, $"Keywords (Count={m_DB.index.keywordCount})", true);

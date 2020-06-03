@@ -17,6 +17,6 @@ The manual can be found [here](Documentation~/QuickSearch.md).
 # Technical details
 ## Requirements
 
-This version of Timeline is compatible with the following versions of the Unity Editor:
+This version of Quick Search is compatible with the following versions of the Unity Editor:
 
 * 2019.3 and later

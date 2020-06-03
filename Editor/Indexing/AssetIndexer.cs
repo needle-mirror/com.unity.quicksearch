@@ -13,14 +13,8 @@ namespace Unity.QuickSearch
     class AssetIndexer : ObjectIndexer
     {
         public AssetIndexer(SearchDatabase.Settings settings)
-            : base("assets", settings)
+            : base(String.IsNullOrEmpty(settings.name) ? "assets" : settings.name, settings)
         {
-            getEntryComponentsHandler = GetEntryComponents;
-        }
-
-        public IEnumerable<string> GetEntryComponents(string path, int index)
-        {
-            return SearchUtils.SplitFileEntryComponents(path, entrySeparators);
         }
 
         protected override System.Collections.IEnumerator BuildAsync(int progressId, object userData = null)
@@ -44,7 +38,7 @@ namespace Unity.QuickSearch
             }
             EditorApplication.UnlockReloadAssemblies();
 
-            Finish((bytes) => {}, null, false);
+            Finish();
             while (!IsReady())
                 yield return null;
 
@@ -55,7 +49,7 @@ namespace Unity.QuickSearch
         public override IEnumerable<string> GetRoots()
         {
             if (settings.roots == null || settings.roots.Length == 0)
-                return new string[] { Path.GetDirectoryName(settings.path).Replace("\\", "/") };
+                return new string[] { settings.root };
             return settings.roots.Where(r => Directory.Exists(r));
         }
 
@@ -79,33 +73,33 @@ namespace Unity.QuickSearch
             if (documentIndex < 0)
                 return;
 
-            IndexWordComponents(path, documentIndex, path);
+            IndexWordComponents(documentIndex, path);
 
             try
             {
                 var fileName = Path.GetFileNameWithoutExtension(path).ToLowerInvariant();
-                IndexWord(path, fileName, documentIndex, fileName.Length, true);
+                IndexWord(documentIndex, fileName, fileName.Length, true);
 
-                IndexWord(path, path, documentIndex, path.Length, exact: true);
-                IndexProperty(path, "id", path, documentIndex, saveKeyword: false, exact: true);
+                IndexWord(documentIndex, path, path.Length, exact: true);
+                IndexProperty(documentIndex, "id", path, saveKeyword: false, exact: true);
 
                 if (path.StartsWith("Packages/", StringComparison.Ordinal))
-                    IndexProperty(path, "a", "packages", documentIndex, saveKeyword: true, exact: true);
+                    IndexProperty(documentIndex, "a", "packages", saveKeyword: true, exact: true);
                 else
-                    IndexProperty(path, "a", "assets", documentIndex, saveKeyword: true, exact: true);
+                    IndexProperty(documentIndex, "a", "assets", saveKeyword: true, exact: true);
 
                 if (!String.IsNullOrEmpty(name))
-                    IndexProperty(path, "a", name, documentIndex, saveKeyword: true, exact: true);
+                    IndexProperty(documentIndex, "a", name, saveKeyword: true, exact: true);
 
                 if (settings.options.fstats)
                 {
                     var fi = new FileInfo(path);
                     if (fi.Exists)
                     {
-                        IndexNumber(path, "size", (double)fi.Length, documentIndex);
-                        IndexProperty(path, "ext", fi.Extension.Replace(".", "").ToLowerInvariant(), documentIndex, saveKeyword: false);
-                        IndexNumber(path, "age", (DateTime.Now - fi.LastWriteTime).TotalDays, documentIndex);
-                        IndexProperty(path, "dir", fi.Directory.Name.ToLowerInvariant(), documentIndex, saveKeyword: false);
+                        IndexNumber(documentIndex, "size", (double)fi.Length);
+                        IndexProperty(documentIndex, "ext", fi.Extension.Replace(".", "").ToLowerInvariant(), saveKeyword: false);
+                        IndexNumber(documentIndex, "age", (DateTime.Now - fi.LastWriteTime).TotalDays);
+                        IndexProperty(documentIndex, "dir", fi.Directory.Name.ToLowerInvariant(), saveKeyword: false);
                     }
                 }
 
@@ -125,26 +119,26 @@ namespace Unity.QuickSearch
                     if (settings.options.properties || settings.options.types)
                     {
                         if (!String.IsNullOrEmpty(mainAsset.name))
-                            IndexWord(path, mainAsset.name, documentIndex, true);
+                            IndexWord(documentIndex, mainAsset.name, true);
 
-                        IndexWord(path, at.Name, documentIndex);
+                        IndexWord(documentIndex, at.Name);
                         while (at != null && at != typeof(Object))
                         {
                             if (at != typeof(GameObject))
-                                IndexProperty(path, "t", at.Name, documentIndex, saveKeyword: true);
+                                IndexProperty(documentIndex, "t", at.Name, saveKeyword: true);
                             at = at.BaseType;
                         }
 
                         var prefabType = PrefabUtility.GetPrefabAssetType(mainAsset);
                         if (prefabType == PrefabAssetType.Regular || prefabType == PrefabAssetType.Variant)
-                            IndexProperty(path, "t", "prefab", documentIndex, saveKeyword: true);
+                            IndexProperty(documentIndex, "t", "prefab", saveKeyword: true);
 
                         var labels = AssetDatabase.GetLabels(mainAsset);
                         foreach (var label in labels)
-                            IndexProperty(path, "l", label, documentIndex, saveKeyword: true);
+                            IndexProperty(documentIndex, "l", label, saveKeyword: true);
 
                         if (settings.options.properties)
-                            IndexObject(path, mainAsset, documentIndex);
+                            IndexObject(documentIndex, mainAsset);
 
                         if (mainAsset is GameObject go)
                         {
@@ -152,10 +146,11 @@ namespace Unity.QuickSearch
                             {
                                 if (!v || v.GetType() == typeof(Transform))
                                     continue;
-                                IndexPropertyComponents(path, documentIndex, "has", v.GetType().Name);
-                                
+                                IndexPropertyComponents(documentIndex, "t", v.GetType().Name);
+                                IndexPropertyComponents(documentIndex, "has", v.GetType().Name);
+
                                 if (settings.options.properties)
-                                    IndexObject(path, v, documentIndex, dependencies: settings.options.dependencies);
+                                    IndexObject(documentIndex, v, dependencies: settings.options.dependencies);
                             }
                         }
                     }
@@ -179,7 +174,7 @@ namespace Unity.QuickSearch
                         if (path == depPath)
                             continue;
                         var depName = Path.GetFileNameWithoutExtension(depPath);
-                        IndexProperty(path, "ref", depName, documentIndex, saveKeyword: false);
+                        IndexProperty(documentIndex, "ref", depName, saveKeyword: false);
                     }
                 }
             }

@@ -372,7 +372,8 @@ namespace Unity.QuickSearch
         internal double fetchTime;
         internal double loadTime;
         internal double enableTime;
-        int m_EnableLockCounter;
+        internal int m_EnableLockCounter;
+        internal static int sessionCounter;
 
         internal void OnEnable(double enableTimeMs)
         {
@@ -389,12 +390,14 @@ namespace Unity.QuickSearch
             {
                 enableTime = enableTimeMs;
                 ++m_EnableLockCounter;
+                ++sessionCounter;
             }
         }
 
         internal void OnDisable()
         {
             --m_EnableLockCounter;
+            --sessionCounter;
             if (m_EnableLockCounter == 0)
             {
                 try

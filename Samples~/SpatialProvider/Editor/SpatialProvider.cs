@@ -42,7 +42,7 @@ public static class SpatialProvider
 
     static void OnEnable()
     {
-        s_GameObjects = FetchGameObjects();
+        s_GameObjects = SearchUtils.FetchGameObjects();
         s_QueryEngine = new QueryEngine<GameObject>();
 
         // Id supports all operators
@@ -121,28 +121,6 @@ public static class SpatialProvider
         Selection.activeGameObject = obj ?? Selection.activeGameObject;
         if (SceneView.lastActiveSceneView != null)
             SceneView.lastActiveSceneView.FrameSelected();
-    }
-
-    static GameObject[] FetchGameObjects()
-    {
-        var prefabStage = PrefabStageUtility.GetCurrentPrefabStage();
-        if (prefabStage != null)
-            return SceneModeUtility.GetObjects(new[] { prefabStage.prefabContentsRoot }, true);
-
-        var goRoots = new List<UnityEngine.Object>();
-        for (int i = 0; i < SceneManager.sceneCount; ++i)
-        {
-            var scene = SceneManager.GetSceneAt(i);
-            if (!scene.IsValid() || !scene.isLoaded)
-                continue;
-
-            var sceneRootObjects = scene.GetRootGameObjects();
-            if (sceneRootObjects != null && sceneRootObjects.Length > 0)
-                goRoots.AddRange(sceneRootObjects);
-        }
-
-        return SceneModeUtility.GetObjects(goRoots.ToArray(), true)
-            .Where(o => !o.hideFlags.HasFlag(HideFlags.HideInHierarchy)).ToArray();
     }
 
     static float DistanceHandler(GameObject go, Vector3 p)

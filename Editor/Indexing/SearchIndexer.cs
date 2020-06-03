@@ -8,6 +8,7 @@ using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
 using System.Threading;
+using JetBrains.Annotations;
 using UnityEditor;
 using UnityEngine;
 
@@ -16,16 +17,17 @@ namespace Unity.QuickSearch
     [DebuggerDisplay("{type} - K:{key}|{number} - C:{crc} - I:{index}")]
     readonly struct SearchIndexEntry : IEquatable<SearchIndexEntry>
     {
-        // 1- Initial format
-        // 2- Added score to words
-        // 3- Save base name in entry paths
-        // 4- Added entry types
-        // 5- Added indexing tags
-        // 6- Revert indexes back to 32 bits instead of 64 bits.
-        // 7- Remove min and max char variations.
-        // 8- Add metadata field to documents
-        // 9- Add document hash support
-        internal const int version = 0x4242E000 | 0x009;
+        //  1- Initial format
+        //  2- Added score to words
+        //  3- Save base name in entry paths
+        //  4- Added entry types
+        //  5- Added indexing tags
+        //  6- Revert indexes back to 32 bits instead of 64 bits.
+        //  7- Remove min and max char variations.
+        //  8- Add metadata field to documents
+        //  9- Add document hash support
+        // 10- Remove the index tag header
+        internal const int version = 0x4242E000 | 0x010;
 
         public enum Type : int
         {
@@ -138,7 +140,7 @@ namespace Unity.QuickSearch
         }
 
         /// <summary>
-        /// Compute the hascode for this SearchResult from its index property.
+        /// Compute the hash code for this SearchResult from its index property.
         /// </summary>
         /// <returns></returns>
         public override int GetHashCode()
@@ -165,33 +167,17 @@ namespace Unity.QuickSearch
         /// <returns>Returns true if both SearchResult have the same index.</returns>
         public int CompareTo(SearchResult other)
         {
-            return index.CompareTo(other.index);
+            var c = other.score.CompareTo(other.score);
+            if (c == 0)
+                return index.CompareTo(other.index);
+            return c;
         }
     }
 
     /// <summary>
-    /// SearchIndexerRoot are used by a <see cref="SearchIndexer"/> to specify base path from which to start indexing.
+    /// Represents a searchable document that has been indexed.
     /// </summary>
-    [DebuggerDisplay("{baseName} ({basePath})")]
-    public readonly struct SearchIndexerRoot
-    {
-        /// <summary>Base file path from which to start indexing</summary>
-        public readonly string basePath;
-        /// <summary>Root Name</summary>
-        public readonly string baseName;
-        /// <summary>
-        /// Create a new SearchIndexer root.
-        /// </summary>
-        /// <param name="_p">Base path of the SearchRoot.</param>
-        /// <param name="_n">Base name of the SearchRoot.</param>
-        public SearchIndexerRoot(string _p, string _n)
-        {
-            basePath = _p.Replace('\\', '/');
-            baseName = _n;
-        }
-    }
-
-    internal class SearchDocument
+    public class SearchDocument
     {
         public SearchDocument(string id, string metadata = null)
         {
@@ -199,8 +185,23 @@ namespace Unity.QuickSearch
             this.metadata = metadata;
         }
 
-        public string id;
-        public string metadata;
+        /// <summary>
+        /// Document unique id in the search index.
+        /// </summary>
+        public string id { get; private set; }
+
+        /// <summary>
+        /// Additional meta data about the document
+        /// </summary>
+        [CanBeNull] public string metadata { get; internal set; }
+
+        /// <summary>
+        /// Returns the document id string.
+        /// </summary>
+        public override string ToString()
+        {
+            return id;
+        }
     }
 
     /// <summary>
@@ -212,16 +213,6 @@ namespace Unity.QuickSearch
         /// Name of the document. Generally this name is given by a user from a <see cref="SearchDatabase.Settings"/>
         /// </summary>
         public string name { get; set; }
-
-        /// <summary>
-        /// Search path roots for this indexer.
-        /// </summary>
-        public SearchIndexerRoot[] roots { get; }
-
-        /// <summary>
-        /// Separators used to split indexed values into individual search tokens.
-        /// </summary>
-        public char[] entrySeparators { get; set; } = SearchUtils.entrySeparators;
 
         internal int keywordCount => m_Keywords.Count;
         internal int documentCount => m_Documents.Count;
@@ -241,146 +232,76 @@ namespace Unity.QuickSearch
             }
         }
 
-        internal IEnumerable<string> GetKeywords() { lock(this) return m_Keywords; }
-        internal IEnumerable<string> GetDocuments() { lock(this) return m_Documents.Select(d => d.id); }
-        internal SearchDocument GetDocument(int index) { lock(this) return m_Documents[index]; }
-
-        internal bool TryGetHash(string id, out Hash128 hash)
-        {
-            lock (this)
-            {
-                #if UNITY_2020_1_OR_NEWER
-                return m_DocumentHashes.TryGetValue(id, out hash);
-                #else
-                if (m_DocumentHashes.TryGetValue(id, out string hashStr))
-                {
-                    hash = Hash128.Parse(hashStr);
-                    return true;
-                }
-                hash = new Hash128();
-                return false;
-                #endif
-            }
-        }
-
-        internal Dictionary<int, int> patternMatchCount { get; set; } = new Dictionary<int, int>();
-
-        ///<summary> Handler used to skip some entries.</summary>
+        /// <summary>
+        /// Handler used to skip some entries.
+        /// </summary>
         public Func<string, bool> skipEntryHandler { get; set; }
 
-        ///<summary> Handler used to specify where the index database file should be saved. If the handler returns null, the database won't be saved at all. </summary>
-        public Func<string, string> getIndexFilePathHandler { get; set; }
-
-        ///<summary> Handler used to parse and split the search query text into words. The tokens needs to be split similarly to how getEntryComponentsHandler was specified. </summary>
+        /// <summary>
+        /// Handler used to parse and split the search query text into words. The tokens needs to be split similarly to words and properties are indexed.
+        /// </summary>
         public Func<string, string[]> getQueryTokensHandler { get; set; }
-
-        ///<summary> Handler used to split into words the entries. The order of the words matter. Words at the beginning of the array have a lower score (lower the better) </summary>
-        public Func<string, int, IEnumerable<string>> getEntryComponentsHandler { get; set; }
-
-        ///<summary> Handler used to fetch all the entries under a given root. </summary>
-        public Func<SearchIndexerRoot, IEnumerable<string>> enumerateRootEntriesHandler { get; set; }
 
         private Thread m_IndexerThread;
         private volatile bool m_IndexReady = false;
-        private volatile bool m_ThreadAborted = false;
-        private string m_IndexTempFilePath;
-        private Dictionary<RangeSet, IndexRange> m_FixedRanges = new Dictionary<RangeSet, IndexRange>();
+        protected volatile bool m_ThreadAborted = false;
+        private readonly Dictionary<RangeSet, IndexRange> m_FixedRanges;
+        private SearchResultCollection m_AllDocumentIndexes;
+        private readonly Dictionary<int, int> m_PatternMatchCount;
+
+        // Temporary documents and entries while the index is being built (i.e. Start/Finish).
+        private readonly List<SearchIndexEntry> m_BatchIndexes;
 
         // Final documents and entries when the index is ready.
+        private List<SearchDocument> m_Documents;
+        private SearchIndexEntry[] m_Indexes;
+        private HashSet<string> m_Keywords;
+
         #if UNITY_2020_1_OR_NEWER
         private Dictionary<string, Hash128> m_DocumentHashes;
         #else
         private Dictionary<string, string> m_DocumentHashes;
         #endif
-        private List<SearchDocument> m_Documents;
-        private SearchIndexEntry[] m_Indexes;
-        /// <summary>
-        /// All property keywords found in the index.
-        /// </summary>
-        protected HashSet<string> m_Keywords;
-
-        // Temporary documents and entries while the index is being built (i.e. Start/Finish).
-        private List<SearchIndexEntry> m_BatchIndexes = new List<SearchIndexEntry>();
-
-        private SearchResultCollection m_AllDocumentIndexes;
 
         /// <summary>
-        /// Create a new SearchIndexer.
+        /// Create a new default SearchIndexer.
         /// </summary>
-        /// <param name="rootPath">Root path where to start indexing.</param>
-        public SearchIndexer(string rootPath)
-            : this(rootPath, String.Empty)
-        {
-        }
-        /// <summary>
-        /// Create a new SearchIndexer.
-        /// </summary>
-        /// <param name="rootPath">Root path where to start indexing.</param>
-        /// <param name="rootName">Root name.</param>
-        public SearchIndexer(string rootPath, string rootName)
-            : this(new[] { new SearchIndexerRoot(rootPath, rootName) })
+        public SearchIndexer()
+            : this(String.Empty)
         {
         }
 
         /// <summary>
         /// Create a new SearchIndexer.
         /// </summary>
-        /// <param name="roots">All of this SearchIndexer roots.</param>
-        public SearchIndexer(IEnumerable<SearchIndexerRoot> roots)
+        /// <param name="name">Name of the indexer</param>
+        public SearchIndexer(string name)
         {
-            this.roots = roots.ToArray();
+            this.name = name;
 
             skipEntryHandler = e => false;
-            getIndexFilePathHandler = p => null;
-            getEntryComponentsHandler = (e, i) => throw new Exception("You need to specify the get entry components handler");
-            enumerateRootEntriesHandler = r => throw new Exception("You need to specify the root entries enumerator");
             getQueryTokensHandler = ParseQuery;
 
             m_Keywords = new HashSet<string>();
             m_Documents = new List<SearchDocument>();
+            m_Indexes = new SearchIndexEntry[0];
+            m_BatchIndexes = new List<SearchIndexEntry>();
+            m_PatternMatchCount = new Dictionary<int, int>();
+            m_FixedRanges = new Dictionary<RangeSet, IndexRange>();
+
             #if UNITY_2020_1_OR_NEWER
             m_DocumentHashes = new Dictionary<string, Hash128>();
             #else
             m_DocumentHashes = new Dictionary<string, string>();
             #endif
-            m_Indexes = new SearchIndexEntry[0];
-            m_IndexTempFilePath = Path.GetTempFileName();
-        }
-        
-        /// <summary>Build the index into a separate thread.</summary>
-        public virtual void Build()
-        {
-            Build(true);
         }
 
         /// <summary>
-        /// Build the index.
+        /// Build custom derived indexes.
         /// </summary>
-        /// <param name="useThread">Build the index in a separate thread.</param>
-        public void Build(bool useThread)
+        public virtual void Build()
         {
-            if (useThread)
-            {
-                m_ThreadAborted = false;
-                m_IndexerThread = new Thread(() =>
-                {
-                    try
-                    {
-                        using (new IndexerThreadScope(AbortIndexing))
-                            Build(false);
-                    }
-                    catch (ThreadAbortException)
-                    {
-                        m_ThreadAborted = true;
-                        Thread.ResetAbort();
-                    }
-                });
-                m_IndexerThread.Start();
-            }
-            else
-            {
-                BuildWordIndexes();
-            }
+            throw new NotImplementedException();
         }
 
         /// <summary>
@@ -529,7 +450,7 @@ namespace Unity.QuickSearch
                 lock (this)
                 {
                     var remains = SearchIndexes(patterns[0], lengths[0], SearchIndexEntry.Type.Word, maxScore, wiec, null, patternMatchLimit).ToList();
-                    patternMatchCount[patterns[0]] = remains.Count;
+                    m_PatternMatchCount[patterns[0]] = remains.Count;
 
                     if (remains.Count == 0)
                         return Enumerable.Empty<SearchResult>();
@@ -552,12 +473,11 @@ namespace Unity.QuickSearch
         /// </summary>
         /// <param name="stream">Stream where to write the index.</param>
         /// <param name="tag">Identification tag to write in the header of the index.</param>
-        public void Write(Stream stream, string tag)
+        public void Write(Stream stream)
         {
             using (var indexWriter = new BinaryWriter(stream))
             {
                 indexWriter.Write(SearchIndexEntry.version);
-                indexWriter.Write(tag);
 
                 // Documents
                 indexWriter.Write(m_Documents.Count);
@@ -604,7 +524,8 @@ namespace Unity.QuickSearch
         {
             using (var memoryStream = new MemoryStream())
             {
-                Write(memoryStream, "memory");
+                lock (this)
+                    Write(memoryStream);
                 return memoryStream.ToArray();
             }
         }
@@ -625,8 +546,6 @@ namespace Unity.QuickSearch
 
                 if (checkVersionOnly)
                     return true;
-
-                indexReader.ReadString(); // Skip
 
                 // Documents
                 var elementCount = indexReader.ReadInt32();
@@ -688,7 +607,7 @@ namespace Unity.QuickSearch
         }
 
         /// <summary>
-        /// Load asynchronously (i.e. in another thread) the index from a binary buffer. 
+        /// Load asynchronously (i.e. in another thread) the index from a binary buffer.
         /// </summary>
         /// <param name="bytes">Binary buffer containing the index representation.</param>
         /// <param name="finished">Callback that will trigger when the index is fully loaded. The callback parameters indicate if the loading was succesful.</param>
@@ -732,22 +651,67 @@ namespace Unity.QuickSearch
             throw new NotImplementedException($"{nameof(IndexDocument)} must be implemented by a specialized indexer.");
         }
 
+        internal void CombineIndexes(SearchIndexer si)
+        {
+            int sourceIndex = 0;
+            foreach (var doc in si.GetDocuments())
+            {
+                var di = AddDocument(doc.id, doc.metadata, false);
+                m_BatchIndexes.AddRange(si.m_Indexes.Where(i => i.index == sourceIndex).Select(i => new SearchIndexEntry(i.key, i.crc, i.type, di, i.score)));
+                m_Keywords.UnionWith(si.m_Keywords);
+                foreach (var hkvp in si.m_DocumentHashes)
+                    m_DocumentHashes[hkvp.Key] = hkvp.Value;
+                sourceIndex++;
+            }
+        }
+
+        internal void ApplyFrom(SearchIndexer source)
+        {
+            lock (this)
+            {
+                m_IndexReady = false;
+                m_Indexes = source.m_Indexes;
+                m_Documents = source.m_Documents;
+                m_Keywords = source.m_Keywords;
+                m_DocumentHashes = source.m_DocumentHashes;
+
+                m_BatchIndexes.Clear();
+
+                m_IndexReady = true;
+            }
+        }
+
+        internal void ApplyUnsorted()
+        {
+            lock (this)
+                m_Indexes = m_BatchIndexes.ToArray();
+        }
+
+        internal IEnumerable<string> GetKeywords() { lock (this) return m_Keywords; }
+        internal IEnumerable<SearchDocument> GetDocuments() { lock (this) return m_Documents; }
+        internal SearchDocument GetDocument(int index) { lock (this) return m_Documents[index]; }
+
+        internal bool TryGetHash(string id, out Hash128 hash)
+        {
+            lock (this)
+            {
+                #if UNITY_2020_1_OR_NEWER
+                return m_DocumentHashes.TryGetValue(id, out hash);
+                #else
+                if (m_DocumentHashes.TryGetValue(id, out string hashStr))
+                {
+                    hash = Hash128.Parse(hashStr);
+                    return true;
+                }
+                hash = new Hash128();
+                return false;
+                #endif
+            }
+        }
+
         internal void AddWord(string word, int score, int documentIndex, List<SearchIndexEntry> indexes)
         {
             AddWord(word, 2, word.Length, score, documentIndex, indexes);
-        }
-
-        private void FetchEntries(string document, int documentIndex, List<SearchIndexEntry> indexes, int baseScore = 0)
-        {
-            var components = getEntryComponentsHandler(document, documentIndex).ToArray();
-            for (int compIndex = 0; compIndex < components.Length; ++compIndex)
-            {
-                var p = components[compIndex];
-                if (p.Length == 0)
-                    continue;
-
-                AddWord(p, 2, p.Length, baseScore + compIndex, documentIndex, indexes);
-            }
         }
 
         internal int AddDocument(string document, bool checkIfExists = true)
@@ -919,7 +883,7 @@ namespace Unity.QuickSearch
                 m_IndexReady = false;
                 m_BatchIndexes.Clear();
                 m_FixedRanges.Clear();
-                patternMatchCount.Clear();
+                m_PatternMatchCount.Clear();
 
                 if (clear)
                 {
@@ -929,6 +893,26 @@ namespace Unity.QuickSearch
                     m_Indexes = new SearchIndexEntry[0];
                 }
             }
+        }
+
+        internal void Finish()
+        {
+            Finish(null, null, saveBytes: false);
+        }
+
+        internal void Finish(Action threadCompletedCallback)
+        {
+            Finish(bytes => threadCompletedCallback?.Invoke(), null, saveBytes: false);
+        }
+
+        internal void Finish(Action threadCompletedCallback, string[] removedDocuments)
+        {
+            Finish(bytes => threadCompletedCallback?.Invoke(), removedDocuments, saveBytes: false);
+        }
+
+        internal void Finish(Action<byte[]> threadCompletedCallback, string[] removedDocuments)
+        {
+            Finish(threadCompletedCallback, removedDocuments, saveBytes: true);
         }
 
         internal void Finish(Action<byte[]> threadCompletedCallback, string[] removedDocuments, bool saveBytes)
@@ -942,10 +926,13 @@ namespace Unity.QuickSearch
                     {
                         Finish(removedDocuments);
 
-                        byte[] bytes = null;
-                        if (saveBytes)
-                            bytes = SaveBytes();
-                        Dispatcher.Enqueue(() => threadCompletedCallback(bytes));
+                        if (threadCompletedCallback != null)
+                        {
+                            byte[] bytes = null;
+                            if (saveBytes)
+                                bytes = SaveBytes();
+                            Dispatcher.Enqueue(() => threadCompletedCallback(bytes));
+                        }
                     }
                 }
                 catch (ThreadAbortException)
@@ -957,7 +944,7 @@ namespace Unity.QuickSearch
             m_IndexerThread.Start();
         }
 
-        internal void Finish(string[] removedDocuments = null)
+        internal void Finish(string[] removedDocuments)
         {
             lock (this)
             {
@@ -977,7 +964,7 @@ namespace Unity.QuickSearch
                 {
                     m_BatchIndexes.AddRange(m_Indexes);
                 }
-                UpdateIndexes(m_BatchIndexes, roots[0].basePath, null);
+                UpdateIndexes(m_BatchIndexes, null);
                 m_BatchIndexes.Clear();
             }
         }
@@ -1120,22 +1107,22 @@ namespace Unity.QuickSearch
 
         private int SortTokensByPatternMatches(string item1, string item2)
         {
-            patternMatchCount.TryGetValue(item1.GetHashCode(), out var item1PatternMatchCount);
-            patternMatchCount.TryGetValue(item2.GetHashCode(), out var item2PatternMatchCount);
+            m_PatternMatchCount.TryGetValue(item1.GetHashCode(), out var item1PatternMatchCount);
+            m_PatternMatchCount.TryGetValue(item2.GetHashCode(), out var item2PatternMatchCount);
             var c = item1PatternMatchCount.CompareTo(item2PatternMatchCount);
             if (c != 0)
                 return c;
             return item1.Length.CompareTo(item2.Length);
         }
 
-        private void SaveIndexToDisk(string basePath)
+        private void SaveIndexToDisk(string indexFilePath)
         {
-            var indexFilePath = getIndexFilePathHandler(basePath);
             if (String.IsNullOrEmpty(indexFilePath))
                 return;
 
-            using (var fileStream = new FileStream(m_IndexTempFilePath, FileMode.Create, FileAccess.Write, FileShare.None))
-                Write(fileStream, basePath);
+            var indexTempFilePath = Path.GetTempFileName();
+            using (var fileStream = new FileStream(indexTempFilePath, FileMode.Create, FileAccess.Write, FileShare.None))
+                Write(fileStream);
 
             try
             {
@@ -1149,7 +1136,7 @@ namespace Unity.QuickSearch
                     // ignore file index persistence operation, since it is not critical and will redone later.
                 }
 
-                File.Move(m_IndexTempFilePath, indexFilePath);
+                File.Move(indexTempFilePath, indexFilePath);
             }
             catch (IOException)
             {
@@ -1166,9 +1153,8 @@ namespace Unity.QuickSearch
             }
         }
 
-        internal bool LoadIndexFromDisk(string basePath, bool useThread = false)
+        internal bool LoadIndexFromDisk(string indexFilePath, bool useThread = false)
         {
-            var indexFilePath = getIndexFilePathHandler(basePath);
             if (indexFilePath == null || !File.Exists(indexFilePath))
                 return false;
 
@@ -1193,7 +1179,7 @@ namespace Unity.QuickSearch
             m_ThreadAborted = true;
         }
 
-        private bool UpdateIndexes(List<SearchIndexEntry> entries, string saveIndexBasePath, Action onIndexesCreated)
+        private bool UpdateIndexes(List<SearchIndexEntry> entries, Action onIndexesCreated)
         {
             if (entries == null)
                 return false;
@@ -1217,25 +1203,25 @@ namespace Unity.QuickSearch
                     return false;
                 }
 
-                if (!String.IsNullOrEmpty(saveIndexBasePath))
-                    SaveIndexToDisk(saveIndexBasePath);
-
                 return true;
             }
         }
 
         private void UpdateIndexes(IEnumerable<SearchDocument> documents, List<SearchIndexEntry> entries,
             #if UNITY_2020_1_OR_NEWER
-            Dictionary<string, Hash128> hashes,
+            Dictionary<string, Hash128> hashes
             #else
-            Dictionary<string, string> hashes,
+            Dictionary<string, string> hashes
             #endif
-            string saveIndexBasePath = null)
+            )
         {
-            UpdateIndexes(entries, saveIndexBasePath, () =>
+            UpdateIndexes(entries, () =>
             {
-                m_Documents = documents.ToList();
-                m_DocumentHashes = hashes;
+                lock (this)
+                {
+                    m_Documents = documents.ToList();
+                    m_DocumentHashes = hashes;
+                }
             });
         }
 
@@ -1251,78 +1237,6 @@ namespace Unity.QuickSearch
             m_DocumentHashes = hashes;
             m_Indexes = entries;
             m_IndexReady = true;
-        }
-
-        private void BuildWordIndexes()
-        {
-            if (roots.Length == 0)
-                return;
-
-            lock (this)
-                LoadIndexFromDisk(roots[0].basePath);
-
-            int entryStart = 0;
-            var documents = new List<SearchDocument>();
-            var wordIndexes = new List<SearchIndexEntry>();
-
-            var baseScore = 0;
-            foreach (var r in roots)
-            {
-                if (m_ThreadAborted)
-                    return;
-
-                var rootName = r.baseName;
-                var basePath = r.basePath;
-                var basePathWithSlash = basePath + "/";
-
-                if (!String.IsNullOrEmpty(rootName))
-                    rootName = rootName + "/";
-
-                // Fetch entries to be indexed and compiled.
-                documents.AddRange(enumerateRootEntriesHandler(r).Select(id => new SearchDocument(rootName + id)));
-                BuildPartialIndex(wordIndexes, basePathWithSlash, entryStart, documents, baseScore);
-
-                entryStart = documents.Count;
-                baseScore = 100;
-            }
-
-            UpdateIndexes(documents, wordIndexes,
-                #if UNITY_2020_1_OR_NEWER
-                new Dictionary<string, Hash128>(),
-                #else
-                new Dictionary<string, string>(),
-                #endif
-                roots[0].basePath);
-        }
-
-        private List<SearchIndexEntry> BuildPartialIndex(string basis, int entryStartIndex, IList<SearchDocument> entries, int baseScore)
-        {
-            var wordIndexes = new List<SearchIndexEntry>(entries.Count * 3);
-            BuildPartialIndex(wordIndexes, basis, entryStartIndex, entries, baseScore);
-            return wordIndexes;
-        }
-
-        private void BuildPartialIndex(List<SearchIndexEntry> wordIndexes, string basis, int entryStartIndex, IList<SearchDocument> entries, int baseScore)
-        {
-            int entryCount = entries.Count - entryStartIndex;
-            for (int i = entryStartIndex; i != entries.Count; ++i)
-            {
-                if (m_ThreadAborted)
-                    break;
-
-                if (String.IsNullOrEmpty(entries[i].id))
-                    continue;
-
-                // Reformat entry to have them all uniformized.
-                if (!String.IsNullOrEmpty(basis))
-                    entries[i].id = entries[i].id.Replace('\\', '/').Replace(basis, "");
-
-                var path = entries[i].id;
-                if (skipEntryHandler(path))
-                    continue;
-
-                FetchEntries(path, i, wordIndexes, baseScore);
-            }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -1545,25 +1459,6 @@ namespace Unity.QuickSearch
             var matchKey = new SearchIndexEntry(key, crc, type);
             int foundIndex = Array.BinarySearch(m_Indexes, matchKey, comparer);
             return SearchRange(foundIndex, matchKey, maxScore, comparer, subset, limit);
-        }
-        /// <summary>
-        /// Incremental update of the index.
-        /// </summary>
-        /// <param name="updated">Entries to update.</param>
-        /// <param name="removed">Entries to remove.</param>
-        /// <param name="moved">Entries that were moved and need updating.</param>
-        protected void UpdateIndexWithNewContent(string[] updated, string[] removed, string[] moved)
-        {
-            lock (this)
-            {
-                Start();
-                foreach (var id in updated.Concat(moved).Distinct())
-                {
-                    var documentIndex = AddDocument(id, true);
-                    FetchEntries(id, documentIndex, m_BatchIndexes, 0);
-                }
-                Finish((bytes) => {}, removed, false);
-            }
         }
 
         private string[] ParseQuery(string query)
