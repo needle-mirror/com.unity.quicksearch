@@ -179,6 +179,11 @@ namespace Unity.QuickSearch
     /// </summary>
     public class SearchDocument
     {
+        /// <summary>
+        /// Create a new SearchDocument
+        /// </summary>
+        /// <param name="id">Document Id</param>
+        /// <param name="metadata">Additional data about this document</param>
         public SearchDocument(string id, string metadata = null)
         {
             this.id = id;
@@ -198,6 +203,7 @@ namespace Unity.QuickSearch
         /// <summary>
         /// Returns the document id string.
         /// </summary>
+        /// <returns>Returns a string representation of the Document.</returns>
         public override string ToString()
         {
             return id;
@@ -244,6 +250,9 @@ namespace Unity.QuickSearch
 
         private Thread m_IndexerThread;
         private volatile bool m_IndexReady = false;
+        /// <summary>
+        /// Is the current indexing thread aborted.
+        /// </summary>
         protected volatile bool m_ThreadAborted = false;
         private readonly Dictionary<RangeSet, IndexRange> m_FixedRanges;
         private SearchResultCollection m_AllDocumentIndexes;
@@ -472,7 +481,6 @@ namespace Unity.QuickSearch
         /// Write a binary representation of the the index on a stream.
         /// </summary>
         /// <param name="stream">Stream where to write the index.</param>
-        /// <param name="tag">Identification tag to write in the header of the index.</param>
         public void Write(Stream stream)
         {
             using (var indexWriter = new BinaryWriter(stream))

@@ -194,6 +194,7 @@ namespace Unity.QuickSearch
         /// Helper function to create a new search item for the current provider.
         /// </summary>
         /// <param name="id">Unique id of the search item. This is used to remove duplicates to the user view.</param>
+        /// <param name="context">Search context from the query that generates this item.</param>
         /// <param name="score">Score of the search item. The score is used to sort all the result per provider. Lower score are shown first.</param>
         /// <param name="label">The search item label is displayed on the first line of the search item UI widget.</param>
         /// <param name="description">The search item description is displayed on the second line of the search item UI widget.</param>
@@ -223,6 +224,13 @@ namespace Unity.QuickSearch
         /// <summary>
         /// Helper function to create a new search item for the current provider.
         /// </summary>
+        /// <param name="id">Unique id of the search item. This is used to remove duplicates to the user view.</param>
+        /// <param name="score">Score of the search item. The score is used to sort all the result per provider. Lower score are shown first.</param>
+        /// <param name="label">The search item label is displayed on the first line of the search item UI widget.</param>
+        /// <param name="description">The search item description is displayed on the second line of the search item UI widget.</param>
+        /// <param name="thumbnail">The search item thumbnail is displayed left to the item label and description as a preview.</param>
+        /// <param name="data">User data used to recover more information about a search item. Generally used in fetchLabel, fetchDescription, etc.</param>
+        /// <returns>The newly created search item attached to the current search provider.</returns>
         public SearchItem CreateItem(string id, int score, string label, string description, Texture2D thumbnail, object data)
         {
             return CreateItem(defaultContext, id, score, label, description, thumbnail, data);
@@ -231,6 +239,9 @@ namespace Unity.QuickSearch
         /// <summary>
         /// Helper function to create a new search item for the current provider.
         /// </summary>
+        /// <param name="context">Search context from the query that generates this item.</param>
+        /// <param name="id">Unique id of the search item. This is used to remove duplicates to the user view.</param>
+        /// <returns>The newly created search item attached to the current search provider.</returns>
         public SearchItem CreateItem(SearchContext context, string id)
         {
             return CreateItem(context, id, 0, null, null, null, null);
@@ -239,6 +250,8 @@ namespace Unity.QuickSearch
         /// <summary>
         /// Helper function to create a new search item for the current provider.
         /// </summary>
+        /// <param name="id">Unique id of the search item. This is used to remove duplicates to the user view.</param>
+        /// <returns>The newly created search item attached to the current search provider.</returns>
         public SearchItem CreateItem(string id)
         {
             return CreateItem(defaultContext, id, 0, null, null, null, null);
@@ -247,6 +260,9 @@ namespace Unity.QuickSearch
         /// <summary>
         /// Helper function to create a new search item for the current provider.
         /// </summary>
+        /// <param name="id">Unique id of the search item. This is used to remove duplicates to the user view.</param>
+        /// <param name="label">The search item label is displayed on the first line of the search item UI widget.</param>
+        /// <returns>The newly created search item attached to the current search provider.</returns>
         public SearchItem CreateItem(string id, string label)
         {
             return CreateItem(defaultContext, id, 0, label, null, null, null);
@@ -255,6 +271,12 @@ namespace Unity.QuickSearch
         /// <summary>
         /// Helper function to create a new search item for the current provider.
         /// </summary>
+        /// <param name="id">Unique id of the search item. This is used to remove duplicates to the user view.</param>
+        /// <param name="label">The search item label is displayed on the first line of the search item UI widget.</param>
+        /// <param name="description">The search item description is displayed on the second line of the search item UI widget.</param>
+        /// <param name="thumbnail">The search item thumbnail is displayed left to the item label and description as a preview.</param>
+        /// <param name="data">User data used to recover more information about a search item. Generally used in fetchLabel, fetchDescription, etc.</param>
+        /// <returns>The newly created search item attached to the current search provider.</returns>
         public SearchItem CreateItem(string id, string label, string description, Texture2D thumbnail, object data)
         {
             return CreateItem(defaultContext, id, 0, label, description, thumbnail, data);
@@ -263,6 +285,7 @@ namespace Unity.QuickSearch
         /// <summary>
         /// Create a Search item that will be bound to the SeaechProvider.
         /// </summary>
+        /// <param name="context">Search context from the query that generates this item.</param>
         /// <param name="id">Unique id of the search item. This is used to remove duplicates to the user view.</param>
         /// <param name="label">The search item label is displayed on the first line of the search item UI widget.</param>
         /// <param name="description">The search item description is displayed on the second line of the search item UI widget.</param>

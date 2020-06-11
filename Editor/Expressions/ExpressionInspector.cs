@@ -139,6 +139,7 @@ namespace Unity.QuickSearch
             m_VariablesList.Add(uniqueVarName);
             var newVar = m_Node.AddVariable(uniqueVarName, null);
             variableAdded?.Invoke(m_Node, newVar.name);
+            resetHeight = true;
         }
 
         private void OnRemoveVariable(ReorderableList list)
@@ -147,7 +148,10 @@ namespace Unity.QuickSearch
             if (m_VariablesList.Remove(varName))
             {
                 if (m_Node.RemoveVariable(varName) >= 1)
+                {
                     variableRemoved?.Invoke(m_Node, varName);
+                    resetHeight = true;
+                }
             }
         }
 
@@ -161,6 +165,7 @@ namespace Unity.QuickSearch
                 else
                     m_Node.name = null;
                 propertiesChanged?.Invoke(m_Node);
+                resetHeight = true;
             }
         }
 
@@ -171,6 +176,7 @@ namespace Unity.QuickSearch
             {
                 m_Node.color = newColor;
                 propertiesChanged?.Invoke(m_Node);
+                resetHeight = true;
             }
         }
 
@@ -236,6 +242,7 @@ namespace Unity.QuickSearch
             {
                 m_Node.value = m_ExpressionPaths[selectedIndex];
                 propertiesChanged?.Invoke(m_Node);
+                resetHeight = true;
             });
         }
 
@@ -360,6 +367,7 @@ namespace Unity.QuickSearch
             {
                 m_Node.value = selectType.ToString().ToLowerInvariant();
                 propertiesChanged?.Invoke(m_Node);
+                resetHeight = true;
             }
 
             if (selectType == ExpressionSelectField.Asset)
@@ -387,6 +395,7 @@ namespace Unity.QuickSearch
             {
                 m_Node.SetProperty("type", derivedTypeInfo.names[selectedIndex]);
                 propertiesChanged?.Invoke(m_Node);
+                resetHeight = true;
             });
             if (typeName != null)
             {
@@ -401,6 +410,7 @@ namespace Unity.QuickSearch
                     {
                         m_Node.SetProperty("field", properties[selectedIndex].name);
                         propertiesChanged?.Invoke(m_Node);
+                        resetHeight = true;
                     });
                 }
             }
@@ -417,6 +427,7 @@ namespace Unity.QuickSearch
             {
                 m_Node.SetProperty("type", derivedTypeInfo.names[selectedIndex]);
                 propertiesChanged?.Invoke(m_Node);
+                resetHeight = true;
             });
             if (typeName != null)
             {
@@ -431,6 +442,7 @@ namespace Unity.QuickSearch
                     {
                         m_Node.SetProperty("field", properties[selectedIndex].name);
                         propertiesChanged?.Invoke(m_Node);
+                        resetHeight = true;
                     });
                 }
             }
@@ -465,6 +477,7 @@ namespace Unity.QuickSearch
                     m_Node.value = SearchService.Providers.ElementAt(selectedIndex).name.id;
 
                 propertiesChanged?.Invoke(m_Node);
+                resetHeight = true;
             }
 
             if (selectedIndex < 0)
@@ -477,6 +490,7 @@ namespace Unity.QuickSearch
                     else
                         m_Node.value = null;
                     propertiesChanged?.Invoke(m_Node);
+                    resetHeight = true;
                 }
             }
             else
@@ -525,7 +539,7 @@ namespace Unity.QuickSearch
                     if (selectedType != newSelectedType)
                         m_Node.value = "";
 
-                    var newValue = GUILayout.TextField(Convert.ToString(m_Node.value), GUILayout.ExpandWidth(true));
+                    var newValue = EditorGUILayout.DelayedTextField(Convert.ToString(m_Node.value), GUILayout.ExpandWidth(true));
                     if (double.TryParse(newValue, out number))
                         m_Node.value = number;
                     else
@@ -551,7 +565,10 @@ namespace Unity.QuickSearch
                 }
 
                 if (has.changed)
+                {
                     propertiesChanged?.Invoke(m_Node);
+                    resetHeight = true;
+                }
             }
         }
 
@@ -568,7 +585,10 @@ namespace Unity.QuickSearch
             {
                 m_Node.value = EditorGUILayout.TextField("Query", (string)m_Node.value, GUILayout.MaxWidth(maxContentWidth));
                 if (has.changed)
+                {
                     propertiesChanged?.Invoke(m_Node);
+                    resetHeight = true;
+                }
             }
             m_VariablesReorderableList.DoLayoutList();
         }

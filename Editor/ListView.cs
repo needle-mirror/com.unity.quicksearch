@@ -11,14 +11,12 @@ namespace Unity.QuickSearch
     {
         private float m_ItemRowHeight = Styles.itemRowHeight;
 
-        private bool compactView => itemSize == 0;
-
         public ListView(ISearchView hostView)
             : base(hostView)
         {
         }
 
-        protected override void Draw(Rect screenRect, ICollection<int> selection, ref bool focusSelectedItem)
+        public override void Draw(Rect screenRect, ICollection<int> selection)
         {
             if (compactView)
                 m_ItemRowHeight = Styles.itemRowHeight / 2.0f;
@@ -38,6 +36,7 @@ namespace Unity.QuickSearch
             var viewRect = screenRect;
             viewRect.width -= scrollbarSpace;
             viewRect.height = totalSpace;
+            scrollbarVisible = scrollbarSpace > 0;
 
             m_ScrollPosition = GUI.BeginScrollView(screenRect, m_ScrollPosition, viewRect);
 
@@ -230,12 +229,12 @@ namespace Unity.QuickSearch
                 return;
 
             Rect projectedSelectedItemRect = new Rect(0, selection * m_ItemRowHeight, screenRect.width, m_ItemRowHeight);
-            if (selection < start)
+            if (selection <= start)
             {
                 m_ScrollPosition.y = Mathf.Max(0, projectedSelectedItemRect.y - 2);
                 searchView.Repaint();
             }
-            else if (selection > end)
+            else if (selection >= end)
             {
                 Rect visibleRect = new Rect(m_ScrollPosition, screenRect.size);
                 m_ScrollPosition.y += projectedSelectedItemRect.yMax - visibleRect.yMax + 2;

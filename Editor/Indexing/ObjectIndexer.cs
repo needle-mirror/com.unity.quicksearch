@@ -180,7 +180,8 @@ namespace Unity.QuickSearch
             var ext = Path.GetExtension(path);
 
             // Exclude indexes by default
-            if (ext.EndsWith("index", StringComparison.OrdinalIgnoreCase))
+            if (ext.EndsWith("meta", StringComparison.OrdinalIgnoreCase) ||
+                ext.EndsWith("index", StringComparison.OrdinalIgnoreCase))
                 return true;
 
             var dir = Path.GetDirectoryName(path);
@@ -223,7 +224,6 @@ namespace Unity.QuickSearch
         /// <summary>
         /// Split a word into multiple components.
         /// </summary>
-        /// <param name="id">Debug information</param>
         /// <param name="documentIndex">Document where the indexed word was found.</param>
         /// <param name="word">Word to add to the index.</param>
         public void IndexWordComponents(int documentIndex, string word)
@@ -236,7 +236,6 @@ namespace Unity.QuickSearch
         /// <summary>
         /// Split a value into multiple components.
         /// </summary>
-        /// <param name="id">Debug information</param>
         /// <param name="documentIndex">Document where the indexed word was found.</param>
         /// <param name="name">Key used to retrieve the value. See <see cref="SearchIndexer.AddProperty"/></param>
         /// <param name="value">Value to add to the index.</param>
@@ -263,11 +262,11 @@ namespace Unity.QuickSearch
         /// <summary>
         /// Add a new word coming from a specific document to the index. The word will be added with multiple variations allowing partial search. See <see cref="SearchIndexer.AddWord"/>.
         /// </summary>
-        /// <param name="id">Debug information</param>
         /// <param name="word">Word to add to the index.</param>
         /// <param name="documentIndex">Document where the indexed word was found.</param>
         /// <param name="maxVariations">Maximum number of variations to compute. Cannot be higher than the length of the word.</param>
         /// <param name="exact">If true, we will store also an exact match entry for this word.</param>
+        /// <param name="scoreModifier">Modified to apply to the base score for a specific word.</param>
         public void IndexWord(int documentIndex, string word, int maxVariations, bool exact, int scoreModifier = 0)
         {
             var modifiedScore = settings.baseScore + scoreModifier;
@@ -279,10 +278,10 @@ namespace Unity.QuickSearch
         /// <summary>
         /// Add a new word coming from a specific document to the index. The word will be added with multiple variations allowing partial search. See <see cref="SearchIndexer.AddWord"/>.
         /// </summary>
-        /// <param name="id">Debug information</param>
         /// <param name="word">Word to add to the index.</param>
         /// <param name="documentIndex">Document where the indexed word was found.</param>
         /// <param name="exact">If true, we will store also an exact match entry for this word.</param>
+        /// <param name="scoreModifier">Modified to apply to the base score for a specific word.</param>
         public void IndexWord(int documentIndex, string word, bool exact = false, int scoreModifier = 0)
         {
             IndexWord(documentIndex, word, word.Length, exact, scoreModifier: scoreModifier);
@@ -291,7 +290,6 @@ namespace Unity.QuickSearch
         /// <summary>
         /// Add a property value to the index. A property is specified with a key and a string value. The value will be stored with multiple variations. See <see cref="SearchIndexer.AddProperty"/>.
         /// </summary>
-        /// <param name="id">Debug information</param>
         /// <param name="name">Key used to retrieve the value. See <see cref="SearchIndexer.AddProperty"/></param>
         /// <param name="value">Value to add to the index.</param>
         /// <param name="documentIndex">Document where the indexed word was found.</param>
@@ -313,7 +311,6 @@ namespace Unity.QuickSearch
         /// <summary>
         /// Add a key-number value pair to the index. The key won't be added with variations. See <see cref="SearchIndexer.AddNumber"/>.
         /// </summary>
-        /// <param name="id">Debug information</param>
         /// <param name="name">Key used to retrieve the value.</param>
         /// <param name="number">Number value to store in the index.</param>
         /// <param name="documentIndex">Document where the indexed value was found.</param>
@@ -458,7 +455,6 @@ namespace Unity.QuickSearch
         /// <summary>
         /// Index all the properties of an object.
         /// </summary>
-        /// <param name="id">Object id.</param>
         /// <param name="obj">Object to index.</param>
         /// <param name="documentIndex">Document where the indexed object was found.</param>
         /// <param name="dependencies">Index dependencies.</param>
@@ -579,9 +575,9 @@ namespace Unity.QuickSearch
         /// <summary>
         /// Call all the registered custom indexer for a specific object. See <see cref="CustomObjectIndexerAttribute"/>.
         /// </summary>
-        /// <param name="id">Object id.</param>
-        /// <param name="obj">Object to index.</param>
+        /// <param name="documentId">Document index.</param>
         /// <param name="documentIndex">Document where the indexed object was found.</param>
+        /// <param name="obj">Object to index.</param>
         protected void IndexCustomProperties(string documentId, int documentIndex, Object obj)
         {
             using (var so = new SerializedObject(obj))
@@ -593,7 +589,7 @@ namespace Unity.QuickSearch
         /// <summary>
         /// Call all the registered custom indexer for an object of a specific type. See <see cref="CustomObjectIndexerAttribute"/>.
         /// </summary>
-        /// <param name="id">Object id.</param>
+        /// <param name="documentId">Document id.</param>
         /// <param name="obj">Object to index.</param>
         /// <param name="documentIndex">Document where the indexed object was found.</param>
         /// <param name="so">SerializedObject representation of obj.</param>

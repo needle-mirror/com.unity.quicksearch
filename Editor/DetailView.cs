@@ -150,6 +150,8 @@ namespace Unity.QuickSearch
             for (int i = 0; i < m_Editors.Length; ++i)
             {
                 var e = m_Editors[i];
+                if (!e)
+                    continue;
 
                 EditorGUIUtility.labelWidth = 0.4f * width;
                 bool foldout = false;
@@ -165,13 +167,19 @@ namespace Unity.QuickSearch
                     foldout = EditorGUILayout.BeginToggleGroup(sectionContent, foldout);
                     if (foldout)
                     {
-                        if (e.target is Transform)
-                            e.DrawDefaultInspector();
-                        else
-                            e.OnInspectorGUI();
+                        try
+                        {
+                            if (e.target is Transform)
+                                e.DrawDefaultInspector();
+                            else
+                                e.OnInspectorGUI();
+                            m_EditorTypeFoldout[e.GetType().Name] = foldout;
+                        }
+                        catch
+                        {
+                            // Ignore
+                        }
                     }
-
-                    m_EditorTypeFoldout[e.GetType().Name] = foldout;
                     EditorGUILayout.EndToggleGroup();
                 }
             }

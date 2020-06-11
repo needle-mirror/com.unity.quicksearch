@@ -133,7 +133,6 @@ namespace Unity.QuickSearch
         /// </summary>
         /// <param name="action">Action to execute.</param>
         /// <param name="items">Items to apply the action on.</param>
-        /// <param name="context">Current Search Context that is passed to the action handler.</param>
         /// <param name="endSearch">If true, executing this action will close the Quicksearch window.</param>
         void ExecuteAction(SearchAction action, SearchItem[] items, bool endSearch = true);
 
@@ -146,8 +145,12 @@ namespace Unity.QuickSearch
         /// Show a contextual menu for the specified item.
         /// </summary>
         /// <param name="item">Item affected by the contextual menu.</param>
-        /// <param name="context">Current SearchContext</param>
         /// <param name="contextualActionPosition">Where the menu should be drawn on screen (generally item position)</param>
         void ShowItemContextualMenu(SearchItem item, Rect contextualActionPosition);
+
+        /// <summary>
+        /// Request to focus and select the search field.
+        /// </summary>
+        void SelectSearch();
     }
 }

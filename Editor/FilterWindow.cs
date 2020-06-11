@@ -11,7 +11,9 @@ namespace Unity.QuickSearch
     {
         private static class Styles
         {
-            public static Vector2 windowSize = new Vector2(240, 250);
+            public const int kItemHeight = 18;
+            public const int kMaxWindowHeight = 300;
+            public static Vector2 windowSize = new Vector2(240, 80);
             public static readonly GUIStyle filterHeader = new GUIStyle(EditorStyles.boldLabel)
             {
                 name = "quick-search-filter-header",
@@ -86,7 +88,10 @@ namespace Unity.QuickSearch
             s_SearchContext = context;
             var filterWindow = ScriptableObject.CreateInstance<FilterWindow>();
             filterWindow.m_SearchView = quickSearchTool;
-            filterWindow.ShowAsDropDown(screenRect, Styles.windowSize);
+
+            var height = Math.Min(Styles.kMaxWindowHeight, Styles.windowSize.y + Styles.kItemHeight * context.filters.Count());
+            var size = new Vector2(Styles.windowSize.x, height);
+            filterWindow.ShowAsDropDown(screenRect, size);
             s_SearchContext = null;
             return true;
         }

@@ -95,9 +95,9 @@ namespace Unity.QuickSearch
 
         private void OnGUI()
         {
-            bool _unused = false;
             expression.context.searchView = this;
-            m_View.Draw(m_Selection, resolvedStyle.width, focusSelectedItem: ref _unused);
+            m_View.HandleInputEvent(Event.current, m_Selection);
+            m_View.Draw(m_Selection, resolvedStyle.width);
             DrawStats();
         }
 
@@ -126,6 +126,11 @@ namespace Unity.QuickSearch
                 if (GUILayout.Button("Refresh", Styles.debugToolbarButton))
                     expression.Evaluate();
             }
+        }
+
+        public void SelectSearch()
+        {
+            // Nothing to select
         }
     }
 }

@@ -10,7 +10,6 @@ using System.Text;
 using JetBrains.Annotations;
 using System.Linq;
 using System.Reflection;
-using System.Runtime.CompilerServices;
 using UnityEditor;
 using Debug = UnityEngine.Debug;
 
@@ -241,6 +240,7 @@ namespace Unity.QuickSearch.Providers
         private const string kSearchEndPoint = "https://assetstore.unity.com/api/search";
         private const string kProductDetailsEndPoint = "https://api.unity.com/v1/products/list";
         private static Dictionary<string, PreviewData> s_Previews = new Dictionary<string, PreviewData>();
+        private static bool s_RequestCheckPurchases;
         private static bool s_StartPurchaseRequest;
         private static List<PurchaseInfo> s_Purchases = new List<PurchaseInfo>();
         internal static HashSet<string> purchasePackageIds;
@@ -271,6 +271,9 @@ namespace Unity.QuickSearch.Providers
 
         private static IEnumerable<SearchItem> SearchStore(SearchContext context, SearchProvider provider)
         {
+            if (s_RequestCheckPurchases)
+                CheckPurchases();
+
             if (string.IsNullOrEmpty(context.searchQuery))
                 yield break;
 
@@ -400,7 +403,7 @@ namespace Unity.QuickSearch.Providers
 
         static void OnEnable()
         {
-            CheckPurchases();
+            s_RequestCheckPurchases = true;
         }
 
         static object s_UnityConnectInstance = null;
@@ -419,12 +422,11 @@ namespace Unity.QuickSearch.Providers
 
         static bool HasAccessToken()
         {
-            return !String.IsNullOrEmpty(GetConnectAccessToken());
+            return !string.IsNullOrEmpty(GetConnectAccessToken());
         }
 
         static string GetConnectAccessToken()
         {
-            //UnityConnect.instance.GetAccessToken()
             var instance = GetUnityConnectInstance();
             var method = instance.GetType().GetMethod("GetAccessToken");
             return (string)method.Invoke(instance, null);
@@ -438,6 +440,7 @@ namespace Unity.QuickSearch.Providers
             if (s_PackagesKey == null)
                 s_PackagesKey = GetPackagesKey();
 
+            s_RequestCheckPurchases = false;
             if (s_StartPurchaseRequest)
                 return;
 
@@ -527,6 +530,9 @@ namespace Unity.QuickSearch.Providers
                 var imageIndex = Mathf.FloorToInt(Mathf.Repeat((float)UnityEditor.EditorApplication.timeSinceStartup, imageUrls.Length));
                 keyImage = imageUrls[imageIndex];
             }
+
+            if (keyImage == null)
+                return null;
 
             if (imageDb.TryGetValue(keyImage, out var previewData))
             {
@@ -702,11 +708,6 @@ namespace Unity.QuickSearch.Providers
 
         static void GetUserInfo(Action<UserInfo, string> done)
         {
-            if (s_UserInfo != null)
-            {
-                done(s_UserInfo, null);
-                return;
-            }
             GetAccessTokenInfo((accessTokenInfo, error) =>
             {
                 if (error != null)
@@ -714,6 +715,13 @@ namespace Unity.QuickSearch.Providers
                     done(null, error);
                     return;
                 }
+
+                if (s_UserInfo != null)
+                {
+                    done(s_UserInfo, null);
+                    return;
+                }
+
                 RequestUserInfo(accessTokenInfo.access_token, accessTokenInfo.sub, (userInfo, userInfoError) =>
                 {
                     s_UserInfo = userInfo;

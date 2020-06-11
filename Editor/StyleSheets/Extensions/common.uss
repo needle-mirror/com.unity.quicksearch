@@ -89,3 +89,7 @@
     color: --theme-toolbar-button-text-color-hover;
     background-color: --theme-toolbar-button-background-color-hover;
 }
+
+.quick-search-status-bar-background {
+    background-color: --theme-header-box-background-color;
+}

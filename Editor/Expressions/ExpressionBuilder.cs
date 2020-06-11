@@ -9,22 +9,37 @@ using UnityEngine.UIElements;
 
 namespace Unity.QuickSearch
 {
-    class ExpressionBuilder : GraphViewEditorWindow
+    class ExpressionBuilder : GraphViewEditorWindow, IHasCustomMenu
     {
+        const float inspectorMinSize = 230;
+        const float expressionGraphMinSize = 180;
+        const float toolboxMinSize = 96;
+
         private SearchExpression m_Expression;
         private ExpressionGraph m_ExpressionGraph;
         private VisualSplitter m_HorizontalResizer;
-        private VisualSplitter m_VerticalResizer;
+        private VisualElement m_InspectorElement;
         private ExpressionInspector m_NodeEditor;
         private ExpressionResultView m_ResultView;
 
         [SerializeField] private string m_ExpressionPath;
         [SerializeField] private float m_GraphViewSplitterPosition = 0f;
-        [SerializeField] private float m_SearchViewSplitterPosition = 150;
 
         public string expressionPath => m_ExpressionPath;
 
         public override IEnumerable<GraphView> graphViews { get { yield return m_ExpressionGraph; } }
+
+        private string saveExpressionDirectory
+        {
+            get
+            {
+                return SessionState.GetString(nameof(saveExpressionDirectory), "Assets");
+            }
+            set
+            {
+                SessionState.SetString(nameof(saveExpressionDirectory), value);
+            }
+        }
 
         [MenuItem("Window/Quick Search/Expression Builder")]
         public static void ShowWindow()
@@ -37,7 +52,7 @@ namespace Unity.QuickSearch
             var existingBuilderWindows = Resources.FindObjectsOfTypeAll<ExpressionBuilder>();
             foreach (var w in existingBuilderWindows)
             {
-                if (w.expressionPath.Replace("\\", "/").Equals(assetPath.Replace("\\", "/"), System.StringComparison.OrdinalIgnoreCase))
+                if (w.expressionPath != null && w.expressionPath.Replace("\\", "/").Equals(assetPath.Replace("\\", "/"), StringComparison.OrdinalIgnoreCase))
                 {
                     w.Focus();
                     w.Show();
@@ -66,7 +81,7 @@ namespace Unity.QuickSearch
 
             m_ExpressionGraph.nodeChanged += OnNodePropertiesChanged;
             m_ExpressionGraph.graphChanged += OnGraphChanged;
-            m_ExpressionGraph.selectionChanged += OnSeletionChanged;
+            m_ExpressionGraph.selectionChanged += OnSelectionChanged;
             m_NodeEditor.propertiesChanged += OnNodePropertiesChanged;
             m_NodeEditor.variableAdded += OnNodeVariableAdded;
             m_NodeEditor.variableRemoved += OnNodeVariableRemoved;
@@ -75,7 +90,6 @@ namespace Unity.QuickSearch
 
         private void SaveSplitterPosition()
         {
-            m_SearchViewSplitterPosition = m_NodeEditor?.style.height.value.value ?? m_SearchViewSplitterPosition;
             m_GraphViewSplitterPosition = m_ExpressionGraph?.style.width.value.value ?? m_GraphViewSplitterPosition;
         }
 
@@ -85,7 +99,7 @@ namespace Unity.QuickSearch
 
             m_ExpressionGraph.nodeChanged -= OnNodePropertiesChanged;
             m_ExpressionGraph.graphChanged -= OnGraphChanged;
-            m_ExpressionGraph.selectionChanged -= OnSeletionChanged;
+            m_ExpressionGraph.selectionChanged -= OnSelectionChanged;
             m_ExpressionGraph.Dispose();
             m_ExpressionGraph = null;
 
@@ -125,27 +139,52 @@ namespace Unity.QuickSearch
             m_ExpressionGraph.AddNodeVariable(ex, varName);
         }
 
+        private void BuildToolbox(VisualElement container)
+        {
+            var toolbox = new VisualElement();
+            toolbox.style.flexDirection = FlexDirection.Column;
+            toolbox.style.width = toolboxMinSize;
+
+            toolbox.Add(new Button(() => m_ExpressionGraph.AddNode(ExpressionType.Provider)) { text = "Provider" });
+            toolbox.Add(new Button(() => m_ExpressionGraph.AddNode(ExpressionType.Value)) { text = "Value" });
+            toolbox.Add(new Button(() => m_ExpressionGraph.AddNode(ExpressionType.Search)) { text = "Search" });
+            toolbox.Add(new Button(() => m_ExpressionGraph.AddNode(ExpressionType.Select)) { text = "Select" });
+            toolbox.Add(new Button(() => m_ExpressionGraph.AddNode(ExpressionType.Union)) { text = "Union" });
+            toolbox.Add(new Button(() => m_ExpressionGraph.AddNode(ExpressionType.Intersect)) { text = "Intersect" });
+            toolbox.Add(new Button(() => m_ExpressionGraph.AddNode(ExpressionType.Except)) { text = "Except" });
+            toolbox.Add(new Button(() => m_ExpressionGraph.AddNode(ExpressionType.Expression)) { text = "Expression" });
+
+            container.Add(toolbox);
+        }
+
         private void BuildUI()
         {
-            BuildToolbox(m_ExpressionGraph);
+            BuildToolbox(rootVisualElement);
+            BuildGraphToolbar(m_ExpressionGraph);
 
             m_NodeEditor = new ExpressionInspector();
             m_ResultView = new ExpressionResultView(m_Expression);
+            m_ResultView.style.flexGrow = 1f;
 
-            m_VerticalResizer = new VisualSplitter(m_NodeEditor, m_ResultView, FlexDirection.Column);
-            m_HorizontalResizer = new VisualSplitter(m_ExpressionGraph, m_VerticalResizer, FlexDirection.Row);
+            m_InspectorElement = new VisualElement();
+            m_InspectorElement.style.flexDirection = FlexDirection.Column;
+            m_InspectorElement.Add(m_NodeEditor);
+            m_InspectorElement.Add(m_ResultView);
+            m_HorizontalResizer = new VisualSplitter(m_ExpressionGraph, m_InspectorElement, FlexDirection.Row);
 
             rootVisualElement.Add(m_HorizontalResizer);
             rootVisualElement.style.flexDirection = FlexDirection.Row;
             rootVisualElement.RegisterCallback<GeometryChangedEvent>(OnSizeChange);
+
+            UpdateWindowGeometry();
 
             EditorApplication.delayCall += () =>
             {
                 if (m_GraphViewSplitterPosition == 0f)
                     m_GraphViewSplitterPosition = position.width * 0.7f;
 
-                m_NodeEditor.style.height = m_SearchViewSplitterPosition;
                 m_ExpressionGraph.style.width = m_GraphViewSplitterPosition;
+                m_InspectorElement.MarkDirtyRepaint();
             };
         }
 
@@ -155,6 +194,23 @@ namespace Unity.QuickSearch
                 return;
             var widthDiff = evt.oldRect.width - evt.newRect.width;
             m_ExpressionGraph.style.width = m_ExpressionGraph.style.width.value.value - widthDiff;
+            UpdateWindowGeometry();
+        }
+
+        private void UpdateWindowGeometry()
+        {
+            if (position.width < (expressionGraphMinSize + inspectorMinSize + toolboxMinSize))
+            {
+                m_InspectorElement.style.display = DisplayStyle.None;
+                m_InspectorElement.style.minWidth = 0;
+                m_ExpressionGraph.style.minWidth = position.width - toolboxMinSize;
+            }
+            else
+            {
+                m_InspectorElement.style.display = DisplayStyle.Flex;
+                m_InspectorElement.style.minWidth = inspectorMinSize;
+                m_ExpressionGraph.style.minWidth = expressionGraphMinSize;
+            }
         }
 
         private void UpdateSelection(IList<ISelectable> selection)
@@ -162,6 +218,8 @@ namespace Unity.QuickSearch
             var selectedNode = selection.Select(s => s as Node).Where(s => s != null).LastOrDefault();
             if (selectedNode != null)
                 Evaluate(selectedNode);
+            else
+                m_Expression.Clear();
 
             if (selectedNode != null && selectedNode.userData is SearchExpressionNode ex)
             {
@@ -178,7 +236,7 @@ namespace Unity.QuickSearch
             m_ResultView.MarkDirtyRepaint();
         }
 
-        private void OnSeletionChanged(IList<ISelectable> selection)
+        private void OnSelectionChanged(IList<ISelectable> selection)
         {
             UpdateSelection(selection);
         }
@@ -190,19 +248,10 @@ namespace Unity.QuickSearch
             return space;
         }
 
-        private void BuildToolbox(VisualElement container)
+        private void BuildGraphToolbar(VisualElement container)
         {
             var toolbox = new VisualElement();
             toolbox.style.flexDirection = FlexDirection.Row;
-
-            toolbox.Add(new Button(() => m_ExpressionGraph.AddNode(ExpressionType.Provider)) { text = "Provider" });
-            toolbox.Add(new Button(() => m_ExpressionGraph.AddNode(ExpressionType.Value)) { text = "Value" });
-            toolbox.Add(new Button(() => m_ExpressionGraph.AddNode(ExpressionType.Search)) { text = "Search" });
-            toolbox.Add(new Button(() => m_ExpressionGraph.AddNode(ExpressionType.Select)) { text = "Select" });
-            toolbox.Add(new Button(() => m_ExpressionGraph.AddNode(ExpressionType.Union)) { text = "Union" });
-            toolbox.Add(new Button(() => m_ExpressionGraph.AddNode(ExpressionType.Intersect)) { text = "Intersect" });
-            toolbox.Add(new Button(() => m_ExpressionGraph.AddNode(ExpressionType.Except)) { text = "Except" });
-            toolbox.Add(new Button(() => m_ExpressionGraph.AddNode(ExpressionType.Expression)) { text = "Expression" });
 
             toolbox.Add(FlexibleSpace());
 
@@ -284,7 +333,7 @@ namespace Unity.QuickSearch
         private void Save()
         {
             if (String.IsNullOrEmpty(m_ExpressionPath))
-                m_ExpressionPath = EditorUtility.SaveFilePanel("Save search expression...", null, "expression", "qse").Replace("\\", "/");
+                m_ExpressionPath = EditorUtility.SaveFilePanel("Save search expression...", saveExpressionDirectory, "expression", "qse").Replace("\\", "/");
             if (!String.IsNullOrEmpty(m_ExpressionPath))
             {
                 m_Expression.Save(m_ExpressionPath);
@@ -292,10 +341,16 @@ namespace Unity.QuickSearch
 
                 if (m_ExpressionPath.StartsWith(Application.dataPath.Replace("\\", "/")))
                 {
+                    saveExpressionDirectory = Path.GetDirectoryName(m_ExpressionPath);
                     var relativepath = "Assets" + m_ExpressionPath.Substring(Application.dataPath.Replace("\\", "/").Length);
                     AssetDatabase.ImportAsset(relativepath);
                 }
             }
+        }
+
+        public void AddItemsToMenu(GenericMenu menu)
+        {
+            menu.AddItem(new GUIContent("Save"), false, () => Save());
         }
     }
 }

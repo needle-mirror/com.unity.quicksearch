@@ -30,7 +30,6 @@ namespace Unity.QuickSearch
         public const int kSearchBoxBtnSize = 24;
         public const int kSearchFieldWidthOffset = 120;
 
-
         private static bool isDarkTheme => EditorGUIUtility.isProSkin;
 
         private static readonly RectOffset marginNone = new RectOffset(0, 0, 0, 0);
@@ -395,5 +394,10 @@ namespace Unity.QuickSearch
 
             return texture;
         }
+
+        public static readonly GUIStyle statusBarBackground = new GUIStyle()
+        {
+            name = "quick-search-status-bar-background"
+        };
     }
 }

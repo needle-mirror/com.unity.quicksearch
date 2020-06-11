@@ -148,10 +148,10 @@ namespace Unity.QuickSearch.Providers
             if (type == null)
                 return obj;
             var objType = obj.GetType();
-            if (objType == type || objType.IsSubclassOf(type))
+            if (type.IsAssignableFrom(objType))
                 return obj;
 
-            if (obj is GameObject go)
+            if (obj is GameObject go && typeof(Component).IsAssignableFrom(type))
                 return go.GetComponent(type);
 
             return null;

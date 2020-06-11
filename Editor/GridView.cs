@@ -17,7 +17,7 @@ namespace Unity.QuickSearch
         {
         }
 
-        protected override void Draw(Rect screenRect, ICollection<int> selection, ref bool focusSelectedItem)
+        public override void Draw(Rect screenRect, ICollection<int> selection)
         {
             float itemWidth = itemSize + itemPadding * 2;
             float itemHeight = itemSize + itemLabelHeight + itemLabelTopPadding + itemPadding * 2;
@@ -29,7 +29,8 @@ namespace Unity.QuickSearch
             var gridHeight = lineCount * itemHeight - Styles.statusLabel.fixedHeight;
             var availableHeight = screenRect.height;
 
-            if (gridHeight > availableHeight)
+            scrollbarVisible = gridHeight > availableHeight;
+            if (scrollbarVisible)
             {
                 gridWidth -= Styles.scrollbar.fixedWidth;
                 columnCount = (int)(gridWidth / itemWidth);

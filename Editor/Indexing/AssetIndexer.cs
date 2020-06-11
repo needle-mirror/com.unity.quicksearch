@@ -48,17 +48,22 @@ namespace Unity.QuickSearch
 
         public override IEnumerable<string> GetRoots()
         {
-            if (settings.roots == null || settings.roots.Length == 0)
-                return new string[] { settings.root };
-            return settings.roots.Where(r => Directory.Exists(r));
+            if (settings.roots == null)
+                settings.roots = new string[0];
+            var roots = settings.roots.Where(r => Directory.Exists(r)).ToArray();
+            if (roots.Length == 0)
+                roots = new string[] { settings.root };
+            return roots.Select(r => r.Replace("\\", "/"));
         }
 
         public override List<string> GetDependencies()
         {
-            string[] roots = GetRoots().ToArray();
-            return AssetDatabase.FindAssets(String.Empty, roots)
-                .Select(AssetDatabase.GUIDToAssetPath)
-                .Distinct().Where(path => !SkipEntry(path)).ToList();
+            return GetRoots().SelectMany(root =>
+            {
+                return Directory.EnumerateFileSystemEntries(root, "*", SearchOption.AllDirectories)
+                    .Where(path => !SkipEntry(path))
+                    .Select(path => path.Replace("\\", "/"));
+            }).ToList();
         }
 
         public override Hash128 GetDocumentHash(string path)

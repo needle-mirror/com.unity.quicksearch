@@ -28,7 +28,7 @@ namespace Unity.QuickSearch
                         if (Evaluate(context.searchQuery, out var result))
                             expression += " = " + result;
 
-                        items.Add(provider.CreateItem(context, Guid.NewGuid().ToString("N"), "compute", expression, null, null));
+                        items.Add(provider.CreateItem(context, result.ToString(), "compute", expression, null, null));
                         return null;
                     },
 

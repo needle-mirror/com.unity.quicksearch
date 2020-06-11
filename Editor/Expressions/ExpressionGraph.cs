@@ -136,42 +136,50 @@ namespace Unity.QuickSearch
             NotifyGraphChanged();
         }
 
+        public override void BuildContextualMenu(ContextualMenuPopulateEvent evt)
+        {
+            foreach (var t in Enum.GetValues(typeof(ExpressionType)))
+            {
+                var type = (ExpressionType)t;
+                if (type == ExpressionType.Undefined || type == ExpressionType.Results)
+                    continue;
+                evt.menu.AppendAction($"Create {type}", menuAction =>
+                {
+                    var n = AddNode(type);
+                    var localPos = VisualElementExtensions.ChangeCoordinatesTo(this, contentViewContainer, menuAction.eventInfo.localMousePosition);
+                    n.SetPosition(new Rect(localPos, n.GetPosition().size));
+                });
+            }
+            evt.menu.AppendSeparator();
+            base.BuildContextualMenu(evt);
+        }
+
         private void UpdateUnionVariables(Node node)
         {
             if (!(node.userData is SearchExpressionNode ex))
                 return;
 
             int indexName = 1;
+            int connectedVars = 0;
 
             if (ex.variables != null)
             {
-                bool firstNullFound = false;
-                foreach (var v in ex.variables.ToArray())
-                {
-                    var sourceName = indexName.ToString();
-                    if (v.name != sourceName && RenameNodeVariable(ex, v.name, sourceName))
-                    {
-                        if (ex.RenameVariable(v.name, sourceName))
-                            v.name = indexName.ToString();
-                    }
-
-                    if (v.source == null)
-                    {
-                        if (firstNullFound)
-                        {
-                            if (RemoveNodeVariable(ex, v.name))
-                                ex.RemoveVariable(v.name);
-                        }
-                        else
-                            firstNullFound = true;
-                    }
-
-                    ++indexName;
-                }
+                foreach (var v in ex.variables)
+                    if (v.source != null)
+                        connectedVars++;
             }
 
-            if (FindPort(node, "var", indexName.ToString()) == null)
-                AddNodeVariable(ex, indexName.ToString());
+            var ports = node.Query<Port>().Where(p => p.portType ==  typeof(ExpressionVariable)).ToList();
+            foreach (var p in ports)
+            {
+                p.portName = indexName.ToString();
+                indexName++;
+            }
+            
+            if (connectedVars == ports.Count)
+                AddInputPort(node, $"var-{ex.id}-{indexName}", indexName.ToString(), typeof(ExpressionVariable));
+
+            node.RefreshPorts();
         }
 
         internal void AddNodeVariable(SearchExpressionNode ex, string varName)
@@ -259,7 +267,7 @@ namespace Unity.QuickSearch
                             if (typeof(ExpressionSource).IsAssignableFrom(edge.input.portType))
                                 node.source = null;
                             else if (node.variables != null && typeof(ExpressionVariable).IsAssignableFrom(edge.input.portType))
-                                node.SetVariableSource(edge.input.portName, null);
+                                node.SetVariableSource(edge.input.GetVarName(node), null);
 
                             nodeChanged?.Invoke(node);
                             NotifyGraphChanged();
@@ -284,13 +292,13 @@ namespace Unity.QuickSearch
             {
                 foreach (var edge in changes.edgesToCreate)
                 {
-                    if (edge.input?.node?.userData is SearchExpressionNode nodeIn && 
+                    if (edge.input?.node?.userData is SearchExpressionNode nodeIn &&
                         edge.output?.node?.userData is SearchExpressionNode nodeOut)
                     {
                         if (typeof(ExpressionSource).IsAssignableFrom(edge.input.portType))
                             nodeIn.source = nodeOut;
                         else if (typeof(ExpressionVariable).IsAssignableFrom(edge.input.portType))
-                            nodeIn.SetVariableSource(edge.input.portName, nodeOut);
+                            nodeIn.SetVariableSource(edge.input.GetVarName(nodeIn), nodeOut);
                         nodeChanged?.Invoke(nodeIn);
                         NotifyGraphChanged();
                     }
@@ -365,7 +373,10 @@ namespace Unity.QuickSearch
             node.position = new Vector2(
                 UnityEngine.Random.Range(center.x + 100f, center.x + contentRect.size.x - 100f),
                 UnityEngine.Random.Range(center.y + 100f, center.y + contentRect.size.y - 100f));
-            return AddNode(node);
+            var graphNode = AddNode(node);
+            ClearSelection();
+            AddToSelection(graphNode);
+            return graphNode;
         }
 
         private Node AddNode(SearchExpressionNode ex)
@@ -417,13 +428,12 @@ namespace Unity.QuickSearch
                     break;
 
                 case ExpressionType.Value:
-                    AddOutputPort(node, $"output-{ex.id}", Convert.ToString(ex.value), typeof(ExpressionConstant));
+                    AddOutputPort(node, $"output-{ex.id}", Convert.ToString(ex.value), typeof(ExpressionSet));
                     break;
 
                 case ExpressionType.Union:
-                    var nextMergeInputPortName = (ex.GetVariableCount() + 1).ToString();
                     AddVariablePorts(node, ex);
-                    AddInputPort(node, $"var-{ex.id}-{nextMergeInputPortName}", nextMergeInputPortName, typeof(ExpressionVariable));
+                    UpdateUnionVariables(node);
                     AddOutputPort(node, $"output-{ex.id}", "Results", typeof(ExpressionSet));
                     break;
 

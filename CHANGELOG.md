@@ -1,18 +1,10 @@
 # Changelog
 
-## [1.6.0-preview.9] - 2020-06-03
-- [UX] Remove basic file indexer support. Now indexing only works with .index files and fallback is using the AssetDatabase.FindAsset API.
-- [FIX] Fix one letter word query that breaks searching the index.
-- [FIX] Fix NullReferenceException thrown When "Disabled" option is toggle from "Search Index Manager" window (case 1252291)
-- [FIX] Fix drag and drop paths for the asset search provider.
-- [FIX] Add better sorting for assets based on file path matches.
-- [API] Allow skipping words when parsing a query with the QueryEngine.
-- [API] Allow retrieval of tokens used to generate a query.
-
-## [1.6.0-preview.8] - 2020-05-17
+## [2.0.0] - 2020-06-11
 - [UX] Save Quick Search settings per project instead of globally for all projects.
 - [UX] Remove support for 2018.4.
 - [UX] Remove search provider sub categories. It simplifies the search view filter window.
+- [UX] Remove basic file indexer support. Now indexing only works with .index files and fallback is using the AssetDatabase.FindAsset API.
 - [UX] Improve the saved search query workflow (less field to fulfill).
 - [UX] Change Reset priorities button in Preferences to Reset to providers Defaults (which reset priority, active and default actions).
 - [UX] Add the total asynchronous time a query took for all provider sessions in the Quick Search status bar.
@@ -45,13 +37,17 @@
 - [FIX] Fix scrollbar overflow (more visible in the light theme).
 - [FIX] Fix Quick Search fails to find assets when more than 16 characters are entered into the search field (case 1225947)
 - [FIX] Fix Progress API usage.
+- [FIX] Fix one letter word query that breaks searching the index.
+- [FIX] Fix NullReferenceException thrown When "Disabled" option is toggle from "Search Index Manager" window (case 1252291)
 - [FIX] Fix filter override application.
+- [FIX] Fix drag and drop paths for the asset search provider.
 - [FIX] Fix details view min and max size.
 - [FIX] Fix complete file name indexing (case 1214270)
 - [FIX] Fix an issue tracking selection of item at index 1.
 - [FIX] Fix actions sorting on SearchService init and in SearchSettings window.
 - [FIX] Add support for any characters in word searches.
 - [FIX] Add better support for startup incremental update.
+- [FIX] Add better sorting for assets based on file path matches.
 - [DOC] Update API documentation.
 - [API] Remove the `SearchFilter` class.
 - [API] Optimize call to operator handlers when in fallback mode.
@@ -59,6 +55,8 @@
 - [API] Improve support for simultaneous calls to `SearchService.GetItems` with different search contexts.
 - [API] Improve build time of a `QueryEngine` search query.
 - [API] Fix calling onEnable/onDisable multiple time when doing multiple simultaneous searches with a provider.
+- [API] Allow skipping words when parsing a query with the QueryEngine.
+- [API] Allow retrieval of tokens used to generate a query.
 - [API] Add the ability to customize a query engine with filters using method attributes. Used by the Scene Provider.
 - [API] Add the ability for the QueryEngine to skip unknown filters in a query.
 - [API] Add support to remove filters on the `QueryEngine`.
@@ -74,7 +72,7 @@
 - [FIX] Fix one letter word search (one letter word should be ignored when searching the index)
 
 ## [1.5.4] - 2020-05-22
-- [UX] Remove experimental indexing in 1.5 as it will be officially released in version 1.6
+- [UX] Remove experimental indexing in 1.5 as it will be officially released in version 2.0
 - [FIX] Remove usage of Progress.RunTask
 
 ## [1.5.3] - 2020-02-23

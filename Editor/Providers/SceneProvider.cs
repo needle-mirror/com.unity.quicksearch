@@ -52,7 +52,7 @@ namespace Unity.QuickSearch.Providers
 
             EditorApplication.hierarchyChanged += () => m_HierarchyChanged = true;
 
-            toObject = (item, type) => ObjectFromItem(item);
+            toObject = (item, type) => ObjectFromItem(item, type);
 
             fetchItems = (context, items, provider) => SearchItems(context, provider);
 
@@ -187,6 +187,13 @@ namespace Unity.QuickSearch.Providers
             else if (context.wantsMore && context.filterType != null && String.IsNullOrEmpty(context.searchQuery))
             {
                 yield return GameObject.FindObjectsOfType(context.filterType)
+                    .Select(obj => 
+                    {
+                        if (obj is Component c)
+                            return c.gameObject;
+                        return obj as GameObject;
+                    })
+                    .Where(go => go)
                     .Select(go => AddResult(context, provider, go.GetInstanceID().ToString(), 999, false));
             }
         }
@@ -237,6 +244,18 @@ namespace Unity.QuickSearch.Providers
             var instanceID = Convert.ToInt32(item.id);
             var obj = EditorUtility.InstanceIDToObject(instanceID) as GameObject;
             return obj;
+        }
+
+        private static UnityEngine.Object ObjectFromItem(SearchItem item, Type type)
+        {
+            var go = ObjectFromItem(item);
+            if (!go)
+                return null;
+
+            if (typeof(Component).IsAssignableFrom(type))
+                return go.GetComponent(type);
+
+            return ObjectFromItem(item);
         }
     }
 

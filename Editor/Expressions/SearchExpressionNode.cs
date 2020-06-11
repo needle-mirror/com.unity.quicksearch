@@ -168,7 +168,7 @@ namespace Unity.QuickSearch
                 if (v.name == name)
                 {
                     v.source = source;
-                    break;
+                    return;
                 }
             }
 
