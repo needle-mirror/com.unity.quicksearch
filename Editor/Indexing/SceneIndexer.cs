@@ -109,6 +109,9 @@ namespace Unity.QuickSearch
                 if (PrefabUtility.IsPrefabAssetMissing(obj))
                     continue;
 
+                if (obj.tag?.Equals("noindex~", StringComparison.Ordinal) ?? false)
+                    continue;
+
                 var gid = globalIds[i];
                 var id = gid.ToString();
                 var path = SearchUtils.GetTransformPath(obj.transform);
@@ -183,57 +186,60 @@ namespace Unity.QuickSearch
 
         private void IndexGameObject(int documentIndex, GameObject go, SearchDatabase.Options options)
         {
-            if (options.fstats)
+            if (go.transform.root != go.transform)
+                IndexProperty(documentIndex, "is", "child", saveKeyword: true, exact: true);
+            else
+                IndexProperty(documentIndex, "is", "root", saveKeyword: true, exact: true);
+
+            if (go.transform.childCount == 0)
+                IndexProperty(documentIndex, "is", "leaf", saveKeyword: true, exact: true);
+
+            IndexNumber(documentIndex, "layer", go.layer);
+            IndexProperty(documentIndex, "tag", go.tag, saveKeyword: true);
+
+            if (PrefabUtility.IsAnyPrefabInstanceRoot(go))
             {
-                if (go.transform.root != go.transform)
-                    IndexProperty(documentIndex, "is", "child", saveKeyword: true, exact: true);
-                else
-                    IndexProperty(documentIndex, "is", "root", saveKeyword: true, exact: true);
-
-                if (go.transform.childCount == 0)
-                    IndexProperty(documentIndex, "is", "leaf", saveKeyword: true, exact: true);
-
-                IndexNumber(documentIndex, "layer", go.layer);
-                IndexProperty(documentIndex, "tag", go.tag, saveKeyword: true);
+                IndexProperty(documentIndex, "t", "prefab", saveKeyword: true, exact: true);
+                IndexProperty(documentIndex, "prefab", "root", saveKeyword: true, exact: true);
             }
 
-            if (options.types || options.properties || options.dependencies)
+            if (options.types)
             {
-                if (options.types)
-                {
-                    var ptype = PrefabUtility.GetPrefabAssetType(go);
-                    if (ptype == PrefabAssetType.Regular || ptype == PrefabAssetType.Variant)
-                    {
-                        IndexProperty(documentIndex, "t", "prefab", saveKeyword: true, exact: true);
+                if (PrefabUtility.IsPartOfPrefabInstance(go)) IndexProperty(documentIndex, "prefab", "instance", saveKeyword: true, exact: true);
+                if (PrefabUtility.IsOutermostPrefabInstanceRoot(go)) IndexProperty(documentIndex, "prefab", "top", saveKeyword: true, exact: true);
+                if (PrefabUtility.IsPartOfNonAssetPrefabInstance(go)) IndexProperty(documentIndex, "prefab", "nonasset", saveKeyword: true, exact: true);
+                if (PrefabUtility.IsPartOfPrefabAsset(go)) IndexProperty(documentIndex, "prefab", "asset", saveKeyword: true, exact: true);
+                if (PrefabUtility.IsPartOfAnyPrefab(go)) IndexProperty(documentIndex, "prefab", "any", saveKeyword: true, exact: true);
+                if (PrefabUtility.IsPartOfModelPrefab(go)) IndexProperty(documentIndex, "prefab", "model", saveKeyword: true, exact: true);
+                if (PrefabUtility.IsPartOfRegularPrefab(go)) IndexProperty(documentIndex, "prefab", "regular", saveKeyword: true, exact: true);
+                if (PrefabUtility.IsPartOfVariantPrefab(go)) IndexProperty(documentIndex, "prefab", "variant", saveKeyword: true, exact: true);
+                if (PrefabUtility.HasPrefabInstanceAnyOverrides(go, false)) IndexProperty(documentIndex, "prefab", "modified", saveKeyword: true, exact: true);
 
-                        if (options.dependencies)
-                        {
-                            var prefabPath = PrefabUtility.GetPrefabAssetPathOfNearestInstanceRoot(go);
-                            var prefabName = Path.GetFileNameWithoutExtension(prefabPath);
-                            IndexProperty(documentIndex, "ref", prefabName, saveKeyword: true);
-                        }
-                    }
+                if (options.dependencies)
+                {
+                    var prefabPath = PrefabUtility.GetPrefabAssetPathOfNearestInstanceRoot(go);
+                    var prefabName = Path.GetFileNameWithoutExtension(prefabPath);
+                    IndexProperty(documentIndex, "ref", prefabName, saveKeyword: true);
                 }
+            }
+
+            if (options.properties)
+                IndexObject(documentIndex, go);
+
+            var gocs = go.GetComponents<Component>();
+            IndexNumber(documentIndex, "components", gocs.Length);
+
+            for (int componentIndex = 1; componentIndex < gocs.Length; ++componentIndex)
+            {
+                var c = gocs[componentIndex];
+                if (!c || c.hideFlags.HasFlag(HideFlags.HideInInspector))
+                    continue;
+
+                if (options.types)
+                    IndexProperty(documentIndex, "t", c.GetType().Name.ToLowerInvariant(), saveKeyword: true);
 
                 if (options.properties)
-                    IndexObject(documentIndex, go);
-
-                var gocs = go.GetComponents<Component>();
-
-                IndexNumber(documentIndex, "components", gocs.Length);
-
-                for (int componentIndex = 1; componentIndex < gocs.Length; ++componentIndex)
-                {
-                    var c = gocs[componentIndex];
-                    if (!c || c.hideFlags.HasFlag(HideFlags.HideInInspector))
-                        continue;
-
-                    if (options.types)
-                        IndexProperty(documentIndex, "t", c.GetType().Name.ToLowerInvariant(), saveKeyword: true);
-
-                    if (options.properties)
-                        IndexObject(documentIndex, c);
-                }
+                    IndexObject(documentIndex, c);
             }
         }
 

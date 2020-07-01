@@ -20,7 +20,7 @@ namespace Unity.QuickSearch
         public Queue<SearchContext> pendingQueries { get; private set; }
         public List<SearchContext> runningQueries { get; private set; }
 
-        private Func<SearchItem, IEnumerable<SearchItem>> selectCallback;
+        private HashSet<SearchItem> pendingItems;
 
         public static readonly SearchRequest empty = new SearchRequest(ExpressionType.Undefined);
         private static Dictionary<string, Type> s_TypeTable = new Dictionary<string, Type>();
@@ -35,7 +35,7 @@ namespace Unity.QuickSearch
         /// </summary>
         public event Action<SearchRequest> resolved;
 
-        public SearchRequest(ExpressionType type, Action<SearchRequest> finishedHandler = null)
+        public SearchRequest(ExpressionType type)
         {
             id = Guid.NewGuid().ToString();
             this.type = type;
@@ -43,13 +43,10 @@ namespace Unity.QuickSearch
             runningQueries = new List<SearchContext>();
             dependencies = new List<SearchRequest>();
             resolving = false;
-
-            if (finishedHandler != null)
-                resolved += finishedHandler;
         }
 
-        public SearchRequest(ExpressionType type, SearchContext searchContext, Action<SearchRequest> finishedHandler = null)
-            : this(type, finishedHandler)
+        public SearchRequest(ExpressionType type, SearchContext searchContext)
+            : this(type)
         {
             pendingQueries.Enqueue(searchContext);
         }
@@ -81,32 +78,24 @@ namespace Unity.QuickSearch
             return joinedRequest;
         }
 
-        public SearchRequest Select(ExpressionSelectField selectField, string objectType, string propertyName)
+        internal IEnumerable<SearchItem> SelectPath(SearchItem item)
         {
-            selectCallback = (item) =>
-            {
-                switch (selectField)
-                {
-                    case ExpressionSelectField.Default:
-                        return new SearchItem[] { item };
 
-                    case ExpressionSelectField.Type:
-                        return SelectTypes(item);
+            var obj = item.provider?.toObject?.Invoke(item, typeof(UnityEngine.Object));
+            if (!obj)
+                return new [] { item };
 
-                    case ExpressionSelectField.Component:
-                        return SelectComponent(item, objectType, propertyName);
+            var path = AssetDatabase.GetAssetPath(obj);
+            if (!String.IsNullOrEmpty(path))
+                return new [] { new SearchItem(path) };
 
-                    case ExpressionSelectField.Object:
-                        return SelectObject(item, objectType, propertyName);
-                }
+            if (obj is GameObject go)
+                return new [] { new SearchItem(SearchUtils.GetHierarchyPath(go)) };
 
-                return Enumerable.Empty<SearchItem>();
-            };
-
-            return this;
+            return new [] { item };
         }
 
-        private ISet<SearchItem> SelectTypes(SearchItem item)
+        internal ISet<SearchItem> SelectTypes(SearchItem item)
         {
             var results = new HashSet<SearchItem>();
             var obj = item.provider.toObject?.Invoke(item, typeof(UnityEngine.Object));
@@ -121,7 +110,7 @@ namespace Unity.QuickSearch
             return results;
         }
 
-        private ISet<SearchItem> SelectObject(SearchItem item, string objectTypeName, string objectPropertyName)
+        internal ISet<SearchItem> SelectObject(SearchItem item, string objectTypeName, string objectPropertyName, bool mapped, bool overrides)
         {
             var results = new HashSet<SearchItem>();
 
@@ -138,18 +127,30 @@ namespace Unity.QuickSearch
                 return results;
 
             if (typeof(Component).IsAssignableFrom(objectType))
-                return SelectComponent(item, objectTypeName, objectPropertyName);
+                return SelectComponent(item, objectTypeName, objectPropertyName, mapped, overrides);
 
             var assetObject = item.provider?.toObject(item, objectType);
             if (!assetObject)
                 return results;
 
-            SelectProperty(assetObject, objectPropertyName, results);
+            SelectProperty(assetObject, objectPropertyName, results, mapped ? item : null);
 
             return results;
         }
 
-        private ISet<SearchItem> SelectComponent(SearchItem item, string objectTypeName, string objectPropertyName)
+        internal IEnumerable<SearchItem> SelectReferences(SearchItem item, string type, int depth)
+        {
+            var obj = item.provider?.toObject?.Invoke(item, typeof(UnityEngine.Object));
+            if (!obj)
+                return Enumerable.Empty<SearchItem>();
+
+            var assetProvider = SearchService.GetProvider("asset");
+            return SearchUtils.GetReferences(obj, depth)
+                .Where(path => string.IsNullOrEmpty(type) || AssetDatabase.GetMainAssetTypeAtPath(path)?.Name == type)
+                .Select(path => assetProvider.CreateItem(path));
+        }
+
+        internal ISet<SearchItem> SelectComponent(SearchItem item, string objectTypeName, string objectPropertyName, bool mapped, bool overrides)
         {
             var results = new HashSet<SearchItem>();
 
@@ -160,7 +161,7 @@ namespace Unity.QuickSearch
             if (!go)
                 return results;
 
-            var correspondingObject = PrefabUtility.GetCorrespondingObjectFromOriginalSource(go) ?? go;
+            var correspondingObject = overrides ? go : (PrefabUtility.GetCorrespondingObjectFromOriginalSource(go) ?? go);
             if (!correspondingObject)
                 return results;
 
@@ -178,13 +179,13 @@ namespace Unity.QuickSearch
             {
                 if (!c)
                     continue;
-                SelectProperty(c, objectPropertyName, results);
+                SelectProperty(c, objectPropertyName, results, mapped ? item : null);
             }
 
             return results;
         }
 
-        private void SelectProperty(UnityEngine.Object obj, string objectPropertyName, ISet<SearchItem> results)
+        private void SelectProperty(UnityEngine.Object obj, string objectPropertyName, ISet<SearchItem> results, SearchItem source)
         {
             using (var so = new SerializedObject(obj))
             {
@@ -193,29 +194,29 @@ namespace Unity.QuickSearch
                     return;
                 switch (property.propertyType)
                 {
-                    case SerializedPropertyType.Integer: SelectValue(results, property.intValue); break;
-                    case SerializedPropertyType.Enum: SelectValue(results, property.enumNames[property.enumValueIndex]); break;
-                    case SerializedPropertyType.Boolean: SelectValue(results, property.boolValue.ToString().ToLowerInvariant()); break;
-                    case SerializedPropertyType.String: SelectValue(results, property.stringValue); break;
-                    case SerializedPropertyType.Float: SelectValue(results, property.floatValue); break;
-                    case SerializedPropertyType.FixedBufferSize: SelectValue(results, property.fixedBufferSize); break;
-                    case SerializedPropertyType.Color: SelectValue(results, ColorUtility.ToHtmlStringRGB(property.colorValue)); break;
-                    case SerializedPropertyType.AnimationCurve: SelectValue(results, property.animationCurveValue); break;
+                    case SerializedPropertyType.Integer: SelectValue(results, property.intValue, source); break;
+                    case SerializedPropertyType.Enum: SelectValue(results, property.enumNames[property.enumValueIndex], source); break;
+                    case SerializedPropertyType.Boolean: SelectValue(results, property.boolValue.ToString().ToLowerInvariant(), source); break;
+                    case SerializedPropertyType.String: SelectValue(results, property.stringValue, source); break;
+                    case SerializedPropertyType.Float: SelectValue(results, property.floatValue, source); break;
+                    case SerializedPropertyType.FixedBufferSize: SelectValue(results, property.fixedBufferSize, source); break;
+                    case SerializedPropertyType.Color: SelectValue(results, ColorUtility.ToHtmlStringRGB(property.colorValue), source); break;
+                    case SerializedPropertyType.AnimationCurve: SelectValue(results, property.animationCurveValue, source); break;
 
-                    case SerializedPropertyType.Vector2: SelectVector(results, property.vector2Value); break;
-                    case SerializedPropertyType.Vector3: SelectVector(results, property.vector3Value); break;
-                    case SerializedPropertyType.Vector4: SelectVector(results, property.vector4Value); break;
-                    case SerializedPropertyType.Rect: SelectVector(results, property.rectValue); break;
-                    case SerializedPropertyType.Bounds: SelectVector(results, property.boundsValue); break;
-                    case SerializedPropertyType.Quaternion: SelectVector(results, property.quaternionValue); break;
-                    case SerializedPropertyType.Vector2Int: SelectVector(results, property.vector2IntValue); break;
-                    case SerializedPropertyType.Vector3Int: SelectVector(results, property.vector3IntValue); break;
-                    case SerializedPropertyType.RectInt: SelectVector(results, property.rectIntValue); break;
-                    case SerializedPropertyType.BoundsInt: SelectVector(results, property.boundsIntValue); break;
+                    case SerializedPropertyType.Vector2: SelectVector(results, property.vector2Value, source); break;
+                    case SerializedPropertyType.Vector3: SelectVector(results, property.vector3Value, source); break;
+                    case SerializedPropertyType.Vector4: SelectVector(results, property.vector4Value, source); break;
+                    case SerializedPropertyType.Rect: SelectVector(results, property.rectValue, source); break;
+                    case SerializedPropertyType.Bounds: SelectVector(results, property.boundsValue, source); break;
+                    case SerializedPropertyType.Quaternion: SelectVector(results, property.quaternionValue, source); break;
+                    case SerializedPropertyType.Vector2Int: SelectVector(results, property.vector2IntValue, source); break;
+                    case SerializedPropertyType.Vector3Int: SelectVector(results, property.vector3IntValue, source); break;
+                    case SerializedPropertyType.RectInt: SelectVector(results, property.rectIntValue, source); break;
+                    case SerializedPropertyType.BoundsInt: SelectVector(results, property.boundsIntValue, source); break;
 
-                    case SerializedPropertyType.ManagedReference: SelectValue(results, property.managedReferenceFullTypename); break;
-                    case SerializedPropertyType.ObjectReference: SelectAssetPath(results, property.objectReferenceValue); break;
-                    case SerializedPropertyType.ExposedReference: SelectAssetPath(results, property.exposedReferenceValue); break;
+                    case SerializedPropertyType.ManagedReference: SelectValue(results, property.managedReferenceFullTypename, source); break;
+                    case SerializedPropertyType.ObjectReference: SelectAssetPath(results, property.objectReferenceValue, source); break;
+                    case SerializedPropertyType.ExposedReference: SelectAssetPath(results, property.exposedReferenceValue, source); break;
 
                     case SerializedPropertyType.Generic:
                         break;
@@ -231,22 +232,34 @@ namespace Unity.QuickSearch
             }
         }
 
-        private void SelectVector<T>(ISet<SearchItem> results, T value) where T : struct
+        private void SelectVector<T>(ISet<SearchItem> results, T value, SearchItem source) where T : struct
         {
-            results.Add(new SearchItem(Convert.ToString(value).Replace("(", "").Replace(")", "").Replace(" ", "")));
+            results.Add(MapItem(source, Convert.ToString(value).Replace("(", "").Replace(")", "").Replace(" ", "")));
         }
 
-        private void SelectValue(ISet<SearchItem> results, object value)
+        private void SelectValue(ISet<SearchItem> results, object value, SearchItem source)
         {
-            results.Add(new SearchItem(Convert.ToString(value)));
+            results.Add(MapItem(source, value));
         }
 
-        private void SelectAssetPath(ISet<SearchItem> results, UnityEngine.Object obj)
+        private void SelectAssetPath(ISet<SearchItem> results, UnityEngine.Object obj, SearchItem source)
         {
             var assetPath = AssetDatabase.GetAssetPath(obj);
-            if (String.IsNullOrEmpty(assetPath))
+            if (source == null && String.IsNullOrEmpty(assetPath))
                 return;
-            results.Add(new SearchItem(assetPath));
+            results.Add(MapItem(source, assetPath));
+        }
+
+        private SearchItem MapItem(SearchItem source, object value)
+        {
+            if (source == null)
+                source = new SearchItem(Convert.ToString(value));
+            else
+            {
+                source.value = value;
+                source.description = value.ToString();
+            }
+            return source;
         }
 
         public void Resolve(Action<IEnumerable<SearchItem>> onSearchItemReceived, Action<SearchRequest> finishedHandler)
@@ -296,8 +309,14 @@ namespace Unity.QuickSearch
             UnityEngine.Debug.Log($"<i>[{id}]</i> {msg}");
         }
 
+        public void ProcessItems(IEnumerable<SearchItem> items)
+        {
+            ProcessItems(context, items);
+        }
+
         public void ProcessItems(SearchContext context, IEnumerable<SearchItem> items)
         {
+            #if DEBUG_EXPRESSION_SEARCH
             if (items is ICollection list)
             {
                 if (list.Count > 0)
@@ -305,14 +324,19 @@ namespace Unity.QuickSearch
             }
             else
                 DebugLog($"Received more items for {context?.searchQuery ?? type.ToString()}");
+            #endif
 
             if (resultsReceived == null)
-                return;
-
-            if (selectCallback == null)
-                resultsReceived(items);
+            {
+                if (pendingItems == null)
+                    pendingItems = new HashSet<SearchItem>(items);
+                else
+                    pendingItems.UnionWith(items);
+            }
             else
-                resultsReceived(items.SelectMany(item => selectCallback(item).Where(i => i != null)).Distinct());
+            {
+                resultsReceived(items);
+            }
         }
 
         private void OnSearchEnded(SearchContext context)
@@ -328,6 +352,13 @@ namespace Unity.QuickSearch
         {
             if (!resolving)
                 return;
+
+            if (pendingItems?.Count > 0)
+            {
+                Debug.Assert(resultsReceived != null);
+                resultsReceived?.Invoke(pendingItems);
+                pendingItems = null;
+            }
 
             if (dependencies.Count == 0 && runningQueries.Count == 0 && pendingQueries.Count == 0)
             {
@@ -355,7 +386,6 @@ namespace Unity.QuickSearch
         {
             exs.resolved -= OnDependencyFinished;
             dependencies.Remove(exs);
-            UpdateState();
         }
 
         public void TransferTo(SearchRequest exSearch)

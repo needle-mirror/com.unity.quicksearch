@@ -130,7 +130,18 @@ namespace Unity.QuickSearch
             {
                 var outputPort = FindPort(node, "output");
                 if (outputPort != null)
-                    outputPort.portName = ex.GetProperty("field", "Results");
+                    outputPort.portName = GetSelectNodeOutputPortName(ex);
+            }
+            else if (ex.type == ExpressionType.Map)
+            {
+                if (ex.TryGetVariableSource(ExpressionKeyName.X, out var xSource))
+                {
+                    if (!ex.TryGetProperty(ExpressionKeyName.GroupBy, out string groupBy) || string.IsNullOrEmpty(groupBy))
+                        ex.SetProperty(ExpressionKeyName.GroupBy, GetSelectNodeOutputPortName(xSource).ToLowerInvariant());
+                }
+
+                if (ex.TryGetVariableSource(ExpressionKeyName.Y, out var ySource) && xSource == ySource)
+                    ex.SetProperty(nameof(Mapping), (int)Mapping.Table);
             }
 
             NotifyGraphChanged();
@@ -175,7 +186,7 @@ namespace Unity.QuickSearch
                 p.portName = indexName.ToString();
                 indexName++;
             }
-            
+
             if (connectedVars == ports.Count)
                 AddInputPort(node, $"var-{ex.id}-{indexName}", indexName.ToString(), typeof(ExpressionVariable));
 
@@ -340,7 +351,7 @@ namespace Unity.QuickSearch
             switch (ex.type)
             {
                 case ExpressionType.Expression:
-                    return ex.value != null ? System.IO.Path.GetFileNameWithoutExtension(Convert.ToString(ex.value)) : ex.type.ToString();
+                    return ex.value != null ? System.IO.Path.GetFileNameWithoutExtension(Convert.ToString(ex.value)) : ex.name ?? ex.type.ToString();
 
                 case ExpressionType.Value:
                     return ex.name ?? ex.type.ToString();
@@ -401,6 +412,14 @@ namespace Unity.QuickSearch
             return node;
         }
 
+        private static string GetSelectNodeOutputPortName(SearchExpressionNode ex)
+        {
+            var propertyName = ex.GetProperty("field", "Results");
+            if (propertyName.StartsWith("m_", StringComparison.Ordinal))
+                propertyName = propertyName.Substring(2);
+            return propertyName;
+        }
+
         private void AddPorts(Node node, SearchExpressionNode ex)
         {
             switch (ex.type)
@@ -411,13 +430,19 @@ namespace Unity.QuickSearch
                     AddOutputPort(node, $"output-{ex.id}", "Results", typeof(ExpressionSet));
                     break;
 
+                case ExpressionType.Map:
+                    AddInputPort(node, $"var-{ex.id}-{ExpressionKeyName.X}", ExpressionKeyName.X, typeof(ExpressionVariable));
+                    AddInputPort(node, $"var-{ex.id}-{ExpressionKeyName.Y}", ExpressionKeyName.Y, typeof(ExpressionVariable));
+                    AddOutputPort(node, $"output-{ex.id}", "Results", typeof(ExpressionSet));
+                    break;
+
                 case ExpressionType.Expression:
                     AddOutputPort(node, $"output-{ex.id}", "Results", typeof(ExpressionSet));
                     break;
 
                 case ExpressionType.Select:
                     AddInputPort(node, $"source-{ex.id}", "Source", typeof(ExpressionResults));
-                    AddOutputPort(node, $"output-{ex.id}", ex.GetProperty("field", "Results"), typeof(ExpressionSet));
+                    AddOutputPort(node, $"output-{ex.id}", GetSelectNodeOutputPortName(ex), typeof(ExpressionSet));
                     break;
 
                 case ExpressionType.Results:
@@ -462,6 +487,7 @@ namespace Unity.QuickSearch
                 case ExpressionType.Except:
                 case ExpressionType.Results:
                 case ExpressionType.Expression:
+                case ExpressionType.Map:
                 {
                     if (ex.source != null)
                     {

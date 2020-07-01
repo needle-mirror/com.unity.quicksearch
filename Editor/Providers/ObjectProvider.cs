@@ -257,5 +257,11 @@ namespace Unity.QuickSearch.Providers
                 new SearchAction(type, "open", null, "Open asset...", OpenItem)
             };
         }
+
+        [UsedImplicitly, UnityEditor.ShortcutManagement.Shortcut("Help/Quick Search/Objects")]
+        internal static void OpenQuickSearch()
+        {
+            QuickSearch.OpenWithContextualProvider(type);
+        }
     }
 }

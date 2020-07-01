@@ -36,14 +36,14 @@ namespace Unity.QuickSearch
         {
             if (root.leaf || root.children == null || root.children.Count != 1)
             {
-                errors.Add(new QueryError(root.queryStringPosition, "Aggregator node must have a child."));
+                errors.Add(new QueryError(root.token.position, "Aggregator node must have a child."));
                 return null;
             }
 
             var aggregatorNode = root as AggregatorNode;
             if (!(aggregatorNode?.aggregator is NestedQueryAggregator<T> handler))
             {
-                errors.Add(new QueryError(root.queryStringPosition, "Aggregator node does not have the proper aggregator set."));
+                errors.Add(new QueryError(root.token.position, "Aggregator node does not have the proper aggregator set."));
                 return null;
             }
             var childEnumerable = EnumerableCreator.Create(root.children[0], engine, errors);

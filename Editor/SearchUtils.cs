@@ -302,5 +302,54 @@ namespace Unity.QuickSearch
             return SceneModeUtility.GetObjects(goRoots.ToArray(), true)
                 .Where(o => !o.hideFlags.HasFlag(HideFlags.HideInHierarchy)).ToArray();
         }
+
+        internal static ISet<string> GetReferences(UnityEngine.Object obj, int level = 1)
+        {
+            var refs = new HashSet<string>();
+
+            var objPath = AssetDatabase.GetAssetPath(obj);
+            if (!string.IsNullOrEmpty(objPath))
+                refs.UnionWith(AssetDatabase.GetDependencies(objPath));
+
+            if (obj is GameObject go)
+            {
+                foreach (var c in go.GetComponents<Component>())
+                {
+                    using (var so = new SerializedObject(c))
+                    {
+                        var p = so.GetIterator();
+                        var next = p.Next(true);
+                        while (next)
+                        {
+                            if (p.propertyType == SerializedPropertyType.ObjectReference && p.objectReferenceValue)
+                            {
+                                var refValue = AssetDatabase.GetAssetPath(p.objectReferenceValue);
+                                if (!String.IsNullOrEmpty(refValue))
+                                    refs.Add(refValue);
+                            }
+
+                            next = p.Next(p.hasVisibleChildren);
+                        }
+                    }
+                }
+            }
+
+            var lvlRefs = refs;
+            while (level-- > 0)
+            {
+                var nestedRefs = new HashSet<string>();
+
+                foreach (var r in lvlRefs)
+                    nestedRefs.UnionWith(AssetDatabase.GetDependencies(r, false));
+
+                lvlRefs = nestedRefs;
+                lvlRefs.ExceptWith(refs);
+                refs.UnionWith(nestedRefs);
+            }
+
+            refs.Remove(objPath);
+
+            return refs;
+        }
     }
 }

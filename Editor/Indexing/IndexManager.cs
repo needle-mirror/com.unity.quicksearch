@@ -400,18 +400,18 @@ namespace Unity.QuickSearch
         private void OnIndexLoaded(SearchDatabase sb)
         {
             if (selectedItemAsset != null && sb.GetInstanceID() == selectedItemAsset.GetInstanceID())
-            {
                 UpdatePreview();
-                m_ListViewIndexSettings.ListView.Refresh();
-            }
+            m_ListViewIndexSettings.ListView.Refresh();
         }
 
         private void CreateOptionsVisualElements()
         {
             foreach (var field in typeof(Options).GetFields())
             {
+                if (!(field.GetValue(selectedItem.options) is bool optionValue))
+                    continue;
                 string name = char.ToUpper(field.Name[0]) + field.Name.Substring(1);
-                var toggle = new Toggle(name) { value = (bool)field.GetValue(selectedItem.options), name="OptionsToggle"+field.Name };
+                var toggle = new Toggle(name) { value = optionValue, name="OptionsToggle"+field.Name };
                 toggle.RegisterValueChangedCallback(evt =>
                 {
                     field.SetValue(selectedItem.options, evt.newValue);
@@ -423,10 +423,7 @@ namespace Unity.QuickSearch
                 {
                     case "disabled":
                         toggle.tooltip = "Toggles this index off so Quick Search does not use it";
-                        toggle.RegisterValueChangedCallback(evt =>
-                        {
-                            m_ListViewIndexSettings.ListView.Refresh();
-                        });
+                        toggle.RegisterValueChangedCallback(evt => m_ListViewIndexSettings.ListView.Refresh());
                         break;
                     case "files":
                         toggle.tooltip = "Include file paths in this index";
@@ -956,12 +953,12 @@ namespace Unity.QuickSearch
                 #if UNITY_2020_1_OR_NEWER
                 if (m_DependenciesListView != null)
                     m_DependenciesListView.onSelectionChange -= PingAsset;
-                if (m_DocumentsListView != null) 
+                if (m_DocumentsListView != null)
                     m_DocumentsListView.onSelectionChange -= PingAsset;
                 #else
                 if (m_DependenciesListView != null)
                     m_DependenciesListView.onSelectionChanged -= PingAsset;
-                if (m_DocumentsListView != null) 
+                if (m_DocumentsListView != null)
                     m_DocumentsListView.onSelectionChanged -= PingAsset;
                 #endif
                 m_IndexDetailsElement.Clear();

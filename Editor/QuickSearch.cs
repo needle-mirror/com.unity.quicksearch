@@ -12,12 +12,6 @@ using UnityEditor.ShortcutManagement;
 using UnityEngine;
 using Debug = UnityEngine.Debug;
 
-#if !USE_SEARCH_ENGINE_API
-using ObjectSelectorTargetInfo = UnityEngine.Object;
-#else
-using UnityEditor.SearchService;
-#endif
-
 namespace Unity.QuickSearch
 {
     /// <summary>
@@ -35,6 +29,7 @@ namespace Unity.QuickSearch
     {
         const int k_ResetSelectionIndex = -1;
         const string k_LastSearchPrefKey = "last_search";
+        private static readonly string k_CheckWindowKeyName = $"{typeof(QuickSearch).FullName}h";
 
         private static readonly string[] k_Dots = { ".", "..", "..." };
         private static readonly bool isDeveloperMode = Utils.isDeveloperBuild;
@@ -240,7 +235,7 @@ namespace Unity.QuickSearch
         /// </example>
         public static QuickSearch OpenWithContextualProvider(params string[] providerIds)
         {
-            var providers = providerIds.Select(id => SearchService.Providers.Find(p => p.name.id == id));
+            var providers = providerIds.Select(id => SearchService.Providers.Find(p => p.name.id == id)).Where(p=>p!=null);
             if (providers.Any(p => p == null))
             {
                 Debug.LogWarning($"Quick Search cannot find one of these search providers {String.Join(", ", providers)}");
@@ -267,12 +262,45 @@ namespace Unity.QuickSearch
         {
             var windowSize = new Vector2(defaultWidth, defaultHeight);
             if (dockable)
-                this.Show();
+            {
+                if (!EditorPrefs.HasKey(k_CheckWindowKeyName))
+                    position = Utils.GetMainWindowCenteredPosition(windowSize);
+                Show();
+            }
             else
+            {
                 this.ShowDropDown(windowSize);
+            }
             Focus();
             return this;
         }
+
+        /// <summary>
+        /// Use Quick Search to as an object picker to select any object based on the specified filter type.
+        /// </summary>
+        internal static QuickSearch ShowObjectPicker(
+            Action<UnityEngine.Object, bool> selectHandler,
+            Action<UnityEngine.Object> trackingHandler,
+            string searchText, string typeName, Type filterType,
+            float defaultWidth = 850, float defaultHeight = 539, bool dockable = false)
+        {
+            return ShowObjectPicker(selectHandler, trackingHandler, (Func<UnityEngine.Object, bool>)null,
+                searchText, typeName, filterType, defaultWidth, defaultHeight, dockable);
+        }
+
+        #if USE_SEARCH_ENGINE_API
+        internal static QuickSearch ShowObjectPicker(
+            Action<UnityEngine.Object, bool> selectHandler,
+            Action<UnityEngine.Object> trackingHandler,
+            #pragma warning disable IDE0060 // Remove unused parameter
+            Func<UnityEditor.SearchService.ObjectSelectorTargetInfo, bool> pickerConstraintHandler,
+            #pragma warning restore IDE0060 // Remove unused parameter
+            string searchText, string typeName, Type filterType,
+            float defaultWidth = 850, float defaultHeight = 539, bool dockable  = false)
+        {
+            return ShowObjectPicker(selectHandler, trackingHandler, searchText, typeName, filterType, defaultWidth, defaultHeight, dockable);
+        }
+        #endif
 
         /// <summary>
         /// Use Quick Search to as an object picker to select any object based on the specified filter type.
@@ -290,7 +318,7 @@ namespace Unity.QuickSearch
         public static QuickSearch ShowObjectPicker(
             Action<UnityEngine.Object, bool> selectHandler,
             Action<UnityEngine.Object> trackingHandler,
-            Func<ObjectSelectorTargetInfo, bool> pickerConstraintHandler,
+            Func<UnityEngine.Object, bool> pickerConstraintHandler,
             string searchText, string typeName, Type filterType,
             float defaultWidth = 850, float defaultHeight = 539, bool dockable  = false)
         {
@@ -817,9 +845,37 @@ namespace Unity.QuickSearch
             return m_FilteredItems.Count;
         }
 
+        private bool HandleDefaultPressEnter(Event evt)
+        {
+            if (m_Selection.Count != 0 || results.Count == 0)
+                return false;
+
+            if (evt.keyCode != KeyCode.KeypadEnter && evt.keyCode != KeyCode.Return)
+                return false;
+
+            var item = results.ElementAt(0);
+            if (item.provider.actions.Count == 0)
+                return false;
+
+            SearchAction action = item.provider.actions[0];
+            if (context.actionId != null)
+                action = SearchService.GetAction(item.provider, context.actionId);
+
+            if (action == null)
+                return false;
+
+            evt.Use();
+            ExecuteAction(action, new [] { item });
+            GUIUtility.ExitGUI();
+            return true;
+        }
+
         private void HandleKeyboardNavigation()
         {
             var evt = Event.current;
+
+            if (HandleDefaultPressEnter(evt))
+                return;
 
             if (SearchField.HandleKeyEvent(evt))
                 return;
@@ -948,7 +1004,7 @@ namespace Unity.QuickSearch
 
             if (Event.current.type == EventType.MouseUp)
                 m_DetailsViewSplitterResize = false;
-            
+
             if (Event.current.type == EventType.Repaint && !m_ResultView.scrollbarVisible)
             {
                 var sliderDrawRect = new Rect(m_DetailsViewSplitterPos - 4f, m_ResultView.rect.y, 1f, m_ResultView.rect.height);

@@ -56,7 +56,7 @@ namespace Unity.QuickSearch
                     }
                     oldCombinedNode.Clear();
 
-                    // If the old not is the root of the graph, then the new combined node
+                    // If the old not is the root of the evaluationGraph, then the new combined node
                     // becomes the new root.
                     if (parent == null)
                         this.root = newCombinedNode;

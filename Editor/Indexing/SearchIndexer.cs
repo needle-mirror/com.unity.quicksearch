@@ -27,7 +27,8 @@ namespace Unity.QuickSearch
         //  8- Add metadata field to documents
         //  9- Add document hash support
         // 10- Remove the index tag header
-        internal const int version = 0x4242E000 | 0x010;
+        // 11- Save more keywords
+        internal const int version = 0x4242E000 | 0x011;
 
         public enum Type : int
         {
@@ -638,6 +639,12 @@ namespace Unity.QuickSearch
             return t.ThreadState != System.Threading.ThreadState.Unstarted;
         }
 
+        internal bool LoadBytes(byte[] bytes)
+        {
+            using (var memoryStream = new MemoryStream(bytes))
+                return Read(memoryStream, false);
+        }
+
         /// <summary>
         /// Called when the index is built to see if a specified document needs to be indexed. See <see cref="SearchIndexer.skipEntryHandler"/>
         /// </summary>
@@ -659,13 +666,17 @@ namespace Unity.QuickSearch
             throw new NotImplementedException($"{nameof(IndexDocument)} must be implemented by a specialized indexer.");
         }
 
-        internal void CombineIndexes(SearchIndexer si)
+        internal void CombineIndexes(SearchIndexer si, int baseScore = 0, Action<int, SearchIndexer> documentIndexing = null)
         {
             int sourceIndex = 0;
             foreach (var doc in si.GetDocuments())
             {
                 var di = AddDocument(doc.id, doc.metadata, false);
-                m_BatchIndexes.AddRange(si.m_Indexes.Where(i => i.index == sourceIndex).Select(i => new SearchIndexEntry(i.key, i.crc, i.type, di, i.score)));
+                documentIndexing?.Invoke(di, this);
+                m_BatchIndexes.AddRange(
+                    si.m_Indexes.Where(i => i.index == sourceIndex)
+                                .Select(i => new SearchIndexEntry(i.key, i.crc, i.type, di, baseScore + i.score)));
+
                 m_Keywords.UnionWith(si.m_Keywords);
                 foreach (var hkvp in si.m_DocumentHashes)
                     m_DocumentHashes[hkvp.Key] = hkvp.Value;
@@ -772,16 +783,6 @@ namespace Unity.QuickSearch
             if (word == null || word.Length == 0)
                 return;
 
-            if (word[0] == '@')
-            {
-                word = word.Substring(1);
-                var vpPos = word.IndexOf(':');
-                if (vpPos != -1)
-                    minVariations = vpPos + 2;
-                else
-                    minVariations = word.Length;
-            }
-
             maxVariations = Math.Min(maxVariations, word.Length);
 
             for (int c = Math.Min(minVariations, maxVariations); c <= maxVariations; ++c)
@@ -871,6 +872,8 @@ namespace Unity.QuickSearch
 
             if (saveKeyword)
                 m_Keywords.Add($"{name}:{value}");
+            else
+                m_Keywords.Add($"{name}:");
         }
 
         internal void AddNumber(string key, double value, int score, int documentIndex, List<SearchIndexEntry> indexes)

@@ -12,6 +12,8 @@ namespace Unity.QuickSearch
         private Action<TreeView, TreeViewItem, object, string, Rect, int, bool, bool> m_DrawRow;
 
         public event Action<int> elementActivated;
+        public Func<TreeView, TreeViewItem, object, string, bool> doesItemMatch;
+
         public CustomItemListView(IList models, float rowHeight, Action<TreeView, TreeViewItem, object, string, Rect, int, bool, bool> drawRow, TreeViewState treeViewState = null)
             : base(treeViewState ?? new TreeViewState())
         {
@@ -36,7 +38,21 @@ namespace Unity.QuickSearch
 
         protected override void RowGUI(RowGUIArgs args)
         {
-            m_DrawRow(this, args.item, m_Models[args.item.id - 1], args.label, args.rowRect, args.row, args.selected, args.focused);
+            if (m_DrawRow != null)
+            {
+                m_DrawRow(this, args.item, m_Models[args.item.id - 1], args.label, args.rowRect, args.row, args.selected, args.focused);
+            }
+            else
+            {
+                base.RowGUI(args);
+            }
+        }
+
+        protected override bool DoesItemMatchSearch(TreeViewItem item, string search)
+        {
+            if (doesItemMatch != null)
+                return doesItemMatch.Invoke(this, item, m_Models[item.id - 1], search);
+            return item.displayName != null && base.DoesItemMatchSearch(item, search);
         }
 
         protected override TreeViewItem BuildRoot()
@@ -45,7 +61,7 @@ namespace Unity.QuickSearch
             var allItems = new List<TreeViewItem>();
             for (var i = 0; i < m_Models.Count; i++)
             {
-                allItems.Add(new TreeViewItem { id = i + 1, depth = 0 });
+                allItems.Add(new TreeViewItem { id = i + 1, depth = 0, displayName = m_Models[i].ToString()});
             }
             SetupParentsAndChildrenFromDepths(root, allItems);
             return root;

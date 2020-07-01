@@ -249,7 +249,7 @@ namespace Unity.QuickSearch
             Func<ObjectSelectorTargetInfo, bool> selectorConstraintHandler = item => selectContext.selectorConstraint(item, selectContext.editedObjects, selectContext);
             qsWindow = QuickSearch.ShowObjectPicker(selectHandler, trackingHandler, selectorConstraintHandler,
                 selectContext.currentObject?.name ?? "",
-                selectContext.requiredTypeNames.First(), selectContext.requiredTypes.First());
+                selectContext.requiredTypeNames.First(), selectContext.requiredTypes.First(), dockable: Utils.IsRunningTests());
 
             return qsWindow != null;
         }

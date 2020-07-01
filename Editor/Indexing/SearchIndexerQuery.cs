@@ -53,12 +53,12 @@ namespace Unity.QuickSearch
             switch (node.type)
             {
                 case QueryNodeType.Aggregator:
-                case QueryNodeType.In:
+                case QueryNodeType.FilterIn:
                 case QueryNodeType.Intersection:
                 case QueryNodeType.Union:
                 case QueryNodeType.NestedQuery:
                 {
-                    errors.Add(new QueryError(node.queryStringPosition, "Nested queries are not supported."));
+                    errors.Add(new QueryError(node.token.position, "Nested queries are not supported."));
                     break;
                 }
             }

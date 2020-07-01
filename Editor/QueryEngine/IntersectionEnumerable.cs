@@ -37,7 +37,7 @@ namespace Unity.QuickSearch
         {
             if (root.leaf || root.children == null || root.children.Count != 2)
             {
-                errors.Add(new QueryError(root.queryStringPosition, "Intersection node must have two children."));
+                errors.Add(new QueryError(root.token.position, "Intersection node must have two children."));
                 return null;
             }
 
@@ -45,7 +45,7 @@ namespace Unity.QuickSearch
             var secondEnumerable = EnumerableCreator.Create(root.children[1], engine, errors);
             if (firstEnumerable == null || secondEnumerable == null)
             {
-                errors.Add(new QueryError(root.queryStringPosition, "Could not create enumerables from Intersection node's children."));
+                errors.Add(new QueryError(root.token.position, "Could not create enumerables from Intersection node's children."));
             }
 
             return new IntersectionEnumerable<T>(firstEnumerable, secondEnumerable);

@@ -36,14 +36,14 @@ namespace Unity.QuickSearch
             var nestedQueryHandler = nestedQueryNode?.nestedQueryHandler as NestedQueryHandler<T>;
             if (nestedQueryHandler == null)
             {
-                errors.Add(new QueryError(root.queryStringPosition, "There is no handler set for nested queries."));
+                errors.Add(new QueryError(root.token.position, "There is no handler set for nested queries."));
                 return null;
             }
 
             var nestedEnumerable = nestedQueryHandler.handler(nestedQueryNode.identifier, nestedQueryNode.associatedFilter);
             if (nestedEnumerable == null)
             {
-                errors.Add(new QueryError(root.queryStringPosition, "Could not create enumerable from nested query handler."));
+                errors.Add(new QueryError(root.token.position, "Could not create enumerable from nested query handler."));
             }
             return new NestedQueryEnumerable<T>(nestedEnumerable);
         }

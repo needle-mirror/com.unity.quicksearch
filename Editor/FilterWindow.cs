@@ -11,9 +11,10 @@ namespace Unity.QuickSearch
     {
         private static class Styles
         {
-            public const int kItemHeight = 18;
-            public const int kMaxWindowHeight = 300;
-            public static Vector2 windowSize = new Vector2(240, 80);
+            public const float kItemHeight = 18f;
+            public const float kMinWindowHeight = 150f;
+            public const float kMaxWindowHeight = 400f;
+            public static Vector2 windowSize = new Vector2(240f, 80f);
             public static readonly GUIStyle filterHeader = new GUIStyle(EditorStyles.boldLabel)
             {
                 name = "quick-search-filter-header",
@@ -66,8 +67,8 @@ namespace Unity.QuickSearch
         private int m_ToggleFilterNextIndex = 0;
         private int m_ToggleFilterCount = 0;
         private SearchContext m_Context;
-        private IEnumerable<SearchContext.FilterDesc> m_ExplicitProviders;
-        private IEnumerable<SearchContext.FilterDesc> m_FilterableProviders;
+        private SearchContext.FilterDesc[] m_ExplicitProviders;
+        private SearchContext.FilterDesc[] m_FilterableProviders;
 
         internal static double s_CloseTime;
         internal static bool canShow
@@ -89,7 +90,8 @@ namespace Unity.QuickSearch
             var filterWindow = ScriptableObject.CreateInstance<FilterWindow>();
             filterWindow.m_SearchView = quickSearchTool;
 
-            var height = Math.Min(Styles.kMaxWindowHeight, Styles.windowSize.y + Styles.kItemHeight * context.filters.Count());
+            var minHeight = Mathf.Max(Styles.kMinWindowHeight, Styles.windowSize.y + Styles.kItemHeight * context.filters.Count());
+            var height = Math.Min(minHeight, Styles.kMaxWindowHeight);
             var size = new Vector2(Styles.windowSize.x, height);
             filterWindow.ShowAsDropDown(screenRect, size);
             s_SearchContext = null;
@@ -102,8 +104,8 @@ namespace Unity.QuickSearch
             if (s_SearchContext != null)
             {
                 m_Context = s_SearchContext;
-                m_FilterableProviders = m_Context.filters.Where(d => !d.provider.isExplicitProvider).OrderBy(d => d.provider.priority);
-                m_ExplicitProviders = m_Context.filters.Where(d => d.provider.isExplicitProvider).OrderBy(d => d.provider.priority);
+                m_FilterableProviders = m_Context.filters.Where(d => !d.provider.isExplicitProvider).OrderBy(d => d.provider.priority).ToArray();
+                m_ExplicitProviders = m_Context.filters.Where(d => d.provider.isExplicitProvider).OrderBy(d => d.provider.priority).ToArray();
             }
             else
             {
@@ -175,6 +177,9 @@ namespace Unity.QuickSearch
 
         private void DrawExplicitProviders()
         {
+            if (m_ExplicitProviders.Length == 0)
+                return;
+
             GUILayout.BeginHorizontal();
             GUILayout.Label(new GUIContent("Special Search Providers", null, "Providers only available if specified explicitly"), Styles.filterHeader);
             GUILayout.FlexibleSpace();

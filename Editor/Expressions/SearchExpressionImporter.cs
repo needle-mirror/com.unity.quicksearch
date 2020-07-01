@@ -1,14 +1,21 @@
 using System.IO;
 using UnityEditor;
-using UnityEditor.Experimental.AssetImporters;
 using UnityEngine;
 using UnityEngine.UIElements;
+
+#if UNITY_2020_2_OR_NEWER
+using UnityEditor.AssetImporters;
+using UnityEditor.Experimental.AssetImporters;
+#else
+using UnityEditor.Experimental.AssetImporters;
+#endif
 
 namespace Unity.QuickSearch
 {
     [CustomEditor(typeof(SearchExpressionImporter), editorForChildClasses: false, isFallback = false)]
     class SearchExpressionEditor : Editor
     {
+        private SearchVariable[] m_Variables = new SearchVariable[0];
         private SearchExpression m_Expression;
         private ExpressionResultView m_ExpressionResultView;
         private GUIContent m_ExpressionTitle;
@@ -27,6 +34,13 @@ namespace Unity.QuickSearch
 
             m_Expression = new SearchExpression(SearchSettings.GetContextOptions());
             m_Expression.Load(m_ExpressionPath);
+
+            m_Variables = SearchVariable.UpdateVariables(m_Expression, m_Variables);
+            SearchVariable.Evaluate(m_Variables, m_Expression, null);
+        }
+
+        public void Evaluate()
+        {
             m_Expression.Evaluate();
         }
 
@@ -59,7 +73,7 @@ namespace Unity.QuickSearch
             }
             if (m_ContentViewport != null)
             {
-                m_ExpressionResultView.style.height = m_ContentViewport.resolvedStyle.height - 29f;
+                m_ExpressionResultView.style.height = m_ContentViewport.resolvedStyle.height - 29f - (m_Variables.Length * (EditorGUIUtility.singleLineHeight+2));
 
                 var editorsList = m_ExpressionResultView.panel.visualTree.Query(className: "unity-inspector-editors-list").First();
                 if (editorsList != null)
@@ -98,6 +112,8 @@ namespace Unity.QuickSearch
 
         protected override void OnHeaderGUI()
         {
+            Rect position = new Rect(0, 0, m_ContentViewport?.resolvedStyle.width ?? 1, m_ContentViewport?.resolvedStyle.height ?? 1);
+
             GUILayout.BeginHorizontal();
             using (new EditorGUIUtility.IconSizeScope(new Vector2(16, 16)))
                 GUILayout.Label(m_ExpressionTitle);
@@ -107,11 +123,12 @@ namespace Unity.QuickSearch
                 if (GUILayout.Button("Refresh"))
                     m_Expression.Evaluate();
             }
-            if (GUILayout.Button("Select"))
-                EditorGUIUtility.PingObject(target);
             if (GUILayout.Button("Edit"))
                 ExpressionBuilder.Open(m_ExpressionPath);
             GUILayout.EndHorizontal();
+
+            if (SearchVariable.DrawVariables(m_Variables, position.width))
+                SearchVariable.Evaluate(m_Variables, m_Expression, Repaint);
         }
 
         public override void OnInspectorGUI()

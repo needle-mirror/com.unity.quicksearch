@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 
 namespace Unity.QuickSearch
@@ -21,8 +22,13 @@ namespace Unity.QuickSearch
     public class Query<TData, TPayload>
         where TPayload : class
     {
+        /// <summary>
+        /// The text that generated this query.
+        /// </summary>
+        internal string text { get; }
+
         /// <summary> Indicates if the query is valid or not. </summary>
-        public bool valid => errors.Count == 0 && graph != null;
+        public bool valid => errors.Count == 0 && evaluationGraph != null;
 
         /// <summary> List of QueryErrors. </summary>
         public ICollection<QueryError> errors { get; }
@@ -34,17 +40,20 @@ namespace Unity.QuickSearch
 
         internal IQueryHandler<TData, TPayload> graphHandler { get; set; }
 
-        internal QueryGraph graph { get; }
+        internal QueryGraph evaluationGraph { get; }
+        internal QueryGraph queryGraph { get; }
 
-        internal Query(QueryGraph graph, ICollection<QueryError> errors, ICollection<string> tokens)
+        internal Query(string text, QueryGraph evaluationGraph, QueryGraph queryGraph, ICollection<QueryError> errors, ICollection<string> tokens)
         {
-            this.graph = graph;
+            this.text = text;
+            this.evaluationGraph = evaluationGraph;
+            this.queryGraph = queryGraph;
             this.errors = errors;
             this.tokens = tokens;
         }
 
-        internal Query(QueryGraph graph, ICollection<QueryError> errors, ICollection<string> tokens, IQueryHandler<TData, TPayload> graphHandler)
-            : this(graph, errors, tokens)
+        internal Query(string text, QueryGraph evaluationGraph, QueryGraph queryGraph, ICollection<QueryError> errors, ICollection<string> tokens, IQueryHandler<TData, TPayload> graphHandler)
+            : this(text, evaluationGraph, queryGraph, errors, tokens)
         {
             if (valid)
             {
@@ -71,7 +80,42 @@ namespace Unity.QuickSearch
         /// <param name="swapNotToRightHandSide">Swaps "Not" operations to the right hand side of combining operations (i.e. "And", "Or"). Useful if a "Not" operation is slow.</param>
         public void Optimize(bool propagateNotToLeaves, bool swapNotToRightHandSide)
         {
-            graph?.Optimize(propagateNotToLeaves, swapNotToRightHandSide);
+            evaluationGraph?.Optimize(propagateNotToLeaves, swapNotToRightHandSide);
+        }
+
+        /// <summary>
+        /// Get the query node located at the specified position in the query.
+        /// </summary>
+        /// <param name="position">The position of the query node in the text.</param>
+        /// <returns>An IQueryNode.</returns>
+        internal IQueryNode GetNodeAtPosition(int position)
+        {
+            // Allow position at Length, to support cursor at end of word.
+            if (position < 0 || position > text.Length)
+                throw new ArgumentOutOfRangeException(nameof(position));
+
+            if (queryGraph == null || queryGraph.empty)
+                return null;
+
+            return GetNodeAtPosition(queryGraph.root, position);
+        }
+
+        static IQueryNode GetNodeAtPosition(IQueryNode root, int position)
+        {
+            if (root.type == QueryNodeType.Where)
+                return GetNodeAtPosition(root.children[0], position);
+
+            if (!string.IsNullOrEmpty(root.token.text) && position >= root.token.position && position <= root.token.position + root.token.length)
+                return root;
+
+            if (root.leaf || root.children == null)
+                return null;
+
+            if (root.children.Count == 1)
+                return GetNodeAtPosition(root.children[0], position);
+
+            // We have no more than two children
+            return GetNodeAtPosition(position < root.token.position ? root.children[0] : root.children[1], position);
         }
     }
 
@@ -81,8 +125,8 @@ namespace Unity.QuickSearch
     /// <typeparam name="T">The filtered data type.</typeparam>
     public class Query<T> : Query<T, IEnumerable<T>>
     {
-        internal Query(QueryGraph graph, ICollection<QueryError> errors, ICollection<string> tokens, IQueryHandler<T, IEnumerable<T>> graphHandler)
-            : base(graph, errors, tokens, graphHandler)
+        internal Query(string text, QueryGraph evaluationGraph, QueryGraph queryGraph, ICollection<QueryError> errors, ICollection<string> tokens, IQueryHandler<T, IEnumerable<T>> graphHandler)
+            : base(text, evaluationGraph, queryGraph, errors, tokens, graphHandler)
         { }
 
         /// <summary>

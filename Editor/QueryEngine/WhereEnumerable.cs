@@ -40,7 +40,7 @@ namespace Unity.QuickSearch
         {
             if (root.leaf || root.children == null || root.children.Count != 1)
             {
-                errors.Add(new QueryError(root.queryStringPosition, "Where node must have a child."));
+                errors.Add(new QueryError(root.token.position, "Where node must have a child."));
                 return null;
             }
 
@@ -106,7 +106,7 @@ namespace Unity.QuickSearch
                         matchWordFunc = s => s.IndexOf(searchNode.searchValue, stringComparison) >= 0;
                     return o => engine.searchDataCallback(o).Any(data => matchWordFunc(data));
                 }
-                case QueryNodeType.In:
+                case QueryNodeType.FilterIn:
                 {
                     var filterNode = node as InFilterNode;
                     if (filterNode == null)
@@ -124,7 +124,7 @@ namespace Unity.QuickSearch
 
         private BaseFilterOperation<T> GenerateFilterOperation<T>(FilterNode node, QueryEngine<T> engine, ICollection<QueryError> errors)
         {
-            var operatorIndex = node.queryStringPosition + node.filter.token.Length + (string.IsNullOrEmpty(node.paramValue) ? 0 : node.paramValue.Length);
+            var operatorIndex = node.token.position + node.filter.token.Length + (string.IsNullOrEmpty(node.paramValue) ? 0 : node.paramValue.Length);
             var filterValueIndex = operatorIndex + node.op.token.Length;
 
             Type filterValueType;
@@ -173,14 +173,14 @@ namespace Unity.QuickSearch
         {
             if (node.leaf || node.children == null || node.children.Count == 0)
             {
-                errors.Add(new QueryError(node.queryStringPosition, "InFilter node cannot be a leaf."));
+                errors.Add(new QueryError(node.token.position, "InFilter node cannot be a leaf."));
                 return null;
             }
 
             var nestedQueryType = GetNestedQueryType(node);
             if (nestedQueryType == null)
             {
-                errors.Add(new QueryError(node.queryStringPosition, "Could not deduce nested query type. Did you forget to set the nested query handler?"));
+                errors.Add(new QueryError(node.token.position, "Could not deduce nested query type. Did you forget to set the nested query handler?"));
                 return null;
             }
 
@@ -193,7 +193,7 @@ namespace Unity.QuickSearch
 
             if (inFilterFunc == null)
             {
-                errors.Add(new QueryError(node.queryStringPosition, "Could not create filter function with nested query."));
+                errors.Add(new QueryError(node.token.position, "Could not create filter function with nested query."));
                 return null;
             }
 

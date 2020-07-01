@@ -12,7 +12,7 @@ namespace Unity.QuickSearch
         None,
         /// <summary>Display as a list view</summary>
         List,
-        /// <summary> Display as a Grid of icons of various size.</summary>
+        /// <summary>Display as a Grid of icons of various size.</summary>
         Grid
     }
 
@@ -22,7 +22,7 @@ namespace Unity.QuickSearch
     public enum TextCursorPlacement
     {
         /// <summary>Do not ove the cursor.</summary>
-        None, 
+        None,
         /// <summary>Move the cursor at the end of the line of text.</summary>
         MoveLineEnd,
         /// <summary>Move the cursor at the beginning of the line of text.</summary>

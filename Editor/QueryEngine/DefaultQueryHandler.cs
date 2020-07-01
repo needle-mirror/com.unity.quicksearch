@@ -15,6 +15,8 @@ namespace Unity.QuickSearch
 
         public DefaultQueryHandler<TData> Create(QueryGraph graph, ICollection<QueryError> errors)
         {
+            if (errors.Count > 0)
+                return null;
             var dataWalker = new DefaultQueryHandler<TData>();
             dataWalker.Initialize(m_Engine, graph, errors);
             return dataWalker;

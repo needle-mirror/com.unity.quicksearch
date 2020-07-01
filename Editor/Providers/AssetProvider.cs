@@ -59,7 +59,10 @@ namespace Unity.QuickSearch.Providers
 
         private static void TrackAssetIndexChanges(string[] updated, string[] deleted, string[] moved)
         {
-            if (updated.Concat(deleted).Any(u => u.EndsWith(".index", StringComparison.OrdinalIgnoreCase)))
+            updated = updated.Where(u => u.EndsWith(".index", StringComparison.OrdinalIgnoreCase)).ToArray();
+            deleted = deleted.Where(u => u.EndsWith(".index", StringComparison.OrdinalIgnoreCase)).ToArray();
+            var loaded = assetIndexes != null ? assetIndexes.Select(db => AssetDatabase.GetAssetPath(db)).ToArray() : new string[0];
+            if (updated.Except(loaded).Count() > 0 || loaded.Intersect(deleted).Count() > 0)
                 assetIndexes = SearchDatabase.Enumerate("asset").ToList();
         }
 
@@ -110,10 +113,14 @@ namespace Unity.QuickSearch.Providers
 
             if (!String.IsNullOrEmpty(searchQuery))
             {
+                bool indexesReady = false;
                 if (!context.options.HasFlag(SearchFlags.NoIndexing))
                 {
                     SetupIndexers();
-                    yield return assetIndexes.Select(db => SearchIndexes(context.searchQuery, context, provider, db));
+
+                    indexesReady = assetIndexes.All(db => db.index?.IsReady() ?? false);
+                    if (indexesReady)
+                        yield return assetIndexes.Select(db => SearchIndexes(context.searchQuery, context, provider, db));
                 }
 
                 // Search file system wild cards
@@ -141,6 +148,9 @@ namespace Unity.QuickSearch.Providers
                             .Select(guid => AssetDatabase.GUIDToAssetPath(guid))
                             .Select(path => CreateItem(context, provider, "ADB", path, 998));
                     }
+
+                    if (!indexesReady)
+                        yield return assetIndexes.Select(db => SearchIndexes(context.searchQuery, context, provider, db));
                 }
             }
 
@@ -164,6 +174,9 @@ namespace Unity.QuickSearch.Providers
             var index = db.index;
             while (!index.IsReady())
                 yield return null;
+
+            if (!db)
+                yield break;
 
             yield return index.Search(searchQuery.ToLowerInvariant()).Select(e => CreateItem(context, provider, db.name, e.id, e.score));
         }
@@ -232,7 +245,7 @@ namespace Unity.QuickSearch.Providers
         [UsedImplicitly, Shortcut("Help/Quick Search/Assets")]
         internal static void PopQuickSearch()
         {
-            QuickSearch.OpenWithContextualProvider(type);
+            QuickSearch.OpenWithContextualProvider(type, Query.type);
         }
     }
 }

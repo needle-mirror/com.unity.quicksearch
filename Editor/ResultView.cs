@@ -191,7 +191,7 @@ namespace Unity.QuickSearch
                     else
                         searchView.SetSelection(clickedItemIndex);
 
-                    if ((now - m_ClickTime) < 0.2)
+                    if ((now - m_ClickTime) < 0.3)
                     {
                         var item = items.ElementAt(clickedItemIndex);
                         if (item.provider.actions.Count > 0)

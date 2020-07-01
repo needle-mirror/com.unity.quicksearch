@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using UnityEditor;
 using UnityEngine;
 
 namespace Unity.QuickSearch
@@ -18,6 +19,8 @@ namespace Unity.QuickSearch
         Except,           // Produces the set difference of two sequences.
         Select,           // Select operation to output specific value into a variable.
         Expression,       // Nested expressions
+
+        Map,              // Map results by X,Y
         Results           // Final search expression results node.
     }
 
@@ -31,6 +34,13 @@ namespace Unity.QuickSearch
         /// </summary>
         /// <returns>Returns the list of Items.</returns>
         ISearchList Evaluate();
+
+        /// <summary>
+        /// Evaluate the search expression and callback when the evaluation is finished.
+        /// </summary>
+        /// <param name="finished">Action to be invoked when the evaluation is finished.</param>
+        /// <returns>Search results</returns>
+        //ISearchList Evaluate(Action finished);
 
         /// <summary>
         /// Set the value of a variable with a specific name.
@@ -84,6 +94,8 @@ namespace Unity.QuickSearch
         internal int requestCount { get; private set; }
         public double elapsedTime => Math.Round(m_Timer.Elapsed.TotalMilliseconds);
 
+        internal event Action resolved;
+
         public SearchExpression(SearchFlags options)
         {
             m_SearchOptions = options;
@@ -123,11 +135,19 @@ namespace Unity.QuickSearch
 
         public ISearchList Evaluate()
         {
+            return Evaluate(null);
+        }
+
+        public ISearchList Evaluate(Action finished)
+        {
             if (m_EvalNode == null || m_EvalNode.type != ExpressionType.Results)
                 throw new ExpressionException("Nothing to evaluate");
 
             if (m_EvalNode.source == null)
                 return this;
+
+            if (finished != null)
+                resolved += finished;
 
             EvaluateNode(m_EvalNode.source);
             return this;
@@ -137,8 +157,20 @@ namespace Unity.QuickSearch
         {
             foreach (var n in nodes)
             {
-                if (name.Equals(n.name))
-                    n.value = value;
+                if (name.Equals(n.name, StringComparison.Ordinal))
+                {
+                    if (n.type == ExpressionType.Expression && value is SearchExpressionAsset sea)
+                    {
+                        var sePath = AssetDatabase.GetAssetPath(sea);
+                        if (!sePath.Equals(n.value))
+                        {
+                            n.source = null;
+                            n.value = sePath;
+                        }
+                    }
+                    else
+                        n.value = value;
+                }
             }
             return this;
         }
@@ -173,6 +205,8 @@ namespace Unity.QuickSearch
         private void OnEvaluationEnded(SearchRequest exSearch)
         {
             m_Timer.Stop();
+            resolved?.Invoke();
+            resolved = null;
         }
 
         private SearchRequest BuildRequest(SearchExpressionNode node)
@@ -186,15 +220,216 @@ namespace Unity.QuickSearch
                 case ExpressionType.Intersect: return BuildIntersectRequest(node);
                 case ExpressionType.Except: return BuildExceptRequest(node);
                 case ExpressionType.Value: return BuildValueRequest(node);
+                case ExpressionType.Map: return BuildMappingRequest(node);
 
                 case ExpressionType.Expression:
                     if (node.source != null)
                         return BuildRequest(node.source);
+                    else if (node.value == null)
+                        return SearchRequest.empty;
+                    else
+                    {
+                        LoadExpressionValue(node, null);
+                        if (node.source != null)
+                            return BuildRequest(node.source);
+                    }
                     return SearchRequest.empty;
 
                 default:
                     throw new ExpressionException($"Cannot evaluate {node.id} of type {node.type}");
             }
+        }
+
+        private SearchRequest BuildMappingRequest(SearchExpressionNode node)
+        {
+            var mapping = (Mapping)node.GetProperty(nameof(Mapping), (int)Mapping.Count);
+            var groupBy = node.GetProperty(ExpressionKeyName.GroupBy, "");
+
+            if (node.TryGetVariableSource(ExpressionKeyName.X, out var xSource) && String.IsNullOrWhiteSpace(groupBy))
+            {
+                Debug.LogWarning($"Group by {mapping} mapping not defined for {node.name ?? node.id}.");
+                return SearchRequest.empty;
+            }
+
+            var grouping = xSource != null;
+            if (!node.TryGetVariableSource(ExpressionKeyName.Y, out var ySource))
+            {
+                Debug.LogWarning($"No data source (Y) set for {node.name ?? node.id}.");
+                return SearchRequest.empty;
+            }
+            else if (grouping && ySource.type == ExpressionType.Select && !ySource.GetProperty(ExpressionKeyName.Mapped, false))
+            {
+                Debug.LogWarning($"Mapping data source for {node.name ?? node.id} must be a search node (currently a {ySource.type} node)");
+                if (ySource.source?.type == ExpressionType.Search)
+                    ySource = ySource.source;
+            }
+
+            var mappingRequest = new SearchRequest(node.type);
+
+            if (mapping == Mapping.Table)
+            {
+                if (xSource == null)
+                {
+                    Debug.LogWarning($"No data source (X) set for {node.name ?? node.id}.");
+                    return SearchRequest.empty;
+                }
+
+                var xRequest = BuildRequest(xSource);
+                var yRequest = BuildRequest(ySource);
+
+                mappingRequest.DependsOn(xRequest);
+                mappingRequest.DependsOn(yRequest);
+
+                bool fetchSourceX = false;
+                var xItems = new List<SearchItem>();
+                xRequest.Resolve(results => xItems.AddRange(results), exs => fetchSourceX = true);
+
+                bool fetchSourceY = false;
+                var yItems = new List<SearchItem>();
+                yRequest.Resolve(results => yItems.AddRange(results), exs => fetchSourceY = true);
+
+                mappingRequest.resolved += _ =>
+                {
+                    if (!fetchSourceX || !fetchSourceY)
+                        throw new ExpressionException(node, "Table mapping wasn't resolved properly");
+
+                    int xIndex = 0;
+                    foreach (var x in xItems)
+                    {
+                        var y = yItems.Count >= 0 && xIndex < yItems.Count ? yItems[xIndex].value : null;
+                        if (y != null && !(y is double) && double.TryParse(y.ToString(), out var d))
+                            y = d;
+                        x.value = new MappingData()
+                        {
+                            type = Mapping.Table,
+                            value = y,
+                            query = xSource.GetProperty(ExpressionKeyName.BakedQuery, x.context?.searchQuery)
+                        };
+                        x.description = $"{y}";
+                        ++xIndex;
+                    }
+                    mappingRequest.ProcessItems(xItems);
+                };
+            }
+            else
+            {
+                var groupsRequest = BuildRequest(xSource ?? new SearchExpressionNode(ExpressionType.Value, null, ""));
+                var groups = new Dictionary<string, List<object>>();
+                mappingRequest.DependsOn(groupsRequest);
+                groupsRequest.Resolve(items =>
+                {
+                    foreach (var item in items)
+                    {
+                        var groupName = grouping ? item.id : node.name ?? mapping.ToString();
+                        var groupQuery = grouping ? $"({ySource.value}) {groupBy}={groupName}" : ySource.value as string;
+                        var groupSource = grouping ? new SearchExpressionNode(ySource.type, ySource.source, groupQuery, ySource.variables) : ySource;
+
+                        var groupRequest = BuildRequest(groupSource);
+                        mappingRequest.DependsOn(groupRequest);
+                        groupsRequest.DependsOn(groupRequest);
+
+                        if (!groups.ContainsKey(groupName))
+                            groups[groupName] = new List<object>();
+
+                        var groupData = groups[groupName];
+                        var totalCount = 0.0;
+                        var totalValue = 0.0;
+
+                        groupRequest.Resolve(groupItems =>
+                        {
+                            switch (mapping)
+                            {
+                                case Mapping.Min: UpdateMappingMin(groupData, groupItems); break;
+                                case Mapping.Max: UpdateMappingMax(groupData, groupItems); break;
+                                case Mapping.Average: UpdateMappingAverage(groupData, groupItems, ref totalCount, ref totalValue); break;
+                                case Mapping.Count: UpdateMappingCount(groupData, groupItems); break;
+                            }
+                        }, _ =>
+                        {
+                            mappingRequest.ProcessItems(groupData.OrderBy(e => e).Select(e => new SearchItem(xSource == null ? e?.ToString() : groupName)
+                            {
+                                score = double.TryParse(groupName, out var d) ? -(int)d : groupName.GetHashCode(),
+                                label = groupName,
+                                description = e?.ToString(),
+                                value = new MappingData() { type = mapping, value = e, query = groupSource.GetProperty(ExpressionKeyName.BakedQuery, groupQuery) }
+                            }));
+                        });
+                    }
+                }, null);
+            }
+
+            return mappingRequest;
+        }
+
+        private void UpdateMappingCount(List<object> groupData, IEnumerable<SearchItem> groupItems)
+        {
+            int count = groupItems.Count();
+            if (groupData.Count == 0)
+                groupData.Add(count);
+            else
+                groupData[0] = (int)groupData[0] + count;
+        }
+
+        private void UpdateMappingMin(List<object> groupData, IEnumerable<SearchItem> groupItems)
+        {
+            var min = groupItems.Aggregate(groupData.FirstOrDefault(), (m, item) =>
+            {
+                if (item.data is IComparable c && (m == null || c.CompareTo(m) < 0))
+                    return item.data;
+
+                if (m == null)
+                    return item.id;
+
+                if (item.id.CompareTo(m) < 0)
+                    return item.id;
+
+                return m;
+            });
+
+            if (groupData.Count == 0)
+                groupData.Add(min);
+            else
+                groupData[0] = min;
+        }
+
+        private void UpdateMappingMax(List<object> groupData, IEnumerable<SearchItem> groupItems)
+        {
+            var max = groupItems.Aggregate(groupData.FirstOrDefault(), (m, item) =>
+            {
+                if (item.data is IComparable c && (m == null || c.CompareTo(m) > 0))
+                    return item.data;
+
+                if (m == null)
+                    return item.id;
+
+                if (item.id.CompareTo(m) > 0)
+                    return item.id;
+
+                return m;
+            });
+
+            if (groupData.Count == 0)
+                groupData.Add(max);
+            else
+                groupData[0] = max;
+        }
+
+        private void UpdateMappingAverage(List<object> groupData, IEnumerable<SearchItem> groupItems, ref double totalCount, ref double totalValue)
+        {
+            foreach (var item in groupItems)
+            {
+                totalCount+=1.0;
+                if (item.data != null && double.TryParse(item.data.ToString(), out var d))
+                    totalValue += d;
+                if (double.TryParse(item.id.ToString(), out d))
+                    totalValue += d;
+            }
+
+            var avg = totalValue / Math.Max(totalCount, 1.0);
+            if (groupData.Count == 0)
+                groupData.Add(avg);
+            else
+                groupData[0] = avg;
         }
 
         private SearchRequest BuildSelectRequest(SearchExpressionNode node)
@@ -203,10 +438,16 @@ namespace Unity.QuickSearch
                 return SearchRequest.empty;
 
             var sourceRequest = BuildRequest(node.source);
-            var selectField = node.selectField;
-            var objectType = node.GetProperty<string>("type", null);
-            var propertyName = node.GetProperty<string>("field", null);
-            return sourceRequest.Select(selectField, objectType, propertyName);
+            var selectRequest = new SearchRequest(node.type);
+
+            selectRequest.DependsOn(sourceRequest);
+            sourceRequest.Resolve(items =>
+            {
+                var selectedItems = node.selector(selectRequest, node, items);
+                selectRequest.ProcessItems(selectedItems);
+            }, null);
+
+            return selectRequest;
         }
 
         private SearchRequest BuildFromSearchQuery(SearchExpressionNode node, string searchQuery)
@@ -224,6 +465,9 @@ namespace Unity.QuickSearch
                 providers.AddRange(SearchService.Providers.Where(p => p.active));
             else
                 throw new NotSupportedException($"Evaluation of source node {node.source.id} of type {node.source.type} is not supported.");
+
+            if (!searchQuery.Equals(node.value))
+                node.SetProperty(ExpressionKeyName.BakedQuery, searchQuery);
 
             requestCount++;
             return new SearchRequest(node.type, SearchService.CreateContext(providers, searchQuery, m_SearchOptions));
@@ -349,7 +593,7 @@ namespace Unity.QuickSearch
         private SearchRequest BuildValueRequest(SearchExpressionNode ex)
         {
             var valueRequest = new SearchRequest(ex.type);
-            valueRequest.resolved += exs => valueRequest.ProcessItems(null, new [] {new SearchItem(ex.value.ToString())});
+            valueRequest.resolved += exs => valueRequest.ProcessItems(new [] {new SearchItem(ex.value?.ToString())});
             return valueRequest;
         }
 
@@ -359,28 +603,30 @@ namespace Unity.QuickSearch
                 return null;
 
             var exSearch = new SearchRequest(ex.type);
-            if (ex.source != null && ex.TryGetVariableSource("With", out var withSource) && withSource != null)
+            if (ex.source == null || !ex.TryGetVariableSource("With", out var withSource) || withSource == null)
+                return exSearch;
+
+            var sourceExpression = BuildRequest(ex.source);
+            var withExpression = BuildRequest(withSource);
+
+            exSearch.DependsOn(sourceExpression);
+            exSearch.DependsOn(withExpression);
+
+            bool fetchSourceItemsFinished = false;
+            bool fetchWithItemsFinished = false;
+            var sourceItems = new List<SearchItem>();
+            var withItems = new List<SearchItem>();
+
+            sourceExpression.Resolve(results => sourceItems.AddRange(results), exs => fetchSourceItemsFinished = true);
+            withExpression.Resolve(results => withItems.AddRange(results), exs => fetchWithItemsFinished = true);
+
+            exSearch.resolved += exs =>
             {
-                var sourceExpression = BuildRequest(ex.source);
-                var withExpression = BuildRequest(withSource);
-
-                exSearch.DependsOn(sourceExpression);
-                exSearch.DependsOn(withExpression);
-
-                bool fetchSourceItemsFinished = false;
-                bool fetchWithItemsFinished = false;
-                var sourceItems = new List<SearchItem>();
-                var withItems = new List<SearchItem>();
-
-                sourceExpression.Resolve(results => sourceItems.AddRange(results), exs => fetchSourceItemsFinished = true);
-                withExpression.Resolve(results => withItems.AddRange(results), exs => fetchWithItemsFinished = true);
-
-                exSearch.resolved += exs =>
-                {
-                    if (fetchSourceItemsFinished && fetchWithItemsFinished)
-                        exSearch.ProcessItems(null, transformer(sourceItems, withItems));
-                };
-            }
+                if (!fetchSourceItemsFinished || !fetchWithItemsFinished)
+                    throw new ExpressionException(ex, "Two set request wasn't resolved properly");
+                if (fetchSourceItemsFinished && fetchWithItemsFinished)
+                    exSearch.ProcessItems(transformer(sourceItems, withItems));
+            };
 
             return exSearch;
         }
@@ -473,17 +719,7 @@ namespace Unity.QuickSearch
                 node.value = value;
 
             if (node.type == ExpressionType.Expression)
-            {
-                var nestedExpression = new SearchExpression(m_SearchOptions);
-
-                if (node.value is string expressionPath && File.Exists(expressionPath))
-                    nestedExpression.Load(expressionPath);
-                else if (SJSON.TryGetValue(info, ExpressionField.source, out var source) && source is IDictionary sourceData)
-                    nestedExpression.Load(sourceData);
-
-                if (nestedExpression.m_EvalNode != null && nestedExpression.m_EvalNode.source != null)
-                    node.source = nestedExpression.m_EvalNode.source;
-            }
+                LoadExpressionValue(node, info);
             else
             {
                 if (SJSON.TryGetValue(info, ExpressionField.source, out var source))
@@ -547,6 +783,21 @@ namespace Unity.QuickSearch
             }
 
             return node;
+        }
+
+        private void LoadExpressionValue(SearchExpressionNode node, IDictionary info)
+        {
+            var nestedExpression = new SearchExpression(m_SearchOptions);
+
+            if (node.value is string expressionPath && File.Exists(expressionPath))
+                nestedExpression.Load(expressionPath);
+            else if (info != null && SJSON.TryGetValue(info, ExpressionField.source, out var source) && source is IDictionary sourceData)
+                nestedExpression.Load(sourceData);
+            else if (node.value is string expressionSJSON)
+                nestedExpression.Parse(expressionSJSON);
+
+            if (nestedExpression.m_EvalNode != null && nestedExpression.m_EvalNode.source != null)
+                node.source = nestedExpression.m_EvalNode.source;
         }
 
         public void Save(string path)

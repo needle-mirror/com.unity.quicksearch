@@ -161,7 +161,9 @@ namespace Unity.QuickSearch.Providers
             m_QueryEngine.AddFilter("tag", GetTag);
             m_QueryEngine.AddFilter("layer", GetLayer);
             m_QueryEngine.AddFilter("size", GetSize);
+            m_QueryEngine.AddFilter("overlap", GetOverlapCount);
             m_QueryEngine.AddFilter<string>("is", OnIsFilter, new []{":"});
+            m_QueryEngine.AddFilter<string>("prefab", OnPrefabFilter, new[] { ":" });
             m_QueryEngine.AddFilter<string>("t", OnTypeFilter, new []{"=", ":"});
             m_QueryEngine.AddFilter<string>("ref", GetReferences, new []{"=", ":"});
 
@@ -235,6 +237,47 @@ namespace Unity.QuickSearch.Providers
 
             m_QueryEngine.SetSearchDataCallback(OnSearchData, s => s.ToLowerInvariant(), StringComparison.Ordinal);
             m_QueryEngine.AddFiltersFromAttribute<SceneQueryEngineFilterAttribute, SceneQueryEngineParameterTransformerAttribute>();
+        }
+
+        private bool OnPrefabFilter(GameObject go, string op, string value)
+        {
+            if (!PrefabUtility.IsPartOfAnyPrefab(go))
+                return false;
+
+            if (value == "root")
+                return PrefabUtility.IsAnyPrefabInstanceRoot(go);
+
+            if (value == "instance")
+                return PrefabUtility.IsPartOfPrefabInstance(go);
+
+            if (value == "top")
+                return PrefabUtility.IsOutermostPrefabInstanceRoot(go);
+
+            if (value == "nonasset")
+                return PrefabUtility.IsPartOfNonAssetPrefabInstance(go);
+
+            if (value == "asset")
+                return PrefabUtility.IsPartOfPrefabAsset(go);
+
+            if (value == "any")
+                return PrefabUtility.IsPartOfAnyPrefab(go);
+
+            if (value == "model")
+                return PrefabUtility.IsPartOfModelPrefab(go);
+
+            if (value == "regular")
+                return PrefabUtility.IsPartOfRegularPrefab(go);
+
+            if (value == "variant")
+                return PrefabUtility.IsPartOfVariantPrefab(go);
+
+            if (value == "modified")
+                return PrefabUtility.HasPrefabInstanceAnyOverrides(go, false);
+
+            if (value == "altered")
+                return PrefabUtility.HasPrefabInstanceAnyOverrides(go, true);
+
+            return false;
         }
 
         private static bool StringContains<T>(T ev, T fv, StringComparison sc)
@@ -356,6 +399,29 @@ namespace Unity.QuickSearch.Providers
             return god.size;
         }
 
+        public int GetOverlapCount(GameObject go)
+        {
+            int overlapCount = -1;
+
+            if(go.TryGetComponent<Renderer>(out var renderer))
+            {
+                overlapCount = 0;
+
+                var renderers = GameObject.FindObjectsOfType<Renderer>();
+
+                foreach (var r in renderers)
+                {
+                    if (renderer == r)
+                        continue;
+
+                    if (renderer.bounds.Intersects(r.bounds))
+                        overlapCount++;
+                }
+            }
+
+            return overlapCount;
+        }
+
         GOD GetGOD(GameObject go)
         {
             var instanceId = go.GetInstanceID();
@@ -395,6 +461,14 @@ namespace Unity.QuickSearch.Providers
             {
                 return SceneVisibilityManager.instance.IsHidden(go);
             }
+            else if (value == "static")
+            {
+                return go.isStatic;
+            }
+            else if (value == "prefab")
+            {
+                return PrefabUtility.IsPartOfAnyPrefab(go);
+            }
 
             return false;
         }
@@ -423,7 +497,7 @@ namespace Unity.QuickSearch.Providers
 
         private static string HexConverter(Color c)
         {
-            return "#" + Mathf.RoundToInt(c.r * 255f).ToString("X2") + Mathf.RoundToInt(c.g * 255f).ToString("X2") + Mathf.RoundToInt(c.b * 255f).ToString("X2");
+            return Mathf.RoundToInt(c.r * 255f).ToString("X2") + Mathf.RoundToInt(c.g * 255f).ToString("X2") + Mathf.RoundToInt(c.b * 255f).ToString("X2");
         }
 
         private GOP ConvertPropertyValue(SerializedProperty sp)
@@ -494,8 +568,7 @@ namespace Unity.QuickSearch.Providers
             if (god.types == null)
             {
                 var types = new List<string>();
-                var ptype = PrefabUtility.GetPrefabAssetType(go);
-                if (ptype != PrefabAssetType.NotAPrefab)
+                if (PrefabUtility.IsAnyPrefabInstanceRoot(go))
                     types.Add("prefab");
 
                 var gocs = go.GetComponents<Component>();

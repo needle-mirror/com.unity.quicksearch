@@ -1,5 +1,18 @@
 # Changelog
 
+## [2.0.2] - 2020-07-01
+- [UX] Remove the package provider browse action.
+- [UX] Add search expression Map node to output X/Y value pairs.
+- [UX] Add many new asset and scene filters for material and prefabs.
+- [FIX] Fix various search expression issues.
+- [FIX] Fix searching saved queried within a contextual search.
+- [FIX] Execute first item when pressing enter even if no selection (case 1258382).
+- [API] Add support for doubles with the Query Engine default operators.
+- [API] Add API to get the query node located at a specified position in a query string.
+
+## [2.0.1] - 2020-06-30
+- [FIX] Fix AssetImporters experimental issues with 2020.2
+
 ## [2.0.0] - 2020-06-11
 - [UX] Save Quick Search settings per project instead of globally for all projects.
 - [UX] Remove support for 2018.4.

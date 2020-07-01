@@ -9,6 +9,7 @@ namespace Unity.QuickSearch
 {
     class ListView : ResultView
     {
+        private int m_FetchedPreview = 0;
         private float m_ItemRowHeight = Styles.itemRowHeight;
 
         public ListView(ISearchView hostView)
@@ -156,7 +157,6 @@ namespace Unity.QuickSearch
             }
         }
 
-        private int m_FetchedPreview = 0;
         private Rect DrawListThumbnail(SearchItem item, Rect itemRect)
         {
             Texture2D thumbnail = null;

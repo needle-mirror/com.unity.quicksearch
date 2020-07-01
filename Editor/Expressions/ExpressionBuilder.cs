@@ -153,6 +153,7 @@ namespace Unity.QuickSearch
             toolbox.Add(new Button(() => m_ExpressionGraph.AddNode(ExpressionType.Intersect)) { text = "Intersect" });
             toolbox.Add(new Button(() => m_ExpressionGraph.AddNode(ExpressionType.Except)) { text = "Except" });
             toolbox.Add(new Button(() => m_ExpressionGraph.AddNode(ExpressionType.Expression)) { text = "Expression" });
+            toolbox.Add(new Button(() => m_ExpressionGraph.AddNode(ExpressionType.Map)) { text = "Map" });
 
             container.Add(toolbox);
         }
@@ -176,16 +177,20 @@ namespace Unity.QuickSearch
             rootVisualElement.style.flexDirection = FlexDirection.Row;
             rootVisualElement.RegisterCallback<GeometryChangedEvent>(OnSizeChange);
 
+            EditorApplication.update += FixWindowSize;
+        }
+
+        private void FixWindowSize()
+        {
+            EditorApplication.update -= FixWindowSize;
+
+            if (m_GraphViewSplitterPosition == 0f)
+                m_GraphViewSplitterPosition = position.width * 0.7f;
+
+            m_ExpressionGraph.style.width = m_GraphViewSplitterPosition;
+            m_HorizontalResizer.style.width = position.width - m_GraphViewSplitterPosition;
+
             UpdateWindowGeometry();
-
-            EditorApplication.delayCall += () =>
-            {
-                if (m_GraphViewSplitterPosition == 0f)
-                    m_GraphViewSplitterPosition = position.width * 0.7f;
-
-                m_ExpressionGraph.style.width = m_GraphViewSplitterPosition;
-                m_InspectorElement.MarkDirtyRepaint();
-            };
         }
 
         private void OnSizeChange(GeometryChangedEvent evt)
@@ -224,7 +229,7 @@ namespace Unity.QuickSearch
             if (selectedNode != null && selectedNode.userData is SearchExpressionNode ex)
             {
                 m_NodeEditor.SetSelection(ex);
-                if (ex.type == ExpressionType.Select)
+                if (ex.type == ExpressionType.Select && !ex.GetProperty(ExpressionKeyName.Mapped, false))
                     m_ResultView.itemIconSize = 0f;
                 else
                     m_ResultView.itemIconSize = 1f;
@@ -293,6 +298,7 @@ namespace Unity.QuickSearch
                     case ExpressionType.Intersect:
                     case ExpressionType.Except:
                     case ExpressionType.Expression:
+                    case ExpressionType.Map:
                         m_Expression.EvaluateNode(ex);
                         break;
                     case ExpressionType.Value:

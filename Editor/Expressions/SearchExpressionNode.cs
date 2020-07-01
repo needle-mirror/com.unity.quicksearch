@@ -6,13 +6,30 @@ using UnityEngine;
 
 namespace Unity.QuickSearch
 {
-    enum ExpressionSelectField
+    enum Mapping
     {
-        Default,
-        Type,
-        Object,
-        Asset = Object,
-        Component
+        Min,
+        Max,
+        Count,
+        Average,
+        Table
+    }
+
+    struct MappingData
+    {
+        public Mapping type;
+        public object value;
+        public string query;
+    }
+
+    struct ExpressionKeyName
+    {
+        public const string X = "X";
+        public const string Y = "Y";
+        public const string GroupBy = nameof(GroupBy);
+        public const string BakedQuery = nameof(BakedQuery);
+        public const string Mapped = "mapped";
+        public const string Overrides = "overrides";
     }
 
     [DebuggerDisplay("{name} ({source})")]
@@ -56,19 +73,11 @@ namespace Unity.QuickSearch
         public List<ExpressionVariable> variables { get; internal set; }
         public Dictionary<string, object> properties { get; private set; }
 
-        internal static string NewId()
+        public ExpressionSelect selector => ExpressionSelectors.GetDelegate(value as string);
+
+        public static string NewId()
         {
             return Guid.NewGuid().ToString("N");
-        }
-
-        public ExpressionSelectField selectField
-        {
-            get
-            {
-                if (Enum.TryParse<ExpressionSelectField>(value as string, true, out var type))
-                    return type;
-                return ExpressionSelectField.Default;
-            }
         }
 
         public SearchExpressionNode(ExpressionType type)
@@ -77,10 +86,16 @@ namespace Unity.QuickSearch
         }
 
         public SearchExpressionNode(ExpressionType type, SearchExpressionNode source, object value)
+            : this(type, source, value, null)
+        {
+        }
+
+        public SearchExpressionNode(ExpressionType type, SearchExpressionNode source, object value, List<ExpressionVariable> variables)
             : this(NewId(), type)
         {
             this.source = source;
             this.value = value;
+            this.variables = variables;
         }
 
         public SearchExpressionNode(string id, ExpressionType type)
@@ -97,6 +112,7 @@ namespace Unity.QuickSearch
             {
                 case ExpressionType.Provider: return new Color(80/255f, 99/255f, 93/255f, 0.99f);
                 case ExpressionType.Value: return new Color(35/255f, 35/255f, 35/255f, 0.79f);
+                case ExpressionType.Map: return new Color(20/255f, 147/255f, 132/255f, 0.99f);
                 case ExpressionType.Search: return new Color(20/255f, 87/255f, 132/255f, 0.99f);
                 case ExpressionType.Select: return new Color(18/255f, 57/255f, 126/255f, 0.99f);
                 case ExpressionType.Union: return new Color(160/255f, 99/255f, 31/255f, 0.99f);
@@ -134,19 +150,22 @@ namespace Unity.QuickSearch
                     return true;
                 }
             }
-            
+
             return false;
         }
 
         public bool TryGetVariableSource(string name, out SearchExpressionNode source)
         {
             source = null;
+            if (variables == null)
+                return false;
+
             foreach (var v in variables)
             {
                 if (v.name == name)
                 {
                     source = v.source;
-                    return true;
+                    return source != null;
                 }
             }
 
@@ -206,7 +225,7 @@ namespace Unity.QuickSearch
 
             if (variables == null)
                 return false;
-            
+
             foreach (var v in variables)
             {
                 if (v.source == ex)
@@ -230,11 +249,41 @@ namespace Unity.QuickSearch
 
         public T GetProperty<T>(string propertyName, T defaultValue = default)
         {
-            if (properties == null)
-                return defaultValue;
-            if (properties.TryGetValue(propertyName, out var value))
-                return (T)value;
+            if (TryGetProperty<T>(propertyName, out var value))
+                return value;
             return defaultValue;
+        }
+
+        public int GetProperty(string propertyName, int defaultValue)
+        {
+            if (TryGetProperty(propertyName, out int value))
+                return value;
+            return defaultValue;
+        }
+
+        public bool TryGetProperty<T>(string propertyName, out T value)
+        {
+            value = default;
+            if (properties == null)
+                return false;
+            if (properties.TryGetValue(propertyName, out object ov) && ov is T cov)
+            {
+                value = cov;
+                return true;
+            }
+            return false;
+        }
+
+        public bool TryGetProperty(string propertyName, out int value)
+        {
+            if (TryGetProperty<int>(propertyName, out value))
+                return true;
+
+            if (!TryGetProperty<double>(propertyName, out var d))
+                return false;
+
+            value = (int)d;
+            return true;
         }
     }
 }

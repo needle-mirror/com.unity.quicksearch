@@ -104,7 +104,7 @@ namespace Unity.QuickSearch
                 return;
             }
 
-            ((QueryGraphView)graphView).Reload(query.graph);
+            ((QueryGraphView)graphView).Reload(query.evaluationGraph);
         }
     }
 
@@ -200,7 +200,7 @@ namespace Unity.QuickSearch
                 case QueryNodeType.Aggregator:
                     visualElementNode.title = node.identifier;
                     break;
-                case QueryNodeType.In:
+                case QueryNodeType.FilterIn:
                     var inFilterNode = node as InFilterNode;
                     var paramString = string.IsNullOrEmpty(inFilterNode.paramValue) ? "" : $"({inFilterNode.paramValue})";
                     visualElementNode.title = $"{inFilterNode.filter.token}{paramString}{inFilterNode.op.token} In";

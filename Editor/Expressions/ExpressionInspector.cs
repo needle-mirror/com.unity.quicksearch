@@ -9,7 +9,7 @@ using UnityEngine.UIElements;
 
 namespace Unity.QuickSearch
 {
-    class ExpressionInspector : IMGUIContainer
+    class ExpressionInspector : IMGUIContainer, IExpressionInspector
     {
         enum ValueType
         {
@@ -50,27 +50,12 @@ namespace Unity.QuickSearch
             public static readonly float scrollbarWidth = new GUIStyle("VerticalScrollbar").fixedWidth;
         }
 
-        struct DerivedTypeInfo
-        {
-            public List<string> names;
-            public List<string> labels;
-            public Type[] types;
-        }
-
-        struct PropertyInfo
-        {
-            public string name;
-            public string label;
-        }
-
         private SearchExpressionNode m_Node;
-        private List<string> m_VariablesList = new List<string>();
-        private ReorderableList m_VariablesReorderableList;
+        private readonly List<string> m_VariablesList = new List<string>();
+        private readonly ReorderableList m_VariablesReorderableList;
         private Vector2 m_ScrollPostion;
         private bool resetHeight = true;
         private float m_ContentHeight = 0f;
-        private Dictionary<Type, DerivedTypeInfo> m_DerivedTypes = new Dictionary<Type, DerivedTypeInfo>();
-        private Dictionary<Type, List<PropertyInfo>> m_TypeProperties = new Dictionary<Type, List<PropertyInfo>>();
         private string[] m_ExpressionPaths = new string[0];
 
         private bool hasScrollbar => m_ContentHeight > contentRect.height;
@@ -197,6 +182,11 @@ namespace Unity.QuickSearch
 
                 switch (m_Node.type)
                 {
+                    case ExpressionType.Map:
+                        DrawNameEditor();
+                        DrawMapEditor();
+                        break;
+
                     case ExpressionType.Search:
                         DrawNameEditor();
                         DrawSearchEditor();
@@ -223,6 +213,7 @@ namespace Unity.QuickSearch
                         break;
 
                     case ExpressionType.Expression:
+                        DrawNameEditor();
                         DrawNestedExpressionEditor();
                         break;
 
@@ -238,222 +229,46 @@ namespace Unity.QuickSearch
         private void DrawNestedExpressionEditor()
         {
             string selectLabel = m_Node.value != null ? Convert.ToString(m_Node.value) : null;
+            EditorGUILayout.BeginHorizontal();
             DrawSelectionPopup("Expression", selectLabel ?? "Select expression...", m_ExpressionPaths, selectedIndex =>
             {
+                m_Node.source = null;
                 m_Node.value = m_ExpressionPaths[selectedIndex];
                 propertiesChanged?.Invoke(m_Node);
                 resetHeight = true;
             });
-        }
-
-        private DerivedTypeInfo GetDerivedTypeInfo(Type type)
-        {
-            if (m_DerivedTypes.TryGetValue(type, out var typeInfo))
-                return typeInfo;
-            var derivedTypes = TypeCache.GetTypesDerivedFrom(type)
-                .Where(t => !t.IsAbstract)
-                .Where(t => !t.IsSubclassOf(typeof(Editor)) && !t.IsSubclassOf(typeof(EditorWindow)) && !t.IsSubclassOf(typeof(AssetImporter)))
-                .OrderBy(t=>t.Name).ToArray();
-            typeInfo = new DerivedTypeInfo()
+            if (GUILayout.Button("Clear"))
             {
-                types = derivedTypes,
-                names = derivedTypes.Select(t=>t.Name).ToList(),
-                labels = derivedTypes.Select(t =>
-                {
-                    if (t.FullName.Contains("Unity"))
-                        return t.Name;
-                    return "<b>" + t.Name + "</b>";
-                }).ToList()
-            };
-            m_DerivedTypes[type] = typeInfo;
-            return typeInfo;
-        }
-
-        private List<PropertyInfo> GetTypePropertyNames(Type type)
-        {
-            if (m_TypeProperties.TryGetValue(type, out var properties))
-                return properties;
-
-            properties = new List<PropertyInfo>();
-            GameObject go = null;
-            try
-            {
-                bool objectCreated = false;
-                UnityEngine.Object obj = null;
-                try
-                {
-                    if (obj == null)
-                    {
-                        if (typeof(Component).IsAssignableFrom(type))
-                        {
-                            go = new GameObject
-                            {
-                                layer = 0
-                            };
-                            go.AddComponent(typeof(BoxCollider));
-                            obj = go.GetComponent(type);
-                            if (!obj)
-                            {
-                                obj = ObjectFactory.AddComponent(go, type);
-                                objectCreated = true;
-                            }
-                        }
-                        else
-                        {
-                            obj = ObjectFactory.CreateInstance(type);
-                            objectCreated = true;
-                        }
-                    }
-
-                    using (var so = new SerializedObject(obj))
-                    {
-                        var p = so.GetIterator();
-                        var next = p.Next(true);
-                        while (next)
-                        {
-                            if (p.propertyType != SerializedPropertyType.Generic &&
-                                p.propertyType != SerializedPropertyType.LayerMask &&
-                                p.propertyType != SerializedPropertyType.Character &&
-                                p.propertyType != SerializedPropertyType.ArraySize &&
-                                !p.isArray && !p.isFixedBuffer)
-                            {
-                                properties.Add(new PropertyInfo()
-                                {
-                                    name = p.propertyPath,
-                                    label = FormatPropertyLabel(p)
-                                });
-                            }
-
-                            next = p.Next(p.hasVisibleChildren);
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Debug.LogWarning(ex.Message);
-                }
-                finally
-                {
-                    if (objectCreated)
-                        UnityEngine.Object.DestroyImmediate(obj);
-                }
+                m_Node.value = m_Node.source = null;
+                propertiesChanged?.Invoke(m_Node);
+                resetHeight = true;
             }
-            catch (Exception ex)
-            {
-                Debug.LogWarning(ex.Message);
-            }
-            finally
-            {
-                if  (go)
-                    UnityEngine.Object.DestroyImmediate(go);
-            }
-
-            m_TypeProperties[type] = properties;
-            return properties;
-        }
-
-        private string FormatPropertyLabel(SerializedProperty property)
-        {
-            if (property.depth > 0)
-                return $"<i>{property.propertyPath.Replace("m_", "")}</i> (<b>{property.propertyType}</b>)";
-            return $"{property.displayName} (<b>{property.propertyType}</b>)";
+            EditorGUILayout.EndHorizontal();
         }
 
         private void DrawSelectEditor()
         {
-            EditorGUI.BeginChangeCheck();
-            var selectType = (ExpressionSelectField)EditorGUILayout.EnumPopup("Select", m_Node.selectField);
-            if (EditorGUI.EndChangeCheck())
+            var labels = ExpressionSelectors.names;
+            var selectType = m_Node.value as string;
+
+            DrawSelectionPopup("Select", selectType ?? "Choose select type...", labels, selectedIndex =>
             {
-                m_Node.value = selectType.ToString().ToLowerInvariant();
+                selectType = labels[selectedIndex];
+                m_Node.value = selectType;
                 propertiesChanged?.Invoke(m_Node);
                 resetHeight = true;
-            }
+            }, 0f);
 
-            if (selectType == ExpressionSelectField.Asset)
-            {
-                DrawSelectAssetEditor();
-            }
-            else if (selectType == ExpressionSelectField.Component)
-            {
-                DrawSelectComponentEditor();
-            }
-            else
-            {
-                GUILayout.Space(40);
-            }
+            if (selectType == null || !ExpressionSelectors.Draw(selectType, this))
+                GUILayout.Space(40f);
         }
 
-        private void DrawSelectAssetEditor()
-        {
-            var derivedTypeInfo = GetDerivedTypeInfo(typeof(UnityEngine.Object));
-            var typeName = m_Node.GetProperty<string>("type", null);
-            var selectedTypeIndex = derivedTypeInfo.names.FindIndex(n => n == typeName);
-            var typeLabel = selectedTypeIndex == -1 ? null : derivedTypeInfo.labels[selectedTypeIndex];
-
-            DrawSelectionPopup("Type", typeLabel ?? "Select type...", derivedTypeInfo.labels, selectedIndex =>
-            {
-                m_Node.SetProperty("type", derivedTypeInfo.names[selectedIndex]);
-                propertiesChanged?.Invoke(m_Node);
-                resetHeight = true;
-            });
-            if (typeName != null)
-            {
-                if (selectedTypeIndex != -1)
-                {
-                    var selectedType = derivedTypeInfo.types[selectedTypeIndex];
-                    var properties = GetTypePropertyNames(selectedType);
-                    var propertyName = m_Node.GetProperty<string>("field", null);
-                    var propertyLabel = properties.FirstOrDefault(p => p.name == propertyName).label;
-
-                    DrawSelectionPopup("Property", propertyLabel ?? "Select property...", properties.Select(p => p.label), selectedIndex =>
-                    {
-                        m_Node.SetProperty("field", properties[selectedIndex].name);
-                        propertiesChanged?.Invoke(m_Node);
-                        resetHeight = true;
-                    });
-                }
-            }
-        }
-
-        private void DrawSelectComponentEditor()
-        {
-            var derivedTypeInfo = GetDerivedTypeInfo(typeof(Component));
-            var typeName = m_Node.GetProperty<string>("type", null);
-            var selectedTypeIndex = derivedTypeInfo.names.FindIndex(n => n == typeName);
-            var typeLabel = selectedTypeIndex == -1 ? null : derivedTypeInfo.labels[selectedTypeIndex];
-
-            DrawSelectionPopup("Type", typeLabel ?? "Select type...", derivedTypeInfo.labels, selectedIndex =>
-            {
-                m_Node.SetProperty("type", derivedTypeInfo.names[selectedIndex]);
-                propertiesChanged?.Invoke(m_Node);
-                resetHeight = true;
-            });
-            if (typeName != null)
-            {
-                if (selectedTypeIndex != -1)
-                {
-                    var selectedType = derivedTypeInfo.types[selectedTypeIndex];
-                    var properties = GetTypePropertyNames(selectedType);
-                    var propertyName = m_Node.GetProperty<string>("field", null);
-                    var propertyLabel = properties.FirstOrDefault(p => p.name == propertyName).label;
-
-                    DrawSelectionPopup("Property", propertyLabel ?? "Select property...", properties.Select(p => p.label), selectedIndex =>
-                    {
-                        m_Node.SetProperty("field", properties[selectedIndex].name);
-                        propertiesChanged?.Invoke(m_Node);
-                        resetHeight = true;
-                    });
-                }
-            }
-        }
-
-        private void DrawSelectionPopup(string label, string value, IEnumerable<string> choices, Action<int> selectedHandler)
+        public void DrawSelectionPopup(string label, string value, IEnumerable<string> choices, Action<int> selectedHandler, float extraWidth = 200f)
         {
             EditorGUILayout.BeginHorizontal();
             EditorGUILayout.LabelField(label, GUILayout.Width(79));
             var btnRect = EditorGUILayout.GetControlRect(true, Styles.selector.fixedHeight, Styles.selector);
-            var dropdownSize = new Vector2(btnRect.width + 4f, 300);
+            var dropdownSize = new Vector2(btnRect.width + extraWidth, 300);
             ListSelectionWindow.SelectionButton(btnRect, dropdownSize, value, Styles.selector, choices.ToArray(), selectedIndex =>
             {
                 if (selectedIndex != -1)
@@ -579,6 +394,24 @@ namespace Unity.QuickSearch
             GUILayout.Label("Expression results");
         }
 
+        private void DrawMapEditor()
+        {
+            var mapping = (Mapping)m_Node.GetProperty(nameof(Mapping), (int)Mapping.Count);
+            var groupBy = m_Node.GetProperty(ExpressionKeyName.GroupBy, "");
+            EditorGUI.BeginChangeCheck();
+            mapping = (Mapping)EditorGUILayout.EnumPopup(nameof(Mapping), mapping);
+            if (m_Node.TryGetVariableSource(ExpressionKeyName.X, out var xSource) && xSource != null && mapping != Mapping.Table)
+                groupBy = EditorGUILayout.DelayedTextField("Group By", groupBy);
+            else
+                GUILayout.Space(20);
+            if (EditorGUI.EndChangeCheck())
+            {
+                m_Node.SetProperty(nameof(Mapping), (int)mapping);
+                m_Node.SetProperty(ExpressionKeyName.GroupBy, groupBy);
+                propertiesChanged?.Invoke(m_Node);
+            }
+        }
+
         private void DrawSearchEditor()
         {
             using (var has = new EditorGUI.ChangeCheckScope())
@@ -644,6 +477,30 @@ namespace Unity.QuickSearch
             m_Node = null;
             m_VariablesList.Clear();
             MarkDirtyRepaint();
+        }
+
+        public T GetProperty<T>(string name, T defaultValue)
+        {
+            if (m_Node == null)
+                throw new ExpressionException($"Cannot get property {name} for invalid node");
+            return m_Node.GetProperty(name, defaultValue);
+        }
+
+        public int GetProperty(string name, int defaultValue)
+        {
+            if (m_Node == null)
+                throw new ExpressionException($"Cannot get property {name} for invalid node");
+            return m_Node.GetProperty(name, defaultValue);
+        }
+
+        public void SetProperty(string name, object value)
+        {
+            if (m_Node == null)
+                throw new ExpressionException($"Cannot set property {name} for invalid node");
+
+            m_Node.SetProperty(name, value);
+            propertiesChanged?.Invoke(m_Node);
+            resetHeight = true;
         }
     }
 }

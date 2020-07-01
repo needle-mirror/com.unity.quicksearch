@@ -8,7 +8,7 @@ namespace Unity.QuickSearch
     /// <summary>
     /// Define an action that can be applied on SearchItem of a specific provider type.
     /// </summary>
-    [DebuggerDisplay("{DisplayName} - {Id}")]
+    [DebuggerDisplay("{displayName} - {id}")]
     public class SearchAction
     {
         /// <summary>

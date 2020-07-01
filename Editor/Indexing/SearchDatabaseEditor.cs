@@ -14,12 +14,34 @@ namespace Unity.QuickSearch
         [SerializeField] private bool m_KeywordsFoldout;
         [SerializeField] private bool m_DocumentsFoldout;
         [SerializeField] private bool m_DependenciesFoldout;
+        [SerializeField] private bool m_IndexesFoldout;
+
+        private GUIContent title
+        {
+            get
+            {
+                if (m_IndexTitleLabel == null)
+                    m_IndexTitleLabel = new GUIContent();
+
+                if (m_DB.index == null || !m_DB.index.IsReady())
+                    m_IndexTitleLabel.text = $"Building {m_DB.index?.name ?? m_DB.name}...";
+                else
+                    m_IndexTitleLabel.text = $"{m_DB.index?.name ?? m_DB.name} ({EditorUtility.FormatBytes(m_DB.bytes?.Length ?? 0)}, {m_DB.index?.indexCount ?? 0} indexes)";
+
+                return m_IndexTitleLabel;
+            }
+        }
 
         internal void OnEnable()
         {
             m_DB = (SearchDatabase)target;
             m_Settings = serializedObject.FindProperty("settings");
-            m_IndexTitleLabel = new GUIContent($"{m_DB.index?.name ?? m_DB.name} ({EditorUtility.FormatBytes(m_DB.bytes?.Length ?? 0)})");
+            m_Settings.isExpanded = true;
+        }
+
+        protected override void OnHeaderGUI()
+        {
+            // Do not draw any header
         }
 
         public override void OnInspectorGUI()
@@ -27,9 +49,7 @@ namespace Unity.QuickSearch
             if (m_DB.index == null)
                 return;
 
-            EditorGUILayout.PropertyField(m_Settings, m_IndexTitleLabel, true);
-
-            EditorGUILayout.IntField($"Indexes", m_DB.index?.indexCount ?? 0);
+            EditorGUILayout.PropertyField(m_Settings, title, true);
 
             var documentTitle = "Documents";
             if (m_DB.index is SceneIndexer objectIndexer)

@@ -72,6 +72,8 @@ namespace Unity.QuickSearch
 
     static class StringExtensions
     {
+        static readonly char[] k_WordSplitters = new char[] { '(', ')', '{', '}', '[', ']', ':', '-' };
+
         public static StringView GetStringView(this string baseString, int startIndex, int endIndex)
         {
             return new StringView(baseString, startIndex, endIndex);
@@ -80,6 +82,26 @@ namespace Unity.QuickSearch
         public static StringView GetStringView(this string baseString)
         {
             return new StringView(baseString);
+        }
+
+        public static StringView GetWordView(this string baseString, int startIndex)
+        {
+            if (startIndex < 0 || startIndex >= baseString.Length)
+                throw new ArgumentException("Index out of string range", nameof(startIndex));
+
+            var i = startIndex;
+            var lod = char.IsLetterOrDigit(baseString[i++]);
+            while (i < baseString.Length)
+            {
+                if (Array.IndexOf(k_WordSplitters, baseString[i]) != -1)
+                    break;
+
+                if (lod == char.IsLetterOrDigit(baseString[i]))
+                    i++;
+                else
+                    break;
+            }
+            return new StringView(baseString, startIndex, i);
         }
     }
 }

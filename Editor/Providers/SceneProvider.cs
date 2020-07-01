@@ -187,7 +187,7 @@ namespace Unity.QuickSearch.Providers
             else if (context.wantsMore && context.filterType != null && String.IsNullOrEmpty(context.searchQuery))
             {
                 yield return GameObject.FindObjectsOfType(context.filterType)
-                    .Select(obj => 
+                    .Select(obj =>
                     {
                         if (obj is Component c)
                             return c.gameObject;
@@ -278,7 +278,7 @@ namespace Unity.QuickSearch.Providers
         [UsedImplicitly, Shortcut("Help/Quick Search/Scene")]
         internal static void OpenQuickSearch()
         {
-            QuickSearch.OpenWithContextualProvider(k_DefaultProviderId);
+            QuickSearch.OpenWithContextualProvider(k_DefaultProviderId, Query.type);
         }
     }
 }

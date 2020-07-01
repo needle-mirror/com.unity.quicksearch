@@ -93,7 +93,6 @@ namespace Unity.QuickSearch
     public abstract class ObjectIndexer : SearchIndexer
     {
         const int k_MinWordIndexationLength = 2;
-        private static readonly string[] k_FieldNamesNoKeywords = {"name", "text"};
 
         internal SearchDatabase.Settings settings { get; private set; }
 
@@ -416,40 +415,10 @@ namespace Unity.QuickSearch
         /// <param name="property">Property to get value from.</param>
         /// <param name="saveKeyword">If set to true, this means we need to save the property name in the index.</param>
         /// <returns>Property value as a double or a string or null if we weren't able to convert it.</returns>
+        [Obsolete("This override is not supported anymore")]
         protected object GetPropertyValue(SerializedProperty property, ref bool saveKeyword)
         {
-            object fieldValue = null;
-            switch (property.propertyType)
-            {
-                case SerializedPropertyType.Integer:
-                    fieldValue = (double)property.intValue;
-                    break;
-                case SerializedPropertyType.Boolean:
-                    fieldValue = property.boolValue.ToString();
-                    break;
-                case SerializedPropertyType.Float:
-                    fieldValue = (double)property.floatValue;
-                    break;
-                case SerializedPropertyType.String:
-                    if (property.stringValue != null && property.stringValue.Length < 10)
-                        fieldValue = property.stringValue.Replace(" ", "").ToString();
-                    break;
-                case SerializedPropertyType.Enum:
-                    if (property.enumValueIndex >= 0 && property.type == "Enum")
-                        fieldValue = property.enumNames[property.enumValueIndex].ToString();
-                    break;
-                case SerializedPropertyType.ObjectReference:
-                    if (property.objectReferenceValue)
-                    {
-                        saveKeyword = false;
-                        fieldValue = property.objectReferenceValue.name.Replace(" ", "");
-                    }
-                    break;
-                default:
-                    break;
-            }
-
-            return fieldValue;
+            throw new NotSupportedException("This not supported anymore");
         }
 
         /// <summary>
@@ -466,31 +435,45 @@ namespace Unity.QuickSearch
                 var next = p.Next(true);
                 while (next)
                 {
-                    bool saveKeyword = true;
                     var fieldName = p.displayName.Replace("m_", "").Replace(" ", "").ToLowerInvariant();
                     var scc = SearchUtils.SplitCamelCase(fieldName);
                     var fcc = scc.Length > 1 && fieldName.Length > 10 ? scc.Aggregate("", (current, s) => current + s[0]) : fieldName;
-                    object fieldValue = GetPropertyValue(p, ref saveKeyword);
 
-                    // Some property names are not worth indexing and take to much spaces.
-                    if (k_FieldNamesNoKeywords.Contains(fieldName))
-                        saveKeyword = false;
-
-                    if (fieldValue != null)
+                    switch (p.propertyType)
                     {
-                        var sfv = fieldValue as string;
-                        if (sfv != null)
-                        {
-                            if (sfv != "")
-                                IndexProperty(documentIndex, fcc, sfv.Replace(" ", "").ToLowerInvariant(), saveKeyword);
-                            else
-                                IndexWord(documentIndex, $"@{fcc}");
-                        }
-                        else if (fieldValue is double)
-                        {
-                            var nfv = (double)fieldValue;
-                            IndexNumber(documentIndex, fcc.ToLowerInvariant(), nfv);
-                        }
+                        case SerializedPropertyType.Integer:
+                            IndexNumber(documentIndex, fcc, (double)p.intValue);
+                            break;
+                        case SerializedPropertyType.Boolean:
+                            IndexProperty(documentIndex, fcc, p.boolValue.ToString().ToLowerInvariant(), saveKeyword: false, exact: true);
+                            break;
+                        case SerializedPropertyType.Float:
+                            IndexNumber(documentIndex, fcc, (double)p.floatValue);
+                            break;
+                        case SerializedPropertyType.String:
+                            if (!string.IsNullOrEmpty(p.stringValue))
+                                IndexProperty(documentIndex, fcc, p.stringValue.ToLowerInvariant(), saveKeyword: false, exact: p.stringValue.Length >= 16);
+                            break;
+                        case SerializedPropertyType.Enum:
+                            if (p.enumValueIndex >= 0 && p.type == "Enum")
+                                IndexProperty(documentIndex, fcc, p.enumNames[p.enumValueIndex].Replace(" ", "").ToLowerInvariant(), saveKeyword: true, exact: false);
+                            break;
+                        case SerializedPropertyType.Color:
+                            IndexProperty(documentIndex, fcc, ColorUtility.ToHtmlStringRGB(p.colorValue).ToLowerInvariant(), saveKeyword: false, exact: true);
+                            break;
+                        case SerializedPropertyType.Vector2:
+                            IndexProperty(documentIndex, fcc, V2S(p.vector2Value), saveKeyword: false, exact: true);
+                            break;
+                        case SerializedPropertyType.Vector3:
+                            IndexProperty(documentIndex, fcc, V2S(p.vector3Value), saveKeyword: false, exact: true);
+                            break;
+                        case SerializedPropertyType.Vector4:
+                            IndexProperty(documentIndex, fcc, V2S(p.vector4Value), saveKeyword: false, exact: true);
+                            break;
+                        case SerializedPropertyType.ObjectReference:
+                            if (p.objectReferenceValue && !string.IsNullOrEmpty(p.objectReferenceValue.name))
+                                IndexProperty(documentIndex, fcc, p.objectReferenceValue.name.ToLowerInvariant(), saveKeyword: false, exact: true);
+                            break;
                     }
 
                     if (dependencies)
@@ -499,6 +482,11 @@ namespace Unity.QuickSearch
                     next = p.Next(p.hasVisibleChildren && !p.isArray);
                 }
             }
+        }
+
+        private static string V2S<T>(T v)
+        {
+            return Convert.ToString(v).Replace("(", "").Replace(")", "").Replace(" ", "");
         }
 
         private void AddReference(int documentIndex, SerializedProperty p)
@@ -510,7 +498,7 @@ namespace Unity.QuickSearch
             if (!String.IsNullOrEmpty(refValue))
             {
                 refValue = refValue.ToLowerInvariant();
-                IndexProperty(documentIndex, "ref", refValue, saveKeyword: false);
+                IndexProperty(documentIndex, "ref", refValue, saveKeyword: false, exact: true);
                 IndexProperty(documentIndex, "ref", Path.GetFileName(refValue), saveKeyword: false);
             }
         }

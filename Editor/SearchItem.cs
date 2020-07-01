@@ -74,6 +74,12 @@ namespace Unity.QuickSearch
         [CanBeNull] public object data;
 
         /// <summary>
+        /// Used to map value to a search item
+        /// </summary>
+        [CanBeNull] internal object value { get => m_Value ?? id; set => m_Value = value; }
+        private object m_Value = null;
+
+        /// <summary>
         /// Back pointer to the provider.
         /// </summary>
         [CanBeNull] public SearchProvider provider;

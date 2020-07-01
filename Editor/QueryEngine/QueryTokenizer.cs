@@ -11,13 +11,34 @@ namespace Unity.QuickSearch
         ParseError
     }
 
-    abstract class QueryTokenizer<TUserData>
+    static class QueryRegexValues
     {
         // To match a regex at a specific index, use \\G and Match(input, startIndex)
-        static readonly Regex k_PhraseRx = new Regex("\\G!?\\\".*?\\\"");
-        Regex m_FilterRx = new Regex("\\G([\\w]+)(\\([^\\(\\)]+\\))?([^\\w\\s-{}()\"\\[\\].,/|\\`]+)(\\\".*?\\\"|([a-zA-Z0-9]*?)(?:\\{(?:(?<c>\\{)|[^{}]+|(?<-c>\\}))*(?(c)(?!))\\})|[^\\s{}]+)");
-        static readonly Regex k_WordRx = new Regex("\\G!?\\S+");
-        static readonly Regex k_NestedQueryRx = new Regex("\\G([a-zA-Z0-9]*?)(\\{(?:(?<c>\\{)|[^{}]+|(?<-c>\\}))*(?(c)(?!))\\})");
+        public static readonly Regex k_PhraseRx = new Regex("\\G!?\\\".*?\\\"");
+
+        public const string k_FilterOperatorsInnerPattern = "[^\\w\\s-{}()\"\\[\\].,/|\\`]+";
+        public static readonly string k_FilterOperatorsPattern = $"({k_FilterOperatorsInnerPattern})";
+        public static readonly string k_PartialFilterOperatorsPattern = $"(?<op>{k_FilterOperatorsInnerPattern})?";
+
+        public const string k_FilterNamePattern = "\\G([\\w]+)";
+        public static readonly string k_PartialFilterNamePattern = $"\\G(?<name>[\\w]+(?=\\(|(?:{k_FilterOperatorsInnerPattern})))";
+
+        public const string k_FilterFunctionPattern = "(\\([^\\(\\)]+\\))?";
+        public const string k_PartialFilterFunctionPattern = "(?<f1>\\((?!\\S*\\s+\\))[^\\(\\)\\s]*\\)?)?(?<f2>(f1)|\\([^\\(\\)]*\\))?";
+
+        public const string k_FilterValuePattern = "(\\\".*?\\\"|([a-zA-Z0-9]*?)(?:\\{(?:(?<c>\\{)|[^{}]+|(?<-c>\\}))*(?(c)(?!))\\})|[^\\s{}]+)";
+        public const string k_PartialFilterValuePattern = "(?<value>(?(op)(\\\".*?\\\"|([a-zA-Z0-9]*?)(?:\\{(?:(?<c>\\{)|[^{}]+|(?<-c>\\}))*(?(c)(?!))\\})|[^\\s{}]+)))?";
+
+        public static readonly Regex k_WordRx = new Regex("\\G!?\\S+");
+        public static readonly Regex k_NestedQueryRx = new Regex("\\G([a-zA-Z0-9]*?)(\\{(?:(?<c>\\{)|[^{}]+|(?<-c>\\}))*(?(c)(?!))\\})");
+    }
+
+    abstract class QueryTokenizer<TUserData>
+    {
+        Regex m_FilterRx = new Regex(QueryRegexValues.k_FilterNamePattern +
+                                     QueryRegexValues.k_FilterFunctionPattern +
+                                     QueryRegexValues.k_FilterOperatorsPattern +
+                                     QueryRegexValues.k_FilterValuePattern, RegexOptions.Compiled);
 
         static readonly List<string> k_CombiningToken = new List<string>
         {
@@ -27,12 +48,12 @@ namespace Unity.QuickSearch
             "-"
         };
 
-        delegate int TokenMatcher(string text, int startIndex, int endIndex, ICollection<QueryError> errors, out StringView sv, out Match match, out bool matched);
-        delegate bool TokenConsumer(string text, int startIndex, int endIndex, StringView sv, Match match, ICollection<QueryError> errors, TUserData userData);
+        protected delegate int TokenMatcher(string text, int startIndex, int endIndex, ICollection<QueryError> errors, out StringView sv, out Match match, out bool matched);
+        protected delegate bool TokenConsumer(string text, int startIndex, int endIndex, StringView sv, Match match, ICollection<QueryError> errors, TUserData userData);
 
-        List<Tuple<TokenMatcher, TokenConsumer>> m_TokenConsumers;
+        protected List<Tuple<TokenMatcher, TokenConsumer>> m_TokenConsumers;
 
-        public QueryTokenizer()
+        protected QueryTokenizer()
         {
             // The order of regex in this list is important. Keep it like that unless you know what you are doing!
             m_TokenConsumers = new List<Tuple<TokenMatcher, TokenConsumer>>
@@ -46,9 +67,11 @@ namespace Unity.QuickSearch
             };
         }
 
-        public void SetFilterRegex(Regex filterRx)
+        public void BuildFilterRegex(List<string> operators)
         {
-            m_FilterRx = filterRx;
+            var innerOperatorsPattern = $"{string.Join("|", operators)}";
+            var filterOperatorsPattern = $"({innerOperatorsPattern})";
+            m_FilterRx = new Regex(QueryRegexValues.k_FilterNamePattern + QueryRegexValues.k_FilterFunctionPattern + filterOperatorsPattern + QueryRegexValues.k_FilterValuePattern, RegexOptions.Compiled);
         }
 
         public ParseState Parse(string text, int startIndex, int endIndex, ICollection<QueryError> errors, TUserData userData)
@@ -111,7 +134,7 @@ namespace Unity.QuickSearch
                 if (tokenLength > totalUsableLength)
                     continue;
 
-                sv = text.GetStringView(startIndex, startIndex + tokenLength);
+                sv = text.GetWordView(startIndex);
                 if (sv == combiningToken)
                 {
                     matched = true;
@@ -127,6 +150,7 @@ namespace Unity.QuickSearch
         {
             sv = text.GetStringView();
             match = m_FilterRx.Match(text, startIndex, endIndex - startIndex);
+
             if (!match.Success)
             {
                 matched = false;
@@ -140,9 +164,9 @@ namespace Unity.QuickSearch
         int MatchWord(string text, int startIndex, int endIndex, ICollection<QueryError> errors, out StringView sv, out Match match, out bool matched)
         {
             sv = text.GetStringView();
-            match = k_PhraseRx.Match(text, startIndex, endIndex - startIndex);
+            match = QueryRegexValues.k_PhraseRx.Match(text, startIndex, endIndex - startIndex);
             if (!match.Success)
-                match = k_WordRx.Match(text, startIndex, endIndex - startIndex);
+                match = QueryRegexValues.k_WordRx.Match(text, startIndex, endIndex - startIndex);
             if (!match.Success)
             {
                 matched = false;
@@ -199,7 +223,7 @@ namespace Unity.QuickSearch
         int MatchNestedQuery(string text, int startIndex, int endIndex, ICollection<QueryError> errors, out StringView sv, out Match match, out bool matched)
         {
             sv = text.GetStringView();
-            match = k_NestedQueryRx.Match(text, startIndex, endIndex - startIndex);
+            match = QueryRegexValues.k_NestedQueryRx.Match(text, startIndex, endIndex - startIndex);
             if (!match.Success)
             {
                 matched = false;

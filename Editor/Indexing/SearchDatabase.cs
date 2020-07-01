@@ -37,7 +37,6 @@ namespace Unity.QuickSearch
             public bool files = true;               // Index file paths
             public bool directories = false;        // Index folder paths
 
-            public bool fstats = true;              // Index file statistics
             public bool types = true;               // Index type information about objects
             public bool properties = false;         // Index serialized properties of objects
             public bool dependencies = false;       // Index object dependencies (i.e. ref:<name>)
