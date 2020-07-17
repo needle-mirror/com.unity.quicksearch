@@ -72,11 +72,11 @@ namespace Unity.QuickSearch
             public FilterDesc(SearchProvider provider, bool enabled)
             {
                 this.provider = provider;
-                this.isEnabled = enabled;
+                this.enabled = enabled;
             }
 
             public readonly SearchProvider provider;
-            public bool isEnabled;
+            public bool enabled;
         }
 
         private List<FilterDesc> m_ProviderDescs = new List<FilterDesc>();
@@ -138,7 +138,7 @@ namespace Unity.QuickSearch
         public void ResetFilter(bool enableAll)
         {
             foreach (var t in m_ProviderDescs)
-                t.isEnabled = enableAll;
+                t.enabled = enableAll;
         }
 
         /// <summary>
@@ -152,7 +152,7 @@ namespace Unity.QuickSearch
             var index = m_ProviderDescs.FindIndex(t => t.provider.name.id == providerId);
             if (index != -1)
             {
-                m_ProviderDescs[index].isEnabled = isEnabled;
+                m_ProviderDescs[index].enabled = isEnabled;
             }
         }
 
@@ -166,7 +166,7 @@ namespace Unity.QuickSearch
             var index = m_ProviderDescs.FindIndex(t => t.provider.name.id == providerId);
             if (index != -1)
             {
-                return m_ProviderDescs[index].isEnabled;
+                return m_ProviderDescs[index].enabled;
             }
 
             return false;
@@ -322,7 +322,7 @@ namespace Unity.QuickSearch
                 if (m_ProviderDescs.Count == 1)
                     return m_ProviderDescs.Select(d => d.provider);
 
-                return m_ProviderDescs.Where(d => d.isEnabled && !d.provider.isExplicitProvider).Select(d => d.provider);
+                return m_ProviderDescs.Where(d => d.enabled && !d.provider.isExplicitProvider).Select(d => d.provider);
             }
 
             private set
@@ -481,7 +481,7 @@ namespace Unity.QuickSearch
         /// <summary>
         /// Returns a unique code that represents filtered providers for the current context.
         /// </summary>
-        internal int scopeHash => filters.Where(d => d.isEnabled && !d.provider.isExplicitProvider)
+        internal int scopeHash => filters.Where(d => d.enabled && !d.provider.isExplicitProvider)
                 .Select(d => d.provider.filterId.GetHashCode())
                 .Aggregate(0, (h1, h2) => (h1 ^ h2).GetHashCode());
 

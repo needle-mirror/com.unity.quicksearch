@@ -114,29 +114,10 @@ namespace Unity.QuickSearch
         /// <param name="context">Current search context</param>
         /// <param name="lastToken">Search token currently being typed.</param>
         /// <returns>A list of keywords that can be shown in an auto-complete dropdown.</returns>
+        [Obsolete("GetKeywords is deprecated. Define fetchPropositions on your provider instead.")]
         public static string[] GetKeywords(SearchContext context, string lastToken)
         {
-            var keywords = new List<string>();
-            if (lastToken.StartsWith(k_ActionQueryToken, StringComparison.Ordinal))
-            {
-                keywords.AddRange(ActionIdToProviders.Keys.Select(k => k_ActionQueryToken + k));
-            }
-            else
-            {
-                foreach (var provider in context.providers)
-                {
-                    try
-                    {
-                        provider.fetchKeywords?.Invoke(context, lastToken, keywords);
-                    }
-                    catch (Exception ex)
-                    {
-                        UnityEngine.Debug.LogError($"Failed to get keywords with {provider.name.displayName}.\r\n{ex}");
-                    }
-                }
-            }
-
-            return keywords.Distinct().ToArray();
+            throw new NotSupportedException();
         }
 
         /// <summary>

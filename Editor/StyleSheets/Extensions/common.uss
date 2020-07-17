@@ -93,3 +93,21 @@
 .quick-search-status-bar-background {
     background-color: --theme-header-box-background-color;
 }
+
+.quick-search-auto-complete-item-label {
+    -unity-enable-hovering: --enable-style-hovering;
+    background-color: #252526;
+}
+
+.quick-search-auto-complete-item-selected-label {
+    -unity-enable-hovering: --enable-style-hovering;
+    background-color: #2C5D87;
+}
+
+.quick-search-auto-complete-item-label:hover {
+    background-color: #454545;
+}
+
+.quick-search-auto-complete-item-selected-label:hover {
+    background-color: #3C6D97;
+}

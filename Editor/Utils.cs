@@ -50,7 +50,7 @@ namespace Unity.QuickSearch
         /// </summary>
         public static void OpenDocumentationUrl()
         {
-            const string documentationUrl = "https://docs.unity3d.com/Packages/com.unity.quicksearch@latest/";
+            string documentationUrl = $"https://docs.unity3d.com/Packages/com.unity.quicksearch{GetQuickSearchDocVersion()}/manual/search-syntax.html";
             var uri = new Uri(documentationUrl);
             Process.Start(uri.AbsoluteUri);
         }
@@ -202,6 +202,37 @@ namespace Unity.QuickSearch
                     avgTimeLabel = $" ({fetchTime:#} ms)";
                 return $"<b>{p.name.displayName}</b>{avgTimeLabel}";
             }));
+        }
+
+        public static string FormatBytes(long byteCount)
+        {
+            string[] suf = { "B", "KB", "MB", "GB", "TB", "PB", "EB" };
+            if (byteCount == 0)
+                return "0" + suf[0];
+            long bytes = Math.Abs(byteCount);
+            int place = Convert.ToInt32(Math.Floor(Math.Log(bytes, 1024)));
+            double num = Math.Round(bytes / Math.Pow(1024, place), 1);
+            return (Math.Sign(byteCount) * num).ToString() + suf[place];
+        }
+
+        public static string ToGuid(string assetPath)
+        {
+            string metaFile = $"{assetPath}.meta";
+            if (!File.Exists(metaFile))
+                return null;
+
+            string line;
+            using (var file = new StreamReader(metaFile))
+            {
+                while ((line = file.ReadLine()) != null)
+                {
+                    if (!line.StartsWith("guid:", StringComparison.Ordinal))
+                        continue;
+                    return line.Substring(6);
+                }
+            }
+
+            return null;
         }
 
         private static bool IsIgnoredAssembly(AssemblyName assemblyName)
@@ -391,6 +422,21 @@ namespace Unity.QuickSearch
 
             return version ?? "unknown";
         }
+
+        internal static string GetQuickSearchDocVersion()
+        {
+            var version = GetQuickSearchVersion();
+            var docVersion = version.Split('.');
+            if (docVersion.Length > 2)
+            {
+                return $"@{docVersion[0]}.{docVersion[1]}";
+            }
+            else
+            {
+                return "@latest";
+            }
+        }
+
         internal static string GetNextWord(string src, ref int index)
         {
             // Skip potential white space BEFORE the actual word we are extracting
@@ -653,6 +699,20 @@ namespace Unity.QuickSearch
             var fi = (FieldInfo)s_GetFieldInfoFromProperty.Invoke(null, parameters);
             requiredType = parameters[1] as Type;
             return fi;
+        }
+
+        private static MethodInfo s_GetSourceAssetFileHash;
+        internal static Hash128 GetSourceAssetFileHash(string guid)
+        {
+            if (s_GetSourceAssetFileHash == null)
+            {
+                var type = typeof(UnityEditor.AssetDatabase);
+                s_GetSourceAssetFileHash = type.GetMethod("GetSourceAssetFileHash", BindingFlags.NonPublic | BindingFlags.Static);
+                if (s_GetSourceAssetFileHash == null)
+                    return default;
+            }
+            object[] parameters = new object[] { guid };
+            return (Hash128)s_GetSourceAssetFileHash.Invoke(null, parameters);
         }
 
         public static void LogProperties(SerializedObject so, bool includeChildren = true)

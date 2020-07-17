@@ -95,7 +95,7 @@ namespace Unity.QuickSearch
         /// Boolean indicating if incomplete filters should be skipped.
         /// If skipIncompleteFilters is false, incomplete filters will generate errors when parsed.
         /// </summary>
-        internal bool skipIncompleteFilters;
+        public bool skipIncompleteFilters;
     }
 
     class QueryEngineParserData
@@ -1218,7 +1218,7 @@ namespace Unity.QuickSearch
 
             var innerOperatorsPattern = $"{string.Join("|", sortedOperators)}";
             var partialOperatorsPattern = $"(?<op>{innerOperatorsPattern})?";
-            var partialFilterNamePattern = $"\\G(?<name>[\\w]+(?=\\(|(?:{innerOperatorsPattern})))";
+            var partialFilterNamePattern = $"\\G(?<name>[\\w.]+(?=\\(|(?:{innerOperatorsPattern})))";
             m_PartialFilterRx = new Regex(partialFilterNamePattern + QueryRegexValues.k_PartialFilterFunctionPattern + partialOperatorsPattern + QueryRegexValues.k_PartialFilterValuePattern);
         }
 
@@ -1547,7 +1547,7 @@ namespace Unity.QuickSearch
         /// Boolean indicating if incomplete filters should be skipped.
         /// If skipIncompleteFilters is false, incomplete filters will generate errors when parsed.
         /// </summary>
-        internal bool skipIncompleteFilters
+        public bool skipIncompleteFilters
         {
             get => m_Impl.validationOptions.skipIncompleteFilters;
             set

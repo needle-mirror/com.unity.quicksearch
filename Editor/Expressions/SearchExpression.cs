@@ -40,7 +40,7 @@ namespace Unity.QuickSearch
         /// </summary>
         /// <param name="finished">Action to be invoked when the evaluation is finished.</param>
         /// <returns>Search results</returns>
-        //ISearchList Evaluate(Action finished);
+        ISearchList Evaluate(Action finished);
 
         /// <summary>
         /// Set the value of a variable with a specific name.

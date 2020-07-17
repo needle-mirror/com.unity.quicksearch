@@ -202,7 +202,7 @@ namespace Unity.QuickSearch
         private void HandleListItemEvents(int itemTotalCount, Rect screenRect)
         {
             var mousePosition = Event.current.mousePosition - new Vector2(0, screenRect.y);
-            if (SearchField.IsAutoCompleteHovered(mousePosition))
+            if (AutoComplete.IsHovered(mousePosition))
                 return;
 
             if (Event.current.type == EventType.MouseDown && Event.current.button == 0)

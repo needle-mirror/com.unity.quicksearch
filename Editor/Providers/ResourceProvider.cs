@@ -18,7 +18,6 @@ namespace Unity.QuickSearch.Providers
             Type filterType { get; }
             string name { get; }
             string matchToken { get; }
-            Func<SearchContext, string, IEnumerable<string>> fetchKeywords { get; }
             Func<Object, string> matchWord { get; }
         }
 
@@ -27,7 +26,6 @@ namespace Unity.QuickSearch.Providers
             public Type filterType => typeof(T);
             public string name { get; set; }
             public string matchToken { get; set; }
-            public Func<SearchContext, string, IEnumerable<string>> fetchKeywords { get; set; }
             public Func<Object, T> getFilterData { get; set; }
 
             public Func<Object, string> matchWord
@@ -49,11 +47,7 @@ namespace Unity.QuickSearch.Providers
             new MatchOperation<string> { name = "type", matchToken = "t", getFilterData = o => o.GetType().FullName},
             new MatchOperation<string> { name = "name", matchToken = "n", getFilterData = o => o.name},
             new MatchOperation<int> { name = "id", matchToken = "id", getFilterData = o => o.GetInstanceID()},
-            new MatchOperation<string> { name = "tag", matchToken = "tag", fetchKeywords = FetchTagKeywords, getFilterData = o =>
-            {
-                var go = o as GameObject;
-                return go?.tag ?? "";
-            }}
+            new MatchOperation<string> { name = "tag", matchToken = "tag", getFilterData = o => { var go = o as GameObject; return go?.tag ?? ""; }}
         };
 
         // QueryEngine
@@ -81,7 +75,6 @@ namespace Unity.QuickSearch.Providers
                 fetchThumbnail = FetchThumbnail,
                 fetchPreview = FetchPreview,
                 trackSelection = (item, context) => TrackSelection(item),
-                fetchKeywords = FetchKeywords,
                 startDrag = (item, context) => DragItem(item, context),
                 onEnable = OnEnable
             };
@@ -231,23 +224,6 @@ namespace Unity.QuickSearch.Providers
         {
             var instanceID = Convert.ToInt32(item.id);
             return EditorUtility.InstanceIDToObject(instanceID);
-        }
-
-        private static void FetchKeywords(SearchContext context, string lastToken, List<string> items)
-        {
-            var index = lastToken.IndexOf(":");
-            if (index < 1)
-                return;
-            var filterToken = lastToken.Substring(0, index);
-            var matchOp = k_SubMatches.FirstOrDefault(subMatch => subMatch.matchToken == filterToken);
-            if (matchOp?.fetchKeywords == null)
-                return;
-            items.AddRange(matchOp.fetchKeywords(context, lastToken).Select(k => $"{matchOp.matchToken}:{k}"));
-        }
-
-        private static IEnumerable<string> FetchTagKeywords(SearchContext context, string lastToken)
-        {
-            return UnityEditorInternal.InternalEditorUtility.tags;
         }
 
         #if UNITY_2020_1_OR_NEWER

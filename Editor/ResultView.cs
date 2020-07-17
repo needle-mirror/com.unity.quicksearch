@@ -131,7 +131,7 @@ namespace Unity.QuickSearch
             var mouseDownItemIndex = m_MouseDownItemIndex;
             m_MouseDownItemIndex = -1;
 
-            if (SearchField.IsAutoCompleteHovered(evt.mousePosition))
+            if (AutoComplete.IsHovered(evt.mousePosition))
                 return;
 
             if (clickedItemIndex >= 0 && clickedItemIndex < itemTotalCount)

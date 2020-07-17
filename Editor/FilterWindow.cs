@@ -117,7 +117,7 @@ namespace Unity.QuickSearch
         internal void OnDestroy()
         {
             s_CloseTime = EditorApplication.timeSinceStartup;
-            if (m_FilterableProviders.All(desc => !desc.isEnabled))
+            if (m_FilterableProviders.All(desc => !desc.enabled))
                 Debug.LogWarning("All filters are disabled");
         }
 
@@ -204,7 +204,7 @@ namespace Unity.QuickSearch
             GUILayout.FlexibleSpace();
             EditorGUI.BeginChangeCheck();
             GUI.SetNextControlName($"Box_{m_ToggleFilterNextIndex++}");
-            bool isEnabled = GUILayout.Toggle(m_FilterableProviders.All(d => d.isEnabled), "", Styles.headerFilterToggle, GUILayout.ExpandWidth(false));
+            bool isEnabled = GUILayout.Toggle(m_FilterableProviders.All(d => d.enabled), "", Styles.headerFilterToggle, GUILayout.ExpandWidth(false));
             if (EditorGUI.EndChangeCheck())
                 m_Context.ResetFilter(isEnabled);
 
@@ -235,7 +235,7 @@ namespace Unity.QuickSearch
 
             EditorGUI.BeginChangeCheck();
             GUI.SetNextControlName($"Box_{m_ToggleFilterNextIndex++}");
-            bool isEnabled = GUILayout.Toggle(desc.isEnabled, "", Styles.filterToggle, GUILayout.ExpandWidth(false));
+            bool isEnabled = GUILayout.Toggle(desc.enabled, "", Styles.filterToggle, GUILayout.ExpandWidth(false));
             if (EditorGUI.EndChangeCheck())
             {
                 m_Context.SetFilter(desc.provider.name.id, isEnabled);

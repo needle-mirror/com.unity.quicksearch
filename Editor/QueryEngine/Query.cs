@@ -25,7 +25,7 @@ namespace Unity.QuickSearch
         /// <summary>
         /// The text that generated this query.
         /// </summary>
-        internal string text { get; }
+        public string text { get; }
 
         /// <summary> Indicates if the query is valid or not. </summary>
         public bool valid => errors.Count == 0 && evaluationGraph != null;
@@ -88,7 +88,7 @@ namespace Unity.QuickSearch
         /// </summary>
         /// <param name="position">The position of the query node in the text.</param>
         /// <returns>An IQueryNode.</returns>
-        internal IQueryNode GetNodeAtPosition(int position)
+        public IQueryNode GetNodeAtPosition(int position)
         {
             // Allow position at Length, to support cursor at end of word.
             if (position < 0 || position > text.Length)

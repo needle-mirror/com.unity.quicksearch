@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using UnityEditor;
+using UnityEditor.Experimental;
 using UnityEditor.UIElements;
 using UnityEngine;
 using UnityEngine.UIElements;
@@ -335,7 +336,7 @@ namespace Unity.QuickSearch
             m_ExcludesFoldout.Add(m_ListViewExcludes);
             m_IndexDetailsElementScrollView.Add(m_ExcludesFoldout);
 
-            m_OptionsFoldout = CreateFoldout("Options");
+            m_OptionsFoldout = CreateFoldout(Utils.isDeveloperBuild ? $"Options (0x{selectedItem.options.GetHashCode():X})" : "Options");
             m_IndexDetailsElementScrollView.Add(m_OptionsFoldout);
 
             CreateOptionsVisualElements();
@@ -428,17 +429,14 @@ namespace Unity.QuickSearch
                     case "files":
                         toggle.tooltip = "Include file paths in this index";
                         break;
-                    case "directories":
-                        toggle.tooltip = "Include folder paths in this index";
-                        break;
-                    case "fstats":
-                        toggle.tooltip = "Include file statistics in this index";
-                        break;
                     case "types":
                         toggle.tooltip = "Include object type information in this index";
                         break;
                     case "properties":
                         toggle.tooltip = "Include objects' serialized properties in this index";
+                        break;
+                    case "extended":
+                        toggle.tooltip = "Include as many properties as possible";
                         break;
                     case "dependencies":
                         toggle.tooltip = "Include information about objects' direct dependencies in this index";
@@ -507,7 +505,7 @@ namespace Unity.QuickSearch
                         documentTitle = "Documents";
                     }
 
-                    UpdateIndexPreviewListView(selectedItemAsset.index.GetDocuments().OrderBy(p => p.id).Select(d => d.id).ToList(), m_DocumentsListView);
+                    UpdateIndexPreviewListView(selectedItemAsset.index.GetDocuments(true).OrderBy(p => p.id).Select(d => d.id).ToList(), m_DocumentsListView);
                     m_DocumentsButton.text = $"{selectedItemAsset.index.documentCount} {documentTitle}";
 
                     UpdateIndexPreviewListView(selectedItemAsset.index.GetKeywords().OrderBy(p => p).ToList(), m_KeywordsListView);
@@ -921,7 +919,14 @@ namespace Unity.QuickSearch
                     if (evt.button == 1)
                     {
                         GenericMenu menu = new GenericMenu();
-                        menu.AddItem(new GUIContent("Open JSon"), false, () => { EditorUtility.OpenWithDefaultApp(m_IndexSettingsFilePaths[index]); });
+                        menu.AddItem(new GUIContent("Open JSon"), false, () => EditorUtility.OpenWithDefaultApp(m_IndexSettingsFilePaths[index]));
+                        menu.AddItem(new GUIContent("Force rebuild"), false, () =>
+                        {
+                            var settings = m_IndexSettingsAssets[index].settings;
+                            var indexImporterType = SearchIndexEntryImporter.GetIndexImporterType(settings.type, settings.options.GetHashCode());
+                            AssetDatabaseExperimental.RegisterCustomDependency(indexImporterType.GUID.ToString("N"), Hash128.Parse(Guid.NewGuid().ToString("N")));
+                            AssetDatabase.ImportAsset(m_IndexSettingsFilePaths[index]);
+                        });
                         menu.ShowAsContext();
                     }
                 });

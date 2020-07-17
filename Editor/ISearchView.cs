@@ -21,7 +21,7 @@ namespace Unity.QuickSearch
     /// </summary>
     public enum TextCursorPlacement
     {
-        /// <summary>Do not ove the cursor.</summary>
+        /// <summary>Do not move the cursor.</summary>
         None,
         /// <summary>Move the cursor at the end of the line of text.</summary>
         MoveLineEnd,
@@ -35,6 +35,8 @@ namespace Unity.QuickSearch
         MoveWordLeft,
         /// <summary>Move the cursor one word to the right.</summary>
         MoveWordRight,
+        /// <summary>Move the cursor one word to the right for auto complete mode.</summary>
+        MoveAutoComplete,
         /// <summary>Default cursor position (end of the line of text).</summary>
         Default = MoveLineEnd
     }

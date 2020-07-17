@@ -52,7 +52,7 @@ namespace Unity.QuickSearch
             var eventType = evt.type;
             var mouseButton = evt.button;
             var mousePosition = evt.mousePosition;
-            var isHoverGrid = !SearchField.IsAutoCompleteHovered(evt.mousePosition);
+            var isHoverGrid = !AutoComplete.IsHovered(evt.mousePosition);
             isHoverGrid &= gridRect.Contains(mousePosition);
 
             foreach (var item in items)

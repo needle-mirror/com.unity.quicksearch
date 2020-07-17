@@ -304,18 +304,18 @@ namespace Unity.QuickSearch
 
         /// <summary> Unique id of the provider.</summary>
         public NameEntry name;
-        
+
         /// <summary>
         /// Indicates if the provider is active or not. Inactive providers are completely ignored by the search service. The active state can be toggled in the search settings.
         /// </summary>
         public bool active;
-        
+
         /// <summary> Text token use to "filter" a provider (ex:  "me:", "p:", "s:")</summary>
         public string filterId;
-        
+
         /// <summary> This provider is only active when specified explicitly using his filterId</summary>
         public bool isExplicitProvider;
-        
+
         /// <summary> Indicates if the provider can show additional details or not.</summary>
         public bool showDetails;
 
@@ -344,13 +344,13 @@ namespace Unity.QuickSearch
         /// preventing the UI to block if many preview needs to be generated at the same time.
         /// </summary>
         public Func<SearchItem, SearchContext, Vector2, FetchPreviewOptions, Texture2D> fetchPreview;
-        
+
         /// <summary> If implemented, it means the item supports drag. It is up to the SearchProvider to properly setup the DragAndDrop manager.</summary>
         public Action<SearchItem, SearchContext> startDrag;
-        
+
         /// <summary> Called when the selection changed and can be tracked.</summary>
         public Action<SearchItem, SearchContext> trackSelection;
-        
+
         /// <summary> MANDATORY: Handler to get items for a given search context.
         /// The return value is an object that can be of type IEnumerable or IEnumerator.
         /// The enumeration of those objects should return SearchItems.
@@ -368,24 +368,30 @@ namespace Unity.QuickSearch
         /// <summary>
         /// Provider can return a list of words that will help the user complete his search query
         /// </summary>
+        [Obsolete("GetKeywords is deprecated. Define fetchPropositions on your provider instead.")]
         public Action<SearchContext, string, List<string>> fetchKeywords;
+
+        /// <summary>
+        /// Provider can return a list of words that will help the user complete his search query.
+        /// </summary>
+        internal Func<SearchContext, SearchPropositionOptions, IEnumerable<SearchProposition>> fetchPropositions;
 
         /// <summary>
         /// Called when the QuickSearchWindow is opened. Allow the Provider to perform some caching.
         /// </summary>
         public Action onEnable;
-        
-        /// <summary> 
+
+        /// <summary>
         /// Called when the QuickSearchWindow is closed. Allow the Provider to release cached resources.
         /// </summary>
         public Action onDisable;
 
-        /// <summary> 
+        /// <summary>
         /// Hint to sort the Provider. Affect the order of search results and the order in which provider are shown in the FilterWindow.
         /// </summary>
         public int priority;
 
-        /// <summary> 
+        /// <summary>
         /// Called when quick search is invoked in "contextual mode". If you return true it means the provider is enabled for this search context.
         /// </summary>
         public Func<bool> isEnabledForContextualSearch;

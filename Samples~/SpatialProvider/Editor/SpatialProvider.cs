@@ -28,6 +28,7 @@ public static class SpatialProvider
     {
         return new SearchProvider(type, displayName)
         {
+            active = false,
             filterId = "spl:",
             onEnable = OnEnable,
             fetchItems = (context, items, provider) => SearchItems(context, provider),

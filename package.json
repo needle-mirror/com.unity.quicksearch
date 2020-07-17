@@ -1,7 +1,7 @@
 {
   "name": "com.unity.quicksearch",
   "displayName": "Quick Search",
-  "version": "2.0.2",
+  "version": "2.1.0-preview.1",
   "unity": "2019.4",
   "description": "Search multiple areas of Unity: assets, scene objects, menu items, packages, APIs, settings, etc.\n\nOn Windows simply press Alt+' to find anything or Option+' on Mac.\nLook in the shortcut manager for additional Quick Search shortcut bindings.",
   "type": "tool",
@@ -20,21 +20,26 @@
     "anything"
   ],
   "relatedPackages": {
-    "com.unity.quicksearch.tests": "2.0.2"
+    "com.unity.quicksearch.tests": "2.1.0-preview.1"
   },
   "upmCi": {
-    "footprint": "ced49c4675768c84b9c90cdcf4a787b191632531"
+    "footprint": "0751cb67bb3e27927ddec0b2afc798f1764076a7"
   },
   "repository": {
     "url": "https://github.cds.internal.unity3d.com/unity/com.unity.quicksearch.git",
     "type": "git",
-    "revision": "4d5c0f54be26662a75c6c9d71d0f5354d4379fe8"
+    "revision": "a002efd8fb19a86f646e49b504033af2a052997e"
   },
   "samples": [
     {
       "displayName": "Customized Scene Provider",
       "description": "Scene Provider Customization Example",
       "path": "Samples~/CustomizedSceneProvider"
+    },
+    {
+      "displayName": "Dependency Search Provider",
+      "description": "Index project dependencies",
+      "path": "Samples~/DependencyProvider"
     },
     {
       "displayName": "QueryEngine Basic",
@@ -50,6 +55,11 @@
       "displayName": "Spatial Provider",
       "description": "Spatial Provider example using the QueryEngine.",
       "path": "Samples~/SpatialProvider"
+    },
+    {
+      "displayName": "Type Search Provider",
+      "description": "Search unity obeject types",
+      "path": "Samples~/TypeProvider"
     }
   ]
 }

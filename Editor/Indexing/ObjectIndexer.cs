@@ -4,7 +4,6 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Reflection;
 using UnityEditor;
 using UnityEngine;
 using Object = UnityEngine.Object;
@@ -19,86 +18,12 @@ namespace Unity.QuickSearch
     }
 
     /// <summary>
-    /// Descriptor for the object that is about to be indexed. It stores a reference to the object itself as well a an already setup SerializedObject.
-    /// </summary>
-    public struct CustomObjectIndexerTarget
-    {
-        /// <summary>
-        /// Object to be indexed.
-        /// </summary>
-        public Object target;
-        /// <summary>
-        /// Serialized representation of the object to be indexed.
-        /// </summary>
-        public SerializedObject serializedObject;
-        /// <summary>
-        /// Object Id. It is the object path in case of an asset or the GlobalObjectId in terms of a scene object.
-        /// </summary>
-        public string id;
-        /// <summary>
-        /// Document Index owning the object to index.
-        /// </summary>
-        public int documentIndex;
-        /// <summary>
-        /// Type of the object to index.
-        /// </summary>
-        public Type targetType;
-    }
-
-    /// <summary>
-    /// Allow a user to register a custom Indexing function for a specific type. The registered function must be of type:
-    /// static void Function(<see cref="CustomObjectIndexerTarget"/> context, <see cref="ObjectIndexer"/> indexer);
-    /// <example>
-    /// <code>
-    /// [CustomObjectIndexer(typeof(Material))]
-    /// internal static void MaterialShaderReferences(CustomObjectIndexerTarget context, ObjectIndexer indexer)
-    /// {
-    ///    var material = context.target as Material;
-    ///    if (material == null)
-    ///        return;
-    ///
-    ///    if (material.shader)
-    ///    {
-    ///        var fullShaderName = material.shader.name.ToLowerInvariant();
-    ///        var shortShaderName = System.IO.Path.GetFileNameWithoutExtension(fullShaderName);
-    ///        indexer.AddProperty("ref", shortShaderName, context.documentIndex, saveKeyword: false);
-    ///        indexer.AddProperty("ref", fullShaderName, context.documentIndex, saveKeyword: false);
-    ///    }
-    /// }
-    /// </code>
-    /// </example>
-    /// </summary>
-    [AttributeUsage(AttributeTargets.Method)]
-    public class CustomObjectIndexerAttribute : Attribute
-    {
-        /// <summary>
-        /// Each time an object of specific Type is indexed, the registered function will be called.
-        /// </summary>
-        public Type type { get; }
-
-        /// <summary>
-        /// Register a new Indexing function bound to the specific type.
-        /// </summary>
-        /// <param name="type">Type of object to be indexed.</param>
-        public CustomObjectIndexerAttribute(Type type)
-        {
-            this.type = type;
-        }
-    }
-
-    /// <summary>
     /// Specialized <see cref="SearchIndexer"/> used to index Unity Assets. See <see cref="AssetIndexer"/> for a specialized SearchIndexer used to index simple assets and
     /// see <see cref="SceneIndexer"/> for an indexer used to index scene and prefabs.
     /// </summary>
     public abstract class ObjectIndexer : SearchIndexer
     {
-        const int k_MinWordIndexationLength = 2;
-
         internal SearchDatabase.Settings settings { get; private set; }
-
-        private readonly QueryEngine<SearchResult> m_QueryEngine = new QueryEngine<SearchResult>(validateFilters: false);
-        private readonly Dictionary<string, Query<SearchResult, object>> m_QueryPool = new Dictionary<string, Query<SearchResult, object>>();
-        private readonly Dictionary<Type, List<Action<CustomObjectIndexerTarget, ObjectIndexer>>> m_CustomObjectIndexers = new Dictionary<Type, List<Action<CustomObjectIndexerTarget, ObjectIndexer>>>();
 
         /// <summary>
         /// Event that triggers while indexing is happening to report progress. The event signature is
@@ -110,13 +35,6 @@ namespace Unity.QuickSearch
             : base(name)
         {
             this.settings = settings;
-            m_QueryEngine.SetSearchDataCallback(e => null, s =>
-            {
-                if (s.Length < k_MinWordIndexationLength)
-                    return null;
-                return s;
-            }, StringComparison.Ordinal);
-            LoadCustomObjectIndexers();
         }
 
         /// <summary>
@@ -130,17 +48,7 @@ namespace Unity.QuickSearch
         {
             if (settings.options.disabled)
                 return Enumerable.Empty<SearchResult>();
-
-            var query = BuildQuery(searchQuery, maxScore, patternMatchLimit);
-            if (!query.valid)
-                return Enumerable.Empty<SearchResult>();
-
-            #if DEBUG_INDEXING
-            using (new DebugTimer($"Search \"{searchQuery}\" in {name}"))
-            #endif
-            {
-                return query.Apply(null).OrderBy(e => e.score).Distinct();
-            }
+            return base.Search(searchQuery, maxScore, patternMatchLimit);
         }
 
         /// <summary>
@@ -148,12 +56,7 @@ namespace Unity.QuickSearch
         /// </summary>
         public override void Build()
         {
-            if (LoadIndexFromDisk(null, true))
-                return;
-
-            var it = BuildAsync(-1, null);
-            while (it.MoveNext())
-                ;
+            throw new NotSupportedException("Object indexer uses asset workers to produce index artifacts.");
         }
 
         /// <summary>
@@ -164,32 +67,32 @@ namespace Unity.QuickSearch
         /// <returns>Returns true if the document doesn't need to be indexed.</returns>
         public override bool SkipEntry(string path, bool checkRoots = false)
         {
+            if (String.IsNullOrEmpty(path))
+                return true;
+
             if (checkRoots)
             {
                 if (!GetRoots().Any(r => path.StartsWith(r, StringComparison.OrdinalIgnoreCase)))
                     return true;
             }
 
-            if (!settings.options.directories && Directory.Exists(path))
-                return true;
-
-            if (!settings.options.files && File.Exists(path))
-                return true;
-
             var ext = Path.GetExtension(path);
 
-            // Exclude indexes by default
-            if (ext.EndsWith("meta", StringComparison.OrdinalIgnoreCase) ||
-                ext.EndsWith("index", StringComparison.OrdinalIgnoreCase))
+            // Exclude some file extensions by default
+            if (ext.Equals(".meta", StringComparison.Ordinal) ||
+                ext.Equals(".index", StringComparison.Ordinal))
                 return true;
 
-            var dir = Path.GetDirectoryName(path);
+            if (settings.includes?.Length > 0 || settings.excludes?.Length > 0)
+            {
+                var dir = Path.GetDirectoryName(path).Replace("\\", "/");
 
-            if (settings.includes?.Length > 0 && !settings.includes.Any(pattern => PatternChecks(pattern, ext, dir, path)))
-                return true;
+                if (settings.includes?.Length > 0 && !settings.includes.Any(pattern => PatternChecks(pattern, ext, dir, path)))
+                    return true;
 
-            if (settings.excludes?.Length > 0 && settings.excludes.Any(pattern => PatternChecks(pattern, ext, dir, path)))
-                return true;
+                if (settings.excludes?.Length > 0 && settings.excludes.Any(pattern => PatternChecks(pattern, ext, dir, path)))
+                    return true;
+            }
 
             return false;
         }
@@ -269,7 +172,7 @@ namespace Unity.QuickSearch
         public void IndexWord(int documentIndex, string word, int maxVariations, bool exact, int scoreModifier = 0)
         {
             var modifiedScore = settings.baseScore + scoreModifier;
-            AddWord(word.ToLowerInvariant(), k_MinWordIndexationLength, maxVariations, modifiedScore, documentIndex);
+            AddWord(word.ToLowerInvariant(), minWordIndexationLength, maxVariations, modifiedScore, documentIndex);
             if (exact)
                 AddExactWord(word.ToLowerInvariant(), modifiedScore, documentIndex);
         }
@@ -330,49 +233,10 @@ namespace Unity.QuickSearch
             reportProgress?.Invoke(progressId, value, progressReport, finished);
         }
 
-        /// <summary>
-        /// Build Index asynchronously (in a thread).
-        /// </summary>
-        /// <param name="progressId">Id to use to report progress. See <see cref="ObjectIndexer.ReportProgress"/></param>
-        /// <param name="userData">User data pass to the indexing process.</param>
-        /// <returns>Returns enumerator during the asynchronous build.</returns>
-        protected abstract System.Collections.IEnumerator BuildAsync(int progressId, object userData = null);
-
-        private Query<SearchResult, object> BuildQuery(string searchQuery, int maxScore, int patternMatchLimit)
+        [Obsolete("Async index builds are not supported anymore.")]
+        protected virtual System.Collections.IEnumerator BuildAsync(int progressId, object userData = null)
         {
-            Query<SearchResult, object> query;
-            if (m_QueryPool.TryGetValue(searchQuery, out query) && query.valid)
-                return query;
-
-            if (m_QueryPool.Count > 50)
-                m_QueryPool.Clear();
-
-            query = m_QueryEngine.Parse(searchQuery, new SearchIndexerQueryFactory(args =>
-            {
-                if (args.op == SearchIndexOperator.None)
-                    return SearchIndexerQuery.EvalResult.None;
-
-                #if DEBUG_INDEXING
-                using (var t = new DebugTimer(null))
-                #endif
-                {
-                    SearchResultCollection subset = null;
-                    if (args.andSet != null)
-                        subset = new SearchResultCollection(args.andSet);
-                    var results = SearchTerm(args.name, args.value, args.op, args.exclude, maxScore, subset, patternMatchLimit);
-
-                    if (args.orSet != null)
-                        results = results.Concat(args.orSet);
-
-                    #if DEBUG_INDEXING
-                    SearchIndexerQuery.EvalResult.Print(args, results, subset, t.timeMs);
-                    #endif
-                    return SearchIndexerQuery.EvalResult.Combined(results);
-                }
-            }));
-            if (query.valid)
-                m_QueryPool[searchQuery] = query;
-            return query;
+            throw new NotSupportedException();
         }
 
         internal static FilePattern GetFilePattern(string pattern)
@@ -387,24 +251,20 @@ namespace Unity.QuickSearch
             return FilePattern.File;
         }
 
-        private bool PatternChecks(string pattern, string ext, string dir, string fileName)
+        private bool PatternChecks(string pattern, string ext, string dir, string filePath)
         {
             var filePattern = GetFilePattern(pattern);
-            // Extension check
-            if (filePattern == FilePattern.Extension && ext.Equals(pattern, StringComparison.OrdinalIgnoreCase))
-                return true;
 
-            // Folder check
-            if (filePattern == FilePattern.Folder)
+            switch (filePattern)
             {
-                var icDir = pattern.Substring(0, pattern.Length - 1);
-                if (dir.IndexOf(icDir, StringComparison.OrdinalIgnoreCase) != -1)
-                    return true;
+                case FilePattern.Extension:
+                    return ext.Equals(pattern, StringComparison.OrdinalIgnoreCase);
+                case FilePattern.Folder:
+                    var icDir = pattern.Substring(0, pattern.Length - 1);
+                    return dir.IndexOf(icDir, StringComparison.OrdinalIgnoreCase) != -1;
+                case FilePattern.File:
+                    return filePath.IndexOf(pattern, StringComparison.OrdinalIgnoreCase) != -1;
             }
-
-            // File name check
-            if (filePattern == FilePattern.File && fileName.IndexOf(pattern, StringComparison.OrdinalIgnoreCase) != -1)
-                return true;
 
             return false;
         }
@@ -427,66 +287,93 @@ namespace Unity.QuickSearch
         /// <param name="obj">Object to index.</param>
         /// <param name="documentIndex">Document where the indexed object was found.</param>
         /// <param name="dependencies">Index dependencies.</param>
-        protected void IndexObject(int documentIndex, Object obj, bool dependencies = false)
+        protected void IndexObject(int documentIndex, Object obj, bool dependencies = false, bool recursive = false)
         {
             using (var so = new SerializedObject(obj))
             {
                 var p = so.GetIterator();
-                var next = p.Next(true);
+                var next = p.NextVisible(true);
                 while (next)
                 {
                     var fieldName = p.displayName.Replace("m_", "").Replace(" ", "").ToLowerInvariant();
-                    var scc = SearchUtils.SplitCamelCase(fieldName);
-                    var fcc = scc.Length > 1 && fieldName.Length > 10 ? scc.Aggregate("", (current, s) => current + s[0]) : fieldName;
-
-                    switch (p.propertyType)
-                    {
-                        case SerializedPropertyType.Integer:
-                            IndexNumber(documentIndex, fcc, (double)p.intValue);
-                            break;
-                        case SerializedPropertyType.Boolean:
-                            IndexProperty(documentIndex, fcc, p.boolValue.ToString().ToLowerInvariant(), saveKeyword: false, exact: true);
-                            break;
-                        case SerializedPropertyType.Float:
-                            IndexNumber(documentIndex, fcc, (double)p.floatValue);
-                            break;
-                        case SerializedPropertyType.String:
-                            if (!string.IsNullOrEmpty(p.stringValue))
-                                IndexProperty(documentIndex, fcc, p.stringValue.ToLowerInvariant(), saveKeyword: false, exact: p.stringValue.Length >= 16);
-                            break;
-                        case SerializedPropertyType.Enum:
-                            if (p.enumValueIndex >= 0 && p.type == "Enum")
-                                IndexProperty(documentIndex, fcc, p.enumNames[p.enumValueIndex].Replace(" ", "").ToLowerInvariant(), saveKeyword: true, exact: false);
-                            break;
-                        case SerializedPropertyType.Color:
-                            IndexProperty(documentIndex, fcc, ColorUtility.ToHtmlStringRGB(p.colorValue).ToLowerInvariant(), saveKeyword: false, exact: true);
-                            break;
-                        case SerializedPropertyType.Vector2:
-                            IndexProperty(documentIndex, fcc, V2S(p.vector2Value), saveKeyword: false, exact: true);
-                            break;
-                        case SerializedPropertyType.Vector3:
-                            IndexProperty(documentIndex, fcc, V2S(p.vector3Value), saveKeyword: false, exact: true);
-                            break;
-                        case SerializedPropertyType.Vector4:
-                            IndexProperty(documentIndex, fcc, V2S(p.vector4Value), saveKeyword: false, exact: true);
-                            break;
-                        case SerializedPropertyType.ObjectReference:
-                            if (p.objectReferenceValue && !string.IsNullOrEmpty(p.objectReferenceValue.name))
-                                IndexProperty(documentIndex, fcc, p.objectReferenceValue.name.ToLowerInvariant(), saveKeyword: false, exact: true);
-                            break;
-                    }
+                    if (p.propertyPath[p.propertyPath.Length-1] != ']')
+                        IndexProperty(documentIndex, fieldName, p);
 
                     if (dependencies)
                         AddReference(documentIndex, p);
 
-                    next = p.Next(p.hasVisibleChildren && !p.isArray);
+                    next = p.NextVisible(ShouldIndexChildren(p, recursive));
                 }
             }
         }
 
-        private static string V2S<T>(T v)
+        private bool ShouldIndexChildren(SerializedProperty p, bool recursive)
         {
-            return Convert.ToString(v).Replace("(", "").Replace(")", "").Replace(" ", "");
+            if ((p.isArray || p.isFixedBuffer) && !recursive)
+                return false;
+
+            if (p.propertyType == SerializedPropertyType.Vector2 ||
+                p.propertyType == SerializedPropertyType.Vector3 ||
+                p.propertyType == SerializedPropertyType.Vector4)
+                return false;
+
+            return true;
+        }
+
+        private void IndexProperty(int documentIndex, string fieldName, SerializedProperty p)
+        {
+            #if DEBUG_INDEXING
+            Debug.LogFormat(LogType.Log, LogOption.NoStacktrace, null, $"[DEBUG] {p.serializedObject.targetObject.name}, " +
+                $"array={p.isArray || p.isFixedBuffer}, children={p.hasVisibleChildren}, {p.propertyPath}, {fieldName}({p.propertyType}/{p.type})");
+            #endif
+
+            if (p.isArray && p.propertyType != SerializedPropertyType.String)
+                IndexNumber(documentIndex, fieldName, p.arraySize);
+
+            switch (p.propertyType)
+            {
+                case SerializedPropertyType.Integer:
+                    IndexNumber(documentIndex, fieldName, (double)p.intValue);
+                    break;
+                case SerializedPropertyType.Boolean:
+                    IndexProperty(documentIndex, fieldName, p.boolValue.ToString().ToLowerInvariant(), saveKeyword: false, exact: true);
+                    break;
+                case SerializedPropertyType.Float:
+                    IndexNumber(documentIndex, fieldName, (double)p.floatValue);
+                    break;
+                case SerializedPropertyType.String:
+                    if (!string.IsNullOrEmpty(p.stringValue) || p.stringValue.Length <= 16 || p.stringValue.LastIndexOf(' ') == -1)
+                        IndexProperty(documentIndex, fieldName, p.stringValue.ToLowerInvariant(), saveKeyword: false, exact: false);
+                    break;
+                case SerializedPropertyType.Enum:
+                    if (p.enumValueIndex >= 0 && p.type == "Enum")
+                        IndexProperty(documentIndex, fieldName, p.enumNames[p.enumValueIndex].Replace(" ", "").ToLowerInvariant(), saveKeyword: true, exact: false);
+                    break;
+                case SerializedPropertyType.Color:
+                    IndexerExtensions.IndexColor(fieldName, p.colorValue, this, documentIndex);
+                    break;
+                case SerializedPropertyType.Vector2:
+                    IndexerExtensions.IndexVector(fieldName, p.vector2Value, this, documentIndex);
+                    break;
+                case SerializedPropertyType.Vector3:
+                    IndexerExtensions.IndexVector(fieldName, p.vector3Value, this, documentIndex);
+                    break;
+                case SerializedPropertyType.Vector4:
+                    IndexerExtensions.IndexVector(fieldName, p.vector4Value, this, documentIndex);
+                    break;
+                case SerializedPropertyType.Quaternion:
+                    IndexerExtensions.IndexVector(fieldName,  p.quaternionValue.eulerAngles, this, documentIndex);
+                    break;
+                case SerializedPropertyType.ObjectReference:
+                    if (p.objectReferenceValue && !string.IsNullOrEmpty(p.objectReferenceValue.name))
+                        IndexProperty(documentIndex, fieldName, p.objectReferenceValue.name.ToLowerInvariant(), saveKeyword: false, exact: true);
+                    break;
+                case SerializedPropertyType.Generic:
+                    IndexProperty(documentIndex, "has", p.type.ToLowerInvariant(), saveKeyword: true, exact: true);
+                    break;
+            }
+
+            MapKeyword(fieldName+":", $"{p.displayName} ({p.propertyType})");
         }
 
         private void AddReference(int documentIndex, SerializedProperty p)
@@ -494,70 +381,17 @@ namespace Unity.QuickSearch
             if (p.propertyType != SerializedPropertyType.ObjectReference || !p.objectReferenceValue)
                 return;
 
-            var refValue = AssetDatabase.GetAssetPath(p.objectReferenceValue);
-            if (!String.IsNullOrEmpty(refValue))
-            {
-                refValue = refValue.ToLowerInvariant();
-                IndexProperty(documentIndex, "ref", refValue, saveKeyword: false, exact: true);
-                IndexProperty(documentIndex, "ref", Path.GetFileName(refValue), saveKeyword: false);
-            }
+            AddReference(documentIndex, AssetDatabase.GetAssetPath(p.objectReferenceValue));
         }
 
-        private void LoadCustomObjectIndexers()
+        internal void AddReference(int documentIndex, string assetPath, bool saveKeyword = false)
         {
-            var customIndexerMethodInfos = Utils.GetAllMethodsWithAttribute<CustomObjectIndexerAttribute>();
-            foreach (var customIndexerMethodInfo in customIndexerMethodInfos)
-            {
-                var customIndexerAttribute = customIndexerMethodInfo.GetCustomAttribute<CustomObjectIndexerAttribute>();
-                var indexerType = customIndexerAttribute.type;
-                if (indexerType == null)
-                    continue;
+            if (string.IsNullOrEmpty(assetPath))
+                return;
 
-                if (!ValidateCustomIndexerMethodSignature(customIndexerMethodInfo))
-                    continue;
-
-                if (!(Delegate.CreateDelegate(typeof(Action<CustomObjectIndexerTarget, ObjectIndexer>), customIndexerMethodInfo)
-                    is Action<CustomObjectIndexerTarget, ObjectIndexer> customIndexerAction))
-                    continue;
-
-                if (!m_CustomObjectIndexers.TryGetValue(indexerType, out var indexerList))
-                {
-                    indexerList = new List<Action<CustomObjectIndexerTarget, ObjectIndexer>>();
-                    m_CustomObjectIndexers.Add(indexerType, indexerList);
-                }
-                indexerList.Add(customIndexerAction);
-            }
-        }
-
-        private static bool ValidateCustomIndexerMethodSignature(MethodInfo methodInfo)
-        {
-            if (methodInfo == null)
-                return false;
-
-            if (methodInfo.ReturnType != typeof(void))
-            {
-                Debug.LogFormat(LogType.Warning, LogOption.NoStacktrace, null, $"Method \"{methodInfo.Name}\" must return void.");
-                return false;
-            }
-
-            var paramTypes = new[] { typeof(CustomObjectIndexerTarget), typeof(ObjectIndexer) };
-            var parameterInfos = methodInfo.GetParameters();
-            if (parameterInfos.Length != paramTypes.Length)
-            {
-                Debug.LogFormat(LogType.Warning, LogOption.NoStacktrace, null, $"Method \"{methodInfo.Name}\" must have {paramTypes.Length} parameter{(paramTypes.Length > 1 ? "s" : "")}.");
-                return false;
-            }
-
-            for (var i = 0; i < paramTypes.Length; ++i)
-            {
-                if (parameterInfos[i].ParameterType != paramTypes[i])
-                {
-                    Debug.LogFormat(LogType.Warning, LogOption.NoStacktrace, null, $"The parameter \"{parameterInfos[i].Name}\" of method \"{methodInfo.Name}\" must be of type \"{paramTypes[i]}\".");
-                    return false;
-                }
-            }
-
-            return true;
+            assetPath = assetPath.ToLowerInvariant();
+            IndexProperty(documentIndex, "ref", assetPath, saveKeyword: false, exact: true);
+            IndexProperty(documentIndex, "ref", Path.GetFileName(assetPath), saveKeyword);
         }
 
         /// <summary>
@@ -585,20 +419,19 @@ namespace Unity.QuickSearch
         protected void CallCustomIndexers(string documentId, int documentIndex, Object obj, SerializedObject so, bool multiLevel = true)
         {
             var objectType = obj.GetType();
-            List<Action<CustomObjectIndexerTarget, ObjectIndexer>> customIndexers;
+            List<CustomIndexerHandler> customIndexers;
             if (!multiLevel)
             {
-                if (!m_CustomObjectIndexers.TryGetValue(objectType, out customIndexers))
+                if (!CustomIndexers.TryGetValue(objectType, out customIndexers))
                     return;
             }
             else
             {
-                customIndexers = new List<Action<CustomObjectIndexerTarget, ObjectIndexer>>();
-                var indexerTypes = m_CustomObjectIndexers.Keys;
-                foreach (var indexerType in indexerTypes)
+                customIndexers = new List<CustomIndexerHandler>();
+                foreach (var indexerType in CustomIndexers.types)
                 {
                     if (indexerType.IsAssignableFrom(objectType))
-                        customIndexers.AddRange(m_CustomObjectIndexers[indexerType]);
+                        customIndexers.AddRange(CustomIndexers.GetHandlers(indexerType));
                 }
             }
 
@@ -625,16 +458,7 @@ namespace Unity.QuickSearch
         /// <returns>True if a custom indexer exists, otherwise false is returned.</returns>
         protected bool HasCustomIndexers(Type type, bool multiLevel = true)
         {
-            if (!multiLevel)
-                return m_CustomObjectIndexers.ContainsKey(type);
-
-            var indexerTypes = m_CustomObjectIndexers.Keys;
-            foreach (var indexerType in indexerTypes)
-            {
-                if (indexerType.IsAssignableFrom(type))
-                    return true;
-            }
-            return false;
+            return CustomIndexers.HasCustomIndexers(type, multiLevel);
         }
     }
 }

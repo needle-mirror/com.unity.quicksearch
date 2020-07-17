@@ -91,8 +91,6 @@ namespace Unity.QuickSearch
         public static Dictionary<string, string> scopes { get; private set; }
         public static Dictionary<string, SearchProviderSettings> providers { get; private set; }
 
-        [Obsolete] public static int assetIndexing { get; set; }
-
         static SearchSettings()
         {
             Load();
@@ -107,7 +105,16 @@ namespace Unity.QuickSearch
                 File.WriteAllText(k_ProjectUserSettingsPath, "{}");
             }
 
-            var settings = (IDictionary)SJSON.Load(k_ProjectUserSettingsPath);
+            IDictionary settings = null;
+            try
+            {
+                settings = (IDictionary)SJSON.Load(k_ProjectUserSettingsPath);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"We weren't able to parse Quick Search user settings at {k_ProjectUserSettingsPath}. We will fallback to default settings.\n{ex}");
+            }
+            
             trackSelection = ReadSetting(settings, nameof(trackSelection), true);
             fetchPreview = ReadSetting(settings, nameof(fetchPreview), true);
             wantsMore = ReadSetting(settings, nameof(wantsMore), true);
@@ -121,10 +128,6 @@ namespace Unity.QuickSearch
             filters = ReadProperties<bool>(settings, nameof(filters));
             scopes = ReadProperties<string>(settings, nameof(scopes));
             providers = ReadProviderSettings(settings, nameof(providers));
-
-            #pragma warning disable CS0612 // Type or member is obsolete
-            assetIndexing = ReadSetting(settings, nameof(assetIndexing), 1);
-            #pragma warning restore CS0612 // Type or member is obsolete
         }
 
         public static void Save()
@@ -143,11 +146,7 @@ namespace Unity.QuickSearch
                 [nameof(debounceMs)] = debounceMs,
                 [nameof(filters)] = filters,
                 [nameof(scopes)] = scopes,
-                [nameof(providers)] = providers,
-                
-                #pragma warning disable CS0612 // Type or member is obsolete
-                [nameof(assetIndexing)] = assetIndexing,
-                #pragma warning restore CS0612 // Type or member is obsolete
+                [nameof(providers)] = providers
             };
 
             SJSON.Save(settings, k_ProjectUserSettingsPath);

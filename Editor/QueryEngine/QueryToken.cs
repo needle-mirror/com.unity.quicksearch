@@ -4,7 +4,7 @@ namespace Unity.QuickSearch
     /// <summary>
     /// Represents a token of a query string.
     /// </summary>
-    internal readonly struct QueryToken
+    public readonly struct QueryToken
     {
         /// <summary>
         /// The text representing the token.

@@ -23,10 +23,11 @@ namespace Unity.QuickSearch
                 if (m_IndexTitleLabel == null)
                     m_IndexTitleLabel = new GUIContent();
 
+                var time = System.DateTime.FromBinary(m_DB.timestamp);
                 if (m_DB.index == null || !m_DB.index.IsReady())
                     m_IndexTitleLabel.text = $"Building {m_DB.index?.name ?? m_DB.name}...";
                 else
-                    m_IndexTitleLabel.text = $"{m_DB.index?.name ?? m_DB.name} ({EditorUtility.FormatBytes(m_DB.bytes?.Length ?? 0)}, {m_DB.index?.indexCount ?? 0} indexes)";
+                    m_IndexTitleLabel.text = $"{m_DB.index?.name ?? m_DB.name} ({Utils.FormatBytes(m_DB.bytes?.Length ?? 0)}, {m_DB.index?.indexCount ?? 0} indexes, {time})";
 
                 return m_IndexTitleLabel;
             }
@@ -68,8 +69,11 @@ namespace Unity.QuickSearch
             m_DocumentsFoldout = EditorGUILayout.Foldout(m_DocumentsFoldout, $"{documentTitle} (Count={m_DB.index.documentCount})", true);
             if (m_DocumentsFoldout)
             {
-                foreach (var documentEntry in m_DB.index.GetDocuments().OrderBy(p=>p.id))
-                    EditorGUILayout.LabelField(documentEntry.id);
+                foreach (var documentEntry in m_DB.index.GetDocuments(true).OrderBy(p=>p.id))
+                {
+                    m_DB.index.TryGetHash(documentEntry.id, out var hash);
+                    EditorGUILayout.LabelField($"{documentEntry.id} ({hash})");
+                }
             }
 
             m_KeywordsFoldout = EditorGUILayout.Foldout(m_KeywordsFoldout, $"Keywords (Count={m_DB.index.keywordCount})", true);

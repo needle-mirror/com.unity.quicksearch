@@ -373,7 +373,7 @@ namespace Unity.QuickSearch
                     using (var so = new SerializedObject(obj))
                     {
                         var p = so.GetIterator();
-                        var next = p.Next(true);
+                        var next = p.NextVisible(true);
                         while (next)
                         {
                             if (p.propertyType != SerializedPropertyType.Generic &&
@@ -389,7 +389,7 @@ namespace Unity.QuickSearch
                                 });
                             }
 
-                            next = p.Next(p.hasVisibleChildren);
+                            next = p.NextVisible(!p.isArray && !p.isFixedBuffer);
                         }
                     }
                 }

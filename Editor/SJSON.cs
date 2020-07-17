@@ -102,7 +102,7 @@ namespace Unity.QuickSearch
         public static bool TryGetValue(JSONObject data, string key, out object value)
         {
             value = null;
-            if (!data.Contains(key))
+            if (data == null || !data.Contains(key))
                 return false;
 
             value = data[key];

@@ -14,25 +14,27 @@ namespace Unity.QuickSearch.Providers
     [UsedImplicitly]
     static class AssetProvider
     {
-        private const string type = "asset";
+        internal const string type = "asset";
         private const string displayName = "Asset";
-
-        private static readonly string[] baseTypeFilters = new[]
-        {
-            "DefaultAsset", "AnimationClip", "AudioClip", "AudioMixer", "ComputeShader", "Font", "GUISKin", "Material", "Mesh",
-            "Model", "PhysicMaterial", "Prefab", "Scene", "Script", "ScriptableObject", "Shader", "Sprite", "StyleSheet", "Texture", "VideoClip"
-        };
-
-        private static readonly string[] typeFilter =
-            baseTypeFilters.Concat(TypeCache.GetTypesDerivedFrom<ScriptableObject>()
-                .Where(t => !t.IsSubclassOf(typeof(Editor)) && !t.IsSubclassOf(typeof(EditorWindow)) && !t.IsSubclassOf(typeof(AssetImporter)))
-                .Select(t => t.Name)
-                .Distinct()
-                .OrderBy(n => n)).ToArray();
 
         private static readonly string[] k_NonSimpleSearchTerms = new string[] {"(", ")", "-", "=", "<", ">"};
 
-        private static List<SearchDatabase> assetIndexes;
+        private static bool reloadAssetIndexes = true;
+        private static List<SearchDatabase> m_AssetIndexes= null;
+        private static List<SearchDatabase> assetIndexes
+        {
+            get
+            {
+                if (reloadAssetIndexes || m_AssetIndexes == null)
+                {
+                    AssetPostprocessorIndexer.contentRefreshed -= TrackAssetIndexChanges;
+                    m_AssetIndexes = SearchDatabase.Enumerate("asset").ToList();
+                    reloadAssetIndexes = false;
+                    AssetPostprocessorIndexer.contentRefreshed += TrackAssetIndexChanges;
+                }
+                return m_AssetIndexes;
+            }
+        }
 
         [UsedImplicitly, SearchItemProvider]
         internal static SearchProvider CreateProvider()
@@ -47,23 +49,34 @@ namespace Unity.QuickSearch.Providers
                 isEnabledForContextualSearch = () => Utils.IsFocusedWindowTypeName("ProjectBrowser"),
                 toObject = (item, type) => AssetDatabase.LoadAssetAtPath(item.id, type),
                 fetchItems = (context, items, provider) => SearchAssets(context, provider),
-                fetchKeywords = (context, lastToken, keywords) => FetchKeywords(context, lastToken, keywords),
                 fetchDescription = (item, context) => (item.description = GetAssetDescription(item.id)),
                 fetchThumbnail = (item, context) => Utils.GetAssetThumbnailFromPath(item.id),
                 fetchPreview = (item, context, size, options) => Utils.GetAssetPreviewFromPath(item.id, options),
                 openContextual = (selection, rect) => OpenContextualMenu(selection, rect),
                 startDrag = (item, context) => StartDrag(item, context),
-                trackSelection = (item, context) => Utils.PingAsset(item.id)
+                trackSelection = (item, context) => Utils.PingAsset(item.id),
+                fetchPropositions = (context, options) => FetchPropositions(context, options)
             };
+        }
+
+        private static IEnumerable<SearchProposition> FetchPropositions(SearchContext context, SearchPropositionOptions options)
+        {
+            if (context.options.HasFlag(SearchFlags.NoIndexing))
+                return null;
+
+            return assetIndexes.SelectMany(db => db.index.GetKeywords().Select(kw => new SearchProposition(kw)));
+        }
+
+        private static IEnumerable<string> FilterIndexes(IEnumerable<string> paths)
+        {
+            return paths.Where(u => u.EndsWith(".index", StringComparison.OrdinalIgnoreCase));
         }
 
         private static void TrackAssetIndexChanges(string[] updated, string[] deleted, string[] moved)
         {
-            updated = updated.Where(u => u.EndsWith(".index", StringComparison.OrdinalIgnoreCase)).ToArray();
-            deleted = deleted.Where(u => u.EndsWith(".index", StringComparison.OrdinalIgnoreCase)).ToArray();
-            var loaded = assetIndexes != null ? assetIndexes.Select(db => AssetDatabase.GetAssetPath(db)).ToArray() : new string[0];
-            if (updated.Except(loaded).Count() > 0 || loaded.Intersect(deleted).Count() > 0)
-                assetIndexes = SearchDatabase.Enumerate("asset").ToList();
+            var loaded = assetIndexes?.Where(db=>db).Select(db => AssetDatabase.GetAssetPath(db)).ToArray() ?? new string[0];
+            if (FilterIndexes(updated).Except(loaded).Count() > 0 || loaded.Intersect(FilterIndexes(deleted)).Count() > 0)
+                reloadAssetIndexes = true;
         }
 
         private static bool OpenContextualMenu(SearchSelection selection, Rect contextRect)
@@ -87,26 +100,6 @@ namespace Unity.QuickSearch.Providers
                 Utils.StartDrag(new [] { AssetDatabase.LoadAssetAtPath<Object>(item.id) }, new []{ item.id }, item.GetLabel(context, true));
         }
 
-        private static void FetchKeywords(in SearchContext context, in string lastToken, List<string> keywords)
-        {
-            if (!lastToken.Contains(":"))
-                return;
-            if (assetIndexes != null && !context.options.HasFlag(SearchFlags.NoIndexing))
-                keywords.AddRange(assetIndexes.SelectMany(db => db.index.GetKeywords()));
-            else
-                keywords.AddRange(typeFilter.Select(t => "t:" + t));
-        }
-
-        private static void SetupIndexers()
-        {
-            if (assetIndexes != null)
-                return;
-            assetIndexes = SearchDatabase.Enumerate("asset").ToList();
-            foreach (var db in assetIndexes)
-                db.IncrementalUpdate();
-            AssetPostprocessorIndexer.contentRefreshed += TrackAssetIndexChanges;
-        }
-
         private static IEnumerator SearchAssets(SearchContext context, SearchProvider provider)
         {
             var searchQuery = context.searchQuery;
@@ -116,8 +109,6 @@ namespace Unity.QuickSearch.Providers
                 bool indexesReady = false;
                 if (!context.options.HasFlag(SearchFlags.NoIndexing))
                 {
-                    SetupIndexers();
-
                     indexesReady = assetIndexes.All(db => db.index?.IsReady() ?? false);
                     if (indexesReady)
                         yield return assetIndexes.Select(db => SearchIndexes(context.searchQuery, context, provider, db));
@@ -167,17 +158,16 @@ namespace Unity.QuickSearch.Providers
 
         private static IEnumerator SearchIndexes(string searchQuery, SearchContext context, SearchProvider provider, SearchDatabase db)
         {
-            while (db.index == null)
+            while (!db.ready)
+            {
+                if (!db)
+                    yield break;
                 yield return null;
+            }
 
             // Search index
             var index = db.index;
-            while (!index.IsReady())
-                yield return null;
-
-            if (!db)
-                yield break;
-
+            db.Report("Search", searchQuery);
             yield return index.Search(searchQuery.ToLowerInvariant()).Select(e => CreateItem(context, provider, db.name, e.id, e.score));
         }
 

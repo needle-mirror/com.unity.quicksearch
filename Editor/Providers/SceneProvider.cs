@@ -124,6 +124,11 @@ namespace Unity.QuickSearch.Providers
                     Utils.StartDrag(new [] { ObjectFromItem(item) }, item.GetLabel(context, true));
             };
 
+            fetchPropositions = (context, options) =>
+            {
+                return m_SceneQueryEngine?.FindPropositions(context, options);
+            };
+
             trackSelection = (item, context) => PingItem(item);
 
             fetchGameObjects = SearchUtils.FetchGameObjects;

@@ -149,9 +149,6 @@ namespace Unity.QuickSearch
 
         public static void Evaluate(IEnumerable<SearchVariable> variables, ISearchExpression se, Action finished)
         {
-            if (!(se is SearchExpression sse))
-                return;
-
             foreach (var v in variables)
             {
                 if (v.type == Type.String || v.type == Type.Path)
@@ -161,7 +158,7 @@ namespace Unity.QuickSearch
                 else if (v.type == Type.Set)
                     se.SetValue(v.name, v.set);
             }
-            sse.Evaluate(finished);
+            se.Evaluate(finished);
         }
     }
 

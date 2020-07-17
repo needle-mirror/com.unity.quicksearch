@@ -155,7 +155,28 @@ namespace Unity.QuickSearch
 
         public static readonly GUIStyle selectedItemLabelCompact = new GUIStyle(selectedItemLabel)
         {
-            margin = new RectOffset(4, 4, 2, 2),
+            margin = new RectOffset(4, 4, 2, 2)
+        };
+
+        public static readonly GUIStyle autoCompleteItemLabel = new GUIStyle(EditorStyles.label)
+        {
+            richText = true,
+            name = "quick-search-auto-complete-item-label",
+            fixedHeight = EditorStyles.toolbarButton.fixedHeight,
+            padding = new RectOffset(4, 4, 0, 1)
+        };
+
+        public static readonly GUIStyle autoCompleteSelectedItemLabel = new GUIStyle(autoCompleteItemLabel)
+        {
+            name = "quick-search-auto-complete-item-selected-label"
+        };
+
+        public static readonly GUIStyle autoCompleteTooltip = new GUIStyle(EditorStyles.label)
+        {
+            richText = true,
+            fontStyle = FontStyle.Italic,
+            alignment = TextAnchor.MiddleRight,
+            padding = new RectOffset(2, 6, 0, 2)
         };
 
         public static readonly GUIStyle noResult = new GUIStyle(EditorStyles.centeredGreyMiniLabel)

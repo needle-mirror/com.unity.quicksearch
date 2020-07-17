@@ -24,42 +24,32 @@ namespace Unity.QuickSearch
             return base.SkipEntry(path, false);
         }
 
-        protected override System.Collections.IEnumerator BuildAsync(int progressId, object userData = null)
+        private string ConvertTypeToFilePattern(string type)
         {
-            Start(clear: true);
+            type = type.ToLowerInvariant();
+            if (type == "scene")
+                return "*.unity";
+            return $"*.{type}";
+        }
 
-            var assetPaths = GetDependencies();
-            var itIndex = 0;
-            var iterationCount = (float)assetPaths.Count;
-            foreach (var scenePath in assetPaths)
-            {
-                var progressReport = itIndex++ / iterationCount;
-                ReportProgress(progressId, scenePath, progressReport, false);
-                try
-                {
-                    IndexDocument(scenePath, false);
-                }
-                catch (Exception ex)
-                {
-                    Debug.LogFormat(LogType.Exception, LogOption.NoStacktrace, null,
-                        $"Failed to index scene {scenePath}.\r\n{ex}");
-                }
-                yield return null;
-            }
-
-            Finish();
-            while (!IsReady())
-                yield return null;
-
-            ReportProgress(progressId, $"Scene indexing completed (Objects: {documentCount}, Indexes: {indexCount:n0})", 1f, true);
+        private IEnumerable<string> FindFiles(string root, string searchFilePattern)
+        {
+            if (!Directory.Exists(root))
+                return Enumerable.Empty<string>();
+            return Directory.EnumerateFiles(root, searchFilePattern, SearchOption.AllDirectories)
+                .Select(path => path.Replace("\\", "/"));
         }
 
         public override IEnumerable<string> GetRoots()
         {
             var scenePaths = new List<string>();
+            var searchFilePattern = ConvertTypeToFilePattern(settings.type);
+            if (searchFilePattern == null)
+                return new string[0];
+
             if (settings.roots == null || settings.roots.Length == 0)
             {
-                scenePaths.AddRange(AssetDatabase.FindAssets("t:" + settings.type, new string[] { settings.root }).Select(AssetDatabase.GUIDToAssetPath));
+                scenePaths.AddRange(FindFiles(settings.root, searchFilePattern));
             }
             else
             {
@@ -68,7 +58,7 @@ namespace Unity.QuickSearch
                     if (File.Exists(path))
                         scenePaths.Add(path);
                     else if (Directory.Exists(path))
-                        scenePaths.AddRange(AssetDatabase.FindAssets("t:" + settings.type, new string[] { path }).Select(AssetDatabase.GUIDToAssetPath));
+                        scenePaths.AddRange(FindFiles(path, searchFilePattern));
                 }
             }
 
@@ -77,7 +67,8 @@ namespace Unity.QuickSearch
 
         public override List<string> GetDependencies()
         {
-            return GetRoots().Where(path => !base.SkipEntry(path, false)).ToList();
+            return GetRoots()
+                .Where(path => !base.SkipEntry(path, false)).ToList();
         }
 
         public override Hash128 GetDocumentHash(string path)
@@ -218,8 +209,7 @@ namespace Unity.QuickSearch
                 if (options.dependencies)
                 {
                     var prefabPath = PrefabUtility.GetPrefabAssetPathOfNearestInstanceRoot(go);
-                    var prefabName = Path.GetFileNameWithoutExtension(prefabPath);
-                    IndexProperty(documentIndex, "ref", prefabName, saveKeyword: true);
+                    AddReference(documentIndex, prefabPath);
                 }
             }
 

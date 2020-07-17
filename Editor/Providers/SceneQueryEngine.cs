@@ -65,9 +65,42 @@ namespace Unity.QuickSearch.Providers
         private readonly GameObject[] m_GameObjects;
         private readonly Dictionary<int, GOD> m_GODS = new Dictionary<int, GOD>();
         private readonly QueryEngine<GameObject> m_QueryEngine = new QueryEngine<GameObject>(true);
+        private List<SearchProposition> m_PropertyPrositions;
+        private HashSet<SearchProposition> m_TypePropositions;
 
         private static readonly string[] none = new string[0];
         private static readonly char[] entrySeparators = { '/', ' ', '_', '-', '.' };
+        private static readonly SearchProposition[] fixedPropositions = new SearchProposition[] 
+        {
+            new SearchProposition("id:", null, "Search object by id"),
+            new SearchProposition("path:", null, "Search object by transform path"),
+            new SearchProposition("tag:", null, "Search object with tag"),
+            new SearchProposition("layer:", "layer>0", "Search object by layer (number)"),
+            new SearchProposition("size:", null, "Search object by volume size"),
+            new SearchProposition("is:", null, "Search object by state"),
+            new SearchProposition("is:child", null, "Search object with a parent"),
+            new SearchProposition("is:leaf", null, "Search object without children"),
+            new SearchProposition("is:root", null, "Search root objects"),
+            new SearchProposition("is:visible", null, "Search view visible objects"),
+            new SearchProposition("is:hidden", null, "Search hierarchically hidden objects"),
+            new SearchProposition("is:static", null, "Search static objects"),
+            new SearchProposition("is:prefab", null, "Search prefab objects"),
+            new SearchProposition("prefab:any", null, "Search any prefab objects"),
+            new SearchProposition("prefab:root", null, "Search prefab roots"),
+            new SearchProposition("prefab:top", null, "Search prefab root instances"),
+            new SearchProposition("prefab:instance", null, "Search objects part of a prefab instance"),
+            new SearchProposition("prefab:nonasset", null, "Search prefab objects not part of an asset"),
+            new SearchProposition("prefab:asset", null, "Search prefab objects part of an asset"),
+            new SearchProposition("prefab:model", null, "Search prefab objects part of a model"),
+            new SearchProposition("prefab:regular", null, "Search regular prefab objects"),
+            new SearchProposition("prefab:variant", null, "Search variant prefab objects"),
+            new SearchProposition("prefab:modified", null, "Search modified prefab assets"),
+            new SearchProposition("prefab:altered", null, "Search modified prefab instances"),
+            new SearchProposition("t:", null, "Search object by type"),
+            new SearchProposition("ref:", null, "Search object references"),
+            new SearchProposition("p", "p(", "Search object's properties"),
+        };
+
         private static readonly Regex s_RangeRx = new Regex(@"\[(-?[\d\.]+)[,](-?[\d\.]+)\s*\]");
 
         public Func<GameObject, string[]> buildKeywordComponents { get; set; }
@@ -313,6 +346,73 @@ namespace Unity.QuickSearch.Providers
             return comparer(v.text, s);
         }
 
+        internal IEnumerable<SearchProposition> FindPropositions(SearchContext context, SearchPropositionOptions options)
+        {
+            if (options.token.StartsWith("p("))
+                return FetchPropertyPropositions(options.token.Substring(2));
+
+            if (options.token.StartsWith("t:", StringComparison.OrdinalIgnoreCase))
+                return FetchTypePropositions();
+
+            return fixedPropositions;
+        }
+
+        private IEnumerable<SearchProposition> FetchTypePropositions()
+        {
+            if (m_TypePropositions == null)
+            {
+                var types = m_GameObjects.SelectMany(go => go.GetComponents<Component>().Select(c => c.GetType())).Distinct();
+
+                m_TypePropositions = new HashSet<SearchProposition>(
+                    types.Select(t => new SearchProposition($"t:{t.Name.ToLowerInvariant()}", null, $"Search {t.Name} components")));
+            }
+
+            return m_TypePropositions;
+        }
+
+        private IEnumerable<SearchProposition> FetchPropertyPropositions(string input)
+        {
+            if (m_PropertyPrositions == null)
+            {
+                m_PropertyPrositions = new List<SearchProposition>(m_GameObjects.SelectMany(go =>
+                {
+                    if (!go)
+                        return null;
+
+                    var propositions = new List<SearchProposition>();
+                    var gocs = go.GetComponents<Component>();
+                    for (int componentIndex = 1; componentIndex < gocs.Length; ++componentIndex)
+                    {
+                        var c = gocs[componentIndex];
+                        if (!c || c.hideFlags.HasFlag(HideFlags.HideInInspector))
+                            continue;
+
+                        var cTypeName = c.GetType().Name;
+                        using (var so = new SerializedObject(c))
+                        {
+                            var p = so.GetIterator();
+                            var next = p.NextVisible(true);
+                            while (next)
+                            {
+                                var label = $"p({p.name.Replace("m_", "")})";
+                                var replacement = ToReplacementValue(p, label);
+                                if (replacement != null)
+                                {
+                                    var proposition = new SearchProposition(label, replacement, $"{cTypeName} ({p.propertyType})");
+                                    propositions.Add(proposition);
+                                }
+                                next = p.NextVisible(false);
+                            }
+                        }
+                    }
+
+                    return propositions;
+                }));
+            }
+
+            return m_PropertyPrositions;
+        }
+
         public IEnumerable<GameObject> Search(SearchContext context)
         {
             var query = m_QueryEngine.Parse(context.searchQuery);
@@ -483,12 +583,12 @@ namespace Unity.QuickSearch.Providers
                     return ConvertPropertyValue(property);
 
                 property = so.GetIterator();
-                var next = property.Next(true);
+                var next = property.NextVisible(true);
                 while (next)
                 {
                     if (property.name.LastIndexOf(propertyName, StringComparison.OrdinalIgnoreCase) != -1)
                         return ConvertPropertyValue(property);
-                    next = property.Next(false);
+                    next = property.NextVisible(false);
                 }
             }
 
@@ -533,6 +633,45 @@ namespace Unity.QuickSearch.Providers
             }
 
             return GOP.invalid;
+        }
+
+        private string ToReplacementValue(SerializedProperty sp, string replacement)
+        {
+            switch (sp.propertyType)
+            {
+                case SerializedPropertyType.Integer: return replacement+">0";
+                case SerializedPropertyType.Boolean: return replacement+"=true";
+                case SerializedPropertyType.Float: return replacement+">=0.0";
+                case SerializedPropertyType.String: return replacement+":\"\"";
+                case SerializedPropertyType.Enum: return replacement+":";
+                case SerializedPropertyType.ObjectReference: return replacement+":";
+                case SerializedPropertyType.Color: return replacement + "=FFFFBB"; ;
+                case SerializedPropertyType.Bounds:
+                case SerializedPropertyType.BoundsInt:
+                case SerializedPropertyType.Rect:
+                    return replacement+">0";
+
+                case SerializedPropertyType.Generic:
+                case SerializedPropertyType.LayerMask:
+                case SerializedPropertyType.Vector2:
+                case SerializedPropertyType.Vector3:
+                case SerializedPropertyType.Vector4:
+                case SerializedPropertyType.ArraySize:
+                case SerializedPropertyType.Character:
+                case SerializedPropertyType.AnimationCurve:
+                case SerializedPropertyType.Gradient:
+                case SerializedPropertyType.Quaternion:
+                case SerializedPropertyType.ExposedReference:
+                case SerializedPropertyType.FixedBufferSize:
+                case SerializedPropertyType.Vector2Int:
+                case SerializedPropertyType.Vector3Int:
+                case SerializedPropertyType.RectInt:
+                case SerializedPropertyType.ManagedReference:
+                default:
+                    break;
+            }
+
+            return null;
         }
 
         private GOP OnPropertyFilter(GameObject go, string propertyName)
@@ -595,11 +734,11 @@ namespace Unity.QuickSearch.Providers
             using (var so = new SerializedObject(obj))
             {
                 var p = so.GetIterator();
-                var next = p.Next(true);
+                var next = p.NextVisible(true);
                 while (next)
                 {
                     AddPropertyReferences(p, refs, depth, maxDepth);
-                    next = p.Next(p.hasVisibleChildren);
+                    next = p.NextVisible(p.hasVisibleChildren);
                 }
             }
         }

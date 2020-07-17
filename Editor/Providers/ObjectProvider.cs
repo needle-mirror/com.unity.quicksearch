@@ -42,7 +42,6 @@ namespace Unity.QuickSearch.Providers
 
                 toObject = (item, type) => ToObject(item, type),
                 fetchItems = (context, items, provider) => SearchObjects(context, provider),
-                fetchKeywords = (context, lastToken, keywords) => FetchKeywords(lastToken, keywords),
                 fetchLabel = (item, context) => FetchLabel(item),
                 fetchDescription = (item, context) => FetchDescription(item),
                 fetchThumbnail = (item, context) => FetchThumbnail(item),
@@ -120,13 +119,6 @@ namespace Unity.QuickSearch.Providers
             var obj = ToObject(item, typeof(Object));
             if (obj)
                 EditorGUIUtility.PingObject(obj);
-        }
-
-        private static void FetchKeywords(string lastToken, List<string> keywords)
-        {
-            if (!lastToken.Contains(":"))
-                return;
-            keywords.AddRange(indexes.SelectMany(db => db.index.GetKeywords()));
         }
 
         private static Object ToObject(SearchItem item, Type type)

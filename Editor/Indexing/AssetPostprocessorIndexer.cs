@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using JetBrains.Annotations;
 using UnityEditor;
+using UnityEditor.Experimental;
 
 namespace Unity.QuickSearch
 {
@@ -10,6 +11,12 @@ namespace Unity.QuickSearch
     {
         public readonly string[] updated;
         public readonly string[] removed;
+
+        public AssetIndexChangeSet(string[] updated, string[] removed)
+        {
+            this.removed = removed;
+            this.updated = updated;
+        }
 
         public AssetIndexChangeSet(IEnumerable<string> updated, IEnumerable<string> removed, IEnumerable<string> moved, Func<string, bool> predicate)
         {
@@ -26,15 +33,15 @@ namespace Unity.QuickSearch
         private static bool s_Enabled;
         private static double s_BatchStartTime;
 
-        private static HashSet<string> s_UpdatedItems = new HashSet<string>();
-        private static HashSet<string> s_RemovedItems = new HashSet<string>();
-        private static HashSet<string> s_MovedItems = new HashSet<string>();
+        private static readonly HashSet<string> s_UpdatedItems = new HashSet<string>();
+        private static readonly HashSet<string> s_RemovedItems = new HashSet<string>();
+        private static readonly HashSet<string> s_MovedItems = new HashSet<string>();
 
-        private static HashSet<string> s_AllUpdatedItems = new HashSet<string>();
-        private static HashSet<string> s_AllRemovedItems = new HashSet<string>();
-        private static HashSet<string> s_AllMovedItems = new HashSet<string>();
+        const string k_TransactionDatabasePath = "Library/transactions.db";
+        static readonly TransactionManager transactionManager;
 
-        private static object s_ContentRefreshedLock = new object();
+        private static readonly object s_ContentRefreshedLock = new object();
+
         private static event Action<string[], string[], string[]> s_ContentRefreshed;
         public static event Action<string[], string[], string[]> contentRefreshed
         {
@@ -59,13 +66,33 @@ namespace Unity.QuickSearch
             }
         }
 
+        public static bool pending => s_UpdatedItems.Count > 0 || s_RemovedItems.Count > 0 || s_MovedItems.Count > 0;
+
         static AssetPostprocessorIndexer()
         {
+            if (AssetDatabaseExperimental.IsAssetImportWorkerProcess())
+                return;
+            transactionManager = new TransactionManager(k_TransactionDatabasePath);
+            transactionManager.Init();
             EditorApplication.quitting += OnQuitting;
+            AssemblyReloadEvents.beforeAssemblyReload += OnBeforeAssemblyReload;
+            AssemblyReloadEvents.afterAssemblyReload += OnAfterAssemblyReload;
+        }
+
+        static void OnAfterAssemblyReload()
+        {
+            transactionManager.Init();
+        }
+
+        static void OnBeforeAssemblyReload()
+        {
+            transactionManager.Shutdown();
         }
 
         public static void Enable()
         {
+            if (AssetDatabaseExperimental.IsAssetImportWorkerProcess())
+                return;
             s_Enabled = true;
         }
 
@@ -74,27 +101,30 @@ namespace Unity.QuickSearch
             s_Enabled = false;
         }
 
-        public static AssetIndexChangeSet GetDiff(Func<string, bool> predicate)
-        {
-            return new AssetIndexChangeSet(s_AllUpdatedItems, s_AllRemovedItems, s_AllMovedItems, predicate);
-        }
-
         private static void OnQuitting()
         {
+            transactionManager?.Shutdown();
             s_Enabled = false;
         }
 
         [UsedImplicitly]
         internal static void OnPostprocessAllAssets(string[] imported, string[] deleted, string[] movedTo, string[] movedFrom)
         {
+            if (AssetDatabaseExperimental.IsAssetImportWorkerProcess())
+                return;
+
             RaiseContentRefreshed(imported, deleted.Concat(movedFrom).Distinct().ToArray(), movedTo);
         }
 
         private static void RaiseContentRefreshed(IEnumerable<string> updated, IEnumerable<string> removed, IEnumerable<string> moved)
         {
-            s_AllUpdatedItems.UnionWith(updated);
-            s_AllRemovedItems.UnionWith(removed);
-            s_AllMovedItems.UnionWith(moved);
+            if (transactionManager.Initialized)
+            {
+                var transactions = updated.Select(path => new Transaction(AssetDatabase.AssetPathToGUID(path), AssetModification.Updated))
+                    .Concat(removed.Select(path => new Transaction(AssetDatabase.AssetPathToGUID(path), AssetModification.Removed)))
+                    .Concat(moved.Select(path => new Transaction(AssetDatabase.AssetPathToGUID(path), AssetModification.Moved)));
+                transactionManager.Write(transactions);
+            }
 
             if (!s_Enabled)
                 return;
@@ -104,27 +134,29 @@ namespace Unity.QuickSearch
             s_MovedItems.UnionWith(moved);
 
             if (s_UpdatedItems.Count > 0 || s_RemovedItems.Count > 0 || s_MovedItems.Count > 0)
-                RaiseContentRefreshed();
+            {
+                s_BatchStartTime = EditorApplication.timeSinceStartup;
+                EditorApplication.delayCall -= RaiseContentRefreshed;
+                EditorApplication.delayCall += RaiseContentRefreshed;
+            }
         }
 
         private static void RaiseContentRefreshed()
         {
-            EditorApplication.delayCall -= RaiseContentRefreshed;
-
             var currentTime = EditorApplication.timeSinceStartup;
-            if (s_BatchStartTime != 0 && currentTime - s_BatchStartTime > 0.5)
+            if (currentTime - s_BatchStartTime > 0.5)
             {
-                if (s_UpdatedItems.Count > 0 || s_RemovedItems.Count > 0 || s_MovedItems.Count > 0)
-                    s_ContentRefreshed?.Invoke(s_UpdatedItems.ToArray(), s_RemovedItems.ToArray(), s_MovedItems.ToArray());
+                if (s_UpdatedItems.Count == 0 && s_RemovedItems.Count == 0 && s_MovedItems.Count == 0)
+                    return;
+
+                s_ContentRefreshed?.Invoke(s_UpdatedItems.ToArray(), s_RemovedItems.ToArray(), s_MovedItems.ToArray());
                 s_UpdatedItems.Clear();
                 s_RemovedItems.Clear();
                 s_MovedItems.Clear();
-                s_BatchStartTime = 0;
             }
             else
             {
-                if (s_BatchStartTime == 0)
-                    s_BatchStartTime = currentTime;
+                EditorApplication.delayCall -= RaiseContentRefreshed;
                 EditorApplication.delayCall += RaiseContentRefreshed;
             }
         }

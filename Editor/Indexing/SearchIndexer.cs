@@ -55,6 +55,16 @@ namespace Unity.QuickSearch
             number = BitConverter.Int64BitsToDouble(key);
         }
 
+        public override string ToString()
+        {
+            if (type == Type.Number)
+                return $"[N] {crc}:{number} (I:{index}, S:{score})";
+            else if (type == Type.Property)
+                return $"[P] {crc}:{key} (I:{index}, S:{score})";
+
+            return $"[W] {key},{crc} (I:{index}, S:{score})";
+        }
+
         public override int GetHashCode()
         {
             unchecked
@@ -199,7 +209,7 @@ namespace Unity.QuickSearch
         /// <summary>
         /// Additional meta data about the document
         /// </summary>
-        [CanBeNull] public string metadata { get; internal set; }
+        [CanBeNull] public string metadata { get; set; }
 
         /// <summary>
         /// Returns the document id string.
@@ -249,12 +259,21 @@ namespace Unity.QuickSearch
         /// </summary>
         public Func<string, string[]> getQueryTokensHandler { get; set; }
 
-        private Thread m_IndexerThread;
-        private volatile bool m_IndexReady = false;
+        /// <summary>
+        /// Minimal indexed word size.
+        /// </summary>
+        public int minWordIndexationLength { get; set; } = 2;
+
         /// <summary>
         /// Is the current indexing thread aborted.
         /// </summary>
         protected volatile bool m_ThreadAborted = false;
+        private Thread m_IndexerThread;
+        private volatile bool m_IndexReady = false;
+
+        private readonly QueryEngine<SearchResult> m_QueryEngine = new QueryEngine<SearchResult>(validateFilters: false);
+        private readonly Dictionary<string, Query<SearchResult, object>> m_QueryPool = new Dictionary<string, Query<SearchResult, object>>();
+
         private readonly Dictionary<RangeSet, IndexRange> m_FixedRanges;
         private SearchResultCollection m_AllDocumentIndexes;
         private readonly Dictionary<int, int> m_PatternMatchCount;
@@ -266,12 +285,7 @@ namespace Unity.QuickSearch
         private List<SearchDocument> m_Documents;
         private SearchIndexEntry[] m_Indexes;
         private HashSet<string> m_Keywords;
-
-        #if UNITY_2020_1_OR_NEWER
         private Dictionary<string, Hash128> m_DocumentHashes;
-        #else
-        private Dictionary<string, string> m_DocumentHashes;
-        #endif
 
         /// <summary>
         /// Create a new default SearchIndexer.
@@ -298,12 +312,38 @@ namespace Unity.QuickSearch
             m_BatchIndexes = new List<SearchIndexEntry>();
             m_PatternMatchCount = new Dictionary<int, int>();
             m_FixedRanges = new Dictionary<RangeSet, IndexRange>();
-
-            #if UNITY_2020_1_OR_NEWER
             m_DocumentHashes = new Dictionary<string, Hash128>();
-            #else
-            m_DocumentHashes = new Dictionary<string, string>();
-            #endif
+
+            m_QueryEngine.SetSearchDataCallback(e => null, s => s.Length < minWordIndexationLength ? null : s, StringComparison.Ordinal);
+        }
+
+        private Query<SearchResult, object> BuildQuery(string searchQuery, int maxScore, int patternMatchLimit)
+        {
+            Query<SearchResult, object> query;
+            if (m_QueryPool.TryGetValue(searchQuery, out query) && query.valid)
+                return query;
+
+            if (m_QueryPool.Count > 50)
+                m_QueryPool.Clear();
+
+            query = m_QueryEngine.Parse(searchQuery, new SearchIndexerQueryFactory(args =>
+            {
+                if (args.op == SearchIndexOperator.None)
+                    return SearchIndexerQuery.EvalResult.None;
+
+                SearchResultCollection subset = null;
+                if (args.andSet != null)
+                    subset = new SearchResultCollection(args.andSet);
+                var results = SearchTerm(args.name, args.value, args.op, args.exclude, maxScore, subset, patternMatchLimit);
+
+                if (args.orSet != null)
+                    results = results.Concat(args.orSet);
+
+                return SearchIndexerQuery.EvalResult.Combined(results);
+            }));
+            if (query.valid)
+                m_QueryPool[searchQuery] = query;
+            return query;
         }
 
         /// <summary>
@@ -442,40 +482,13 @@ namespace Unity.QuickSearch
         /// <returns>Returns a collection of Search Result matching the query.</returns>
         public virtual IEnumerable<SearchResult> Search(string query, int maxScore = int.MaxValue, int patternMatchLimit = 2999)
         {
-            //using (new DebugTimer($"Search Index ({query})"))
-            {
-                if (!m_IndexReady)
-                    return Enumerable.Empty<SearchResult>();
+            if (!IsReady())
+                throw new Exception($"Cannot search index {name} since it is not ready");
 
-                var tokens = getQueryTokensHandler(query);
-                Array.Sort(tokens, SortTokensByPatternMatches);
-
-                var lengths = tokens.Select(p => p.Length).ToArray();
-                var patterns = tokens.Select(p => p.GetHashCode()).ToArray();
-
-                if (patterns.Length == 0)
-                    return Enumerable.Empty<SearchResult>();
-
-                var wiec = new SearchIndexComparer();
-                lock (this)
-                {
-                    var remains = SearchIndexes(patterns[0], lengths[0], SearchIndexEntry.Type.Word, maxScore, wiec, null, patternMatchLimit).ToList();
-                    m_PatternMatchCount[patterns[0]] = remains.Count;
-
-                    if (remains.Count == 0)
-                        return Enumerable.Empty<SearchResult>();
-
-                    for (int i = 1; i < patterns.Length; ++i)
-                    {
-                        var subset = new SearchResultCollection(remains);
-                        remains = SearchIndexes(patterns[i], lengths[i], SearchIndexEntry.Type.Word, maxScore, wiec, subset, patternMatchLimit).ToList();
-                        if (remains.Count == 0)
-                            break;
-                    }
-
-                    return remains.Select(fi => new SearchResult(m_Documents[fi.index].id, fi.index, fi.score));
-                }
-            }
+            var parsedQuery = BuildQuery(query, maxScore, patternMatchLimit);
+            if (!parsedQuery.valid)
+                return Enumerable.Empty<SearchResult>();
+            return parsedQuery.Apply(null).OrderBy(e => e.score).Distinct();
         }
 
         /// <summary>
@@ -492,7 +505,9 @@ namespace Unity.QuickSearch
                 indexWriter.Write(m_Documents.Count);
                 foreach (var p in m_Documents)
                 {
-                    indexWriter.Write(p.id);
+                    indexWriter.Write(p?.id ?? String.Empty);
+                    if (p == null)
+                        continue;
 
                     bool writeMetadata = !String.IsNullOrEmpty(p.metadata);
                     indexWriter.Write(writeMetadata);
@@ -561,7 +576,10 @@ namespace Unity.QuickSearch
                 var documents = new SearchDocument[elementCount];
                 for (int i = 0; i < elementCount; ++i)
                 {
-                    documents[i] = new SearchDocument(indexReader.ReadString());
+                    var docId = indexReader.ReadString();
+                    if (string.IsNullOrEmpty(docId))
+                        continue;
+                    documents[i] = new SearchDocument(docId);
                     bool readMetadata = indexReader.ReadBoolean();
                     if (readMetadata)
                         documents[i].metadata = indexReader.ReadString();
@@ -569,19 +587,11 @@ namespace Unity.QuickSearch
 
                 // Hashes
                 elementCount = indexReader.ReadInt32();
-                #if UNITY_2020_1_OR_NEWER
                 var hashes = new Dictionary<string, Hash128>();
-                #else
-                var hashes = new Dictionary<string, string>();
-                #endif
                 for (int i = 0; i < elementCount; ++i)
                 {
                     var key = indexReader.ReadString();
-                    #if UNITY_2020_1_OR_NEWER
                     var hash = Hash128.Parse(indexReader.ReadString());
-                    #else
-                    var hash = indexReader.ReadString();
-                    #endif
                     hashes[key] = hash;
                 }
 
@@ -613,6 +623,12 @@ namespace Unity.QuickSearch
 
                 return true;
             }
+        }
+
+        internal void MapKeyword(string keyword, string help)
+        {
+            m_Keywords.Remove(keyword);
+            m_Keywords.Add($"{keyword}|{help}");
         }
 
         /// <summary>
@@ -676,12 +692,61 @@ namespace Unity.QuickSearch
                 m_BatchIndexes.AddRange(
                     si.m_Indexes.Where(i => i.index == sourceIndex)
                                 .Select(i => new SearchIndexEntry(i.key, i.crc, i.type, di, baseScore + i.score)));
+                sourceIndex++;
+            }
 
+            m_Keywords.UnionWith(si.m_Keywords);
+            foreach (var hkvp in si.m_DocumentHashes)
+                m_DocumentHashes[hkvp.Key] = hkvp.Value;
+        }
+
+        private int FindDocumentIndex(string id)
+        {
+            return m_Documents.FindIndex(d => d != null && d.id.Equals(id, StringComparison.Ordinal));
+        }
+
+        internal void Merge(string[] removeDocuments, SearchIndexer si, int baseScore = 0, Action<int, SearchIndexer> documentIndexing = null)
+        {
+            m_IndexReady = false;
+            lock (this)
+            {
+                var removeDocIndexes = removeDocuments.Select(FindDocumentIndex).Where(i => i != -1).ToArray();
+                var updatedDocIndexes = si.GetDocuments().Select(d => FindDocumentIndex(d.id)).ToArray();
+                var ignoreDocuments = removeDocIndexes.Concat(updatedDocIndexes.Where(i => i != -1)).OrderBy(i => i).ToArray();
+                var indexes = new List<SearchIndexEntry>(m_Indexes.Where(e => Array.BinarySearch(ignoreDocuments, e.index) < 0));
+
+                if (si.documentCount > 0)
+                {
+                    int sourceIndex = 0;
+                    var wiec = new SearchIndexComparer();
+                    foreach (var doc in si.GetDocuments())
+                    {
+                        documentIndexing?.Invoke(sourceIndex, si);
+
+                        var di = updatedDocIndexes[sourceIndex];
+                        if (di == -1)
+                            di = AddDocument(doc.id, doc.metadata, false);
+
+                        foreach (var sie in si.m_Indexes.Concat(si.m_BatchIndexes).Where(i => i.index == sourceIndex))
+                        {
+                            var ne = new SearchIndexEntry(sie.key, sie.crc, sie.type, di, baseScore + sie.score);
+                            var insertAt = indexes.BinarySearch(ne, wiec);
+                            if (insertAt < 0) insertAt = ~insertAt;
+                            indexes.Insert(insertAt, ne);
+                        }
+                        sourceIndex++;
+                    }
+                }
+
+                foreach (var idi in removeDocIndexes)
+                    m_Documents[idi] = null;
+
+                m_Indexes = indexes.ToArray();
                 m_Keywords.UnionWith(si.m_Keywords);
                 foreach (var hkvp in si.m_DocumentHashes)
                     m_DocumentHashes[hkvp.Key] = hkvp.Value;
-                sourceIndex++;
             }
+            m_IndexReady = true;
         }
 
         internal void ApplyFrom(SearchIndexer source)
@@ -707,24 +772,20 @@ namespace Unity.QuickSearch
         }
 
         internal IEnumerable<string> GetKeywords() { lock (this) return m_Keywords; }
-        internal IEnumerable<SearchDocument> GetDocuments() { lock (this) return m_Documents; }
-        internal SearchDocument GetDocument(int index) { lock (this) return m_Documents[index]; }
+        internal IEnumerable<SearchDocument> GetDocuments(bool ignoreNulls = false) { lock (this) return ignoreNulls ? m_Documents.Where(d=>d!=null) : m_Documents; }
+        
+        /// <summary>
+        /// Return a search document by its index.
+        /// </summary>
+        /// <param name="index">Valid index of the document to access.</param>
+        /// <returns>Indexed search document</returns>
+        public SearchDocument GetDocument(int index) { lock (this) return m_Documents[index]; }
 
         internal bool TryGetHash(string id, out Hash128 hash)
         {
             lock (this)
             {
-                #if UNITY_2020_1_OR_NEWER
                 return m_DocumentHashes.TryGetValue(id, out hash);
-                #else
-                if (m_DocumentHashes.TryGetValue(id, out string hashStr))
-                {
-                    hash = Hash128.Parse(hashStr);
-                    return true;
-                }
-                hash = new Hash128();
-                return false;
-                #endif
             }
         }
 
@@ -733,7 +794,13 @@ namespace Unity.QuickSearch
             AddWord(word, 2, word.Length, score, documentIndex, indexes);
         }
 
-        internal int AddDocument(string document, bool checkIfExists = true)
+        /// <summary>
+        /// Add a new document to be indexed.
+        /// </summary>
+        /// <param name="document">Unique id of the document</param>
+        /// <param name="checkIfExists">Pass true if this document has some chances of existing already.</param>
+        /// <returns>The document index/handle used to add new index entries.</returns>
+        public int AddDocument(string document, bool checkIfExists = true)
         {
             return AddDocument(document, null, checkIfExists);
         }
@@ -765,11 +832,7 @@ namespace Unity.QuickSearch
         {
             lock (this)
             {
-                #if UNITY_2020_1_OR_NEWER
                 m_DocumentHashes[document] = hash;
-                #else
-                m_DocumentHashes[document] = hash.ToString();
-                #endif
             }
         }
 
@@ -824,6 +887,8 @@ namespace Unity.QuickSearch
 
             if (saveKeyword)
                 m_Keywords.Add($"{name}:{value}");
+            else
+                m_Keywords.Add($"{name}:");
         }
 
         internal void AddProperty(string name, string value, int minVariations, int maxVariations, int score, int documentIndex, List<SearchIndexEntry> indexes, bool exact, bool saveKeyword)
@@ -885,7 +950,11 @@ namespace Unity.QuickSearch
             m_Keywords.Add($"{key}:");
         }
 
-        internal void Start(bool clear = false)
+        /// <summary>
+        /// Start indexing entries.
+        /// </summary>
+        /// <param name="clear">True if the the current index should be cleared.</param>
+        public void Start(bool clear = false)
         {
             lock (this)
             {
@@ -906,12 +975,19 @@ namespace Unity.QuickSearch
             }
         }
 
-        internal void Finish()
+        /// <summary>
+        /// Finalize the current index, sorting and compiling of all the indexes.
+        /// </summary>
+        public void Finish()
         {
             Finish(null, null, saveBytes: false);
         }
 
-        internal void Finish(Action threadCompletedCallback)
+        /// <summary>
+        /// /// Finalize the current index, sorting and compiling of all the indexes.
+        /// </summary>
+        /// <param name="threadCompletedCallback">Callback invoked when the index is ready to be used.</param>
+        public void Finish(Action threadCompletedCallback)
         {
             Finish(bytes => threadCompletedCallback?.Invoke(), null, saveBytes: false);
         }
@@ -921,7 +997,12 @@ namespace Unity.QuickSearch
             Finish(bytes => threadCompletedCallback?.Invoke(), removedDocuments, saveBytes: false);
         }
 
-        internal void Finish(Action<byte[]> threadCompletedCallback, string[] removedDocuments)
+        /// <summary>
+        /// /// Finalize the current index, sorting and compiling of all the indexes.
+        /// </summary>
+        /// <param name="threadCompletedCallback">Callback invoked when the index binary blob is ready.</param>
+        /// <param name="removedDocuments">Documents to be removed from current index (if any)</param>
+        public void Finish(Action<byte[]> threadCompletedCallback, string[] removedDocuments)
         {
             Finish(threadCompletedCallback, removedDocuments, saveBytes: true);
         }
@@ -950,6 +1031,13 @@ namespace Unity.QuickSearch
                 {
                     m_ThreadAborted = true;
                     Thread.ResetAbort();
+                }
+                catch (Exception ex)
+                {
+                    if (Utils.isDeveloperBuild)
+                        UnityEngine.Debug.LogException(ex);
+                    else
+                        Console.WriteLine($"[QS] Failed to finalize index: {ex}");
                 }
             });
             m_IndexerThread.Start();
@@ -1218,13 +1306,7 @@ namespace Unity.QuickSearch
             }
         }
 
-        private void UpdateIndexes(IEnumerable<SearchDocument> documents, List<SearchIndexEntry> entries,
-            #if UNITY_2020_1_OR_NEWER
-            Dictionary<string, Hash128> hashes
-            #else
-            Dictionary<string, string> hashes
-            #endif
-            )
+        private void UpdateIndexes(IEnumerable<SearchDocument> documents, List<SearchIndexEntry> entries, Dictionary<string, Hash128> hashes)
         {
             UpdateIndexes(entries, () =>
             {
@@ -1236,13 +1318,7 @@ namespace Unity.QuickSearch
             });
         }
 
-        private void ApplyIndexes(IEnumerable<SearchDocument> documents, SearchIndexEntry[] entries,
-            #if UNITY_2020_1_OR_NEWER
-            Dictionary<string, Hash128> hashes
-            #else
-            Dictionary<string, string> hashes
-            #endif
-        )
+        private void ApplyIndexes(IEnumerable<SearchDocument> documents, SearchIndexEntry[] entries, Dictionary<string, Hash128> hashes)
         {
             m_Documents = documents.ToList();
             m_DocumentHashes = hashes;

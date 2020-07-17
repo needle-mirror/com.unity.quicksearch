@@ -21,3 +21,4 @@
   * [Registering a Search Provider](api-register-provider)
   * [Performing searches](api-searching)
   * [Action handlers](api-action-handler)
+* [Syntax Guide](search-syntax)

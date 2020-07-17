@@ -5,7 +5,7 @@ namespace Unity.QuickSearch
     /// <summary>
     /// Enumeration representing the query node types.
     /// </summary>
-    internal enum QueryNodeType
+    public enum QueryNodeType
     {
         /// <summary>
         /// And node.
@@ -56,7 +56,7 @@ namespace Unity.QuickSearch
     /// <summary>
     /// Interface representing a query node.
     /// </summary>
-    internal interface IQueryNode
+    public interface IQueryNode
     {
         /// <summary>
         /// Parent of this node. Null if this node is the root.
@@ -104,7 +104,7 @@ namespace Unity.QuickSearch
     /// Interface representing a filter node.
     /// </summary>
     /// <inheritdoc cref="IQueryNode"/>
-    internal interface IFilterNode : IQueryNode
+    public interface IFilterNode : IQueryNode
     {
         /// <summary>
         /// The filter identifier.
@@ -131,7 +131,7 @@ namespace Unity.QuickSearch
     /// Interface representing a word search node.
     /// </summary>
     /// <inheritdoc cref="IQueryNode"/>
-    internal interface ISearchNode : IQueryNode
+    public interface ISearchNode : IQueryNode
     {
         /// <summary>
         /// True if the word or text should match exactly, false if it is a "contains" operation.
@@ -148,7 +148,7 @@ namespace Unity.QuickSearch
     /// Interface representing a nested query node.
     /// </summary>
     /// <inheritdoc cref="IQueryNode"/>
-    internal interface INestedQueryNode : IQueryNode
+    public interface INestedQueryNode : IQueryNode
     {
         /// <summary>
         /// If the nested query is part of a filter operation, this represents the filter identifier. Otherwise, this is null or empty.

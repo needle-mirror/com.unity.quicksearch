@@ -1,5 +1,3 @@
-//#define DEBUG_INDEXING
-
 using System;
 using System.IO;
 using System.Linq;
@@ -15,110 +13,38 @@ using UnityEditor.Experimental.AssetImporters;
 
 namespace Unity.QuickSearch
 {
-    [ExcludeFromPreset, ScriptedImporter(version: SearchDatabase.version, importQueueOffset: int.MaxValue, ext: "index")]
+    [ExcludeFromPreset, ScriptedImporter(version: SearchDatabase.version, ext: "index", importQueueOffset: 1999)] // kImportOrderPrefabs = 1500
     class SearchDatabaseImporter : ScriptedImporter
     {
-        private SearchDatabase db { get; set; }
-
-        /// This boolean state is used to delay the importation of indexes
-        /// that depends on assets that get imported to late such as prefabs.
-        private static bool s_DelayImport = true;
-
-        static SearchDatabaseImporter()
-        {
-            EditorApplication.delayCall += () => s_DelayImport = false;
-        }
-
         public override void OnImportAsset(AssetImportContext ctx)
-        {
-            var filePath = ctx.assetPath;
-            var jsonText = System.IO.File.ReadAllText(filePath);
-            var settings = JsonUtility.FromJson<SearchDatabase.Settings>(jsonText);
-            var fileName = System.IO.Path.GetFileNameWithoutExtension(filePath);
-
-            hideFlags |= HideFlags.HideInInspector;
-
-            #if DEBUG_INDEXING
-            using (new DebugTimer($"Importing index {fileName}"))
-            #endif
-            {
-                db = ScriptableObject.CreateInstance<SearchDatabase>();
-                db.name = fileName;
-                db.hideFlags = HideFlags.NotEditable;
-                db.settings = settings;
-                db.settings.root = Path.GetDirectoryName(filePath).Replace("\\", "/");
-                if (String.IsNullOrEmpty(db.settings.name))
-                    db.settings.name = fileName;
-                db.index = db.CreateIndexer(settings);
-
-                if (!Reimport(filePath))
-                {
-                    if (ShouldDelayImport())
-                    {
-                        db.Log("Delayed Import");
-                        EditorApplication.delayCall += () => AssetDatabase.ImportAsset(filePath);
-                    }
-                    else
-                    {
-                        Build();
-                    }
-                }
-
-                ctx.AddObjectToAsset(fileName, db);
-                ctx.SetMainObject(db);
-            }
-        }
-
-        private bool ShouldDelayImport()
-        {
-            if (db.settings.type == nameof(SearchDatabase.IndexType.asset))
-                return false;
-            return s_DelayImport;
-        }
-
-        private bool Reimport(string assetPath)
-        {
-            if (!SearchDatabase.incrementalIndexCache.TryGetValue(assetPath, out var cachedIndexBytes))
-                return false;
-            SearchDatabase.incrementalIndexCache.Remove(assetPath);
-            db.bytes = cachedIndexBytes;
-            return db.index.LoadBytes(cachedIndexBytes, (loaded) =>
-                {
-                    db.Log($"Reimport.{loaded}");
-                    SearchDatabase.SendIndexLoaded(db);
-                });
-        }
-
-        private void Build()
         {
             try
             {
-                db.index.reportProgress += ReportProgress;
-                db.index.Build();
-                db.bytes = db.index.SaveBytes();
-                db.Log("Build");
+                var db = ScriptableObject.CreateInstance<SearchDatabase>();
+                db.Import(ctx.assetPath);
+                ctx.AddObjectToAsset("index", db);
+                ctx.SetMainObject(db);
+
+                #if UNITY_2020_1_OR_NEWER
+                ctx.DependsOnCustomDependency(nameof(CustomObjectIndexerAttribute));
+                #endif
+
+                hideFlags |= HideFlags.HideInInspector;
             }
-            finally
+            catch (SearchDatabaseException ex)
             {
-                db.index.reportProgress -= ReportProgress;
+                ctx.LogImportError(ex.Message, AssetDatabase.LoadMainAssetAtPath(AssetDatabase.GUIDToAssetPath(ex.guid)));
             }
         }
 
-        private void ReportProgress(int progressId, string description, float progress, bool finished)
+        public static string CreateTemplateIndex(string templateFilename, string path, string name = null)
         {
-            EditorUtility.DisplayProgressBar($"Building {db.name} index...", description, progress);
-            if (finished)
-                EditorUtility.ClearProgressBar();
-        }
-
-        public static void CreateTemplateIndex(string templateFilename, string path)
-        {
-            var dirPath = path;
             var templatePath = $"{Utils.packageFolderName}/Templates/{templateFilename}.index.template";
 
             if (!File.Exists(templatePath))
-                return;
+                return null;
 
+            var dirPath = path;
             var templateContent = File.ReadAllText(templatePath);
 
             if (File.Exists(path))
@@ -126,14 +52,18 @@ namespace Unity.QuickSearch
                 dirPath = Path.GetDirectoryName(path);
                 if (Selection.assetGUIDs.Length > 1)
                     path = dirPath;
-                var paths = Selection.assetGUIDs.Select(AssetDatabase.GUIDToAssetPath).Select(p => $"\"{p}\"");
-                templateContent = templateContent.Replace("\"roots\": []", $"\"roots\": [\r\n    {String.Join(",\r\n    ", paths)}\r\n  ]");
             }
 
-            var indexPath = AssetDatabase.GenerateUniqueAssetPath(Path.Combine(dirPath, $"{Path.GetFileNameWithoutExtension(path)}.index")).Replace("\\", "/");
+            var indexFileName = string.IsNullOrEmpty(name) ? Path.GetFileNameWithoutExtension(path) : name;
+            var indexPath = AssetDatabase.GenerateUniqueAssetPath(Path.Combine(dirPath, $"{indexFileName}.index")).Replace("\\", "/");
+
+            Debug.LogFormat(LogType.Log, LogOption.NoStacktrace, null,
+                $"Creating {templateFilename} index at <a file=\"{indexPath}\">{indexPath}</a>");
+
             File.WriteAllText(indexPath, templateContent);
-            AssetDatabase.ImportAsset(indexPath, ImportAssetOptions.ForceSynchronousImport);
-            Debug.LogFormat(LogType.Log, LogOption.NoStacktrace, null, $"Generated {templateFilename} index at {indexPath}");
+            AssetDatabase.ImportAsset(indexPath);
+
+            return indexPath;
         }
 
         private static bool ValidateTemplateIndexCreation<T>() where T : UnityEngine.Object

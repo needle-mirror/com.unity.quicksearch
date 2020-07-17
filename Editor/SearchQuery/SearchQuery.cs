@@ -76,7 +76,7 @@ namespace Unity.QuickSearch
         {
             s_SavedQueries = s_SavedQueries ?? GetAllQueries();
             var queryProvider = SearchService.GetProvider(Providers.Query.type);
-            return s_SavedQueries.Where(query => query && query.providerIds.Any(id => context.filters.Any(f => f.isEnabled && f.provider.name.id == id))).Select(query =>
+            return s_SavedQueries.Where(query => query && query.providerIds.Any(id => context.filters.Any(f => f.enabled && f.provider.name.id == id))).Select(query =>
             {
                 var id = GlobalObjectId.GetGlobalObjectIdSlow(query).ToString();
                 var description = string.IsNullOrEmpty(query.description) ? $"{query.searchQuery} - {AssetDatabase.GetAssetPath(query)}" : query.description;

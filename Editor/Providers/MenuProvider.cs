@@ -130,7 +130,7 @@ namespace Unity.QuickSearch.Providers
         }
 
         [UsedImplicitly, Shortcut("Help/Quick Search/Menu", KeyCode.M, ShortcutModifiers.Alt | ShortcutModifiers.Shift)]
-        private static void OpenQuickSearch()
+        internal static void OpenQuickSearch()
         {
             var qs = QuickSearch.OpenWithContextualProvider(type, Settings.type);
             qs.itemIconSize = 1; // Open in list view by default.

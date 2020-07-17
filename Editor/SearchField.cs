@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
-using System.Text.RegularExpressions;
 using UnityEditor;
 using UnityEngine;
 using Debug = UnityEngine.Debug;
@@ -40,14 +39,6 @@ namespace Unity.QuickSearch
         private static List<string> s_RecentSearches = new List<string>(10);
         private static string m_CycledSearch;
         private static string m_LastSearch;
-
-        private static bool s_AutoCompleting = false;
-        private static Rect s_AutoCompleteRect;
-        private static bool s_DiscardAutoComplete = false;
-        private static int s_AutoCompleteIndex = -1;
-        private static int s_AutoCompleteMaxIndex = 0;
-        private static string s_AutoCompleteLastInput;
-        private static List<string> s_AutoCompleteList = null;
 
         private static MethodInfo s_HasCurrentWindowKeyFocusMethod;
 
@@ -443,70 +434,6 @@ namespace Unity.QuickSearch
             return text;
         }
 
-        public static void AutoCompletion(Rect rect, SearchContext context, ISearchView view)
-        {
-            if (s_DiscardAutoComplete || controlID <= 0)
-                return;
-
-            if (s_AutoCompleting && Event.current.type == EventType.MouseDown && !s_AutoCompleteRect.Contains(Event.current.mousePosition))
-            {
-                s_DiscardAutoComplete = true;
-                s_AutoCompleting = false;
-                return;
-            }
-
-            var te = GetTextEditor();
-            var cursorPosition = te.cursorIndex;
-            if (cursorPosition == 0)
-                return;
-
-            var searchText = context.searchText;
-            var lastTokenStartPos = searchText.LastIndexOf(' ', Math.Max(0, te.cursorIndex - 1));
-            var lastToken = lastTokenStartPos == -1 ? searchText : searchText.Substring(lastTokenStartPos + 1);
-            var keywords = SearchService.GetKeywords(context, lastToken).Where(k => !k.Equals(lastToken, StringComparison.OrdinalIgnoreCase)).ToArray();
-            if (keywords.Length > 0)
-            {
-                const int maxAutoCompleteCount = 16;
-                s_AutoCompleteMaxIndex = Math.Min(keywords.Length, maxAutoCompleteCount);
-                if (!s_AutoCompleting)
-                    s_AutoCompleteIndex = 0;
-
-                if (Event.current.type == EventType.Repaint)
-                {
-                    var content = new GUIContent(context.searchText.Substring(0, context.searchText.Length - lastToken.Length));
-                    var offset = Styles.searchField.CalcSize(content).x;
-                    s_AutoCompleteRect = rect;
-                    s_AutoCompleteRect.x += offset;
-                    s_AutoCompleteRect.y = rect.yMax;
-                    s_AutoCompleteRect.width = 250;
-                    s_AutoCompleteRect.x = Math.Min(rect.width - s_AutoCompleteRect.width - 25, s_AutoCompleteRect.x);
-                }
-
-                var lt = lastToken;
-
-                var autoFill = DoAutoComplete(lastToken, keywords, maxAutoCompleteCount, 0.1f);
-                if (autoFill == null)
-                {
-                    // No more results
-                    s_AutoCompleting = false;
-                    s_AutoCompleteIndex = -1;
-                }
-                else if (autoFill != lastToken)
-                {
-                    var regex = new Regex(Regex.Escape(lastToken), RegexOptions.IgnoreCase);
-                    autoFill = regex.Replace(autoFill, "");
-                    view.SetSearchText(context.searchText.Insert(cursorPosition, autoFill));
-                }
-                else
-                    s_AutoCompleting = true;
-            }
-            else
-            {
-                s_AutoCompleting = false;
-                s_AutoCompleteIndex = -1;
-            }
-        }
-
         public static TextEditor GetTextEditor()
         {
             return (TextEditor)GUIUtility.GetStateObject(typeof(TextEditor), controlID);
@@ -523,82 +450,22 @@ namespace Unity.QuickSearch
                 case TextCursorPlacement.MoveToStartOfNextWord: te.MoveToStartOfNextWord(); break;
                 case TextCursorPlacement.MoveWordLeft: te.MoveWordLeft(); break;
                 case TextCursorPlacement.MoveWordRight: te.MoveWordRight(); break;
+                case TextCursorPlacement.MoveAutoComplete: MoveAutoComplete(te); break;
             }
         }
 
-        public static bool IsAutoCompleteHovered(in Vector2 mousePosition)
+        private static void MoveAutoComplete(TextEditor te)
         {
-            if (s_AutoCompleting && s_AutoCompleteRect.Contains(mousePosition))
-                return true;
-            return false;
-        }
+            while (te.cursorIndex < te.text.Length && !char.IsWhiteSpace(te.text[te.cursorIndex]))
+                te.MoveRight();
 
-        public static void ClearAutoComplete()
-        {
-            s_AutoCompleting = false;
-            s_DiscardAutoComplete = true;
-        }
-
-        public static void ResetAutoComplete()
-        {
-            s_DiscardAutoComplete = false;
-        }
-
-        public static bool HandleKeyEvent(Event evt)
-        {
-            if (evt.type != EventType.KeyDown)
-                return false;
-
-            if (evt.keyCode == KeyCode.DownArrow)
-            {
-                if (s_AutoCompleting)
-                {
-                    s_AutoCompleteIndex = Utils.Wrap(s_AutoCompleteIndex + 1, s_AutoCompleteMaxIndex);
-                    evt.Use();
-                    return true;
-                }
-                else if (evt.modifiers.HasFlag(EventModifiers.Alt))
-                {
-                    m_CycledSearch = CyclePreviousSearch(-1);
-                    evt.Use();
-                    return true;
-                }
-            }
-            else if (evt.keyCode == KeyCode.UpArrow)
-            {
-                if (s_AutoCompleting)
-                {
-                    s_AutoCompleteIndex = Utils.Wrap(s_AutoCompleteIndex - 1, s_AutoCompleteMaxIndex);
-                    evt.Use();
-                    return true;
-                }
-                else if (evt.modifiers.HasFlag(EventModifiers.Alt))
-                {
-                    m_CycledSearch = CyclePreviousSearch(+1);
-                    evt.Use();
-                    return true;
-                }
-            }
-            else if (Event.current.type == EventType.KeyDown && Event.current.keyCode == KeyCode.Return)
-            {
-                return s_AutoCompleting;
-            }
-            else if (evt.keyCode == KeyCode.Escape)
-            {
-                if (s_AutoCompleting)
-                {
-                    ClearAutoComplete();
-                    evt.Use();
-                    return true;
-                }
-            }
-
-            return false;
+            // If there is a space at the end of the text, move through it.
+            if (te.cursorIndex == te.text.Length-1 && char.IsWhiteSpace(te.text[te.cursorIndex]))
+                te.MoveRight();
         }
 
         public static void Focus()
         {
-            //GUI.FocusControl(k_QuickSearchBoxName);
             EditorGUI.FocusTextInControl(k_QuickSearchBoxName);
         }
 
@@ -617,113 +484,28 @@ namespace Unity.QuickSearch
             return false;
         }
 
-        private static string DoAutoComplete(string input, string[] source, int maxShownCount = 5, float levenshteinDistance = 0.5f)
+        public static bool HandleKeyEvent(Event evt)
         {
-            if (input.Length <= 0)
-                return input;
+            if (evt.type != EventType.KeyDown)
+                return false;
 
-            string rst = input;
-            if (s_AutoCompleteLastInput != input)
+            if (evt.modifiers.HasFlag(EventModifiers.Alt))
             {
-                // Update cache
-                s_AutoCompleteLastInput = input;
-
-                var uniqueSrc = new List<string>(new HashSet<string>(source));
-                int srcCnt = uniqueSrc.Count;
-                s_AutoCompleteList = new List<string>(System.Math.Min(maxShownCount, srcCnt)); // optimize memory alloc
-
-                // Start with - slow
-                for (int i = 0; i < srcCnt && s_AutoCompleteList.Count < maxShownCount; i++)
+                if (evt.keyCode == KeyCode.DownArrow)
                 {
-                    if (uniqueSrc[i].StartsWith(input, StringComparison.OrdinalIgnoreCase))
-                    {
-                        s_AutoCompleteList.Add(uniqueSrc[i]);
-                        uniqueSrc.RemoveAt(i);
-                        srcCnt--;
-                        i--;
-                    }
+                    m_CycledSearch = CyclePreviousSearch(-1);
+                    evt.Use();
+                    return true;
                 }
-
-                // Contains - very slow
-                if (s_AutoCompleteList.Count == 0)
+                else if (evt.keyCode == KeyCode.UpArrow)
                 {
-                    for (int i = 0; i < srcCnt && s_AutoCompleteList.Count < maxShownCount; i++)
-                    {
-                        if (uniqueSrc[i].IndexOf(input, StringComparison.OrdinalIgnoreCase) != -1)
-                        {
-                            s_AutoCompleteList.Add(uniqueSrc[i]);
-                            uniqueSrc.RemoveAt(i);
-                            srcCnt--;
-                            i--;
-                        }
-                    }
-                }
-
-                // Levenshtein Distance - very very slow.
-                if (levenshteinDistance > 0f && // only developer request
-                    input.Length > 3 && // 3 characters on input, hidden value to avoid doing too early.
-                    s_AutoCompleteList.Count < maxShownCount) // have some empty space for matching.
-                {
-                    levenshteinDistance = Mathf.Clamp01(levenshteinDistance);
-                    for (int i = 0; i < srcCnt && s_AutoCompleteList.Count < maxShownCount; i++)
-                    {
-                        int distance = Utils.LevenshteinDistance(uniqueSrc[i], input, caseSensitive: false);
-                        bool closeEnough = (int)(levenshteinDistance * uniqueSrc[i].Length) > distance;
-                        if (closeEnough)
-                        {
-                            s_AutoCompleteList.Add(uniqueSrc[i]);
-                            uniqueSrc.RemoveAt(i);
-                            srcCnt--;
-                            i--;
-                        }
-                    }
+                    m_CycledSearch = CyclePreviousSearch(+1);
+                    evt.Use();
+                    return true;
                 }
             }
 
-            if (s_AutoCompleteList.Count == 0)
-                return null;
-
-            // Draw recommend keyword(s)
-            if (s_AutoCompleteList.Count > 0)
-            {
-                int cnt = s_AutoCompleteList.Count;
-                float height = cnt * EditorStyles.toolbarDropDown.fixedHeight;
-                s_AutoCompleteRect = new Rect(s_AutoCompleteRect.x, s_AutoCompleteRect.y, s_AutoCompleteRect.width, height);
-                GUI.depth -= 10;
-                using (new GUI.ClipScope(s_AutoCompleteRect))
-                {
-                    Rect line = new Rect(0, 0, s_AutoCompleteRect.width, EditorStyles.toolbarDropDown.fixedHeight);
-
-                    for (int i = 0; i < cnt; i++)
-                    {
-                        var selected = i == s_AutoCompleteIndex;
-                        if (selected)
-                        {
-                            if (Event.current.type == EventType.KeyDown && Event.current.keyCode == KeyCode.Return)
-                            {
-                                Event.current.Use();
-                                GUI.changed = true;
-                                return s_AutoCompleteList[i];
-                            }
-                            GUI.DrawTexture(line, EditorGUIUtility.whiteTexture, ScaleMode.StretchToFill, false, 0, Styles.textAutoCompleteSelectedColor, 0f, 1.0f);
-                        }
-                        else
-                        {
-                            GUI.DrawTexture(line, EditorGUIUtility.whiteTexture, ScaleMode.StretchToFill, false, 0, Styles.textAutoCompleteBgColor, 0f, 1.0f);
-                        }
-
-                        if (GUI.Button(line, s_AutoCompleteList[i], selected ? Styles.selectedItemLabel : Styles.itemLabel))
-                        {
-                            rst = s_AutoCompleteList[i];
-                            GUI.changed = true;
-                        }
-
-                        line.y += line.height;
-                    }
-                }
-                GUI.depth += 10;
-            }
-            return rst;
+            return false;
         }
 
         private static bool IsEditingControl(this TextEditor self, int id)

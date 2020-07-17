@@ -20,8 +20,8 @@ namespace Unity.QuickSearch
         public static readonly string k_FilterOperatorsPattern = $"({k_FilterOperatorsInnerPattern})";
         public static readonly string k_PartialFilterOperatorsPattern = $"(?<op>{k_FilterOperatorsInnerPattern})?";
 
-        public const string k_FilterNamePattern = "\\G([\\w]+)";
-        public static readonly string k_PartialFilterNamePattern = $"\\G(?<name>[\\w]+(?=\\(|(?:{k_FilterOperatorsInnerPattern})))";
+        public const string k_FilterNamePattern = "\\G([\\w.]+)";
+        public static readonly string k_PartialFilterNamePattern = $"\\G(?<name>[\\w.]+(?=\\(|(?:{k_FilterOperatorsInnerPattern})))";
 
         public const string k_FilterFunctionPattern = "(\\([^\\(\\)]+\\))?";
         public const string k_PartialFilterFunctionPattern = "(?<f1>\\((?!\\S*\\s+\\))[^\\(\\)\\s]*\\)?)?(?<f2>(f1)|\\([^\\(\\)]*\\))?";
