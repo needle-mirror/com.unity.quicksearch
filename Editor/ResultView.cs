@@ -228,6 +228,10 @@ namespace Unity.QuickSearch
                 var item = items.ElementAt(dragIndex);
                 if (item.provider?.startDrag != null)
                 {
+                    if (searchView is QuickSearch search)
+                    {
+                        search.SendEvent(SearchAnalytics.GenericEventType.QuickSearchDragItem, item.provider.name.id);
+                    }
                     item.provider.startDrag(item, searchView.context);
                     m_PrepareDrag = false;
 

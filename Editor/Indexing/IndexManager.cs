@@ -22,12 +22,20 @@ namespace Unity.QuickSearch
             OpenWindow(-1);
         }
 
+        [MenuItem("Window/Quick Search/Index Manager", validate = true)]
+        public static bool CanOpenWindow()
+        {
+            return !Utils.IsUsingADBV1();
+        }
+
         public static void OpenWindow(int instanceID)
         {
             s_SelectedAssetOnOpen = instanceID;
             var window = CreateWindow<IndexManager>();
+            window.m_WindowId = GUID.Generate().ToString();
             window.position = Utils.GetMainWindowCenteredPosition(new Vector2(760f, 500f));
             window.minSize = new Vector2(510f, 200f);
+            SearchAnalytics.SendEvent(window.m_WindowId, SearchAnalytics.GenericEventType.IndexManagerOpen);
             window.Show();
         }
 
@@ -73,6 +81,7 @@ namespace Unity.QuickSearch
         private List<SearchDatabase.Settings> m_IndexSettingsTemplates;
         private TextField m_IndexNameTextField;
         private ScrollView m_IndexDetailsElementScrollView;
+        [SerializeField] private string m_WindowId;
 
         private static string k_ProjectPath { get { return Application.dataPath.Substring(0, Application.dataPath.Length - "/Assets".Length); } }
 
@@ -477,6 +486,11 @@ namespace Unity.QuickSearch
             {
                 if (selectedItemAsset.index == null || !selectedItemAsset.index.IsReady())
                 {
+                    #if !UNITY_2020_1_OR_NEWER
+                    m_SavedIndexDataNotLoadedYet.text = Progress.Current().text;
+                    EditorApplication.delayCall -= UpdatePreview;
+                    EditorApplication.delayCall += UpdatePreview;
+                    #endif
                     m_SavedIndexDataNotLoadedYet.style.display = DisplayStyle.Flex;
                     m_SavedIndexData.style.display = DisplayStyle.None;
                 }
@@ -676,6 +690,8 @@ namespace Unity.QuickSearch
 
         private void UpdateIndexSettings()
         {
+            if (m_SaveButton.text == k_BuildText)
+                SendIndexEvent(SearchAnalytics.GenericEventType.IndexManagerBuildIndex, m_IndexSettings[selectedIndex]);
             if (CreateOrUpdateAsset(selectedItemPath))
             {
                 UpdateUnsavedChanges(false);
@@ -699,6 +715,7 @@ namespace Unity.QuickSearch
                     if (m_IndexSettings[i].hasUnsavedChanges)
                     {
                         m_ListViewIndexSettings.SetSelectionWithoutNotify(i);
+                        SendSaveIndexEvent(m_IndexSettings[i]);
                         if (!m_IndexSettingsExists[i])
                         {
                             var path = EditorUtility.SaveFilePanel("Save Index Settings", Application.dataPath, selectedItem.name, k_IndexExtension);
@@ -718,6 +735,30 @@ namespace Unity.QuickSearch
                     }
                 }
             }
+        }
+
+        private void SendIndexEvent(SearchAnalytics.GenericEventType type, IndexManagerViewModel model)
+        {
+            SearchAnalytics.SendEvent(m_WindowId, SearchAnalytics.GenericEventType.IndexManagerRemoveIndex, model.type.ToString(),  $"0x{model.options.GetHashCode():X}");
+        }
+
+        private void SendSaveIndexEvent(IndexManagerViewModel model)
+        {
+            var evt = SearchAnalytics.GenericEvent.Create(m_WindowId, SearchAnalytics.GenericEventType.IndexManagerSaveModifiedIndex, model.type.ToString());
+            evt.message = $"0x{model.options.GetHashCode():X}";
+            if (model.roots.Count > 0)
+            {
+                evt.description = "roots:" + string.Join(",", model.includes);
+            }
+            if (model.includes.Count > 0)
+            {
+                evt.stringPayload1 = "includes:" + string.Join(",", model.includes);
+            }
+            if (model.excludes.Count > 0)
+            {
+                evt.stringPayload2 = "excludes:" + string.Join(",", model.excludes);
+            }
+            SearchAnalytics.SendEvent(evt);
         }
 
         private void UpdateSaveButtonDisplay()
@@ -801,6 +842,7 @@ namespace Unity.QuickSearch
         {
             if (selectedIndex >= 0)
             {
+                SendIndexEvent(SearchAnalytics.GenericEventType.IndexManagerRemoveIndex, m_IndexSettings[selectedIndex]);
                 var deleteIndex = selectedIndex;
                 string path = selectedItemPath;
                 m_IndexSettings.RemoveAt(deleteIndex);
@@ -849,7 +891,7 @@ namespace Unity.QuickSearch
             m_IndexSettingsFilePaths.Add("");
             m_IndexSettingsExists.Add(false);
             m_IndexSettingsAssets.Add(null);
-
+            SendIndexEvent(SearchAnalytics.GenericEventType.IndexManagerCreateIndex, newItem);
             m_ListViewIndexSettings.UpdateListViewOnAdd();
         }
 

@@ -169,6 +169,9 @@ namespace Unity.QuickSearch
             if (options.HasFlag(SearchFlags.WantsMore))
                 context.wantsMore = true;
 
+            if (options.HasFlag(SearchFlags.Synchronous))
+                context.options |= SearchFlags.Synchronous;
+
             int fetchProviderCount = 0;
             var allItems = new List<SearchItem>(3);
             #if QUICKSEARCH_DEBUG

@@ -16,6 +16,7 @@ namespace Unity.QuickSearch.Providers
     {
         internal const string type = "asset";
         private const string displayName = "Asset";
+        private const int k_ExactMatchScore = -99;
 
         private static readonly string[] k_NonSimpleSearchTerms = new string[] {"(", ")", "-", "=", "<", ">"};
 
@@ -74,9 +75,11 @@ namespace Unity.QuickSearch.Providers
 
         private static void TrackAssetIndexChanges(string[] updated, string[] deleted, string[] moved)
         {
-            var loaded = assetIndexes?.Where(db=>db).Select(db => AssetDatabase.GetAssetPath(db)).ToArray() ?? new string[0];
+            var loaded = assetIndexes?.Where(db => db).Select(db => AssetDatabase.GetAssetPath(db)).ToArray() ?? new string[0];
             if (FilterIndexes(updated).Except(loaded).Count() > 0 || loaded.Intersect(FilterIndexes(deleted)).Count() > 0)
                 reloadAssetIndexes = true;
+
+            FindProvider.Update(updated, deleted, moved);
         }
 
         private static bool OpenContextualMenu(SearchSelection selection, Rect contextRect)
@@ -103,49 +106,44 @@ namespace Unity.QuickSearch.Providers
         private static IEnumerator SearchAssets(SearchContext context, SearchProvider provider)
         {
             var searchQuery = context.searchQuery;
-
-            if (!String.IsNullOrEmpty(searchQuery))
+            var useIndexing = !context.options.HasFlag(SearchFlags.NoIndexing);
+            if (!string.IsNullOrEmpty(searchQuery))
             {
-                bool indexesReady = false;
-                if (!context.options.HasFlag(SearchFlags.NoIndexing))
+                // Search by GUID
+                var guidPath = AssetDatabase.GUIDToAssetPath(searchQuery);
+                if (!string.IsNullOrEmpty(guidPath))
+                    yield return provider.CreateItem(context, guidPath, -1, $"{Path.GetFileName(guidPath)} ({searchQuery})", null, null, null);
+
+                // Search indexes that are ready
+                if (useIndexing)
                 {
-                    indexesReady = assetIndexes.All(db => db.index?.IsReady() ?? false);
-                    if (indexesReady)
-                        yield return assetIndexes.Select(db => SearchIndexes(context.searchQuery, context, provider, db));
+                    foreach (var db in assetIndexes.Where(db => db.ready))
+                        yield return SearchIndexes(context.searchQuery, context, provider, db);
                 }
 
-                // Search file system wild cards
-                if (context.searchQuery.Contains('*'))
+                // Perform a quick search on asset paths
+                var findOptions = FindOptions.Words | FindOptions.Regex | FindOptions.Glob | (context.wantsMore ? FindOptions.Fuzzy : FindOptions.None);
+                foreach (var e in FindProvider.Search(context, provider, findOptions))
+                    yield return CreateItem(context, provider, "Find", e.path, 998 + e.score);
+
+                // Search using the asset database API (slow)
+                if (context.options.HasFlag(SearchFlags.NoIndexing) ||
+                    (context.wantsMore && !k_NonSimpleSearchTerms.Any(t => searchQuery.IndexOf(t, StringComparison.Ordinal) != -1)))
                 {
-                    var globSearch = context.searchQuery;
-                    if (globSearch.IndexOf("glob:", StringComparison.OrdinalIgnoreCase) == -1 && context.searchWords.Length == 1)
-                        globSearch = $"glob:\"{globSearch}\"";
-                    yield return AssetDatabase.FindAssets(globSearch)
+                    yield return AssetDatabase.FindAssets(searchQuery)
                         .Select(guid => AssetDatabase.GUIDToAssetPath(guid))
-                        .Select(path => CreateItem(context, provider, "*", path, 999));
+                        .Select(path => CreateItem(context, provider, "ADB", path, 9998));
                 }
-                else
+
+                // Finally wait for indexes that are being built to end the search.
+                if (useIndexing && !context.options.HasFlag(SearchFlags.Synchronous))
                 {
-                    // Search by GUID
-                    var guidPath = AssetDatabase.GUIDToAssetPath(searchQuery);
-                    if (!String.IsNullOrEmpty(guidPath))
-                        yield return provider.CreateItem(context, guidPath, -1, $"{Path.GetFileName(guidPath)} ({searchQuery})", null, null, null);
-
-                    // Finally search the default asset database for any remaining results.
-                    if (context.options.HasFlag(SearchFlags.NoIndexing) ||
-                        (context.wantsMore && !k_NonSimpleSearchTerms.Any(t => searchQuery.IndexOf(t, StringComparison.Ordinal) != -1)))
-                    {
-                        yield return AssetDatabase.FindAssets(searchQuery)
-                            .Select(guid => AssetDatabase.GUIDToAssetPath(guid))
-                            .Select(path => CreateItem(context, provider, "ADB", path, 998));
-                    }
-
-                    if (!indexesReady)
-                        yield return assetIndexes.Select(db => SearchIndexes(context.searchQuery, context, provider, db));
+                    foreach (var db in assetIndexes.Where(db => !db.ready))
+                        yield return SearchIndexes(context.searchQuery, context, provider, db);
                 }
             }
 
-            if (context.wantsMore && context.filterType != null && String.IsNullOrEmpty(searchQuery))
+            if (context.wantsMore && context.filterType != null && string.IsNullOrEmpty(searchQuery))
             {
                 yield return AssetDatabase.FindAssets($"t:{context.filterType.Name}")
                     .Select(guid => AssetDatabase.GUIDToAssetPath(guid))
@@ -160,7 +158,7 @@ namespace Unity.QuickSearch.Providers
         {
             while (!db.ready)
             {
-                if (!db)
+                if (!db || context.options.HasFlag(SearchFlags.Synchronous))
                     yield break;
                 yield return null;
             }
@@ -174,12 +172,12 @@ namespace Unity.QuickSearch.Providers
         private static SearchItem CreateItem(SearchContext context, SearchProvider provider, string dbName, string assetPath, int itemScore)
         {
             var words = context.searchPhrase;
-            var filenameNoExt = Path.GetFileNameWithoutExtension(assetPath);
-            if (filenameNoExt.Equals(words, StringComparison.OrdinalIgnoreCase))
-                itemScore = SearchProvider.k_RecentUserScore - 1;
+            var filenameNoExt = Path.GetFileNameWithoutExtension(assetPath).ToLowerInvariant();
+            if (filenameNoExt.Equals(words, StringComparison.Ordinal))
+                itemScore = k_ExactMatchScore;
 
             var filename = Path.GetFileName(assetPath);
-            if (context.options.HasFlag(SearchFlags.Debug) && !String.IsNullOrEmpty(dbName))
+            if (context.options.HasFlag(SearchFlags.Debug) && !string.IsNullOrEmpty(dbName))
                 filename += $" ({dbName}, {itemScore})";
             return provider.CreateItem(context, assetPath, itemScore, filename, null, null, null);
         }
@@ -235,7 +233,7 @@ namespace Unity.QuickSearch.Providers
         [UsedImplicitly, Shortcut("Help/Quick Search/Assets")]
         internal static void PopQuickSearch()
         {
-            QuickSearch.OpenWithContextualProvider(type, Query.type);
+            QuickSearch.OpenWithContextualProvider(type, Query.type, FindProvider.providerId);
         }
     }
 }

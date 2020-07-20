@@ -23,7 +23,7 @@ namespace Unity.QuickSearch
                 if (m_IndexTitleLabel == null)
                     m_IndexTitleLabel = new GUIContent();
 
-                var time = System.DateTime.FromBinary(m_DB.timestamp);
+                var time = System.DateTime.FromBinary(m_DB.index?.timestamp ?? 0);
                 if (m_DB.index == null || !m_DB.index.IsReady())
                     m_IndexTitleLabel.text = $"Building {m_DB.index?.name ?? m_DB.name}...";
                 else

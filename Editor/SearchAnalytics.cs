@@ -105,6 +105,17 @@ namespace Unity.QuickSearch
         [Serializable]
         internal struct GenericEvent
         {
+            public static GenericEvent Create(string windowId, GenericEventType type, string name = null)
+            {
+                return new GenericEvent()
+                {
+                    windowId = windowId,
+                    category = type.ToString(),
+                    categoryId = (int)type,
+                    name = name
+                };
+            }
+
             // Message category
             public string category;
             // Enum id of the message category
@@ -117,6 +128,14 @@ namespace Unity.QuickSearch
             public string description;
             // Event duration
             public long duration;
+
+            public string windowId;
+            public string stringPayload1;
+            public string stringPayload2;
+            public float floatPayload1;
+            public float floatPayload2;
+            public int intPayload1;
+            public int intPayload2;
         }
 
         enum EventName
@@ -125,13 +144,50 @@ namespace Unity.QuickSearch
             quickSearch
         }
 
-        public enum EventCategory
+        public enum GenericEventType
         {
-            Custom = 0,
-            Information = 1,
-            Warning = 2,
-            Error = 3,
-            Usage = 4
+            Information,
+            Warning,
+            Error,
+
+            QuickSearchOpen,
+            QuickSearchShowActionMenu,
+            QuickSearchOpenPreferences,
+            QuickSearchOpenDocLink,
+            QuickSearchListSizeChanged,
+            QuickSearchDragItem,
+            QuickSearchCreateSearchQuery,
+            QuickSearchToggleHelpProviderF1,
+            QuickSearchClearSearch,
+            QuickSearchDismissEsc,
+
+            PreferenceChanged,
+            PreferenceReset,
+
+            FilterWindowOpen,
+            FilterWindowOpenPreferences,
+            FilterWindowToggle,
+
+            SearchQueryOpen,
+            SearchQueryExecute,
+
+            IndexManagerOpen,
+            IndexManagerCreateIndex,
+            IndexManagerRemoveIndex,
+            IndexManagerSaveModifiedIndex,
+            IndexManagerBuildIndex,
+
+            CreateIndexFromTemplate,
+
+            SetupWizardOpenFromMenu,
+            SetupWizardOpenFirstUse,
+            SetupWizardExecute,
+            SetupWizardCancel,
+
+            ExpressionBuilderOpenFromMenu,
+            ExpressionBuilderSave,
+            ExpressionBuilderOpenExpression,
+            ExpressionBuilderCreateExpressionFromMenu
         }
 
         public static string Version;
@@ -156,16 +212,6 @@ namespace Unity.QuickSearch
                     }
                 };
             };
-        }
-
-        public static void SendCustomEvent(string category, string name, string message = null, string description = null)
-        {
-            SendEvent(EventCategory.Custom, category, name, message, description, TimeSpan.Zero);
-        }
-
-        public static void SendCustomEvent(string category, string name, TimeSpan duration, string message = null, string description = null)
-        {
-            SendEvent(EventCategory.Custom, category, name, message, description, duration);
         }
 
         public static void SendExceptionOnce(string name, Exception ex)
@@ -194,17 +240,21 @@ namespace Unity.QuickSearch
 
         public static void SendErrorEvent(string name, string message = null, string description = null)
         {
-            SendEvent(EventCategory.Error, name, TimeSpan.Zero, message, description);
+            SendEvent(null, GenericEventType.Error, name, message, description);
         }
 
-        public static void SendEvent(EventCategory category, string name, string message = null, string description = null)
+        public static void SendEvent(string windowId, GenericEventType category, string name = null, string message = null, string description = null, long durationInMs = 0)
         {
-            SendEvent(category, category.ToString(), name, message, description, TimeSpan.Zero);
+            var e = GenericEvent.Create(windowId, category, name);
+            e.message = message;
+            e.description = description;
+            e.duration = durationInMs;
+            Send(EventName.quickSearchGeneric, e);
         }
 
-        public static void SendEvent(EventCategory category, string name, TimeSpan duration, string message = null, string description = null)
+        public static void SendEvent(GenericEvent evt)
         {
-            SendEvent(category, category.ToString(), name, message, description, duration);
+            Send(EventName.quickSearchGeneric, evt);
         }
 
         public static void SendSearchEvent(SearchEvent evt, SearchContext searchContext)
@@ -223,7 +273,7 @@ namespace Unity.QuickSearch
             {
                 id = provider.name.id,
                 avgTime = (long)searchContext.searchElapsedTime,
-                isEnabled = evt.useOverrideFilter ? true : searchContext.IsEnabled(provider.name.id),
+                isEnabled = evt.useOverrideFilter || searchContext.IsEnabled(provider.name.id),
                 custom = ""
             }).ToArray();
 
@@ -283,30 +333,21 @@ namespace Unity.QuickSearch
             }
         }
 
-        private static void SendEvent(EventCategory category, string categoryName, string name, string message, string description,
-            TimeSpan duration)
+        private static void SendEvent(GenericEventType category, string name, string message, string description, long durationInMs)
         {
-            if (string.IsNullOrEmpty(categoryName) || string.IsNullOrEmpty(name))
-            {
-                Console.WriteLine(new ArgumentNullException().ToString());
-                return;
-            }
-
-            var e = new GenericEvent()
-            {
-                category = categoryName,
-                categoryId = (int)category,
-                name = name,
-                message = message,
-                description = description,
-                duration = (long)duration.TotalMilliseconds
-            };
-
-            Send(EventName.quickSearchGeneric, e);
+            
         }
 
         private static void Send(EventName eventName, object eventData)
         {
+            if (Utils.IsRunningTests())
+                return;
+
+            #if !QUICKSEARCH_ANALYTICS_LOGGING
+            if (Utils.isDeveloperBuild)
+                return;
+            #endif
+
             if (!RegisterEvents())
             {
                 #if QUICKSEARCH_ANALYTICS_LOGGING

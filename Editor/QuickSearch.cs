@@ -27,6 +27,13 @@ namespace Unity.QuickSearch
     /// </example>
     public class QuickSearch : EditorWindow, ISearchView, IDisposable
     {
+        internal enum SearchEventStatus
+        {
+            DoNotSendEvent,
+            WaitForEvent,
+            EventSent,
+        }
+
         const int k_ResetSelectionIndex = -1;
         const string k_LastSearchPrefKey = "last_search";
         private static readonly string k_CheckWindowKeyName = $"{typeof(QuickSearch).FullName}h";
@@ -47,7 +54,6 @@ namespace Unity.QuickSearch
         [SerializeField] private bool m_SearchBoxFocus;
         [SerializeField] private bool m_ShowFilterWindow = false;
         [SerializeField] private bool m_ShowCreateWindow = false;
-        private SearchAnalytics.SearchEvent m_CurrentSearchEvent;
         internal double m_DebounceTime = 0.0;
         [SerializeField] private float m_ItemSize = 1;
         private DetailView m_DetailView;
@@ -60,9 +66,12 @@ namespace Unity.QuickSearch
         [SerializeField] private float m_DetailsViewSplitterPos = -1f;
 
         [SerializeField] private  string searchTopic;
-        [SerializeField] internal  bool sendAnalyticsEvent;
+        [SerializeField] internal SearchEventStatus searchEventStatus;
         [SerializeField] internal bool saveFilters;
         [SerializeField] private string[] providerIds;
+        [SerializeField] private string m_WindowId;
+
+        private Utils.CallDelayer m_DebouncedNotifySizeChanged;
 
         internal event Action nextFrame;
         internal event Action<Vector2, Vector2> resized;
@@ -143,7 +152,6 @@ namespace Unity.QuickSearch
         /// </summary>
         public void PopFilterWindow()
         {
-            m_CurrentSearchEvent.useFilterMenuShortcut = true;
             nextFrame += () => m_ShowFilterWindow = true;
         }
 
@@ -204,13 +212,23 @@ namespace Unity.QuickSearch
             s_GlobalContext = context;
             s_FocusedWindow = focusedWindow;
 
-            var qsWindow = reuseExisting && HasOpenInstances<QuickSearch>() ? GetWindow<QuickSearch>() : CreateInstance<QuickSearch>();
+            QuickSearch qsWindow;
+            if (reuseExisting && HasOpenInstances<QuickSearch>())
+            {
+                qsWindow = GetWindow<QuickSearch>();
+            }
+            else
+            {
+                qsWindow = CreateInstance<QuickSearch>();
+                qsWindow.m_WindowId = GUID.Generate().ToString();
+            }
+
             qsWindow.multiselect = multiselect;
             qsWindow.saveFilters = saveFilters;
             qsWindow.searchTopic = topic;
 
             // Ensure we won't send events while doing a domain reload.
-            qsWindow.sendAnalyticsEvent = true;
+            qsWindow.searchEventStatus = SearchEventStatus.WaitForEvent;
             return qsWindow;
         }
 
@@ -241,10 +259,10 @@ namespace Unity.QuickSearch
         /// </example>
         public static QuickSearch OpenWithContextualProvider(params string[] providerIds)
         {
-            var providers = providerIds.Select(id => SearchService.Providers.Find(p => p.name.id == id)).Where(p=>p!=null);
-            if (providers.Any(p => p == null))
+            var providers = providerIds.Select(id => SearchService.Providers.Find(p => p.name.id == id)).Where(p=>p!=null).ToArray();
+            if (providers.Length != providerIds.Length)
             {
-                Debug.LogWarning($"Quick Search cannot find one of these search providers {String.Join(", ", providers)}");
+                Debug.LogWarning($"Quick Search cannot find one of these search providers {String.Join(", ", providerIds)}");
                 return OpenDefaultQuickSearch();
             }
 
@@ -254,6 +272,28 @@ namespace Unity.QuickSearch
             var context = SearchService.CreateContext(providers);
             var qsWindow = Create(context, saveFilters: false, topic: String.Join(", ", providers.Select(p => p.name.displayName.ToLower())));
             qsWindow.SetSearchText(SearchSettings.GetScopeValue(k_LastSearchPrefKey, qsWindow.context.scopeHash, ""));
+
+            var evt = SearchAnalytics.GenericEvent.Create(qsWindow.m_WindowId, SearchAnalytics.GenericEventType.QuickSearchOpen, "Contextual");
+            evt.message = providers[0].name.id;
+            if (providers.Length > 1)
+            {
+                evt.description = providers[1].name.id;
+            }
+            if (providers.Length > 2)
+            {
+                evt.description = providers[2].name.id;
+            }
+            if (providers.Length > 3)
+            {
+                evt.stringPayload1 = providers[3].name.id;
+            }
+            if (providers.Length > 4)
+            {
+                evt.stringPayload1 = providers[4].name.id;
+            }
+
+            SearchAnalytics.SendEvent(evt);
+
             return qsWindow.ShowWindow(dockable: SearchSettings.dockable || Utils.IsRunningTests());
         }
 
@@ -338,7 +378,7 @@ namespace Unity.QuickSearch
             var qs = Create();
             qs.saveFilters = false;
             qs.searchTopic = "object";
-            qs.sendAnalyticsEvent = true;
+            qs.searchEventStatus = SearchEventStatus.WaitForEvent;
             qs.titleContent.text = $"Select {filterType?.Name ?? typeName}...";
             qs.itemIconSize = 64;
             qs.multiselect = false;
@@ -466,8 +506,7 @@ namespace Unity.QuickSearch
         /// <param name="position">Where the menu should be drawn on screen (generally item position)</param>
         public void ShowItemContextualMenu(SearchItem item, Rect position)
         {
-            m_CurrentSearchEvent.useActionMenuShortcut = true;
-
+            SendEvent(SearchAnalytics.GenericEventType.QuickSearchShowActionMenu, item.provider.name.id);
             var menu = new GenericMenu();
             var shortcutIndex = 0;
             var currentSelection = new[] { item };
@@ -511,6 +550,8 @@ namespace Unity.QuickSearch
             wantsLessLayoutEvents = true;
             #endif
 
+            m_DebouncedNotifySizeChanged = Utils.CallDelayer.Debounce(NotifySizeChanged, 1);
+
             SearchSettings.SortActionsPriority();
 
             // Create search view context
@@ -539,7 +580,6 @@ namespace Unity.QuickSearch
 
             // Create search view state objects
             m_SearchBoxFocus = true;
-            m_CurrentSearchEvent = new SearchAnalytics.SearchEvent();
             m_DetailView = new DetailView(this);
             m_DebounceTime = 1f;
 
@@ -564,7 +604,7 @@ namespace Unity.QuickSearch
 
             selectCallback?.Invoke(null, true);
 
-            if (!isDeveloperMode)
+            if (searchEventStatus == SearchEventStatus.WaitForEvent)
                 SendSearchEvent(null); // Track canceled searches
 
             SaveSessionSettings();
@@ -688,22 +728,20 @@ namespace Unity.QuickSearch
 
         private void SendSearchEvent(SearchItem item, SearchAction action = null)
         {
+            if (searchEventStatus == SearchEventStatus.DoNotSendEvent)
+                return;
+
+            var evt = new SearchAnalytics.SearchEvent();
             if (item != null)
-                m_CurrentSearchEvent.Success(item, action);
+                evt.Success(item, action);
 
-            if (m_CurrentSearchEvent.success || m_CurrentSearchEvent.elapsedTimeMs > 7000)
+            if (evt.success)
             {
-                m_CurrentSearchEvent.Done();
-                if (item != null)
-                    m_CurrentSearchEvent.searchText = $"{context.searchText} => {item.id}";
-                else
-                    m_CurrentSearchEvent.searchText = context.searchText;
-                if (sendAnalyticsEvent)
-                    SearchAnalytics.SendSearchEvent(m_CurrentSearchEvent, context);
+                evt.Done();
+                searchEventStatus = SearchEventStatus.EventSent;
             }
-
-            // Prepare next search event
-            m_CurrentSearchEvent = new SearchAnalytics.SearchEvent();
+            evt.searchText = item != null ? $"{context.searchText} => {item.id}" : context.searchText;
+            SearchAnalytics.SendSearchEvent(evt, context);
         }
 
         private void UpdateWindowTitle()
@@ -785,13 +823,18 @@ namespace Unity.QuickSearch
                     Styles.itemIconSizeSlider, Styles.itemIconSizeSliderThumb, GUILayout.Width(100f));
                 if (EditorGUI.EndChangeCheck())
                 {
+                    m_DebouncedNotifySizeChanged.Execute();
                     itemIconSize = newItemIconSize;
                     SearchSettings.itemIconSize = newItemIconSize;
                     m_ResultView.focusSelectedItem = true;
                 }
 
                 if (GUILayout.Button(SearchAnalytics.Version, Styles.versionLabel))
+                {
+                    SendEvent(SearchAnalytics.GenericEventType.QuickSearchOpenDocLink);
                     Utils.OpenDocumentationUrl();
+                }
+
                 if (evt.type == EventType.Repaint)
                 {
                     var helpButtonRect = GUILayoutUtility.GetLastRect();
@@ -807,14 +850,27 @@ namespace Unity.QuickSearch
                     GUI.Button(searchInProgressRect, Styles.statusWheel[frame], Styles.searchInProgressButton);
 
                     if (evt.type == EventType.MouseDown && searchInProgressRect.Contains(evt.mousePosition))
-                        SettingsService.OpenUserPreferences(SearchSettings.settingsPreferencesKey);
+                        OpenPreferences();
                 }
                 else
                 {
                     if (GUILayout.Button(Styles.prefButtonContent, Styles.prefButton))
-                        SettingsService.OpenUserPreferences(SearchSettings.settingsPreferencesKey);
+                        OpenPreferences();
                 }
             }
+        }
+
+        private void NotifySizeChanged(object payload)
+        {
+            var evt = SearchAnalytics.GenericEvent.Create(m_WindowId, SearchAnalytics.GenericEventType.QuickSearchListSizeChanged);
+            evt.floatPayload1 = SearchSettings.itemIconSize;
+            SearchAnalytics.SendEvent(evt);
+        }
+
+        private void OpenPreferences()
+        {
+            SettingsService.OpenUserPreferences(SearchSettings.settingsPreferencesKey);
+            SendEvent(SearchAnalytics.GenericEventType.QuickSearchOpenPreferences);
         }
 
         private bool IsItemValid(int index)
@@ -928,7 +984,7 @@ namespace Unity.QuickSearch
                 var ctrl = evt.control || evt.command;
                 if (evt.keyCode == KeyCode.Escape)
                 {
-                    m_CurrentSearchEvent.endSearchWithKeyboard = true;
+                    SendEvent(SearchAnalytics.GenericEventType.QuickSearchDismissEsc);
                     selectCallback?.Invoke(null, true);
                     selectCallback = null;
                     evt.Use();
@@ -937,6 +993,7 @@ namespace Unity.QuickSearch
                 else if (evt.keyCode == KeyCode.F1)
                 {
                     SetSearchText("?");
+                    SendEvent(SearchAnalytics.GenericEventType.QuickSearchToggleHelpProviderF1);
                     evt.Use();
                 }
                 else if (ctrl && evt.keyCode == KeyCode.S)
@@ -1073,6 +1130,7 @@ namespace Unity.QuickSearch
                 {
                     if (FilterWindow.canShow)
                     {
+                        SendEvent(SearchAnalytics.GenericEventType.FilterWindowOpen);
                         m_ShowFilterWindow = false;
                         rightRect.x += 12f; rightRect.y -= 3f;
                         if (FilterWindow.ShowAtPosition(this, context, rightRect))
@@ -1099,6 +1157,7 @@ namespace Unity.QuickSearch
 
                     if (GUILayout.Button(Icons.clear, Styles.searchFieldBtn, GUILayout.Width(Styles.kSearchBoxBtnSize), GUILayout.Height(Styles.kSearchBoxBtnSize)))
                     {
+                        SearchAnalytics.SendEvent(null, SearchAnalytics.GenericEventType.QuickSearchClearSearch);
                         AutoComplete.Clear();
                         context.searchText = "";
                         GUI.changed = true;
@@ -1209,6 +1268,11 @@ namespace Unity.QuickSearch
             }
         }
 
+        internal void SendEvent(SearchAnalytics.GenericEventType category, string name = null, string message = null, string description = null)
+        {
+            SearchAnalytics.SendEvent(m_WindowId, category, name, message, description);
+        }
+
         [InitializeOnLoadMethod]
         private static void OpenQuickSearchFirstUse()
         {
@@ -1223,7 +1287,7 @@ namespace Unity.QuickSearch
                 EditorApplication.delayCall += () =>
                 {
                     if (AssetDatabase.FindAssets($"t:{nameof(SearchDatabase)} a:assets").Length == 0)
-                        EditorApplication.delayCall += () => OnBoardingWindow.OpenWindow();
+                        EditorApplication.delayCall += () => OnBoardingWindow.OpenWindow(SearchAnalytics.GenericEventType.SetupWizardOpenFirstUse);
 
                     SearchSettings.onBoardingDoNotAskAgain = true;
                     SearchSettings.Save();
@@ -1250,7 +1314,9 @@ namespace Unity.QuickSearch
 
         private static QuickSearch OpenDefaultQuickSearch()
         {
-            return Open(dockable: SearchSettings.dockable, reuseExisting: SearchSettings.dockable);
+            var window = Open(dockable: SearchSettings.dockable, reuseExisting: SearchSettings.dockable);
+            SearchAnalytics.SendEvent(window.m_WindowId, SearchAnalytics.GenericEventType.QuickSearchOpen, "Default");
+            return window;
         }
 
         [Shortcut("Help/Quick Search Contextual", KeyCode.C, ShortcutModifiers.Alt | ShortcutModifiers.Shift)]

@@ -20,8 +20,14 @@ namespace Unity.QuickSearch
 
         public AssetIndexChangeSet(IEnumerable<string> updated, IEnumerable<string> removed, IEnumerable<string> moved, Func<string, bool> predicate)
         {
-            this.removed = removed.Where(predicate).ToArray();
-            this.updated = updated.Concat(moved).Distinct().Where(predicate).ToArray();
+            this.updated = updated.Where(predicate).ToArray();
+            this.removed = moved.Concat(removed).Distinct().Where(predicate).ToArray();
+        }
+
+        public AssetIndexChangeSet(IEnumerable<string> updated, IEnumerable<string> removed, Func<string, bool> predicate)
+        {
+            this.updated = updated.Where(predicate).ToArray();
+            this.removed = removed.Distinct().Where(predicate).ToArray();
         }
 
         public bool empty => updated?.Length == 0 && removed?.Length == 0;
@@ -37,7 +43,7 @@ namespace Unity.QuickSearch
         private static readonly HashSet<string> s_RemovedItems = new HashSet<string>();
         private static readonly HashSet<string> s_MovedItems = new HashSet<string>();
 
-        const string k_TransactionDatabasePath = "Library/transactions.db";
+        const string k_TransactionDatabasePath = "Library/QuickSearch/transactions.db";
         static readonly TransactionManager transactionManager;
 
         private static readonly object s_ContentRefreshedLock = new object();
@@ -94,6 +100,29 @@ namespace Unity.QuickSearch
             if (AssetDatabaseExperimental.IsAssetImportWorkerProcess())
                 return;
             s_Enabled = true;
+        }
+
+        public static AssetIndexChangeSet GetDiff(long timestamp, Func<string, bool> predicate)
+        {
+            if (transactionManager == null)
+                return default;
+
+            var updated = new HashSet<string>();
+            var removed = new HashSet<string>();
+            var transactions = transactionManager.Read(TimeRange.From(DateTime.FromBinary(timestamp), false));
+            foreach (var t in transactions)
+            {
+                var state = (AssetModification)t.state;
+                if (state.HasFlag(AssetModification.Updated))
+                {
+                    updated.Add(AssetDatabase.GUIDToAssetPath(t.guid.ToString()));
+                }
+                else if (state.HasFlag(AssetModification.Moved) || state.HasFlag(AssetModification.Removed))
+                {
+                    updated.Add(AssetDatabase.GUIDToAssetPath(t.guid.ToString()));
+                }
+            }
+            return new AssetIndexChangeSet(updated, removed, predicate);
         }
 
         public static void Disable()

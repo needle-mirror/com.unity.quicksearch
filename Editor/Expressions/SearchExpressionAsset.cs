@@ -14,6 +14,7 @@ namespace Unity.QuickSearch
                 folderPath = Path.GetDirectoryName(folderPath);
 
             var expressionPath = AssetDatabase.GenerateUniqueAssetPath(Path.Combine(folderPath, "expression.qse"));
+            SearchAnalytics.SendEvent(null, SearchAnalytics.GenericEventType.ExpressionBuilderCreateExpressionFromMenu);
             var newExpression = new SearchExpression(SearchFlags.Default);
             newExpression.Save(expressionPath);
             AssetDatabase.ImportAsset(expressionPath);

@@ -96,8 +96,8 @@ namespace Unity.QuickSearch
             var query = EditorUtility.InstanceIDToObject(instanceID) as SearchQuery;
             if (query != null)
             {
-                var qsWindow = QuickSearch.Create();
-                ExecuteQuery(qsWindow, query);
+                var context = SearchService.CreateContext(query.providerIds, query.searchQuery);
+                var qsWindow = QuickSearch.Create(context);
                 qsWindow.ShowWindow(dockable: SearchSettings.dockable);
                 return true;
             }
@@ -105,8 +105,13 @@ namespace Unity.QuickSearch
             return false;
         }
 
-        public static void ExecuteQuery(ISearchView view, SearchQuery query)
+        public static void ExecuteQuery(ISearchView view, SearchQuery query, SearchAnalytics.GenericEventType sourceEvt = SearchAnalytics.GenericEventType.SearchQueryExecute)
         {
+            if (view is QuickSearch qs)
+            {
+                qs.SendEvent(sourceEvt, query.searchQuery);
+            }
+            
             view.context.SetFilteredProviders(query.providerIds);
             view.SetSearchText(query.searchQuery);
         }

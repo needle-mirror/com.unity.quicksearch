@@ -109,8 +109,6 @@ namespace Unity.QuickSearch
     [DebuggerDisplay("{name.id}")]
     public class SearchProvider
     {
-        internal const int k_RecentUserScore = -99;
-
         internal SearchContext defaultContext;
 
         /// <summary>

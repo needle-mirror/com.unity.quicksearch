@@ -941,6 +941,7 @@ namespace Unity.QuickSearch.Providers
         [MenuItem("Help/Search Asset Store", priority = 270)]
         internal static void SearchAssetStoreMenu()
         {
+            SearchAnalytics.SendEvent(null, SearchAnalytics.GenericEventType.QuickSearchOpen, "SearchAssetStore");
             var storeContext = SearchService.CreateContext(SearchService.GetProvider(k_ProviderId));
             var qs = QuickSearch.Create(storeContext, topic: "asset store", saveFilters: false, multiselect: false);
             qs.itemIconSize = 128;

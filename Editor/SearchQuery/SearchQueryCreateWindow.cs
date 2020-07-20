@@ -27,7 +27,7 @@ namespace Unity.QuickSearch
             public static GUIContent descriptionContent = new GUIContent("Description", null, "Scene query detailed description");
         }
 
-        private ISearchView m_SearchView;
+        private QuickSearch m_SearchView;
         private SearchContext m_Context;
         private bool m_NeedFocus;
 
@@ -46,7 +46,7 @@ namespace Unity.QuickSearch
             }
         }
 
-        public static void ShowAtPosition(ISearchView quickSearchTool, SearchContext context, Rect screenRect)
+        public static void ShowAtPosition(QuickSearch quickSearchTool, SearchContext context, Rect screenRect)
         {
             var window = CreateInstance<SearchQueryCreateWindow>();
             window.m_SearchView = quickSearchTool;
@@ -124,6 +124,7 @@ namespace Unity.QuickSearch
         private void TryCreateSearchQuery()
         {
             var sq = SearchQuery.Create(m_Context, m_Description, null);
+            m_SearchView.SendEvent(SearchAnalytics.GenericEventType.QuickSearchCreateSearchQuery, sq.searchQuery, m_QueryFolder);
             SearchQuery.SaveQuery(sq, m_QueryFolder, m_QueryFileName);
             Selection.activeObject = sq;
             SearchQuery.ResetSearchQueryItems();

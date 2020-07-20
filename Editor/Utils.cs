@@ -29,6 +29,79 @@ namespace Unity.QuickSearch
         public static readonly string packageFolderName = $"Packages/{packageName}";
         public static readonly bool isDeveloperBuild = false;
 
+        internal class CallDelayer
+        {
+            private double m_LastExecutionTime;
+            private readonly Action<object> m_Action;
+            private readonly double m_DebounceDelay;
+            private object m_Context;
+            private readonly bool m_IsThrottle;
+
+            public static CallDelayer Throttle(Action<object> action, double delay = 0.2)
+            {
+                return new CallDelayer(action, delay, true);
+            }
+
+            public static CallDelayer Debounce(Action<object> action, double delay = 0.2)
+            {
+                return new CallDelayer(action, delay, false);
+            }
+
+            public void Execute(object context = null)
+            {
+                m_Context = context;
+                if (m_IsThrottle)
+                {
+                    if (m_LastExecutionTime == 0)
+                        Throttle();
+                }
+                else
+                {
+                    m_LastExecutionTime = EditorApplication.timeSinceStartup;
+                    Debounce();
+                }
+            }
+
+            private CallDelayer(Action<object> action, double delay, bool isThrottle)
+            {
+                m_Action = action;
+                m_DebounceDelay = delay;
+                m_IsThrottle = isThrottle;
+            }
+
+            private void Debounce()
+            {
+                EditorApplication.delayCall -= Debounce;
+                var currentTime = EditorApplication.timeSinceStartup;
+                if (m_LastExecutionTime != 0 && currentTime - m_LastExecutionTime > m_DebounceDelay)
+                {
+                    m_Action(m_Context);
+                    m_LastExecutionTime = 0;
+                }
+                else
+                {
+                    EditorApplication.delayCall += Debounce;
+                }
+            }
+
+            private void Throttle()
+            {
+                EditorApplication.delayCall -= Throttle;
+                var currentTime = EditorApplication.timeSinceStartup;
+                if (m_LastExecutionTime != 0 && currentTime - m_LastExecutionTime > m_DebounceDelay)
+                {
+                    m_Action(m_Context);
+                    m_LastExecutionTime = 0;
+                }
+                else
+                {
+                    if (m_LastExecutionTime == 0)
+                        m_LastExecutionTime = currentTime;
+                    EditorApplication.delayCall += Throttle;
+                }
+            }
+        }
+
         private static string[] _ignoredAssemblies =
         {
             "^UnityScript$", "^System$", "^mscorlib$", "^netstandard$",
@@ -212,7 +285,7 @@ namespace Unity.QuickSearch
             long bytes = Math.Abs(byteCount);
             int place = Convert.ToInt32(Math.Floor(Math.Log(bytes, 1024)));
             double num = Math.Round(bytes / Math.Pow(1024, place), 1);
-            return (Math.Sign(byteCount) * num).ToString() + suf[place];
+            return $"{Math.Sign(byteCount) * num} {suf[place]}";
         }
 
         public static string ToGuid(string assetPath)
@@ -713,6 +786,22 @@ namespace Unity.QuickSearch
             }
             object[] parameters = new object[] { guid };
             return (Hash128)s_GetSourceAssetFileHash.Invoke(null, parameters);
+        }
+
+        private static MethodInfo s_IsUsingADBV1;
+        public static bool IsUsingADBV1()
+        {
+            #if UNITY_2019_4
+            if (s_IsUsingADBV1 == null)
+            {
+                var type = typeof(AssetDatabase);
+                s_IsUsingADBV1 = type.GetMethod("IsV1Enabled", BindingFlags.NonPublic | BindingFlags.Static);
+                Debug.Assert(s_IsUsingADBV1 != null);
+            }
+            return (bool)s_IsUsingADBV1.Invoke(null, null);
+            #else
+            return false;
+            #endif
         }
 
         public static void LogProperties(SerializedObject so, bool includeChildren = true)

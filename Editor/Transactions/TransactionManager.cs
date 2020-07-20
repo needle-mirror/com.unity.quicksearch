@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using UnityEngine;
 using DateTime = System.DateTime;
+using System.Security.AccessControl;
 
 #if PACKAGE_PERFORMANCE_TRACKING
 using Unity.PerformanceTracking;
@@ -673,6 +674,8 @@ namespace Unity.QuickSearch
             if (m_Initialized)
                 return true;
 
+            MakeDBFolder();
+
             m_Writer = new TransactionWriter(m_FilePath, HeaderSize);
             var opened = m_Writer.Open();
 
@@ -683,6 +686,20 @@ namespace Unity.QuickSearch
 
             m_Initialized = opened;
             return opened;
+        }
+
+        void MakeDBFolder()
+        {
+            try
+            {
+                var dbFolder = Path.GetDirectoryName(m_FilePath);
+                if (!Directory.Exists(dbFolder))
+                    Directory.CreateDirectory(dbFolder);
+            }
+            catch (IOException)
+            {
+                // ignore
+            }
         }
 
         void HandleTransactionsAdded(DateTime newDateTime)

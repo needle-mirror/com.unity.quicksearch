@@ -28,7 +28,8 @@ namespace Unity.QuickSearch
         //  9- Add document hash support
         // 10- Remove the index tag header
         // 11- Save more keywords
-        internal const int version = 0x4242E000 | 0x011;
+        // 12- Save timestamp in header
+        internal const int version = 0x4242E000 | 0x012;
 
         public enum Type : int
         {
@@ -227,9 +228,14 @@ namespace Unity.QuickSearch
     public class SearchIndexer
     {
         /// <summary>
-        /// Name of the document. Generally this name is given by a user from a <see cref="SearchDatabase.Settings"/>
+        /// Name of the index. Generally this name is given by a user from a <see cref="SearchDatabase.Settings"/>
         /// </summary>
         public string name { get; set; }
+
+        /// <summary>
+        /// Time indicating when the index was saved
+        /// </summary>
+        internal long timestamp => m_Timestamp;
 
         internal int keywordCount => m_Keywords.Count;
         internal int documentCount => m_Documents.Count;
@@ -270,6 +276,7 @@ namespace Unity.QuickSearch
         protected volatile bool m_ThreadAborted = false;
         private Thread m_IndexerThread;
         private volatile bool m_IndexReady = false;
+        private long m_Timestamp;
 
         private readonly QueryEngine<SearchResult> m_QueryEngine = new QueryEngine<SearchResult>(validateFilters: false);
         private readonly Dictionary<string, Query<SearchResult, object>> m_QueryPool = new Dictionary<string, Query<SearchResult, object>>();
@@ -499,7 +506,10 @@ namespace Unity.QuickSearch
         {
             using (var indexWriter = new BinaryWriter(stream))
             {
+                m_Timestamp = DateTime.Now.ToBinary();
+
                 indexWriter.Write(SearchIndexEntry.version);
+                indexWriter.Write(timestamp);
 
                 // Documents
                 indexWriter.Write(m_Documents.Count);
@@ -570,6 +580,8 @@ namespace Unity.QuickSearch
 
                 if (checkVersionOnly)
                     return true;
+
+                m_Timestamp = indexReader.ReadInt64();
 
                 // Documents
                 var elementCount = indexReader.ReadInt32();
@@ -710,6 +722,8 @@ namespace Unity.QuickSearch
             m_IndexReady = false;
             lock (this)
             {
+                m_Timestamp = DateTime.Now.ToBinary();
+
                 var removeDocIndexes = removeDocuments.Select(FindDocumentIndex).Where(i => i != -1).ToArray();
                 var updatedDocIndexes = si.GetDocuments().Select(d => FindDocumentIndex(d.id)).ToArray();
                 var ignoreDocuments = removeDocIndexes.Concat(updatedDocIndexes.Where(i => i != -1)).OrderBy(i => i).ToArray();
@@ -754,6 +768,7 @@ namespace Unity.QuickSearch
             lock (this)
             {
                 m_IndexReady = false;
+                m_Timestamp = DateTime.Now.ToBinary();
                 m_Indexes = source.m_Indexes;
                 m_Documents = source.m_Documents;
                 m_Keywords = source.m_Keywords;
@@ -773,7 +788,7 @@ namespace Unity.QuickSearch
 
         internal IEnumerable<string> GetKeywords() { lock (this) return m_Keywords; }
         internal IEnumerable<SearchDocument> GetDocuments(bool ignoreNulls = false) { lock (this) return ignoreNulls ? m_Documents.Where(d=>d!=null) : m_Documents; }
-        
+
         /// <summary>
         /// Return a search document by its index.
         /// </summary>

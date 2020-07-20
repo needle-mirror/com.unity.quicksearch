@@ -14,14 +14,9 @@ namespace Unity.QuickSearch
     /// </summary>
     public static class FuzzySearch
     {
-        /// <summary>
-        /// Color for matching text when using fuzzy search.
-        /// </summary>
-        public static string HighlightColorTag = EditorGUIUtility.isProSkin ? "<color=#FF6100>" : "<color=#EE4400>";
-        /// <summary>
-        /// Color for special tags when using fuzzy search.
-        /// </summary>
-        public static string HighlightColorTagSpecial = EditorGUIUtility.isProSkin ? "<color=#FF6100>" : "<color=#BB1100>";
+        [Obsolete("Not supported anymore")] public static string HighlightColorTag = null;
+
+        [Obsolete("Not supported anymore")] public static string HighlightColorTagSpecial = null;
 
         struct ScoreIndx
         {
@@ -88,7 +83,7 @@ namespace Unity.QuickSearch
         /// <param name="outScore">Score of the match. A higher score means the pattern is a better match for the string.</param>
         /// <param name="matches">List of indices in the source string where a match was found.</param>
         /// <returns>Returns true if a match was found</returns>
-        public static bool FuzzyMatch(string pattern, string origin, ref long outScore, List<int> matches)
+        public static bool FuzzyMatch(string pattern, string origin, ref long outScore, List<int> matches = null)
         {
             int str_n;
             int pattern_n;
@@ -98,7 +93,7 @@ namespace Unity.QuickSearch
             using (new ScopedProfiler("[FM] Init"))
             {
                 outScore = -100000;
-                matches.Clear();
+                matches?.Clear();
 
                 if (string.IsNullOrEmpty(origin)) return false;
 
@@ -251,7 +246,7 @@ namespace Unity.QuickSearch
                 const int leading_letter_penalty = -5;      // penalty applied for every letter in str before the first match
                 const int max_leading_letter_penalty = -15; // maximum penalty for leading letters
                 const int unmatched_letter_penalty = -1;    // penalty for every letter that doesn't matter
-                int unmatched = str_n - matches.Count;
+                int unmatched = str_n - (matches?.Count ?? 0);
 
                 // find best score
                 using (new ScopedProfiler("[FM] Best score 0"))
@@ -346,43 +341,25 @@ namespace Unity.QuickSearch
 
                 var bestScore = d.matches_indx[max_j][best_mi];
 
-                //                DebugPrint(pattern, str_origin, str_start, str_n, (i, j) =>
-                //                {
-                //                    var arr = d.matches_indx[j];
-                //                    for (int k = 0; k < arr.Count; ++k)
-                //                   {
-                //                       if (arr[k].i == i)
-                //                        return $"{arr[k].i + str_start} {arr[k].score} {arr[k].prev_mi}";
-                //                    }
-                //
-                //                    return ".";
-                //                });
                 outScore = bestScore.score;
-                using (new ScopedProfiler("[FM] Matches calc"))
+                if (matches != null)
                 {
-                    matches.Capacity = pattern_n;
-                    matches.Add(bestScore.i + str_start);
+                    using (new ScopedProfiler("[FM] Matches calc"))
                     {
-                        var mi = bestScore.prev_mi;
-                        for (var j = pattern_n - 2; j >= 0; --j)
+                        matches.Capacity = pattern_n;
+                        matches.Add(bestScore.i + str_start);
                         {
-                            matches.Add(d.matches_indx[j][mi].i + str_start);
-                            mi = d.matches_indx[j][mi].prev_mi;
+                            var mi = bestScore.prev_mi;
+                            for (var j = pattern_n - 2; j >= 0; --j)
+                            {
+                                matches.Add(d.matches_indx[j][mi].i + str_start);
+                                mi = d.matches_indx[j][mi].prev_mi;
+                            }
                         }
+                        matches.Reverse();
                     }
-                    matches.Reverse();
                 }
 
-                /*var prev_si = -1;
-                foreach (var si in matches)
-                {
-                    Assert.IsTrue(si > prev_si, $"find <{pattern}> in <{str_origin}>. {si} > {prev_si}");
-
-                    Assert.IsTrue(si >= 0);
-                    Assert.IsTrue(si < str_origin.Length);
-
-                    prev_si = si;
-                }*/
                 return true;
             }
         }
@@ -392,9 +369,19 @@ namespace Unity.QuickSearch
     {
         static readonly char[] cache_result = new char[1024];
 
+        /// <summary>
+        /// Color for matching text when using fuzzy search.
+        /// </summary>
+        public static string HighlightColorTag = EditorGUIUtility.isProSkin ? "<color=#FF6100>" : "<color=#EE4400>";
+        
+        /// <summary>
+        /// Color for special tags when using fuzzy search.
+        /// </summary>
+        public static string HighlightColorTagSpecial = EditorGUIUtility.isProSkin ? "<color=#FF6100>" : "<color=#BB1100>";
+
         public static string FormatSuggestionTitle(string title, List<int> matches)
         {
-            return FormatSuggestionTitle(title, matches, FuzzySearch.HighlightColorTag, FuzzySearch.HighlightColorTagSpecial);
+            return FormatSuggestionTitle(title, matches, HighlightColorTag, HighlightColorTagSpecial);
         }
 
         public static string FormatSuggestionTitle(string title, List<int> matches, string selectedTextColorTag, string specialTextColorTag)

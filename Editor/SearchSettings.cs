@@ -215,10 +215,15 @@ namespace Unity.QuickSearch
                             debug = EditorGUILayout.Toggle(Styles.debugContent, debug);
                         }
 
-                        dockable = EditorGUILayout.Toggle(Styles.dockableContent, dockable);
-                        trackSelection = EditorGUILayout.Toggle(Styles.trackSelectionContent, trackSelection);
-                        fetchPreview = EditorGUILayout.Toggle(Styles.fetchPreviewContent, fetchPreview);
-                        debounceMs = EditorGUILayout.IntSlider( Styles.debounceThreshold, debounceMs, 0, 1000);
+                        dockable = Toggle(Styles.dockableContent, nameof(dockable), dockable);
+                        trackSelection = Toggle(Styles.trackSelectionContent, nameof(trackSelection), trackSelection);
+                        fetchPreview = Toggle(Styles.fetchPreviewContent, nameof(fetchPreview), fetchPreview);
+                        var newDebounceMs = EditorGUILayout.IntSlider(Styles.debounceThreshold, debounceMs, 0, 1000);
+                        if (newDebounceMs != debounceMs)
+                        {
+                            SearchAnalytics.SendEvent(null, SearchAnalytics.GenericEventType.PreferenceChanged, nameof(debounceMs));
+                            debounceMs = newDebounceMs;
+                        }
 
                         DrawQueryFolder();
 
@@ -233,6 +238,14 @@ namespace Unity.QuickSearch
                 GUILayout.EndVertical();
             }
             GUILayout.EndHorizontal();
+        }
+
+        private static bool Toggle(GUIContent content, string propertyName, bool value)
+        {
+            var newValue = EditorGUILayout.Toggle(content, value);
+            if (newValue != value)
+                SearchAnalytics.SendEvent(null, SearchAnalytics.GenericEventType.PreferenceChanged, propertyName);
+            return newValue;
         }
 
         private static T ReadSetting<T>(IDictionary settings, string key, T defaultValue = default)
@@ -332,6 +345,7 @@ namespace Unity.QuickSearch
                         queryFolder = Utils.GetPathUnderProject(result);
                     }
                 }
+                SearchAnalytics.SendEvent(null, SearchAnalytics.GenericEventType.PreferenceChanged, "queryFolder", queryFolder);
             }
             EditorGUILayout.EndHorizontal();
         }
@@ -349,7 +363,10 @@ namespace Unity.QuickSearch
                 var wasActive = p.active;
                 p.active = GUILayout.Toggle(wasActive, Styles.toggleActiveContent);
                 if (p.active != wasActive)
+                {
+                    SearchAnalytics.SendEvent(null, SearchAnalytics.GenericEventType.PreferenceChanged, "activateProvider", p.name.id, p.active.ToString());
                     settings.active = p.active;
+                }
 
                 using (new EditorGUI.DisabledGroupScope(!p.active))
                 {
@@ -360,6 +377,7 @@ namespace Unity.QuickSearch
                 {
                     if (GUILayout.Button(Styles.increasePriorityContent, Styles.priorityButton))
                         LowerProviderPriority(p);
+
                     if (GUILayout.Button(Styles.decreasePriorityContent, Styles.priorityButton))
                         UpperProviderPriority(p);
                 }
@@ -382,7 +400,6 @@ namespace Unity.QuickSearch
                     if (EditorGUI.EndChangeCheck())
                     {
                         SetDefaultAction(p.name.id, p.actions[newDefaultAction].id);
-                        GUI.changed = true;
                     }
                 }
 
@@ -417,6 +434,7 @@ namespace Unity.QuickSearch
 
         private static void ResetProviderSettings()
         {
+            SearchAnalytics.SendEvent(null, SearchAnalytics.GenericEventType.PreferenceReset);
             providers.Clear();
             SearchService.Refresh();
         }
@@ -472,6 +490,8 @@ namespace Unity.QuickSearch
             if (string.IsNullOrEmpty(providerId) || string.IsNullOrEmpty(actionId))
                 return;
 
+
+            SearchAnalytics.SendEvent(null, SearchAnalytics.GenericEventType.PreferenceChanged, "SetDefaultAction", providerId, actionId);
             GetProviderSettings(providerId).defaultAction = actionId;
             SortActionsPriority();
         }

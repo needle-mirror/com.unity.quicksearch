@@ -22,6 +22,7 @@ namespace Unity.QuickSearch
         private ExpressionInspector m_NodeEditor;
         private ExpressionResultView m_ResultView;
 
+        [SerializeField] private string m_WindowId;
         [SerializeField] private string m_ExpressionPath;
         [SerializeField] private float m_GraphViewSplitterPosition = 0f;
 
@@ -44,7 +45,10 @@ namespace Unity.QuickSearch
         [MenuItem("Window/Quick Search/Expression Builder")]
         public static void ShowWindow()
         {
-            GetWindow<ExpressionBuilder>();
+            var window = GetWindow<ExpressionBuilder>();
+            if (window.m_WindowId == null)
+                window.m_WindowId = GUID.Generate().ToString();
+            SearchAnalytics.SendEvent(window.m_WindowId, SearchAnalytics.GenericEventType.ExpressionBuilderOpenFromMenu);
         }
 
         public static void Open(string assetPath)
@@ -61,6 +65,8 @@ namespace Unity.QuickSearch
             }
 
             var builder = CreateWindow<ExpressionBuilder>();
+            builder.m_WindowId = GUID.Generate().ToString();
+            SearchAnalytics.SendEvent(builder.m_WindowId, SearchAnalytics.GenericEventType.ExpressionBuilderOpenExpression);
             builder.Load(assetPath);
             builder.Show();
         }
@@ -338,6 +344,7 @@ namespace Unity.QuickSearch
 
         private void Save()
         {
+            SearchAnalytics.SendEvent(m_WindowId, SearchAnalytics.GenericEventType.ExpressionBuilderSave);
             if (String.IsNullOrEmpty(m_ExpressionPath))
                 m_ExpressionPath = EditorUtility.SaveFilePanel("Save search expression...", saveExpressionDirectory, "expression", "qse").Replace("\\", "/");
             if (!String.IsNullOrEmpty(m_ExpressionPath))

@@ -1,6 +1,4 @@
-using System;
 using System.IO;
-using System.Linq;
 using UnityEditor;
 using UnityEngine;
 
@@ -20,6 +18,12 @@ namespace Unity.QuickSearch
         {
             try
             {
+                if (Utils.IsUsingADBV1())
+                {
+                    ctx.LogImportWarning("Search indexes are not supported with the Asset Database V1");
+                    return;
+                }
+
                 var db = ScriptableObject.CreateInstance<SearchDatabase>();
                 db.Import(ctx.assetPath);
                 ctx.AddObjectToAsset("index", db);
@@ -59,6 +63,8 @@ namespace Unity.QuickSearch
 
             Debug.LogFormat(LogType.Log, LogOption.NoStacktrace, null,
                 $"Creating {templateFilename} index at <a file=\"{indexPath}\">{indexPath}</a>");
+
+            SearchAnalytics.SendEvent(null, SearchAnalytics.GenericEventType.CreateIndexFromTemplate, templateFilename);
 
             File.WriteAllText(indexPath, templateContent);
             AssetDatabase.ImportAsset(indexPath);

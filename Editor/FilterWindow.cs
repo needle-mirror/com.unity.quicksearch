@@ -69,6 +69,7 @@ namespace Unity.QuickSearch
         private SearchContext m_Context;
         private SearchContext.FilterDesc[] m_ExplicitProviders;
         private SearchContext.FilterDesc[] m_FilterableProviders;
+        private string m_WindowId;
 
         internal static double s_CloseTime;
         internal static bool canShow
@@ -89,6 +90,7 @@ namespace Unity.QuickSearch
             s_SearchContext = context;
             var filterWindow = ScriptableObject.CreateInstance<FilterWindow>();
             filterWindow.m_SearchView = quickSearchTool;
+            filterWindow.m_WindowId = GUID.Generate().ToString();
 
             var minHeight = Mathf.Max(Styles.kMinWindowHeight, Styles.windowSize.y + Styles.kItemHeight * context.filters.Count());
             var height = Math.Min(minHeight, Styles.kMaxWindowHeight);
@@ -117,7 +119,7 @@ namespace Unity.QuickSearch
         internal void OnDestroy()
         {
             s_CloseTime = EditorApplication.timeSinceStartup;
-            if (m_FilterableProviders.All(desc => !desc.enabled))
+            if (m_FilterableProviders.Length > 0 && m_FilterableProviders.All(desc => !desc.enabled))
                 Debug.LogWarning("All filters are disabled");
         }
 
@@ -200,13 +202,20 @@ namespace Unity.QuickSearch
             GUILayout.BeginHorizontal();
             GUILayout.Label("Regular Search Providers", Styles.filterHeader);
             if (GUILayout.Button(Styles.prefButtonContent, Styles.prefButton))
+            {
+                SendEvent(SearchAnalytics.GenericEventType.FilterWindowOpenPreferences);
                 SettingsService.OpenUserPreferences(SearchSettings.settingsPreferencesKey);
+            }
+
             GUILayout.FlexibleSpace();
             EditorGUI.BeginChangeCheck();
             GUI.SetNextControlName($"Box_{m_ToggleFilterNextIndex++}");
             bool isEnabled = GUILayout.Toggle(m_FilterableProviders.All(d => d.enabled), "", Styles.headerFilterToggle, GUILayout.ExpandWidth(false));
             if (EditorGUI.EndChangeCheck())
+            {
+                SendEvent(SearchAnalytics.GenericEventType.FilterWindowToggle, "resetAll", isEnabled.ToString());
                 m_Context.ResetFilter(isEnabled);
+            }
 
             GUILayout.EndHorizontal();
         }
@@ -239,6 +248,7 @@ namespace Unity.QuickSearch
             if (EditorGUI.EndChangeCheck())
             {
                 m_Context.SetFilter(desc.provider.name.id, isEnabled);
+                SendEvent(SearchAnalytics.GenericEventType.FilterWindowToggle, desc.provider.name.id, isEnabled.ToString());
                 m_SearchView.Refresh();
             }
 
@@ -263,6 +273,7 @@ namespace Unity.QuickSearch
                 else
                     m_SearchView.context.options &= ~SearchFlags.WantsMore;
                 m_SearchView.Refresh();
+                SendEvent(SearchAnalytics.GenericEventType.FilterWindowToggle, "WantsMore", SearchSettings.wantsMore.ToString());
             }
 
             GUILayout.EndHorizontal();
@@ -278,6 +289,11 @@ namespace Unity.QuickSearch
                 tooltip = $"Type \"{provider.filterId}\" to search ONLY for {provider.name.displayName}";
             }
             return new GUIContent(displayName, null, tooltip);
+        }
+
+        private void SendEvent(SearchAnalytics.GenericEventType category, string name = null, string message = null, string description = null)
+        {
+            SearchAnalytics.SendEvent(m_WindowId, category, name, message, description);
         }
     }
 }

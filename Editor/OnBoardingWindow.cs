@@ -73,11 +73,19 @@ namespace Unity.QuickSearch
     {
         const string k_RootIndexPath = "Assets/Assets.index";
         static string k_AssetIndexPath = $"{Utils.packageFolderName}/Templates/Assets.index.template";
+        [SerializeField] string m_WindowId;
 
         [MenuItem("Window/Quick Search/Setup Wizard")]
         public static void OpenWindow()
         {
+            OpenWindow(SearchAnalytics.GenericEventType.SetupWizardOpenFromMenu);
+        }
+
+        internal static void OpenWindow(SearchAnalytics.GenericEventType sourceEvt)
+        {
             var window = CreateWindow<OnBoardingWindow>();
+            window.m_WindowId = GUID.Generate().ToString();
+            SearchAnalytics.SendEvent(window.m_WindowId, sourceEvt);
             var windowSize = new Vector2(600f, 420f);
             window.minSize = window.maxSize = windowSize;
             window.position = Utils.GetMainWindowCenteredPosition(windowSize);
@@ -106,9 +114,15 @@ namespace Unity.QuickSearch
 
             var toggleGroupIndex = new List<IndexToggle>();
             var extendedIndexToggle = new IndexToggle("Extended", toggleGroupIndex, new IndexCreationInfo(IndexToCreateType.Extended));
-            toggleGroupIndex.Add(new IndexToggle("Minimal", toggleGroupIndex, new IndexCreationInfo(IndexToCreateType.Minimal)));
-            toggleGroupIndex.Add(new IndexToggle("Default", toggleGroupIndex, new IndexCreationInfo(IndexToCreateType.Default)) { value = true });
+            var defaultIndexToggle = new IndexToggle("Default", toggleGroupIndex, new IndexCreationInfo(IndexToCreateType.Default)) { value = !Utils.IsUsingADBV1() };
+            toggleGroupIndex.Add(new IndexToggle("Minimal", toggleGroupIndex, new IndexCreationInfo(IndexToCreateType.Minimal)) { value = Utils.IsUsingADBV1() });
+            toggleGroupIndex.Add(defaultIndexToggle);
             toggleGroupIndex.Add(extendedIndexToggle);
+            if (Utils.IsUsingADBV1())
+            {
+                defaultIndexToggle.SetEnabled(false);
+                extendedIndexToggle.SetEnabled(false);
+            }
             var toggleGroup = new List<ProjectSizeToggle>();
             toggleGroup.Add(new ProjectSizeToggle("Small", "A project that contains less than 1000 assets.", toggleGroup, ProjectSize.Small, null));
             toggleGroup.Add(new ProjectSizeToggle("Medium", "Seems reasonable.", toggleGroup, ProjectSize.Medium, null) { value = true });
@@ -133,7 +147,7 @@ namespace Unity.QuickSearch
             containerButtons.style.flexDirection = FlexDirection.Row;
             containerButtons.Add(FlexibleSpace());
             containerButtons.Add(new Button(() => OnFinish(toggleGroup, toggleGroupIndex)) { name = "FinishButton", text = "Finish" });
-            containerButtons.Add(new Button(Close) { name = "CancelButton", text = "Cancel" });
+            containerButtons.Add(new Button(() => { SendEvent(SearchAnalytics.GenericEventType.SetupWizardCancel); Close(); }) { name = "CancelButton", text = "Cancel" });
 
             container.Add(containerButtons);
         }
@@ -183,9 +197,11 @@ namespace Unity.QuickSearch
 
         private void ApplySettings(ProjectSize projectSize, IndexCreationInfo indexCreationInfo)
         {
+            SendEvent(SearchAnalytics.GenericEventType.SetupWizardExecute, projectSize.ToString(), indexCreationInfo.type.ToString(), indexCreationInfo.optionsToAdd.ToString());
+
             bool fetchPreview = false;
             bool trackSelection = false;
-            bool wantsMore = false;
+            bool wantsMore = indexCreationInfo.type == IndexToCreateType.Minimal;
             switch (projectSize)
             {
                 case ProjectSize.Small:
@@ -203,7 +219,6 @@ namespace Unity.QuickSearch
                     }
                     break;
                 case ProjectSize.Medium:
-                    wantsMore = true;
                     fetchPreview = true;
                     trackSelection = false;
                     switch (indexCreationInfo.type)
@@ -222,17 +237,20 @@ namespace Unity.QuickSearch
                     switch (indexCreationInfo.type)
                     {
                         case IndexToCreateType.Minimal:
-                            wantsMore = true;
                             break;
                         case IndexToCreateType.Default:
                         case IndexToCreateType.Extended:
-                            wantsMore = false;
                             GenerateIndex(indexCreationInfo.optionsToAdd);
                             break;
                     }
                     break;
             }
             SetSettingsFromProjectSize(fetchPreview, trackSelection, wantsMore);
+        }
+
+        private void SendEvent(SearchAnalytics.GenericEventType category, string name = null, string message = null, string description = null)
+        {
+            SearchAnalytics.SendEvent(m_WindowId, category, name, message, description);
         }
 
         private static void SetSettingsFromProjectSize(bool newFetchPreview, bool newTrackSelection, bool newWantsMore)

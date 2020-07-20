@@ -248,6 +248,7 @@ Here are a few examples of more complex queries using various filters:
 |`h: t:meshrenderer p(castshadows)!="Off"`| Searches all static meshes in scene that cast shadow. |
 |`h: t:light p(color)=#FFFFFF p(intensity)>7.4`| Searches all lights in scene with a specific color, but with brightness higher than 7.4 |
 |`o: t:healthui ref:healthcanvas`| Use the Object provider to search all indexed prefabs and scene for GameObjects with a `HealthUI` component that reference the `healthcanvas` prefab.|
+|`h: path:/Collectables t:collectable`| Find all objects with a component `Collectable` located under the object at path `/Collectables`|
 
 -------------------------------
 
