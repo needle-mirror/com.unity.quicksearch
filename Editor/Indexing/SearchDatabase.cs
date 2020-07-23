@@ -102,15 +102,17 @@ namespace Unity.QuickSearch
         [System.Diagnostics.DebuggerDisplay("{guid} > {path}")]
         class IndexArtifact
         {
-            public IndexArtifact(string guid, Hash128 key)
+            public IndexArtifact(string source, string guid)
             {
+                this.source = source;
                 this.guid = guid;
-                this.key = key;
+                key = default;
                 path = null;
             }
 
             public bool valid => key.isValid;
 
+            public readonly string source;
             public readonly string guid;
             public Hash128 key;
             public string path;
@@ -206,11 +208,10 @@ namespace Unity.QuickSearch
             DeleteBackupIndex();
 
             var paths = index.GetDependencies();
-            var guids = paths.Select(AssetDatabase.AssetPathToGUID).Where(g => !string.IsNullOrEmpty(g)).ToList();
-            using (var importTask = new Task("Import", $"Importing {name} index", guids.Count, this))
+            using (var importTask = new Task("Import", $"Importing {name} index", paths.Count, this))
             {
                 var completed = 0;
-                var artifacts = ProduceArtifacts(guids);
+                var artifacts = ProduceArtifacts(paths);
                 if (ResolveArtifactPaths(artifacts, out var _, importTask, ref completed))
                     SaveIndex(CombineIndexes(settings, artifacts, importTask));
             }
@@ -354,7 +355,8 @@ namespace Unity.QuickSearch
 
                 // Make sure the asset is still valid at this stage, otherwise ignore it
                 // It could be a temporary file that was created since import.
-                var invalidAsset = String.IsNullOrEmpty(AssetDatabase.GUIDToAssetPath(a.guid));
+                var assetPath = AssetDatabase.GUIDToAssetPath(a.guid);
+                var invalidAsset = string.IsNullOrEmpty(assetPath);
                 if (invalidAsset)
                 {
                     Debug.LogWarning($"Cannot resolve index artifact for {a.guid}");
@@ -373,11 +375,12 @@ namespace Unity.QuickSearch
 
                 if (GetArtifactPaths(a.key, out var paths))
                 {
-                    a.path = paths.LastOrDefault(p => p.EndsWith("."+artifactIndexSuffix, StringComparison.Ordinal));
+                    var resultPath = "."+artifactIndexSuffix;
+                    a.path = paths.LastOrDefault(p => p.EndsWith(resultPath, StringComparison.Ordinal));
                     if (a.path == null)
                     {
                         Debug.LogFormat(LogType.Warning, LogOption.NoStacktrace, this,
-                            $"Cannot find index artifact {artifactIndexSuffix} for {AssetDatabase.GUIDToAssetPath(a.guid)} ({a.guid})\n\t- {String.Join("\n\t- ", paths)}");
+                            $"Cannot find index artifact {resultPath} for {assetPath} ({a.guid})\n\t- {String.Join("\n\t- ", paths)}");
                     }
                     ++completed;
                 }
@@ -385,6 +388,14 @@ namespace Unity.QuickSearch
 
             task.Report(++completed);
             return unresolvedArtifacts.Count == 0;
+        }
+
+        private IndexArtifact[] InitializeIndexArtifacts(IList<string> paths)
+        {
+            var artifacts = new IndexArtifact[paths.Count];
+            for (int i = 0; i < paths.Count; ++i)
+                artifacts[i] = new IndexArtifact(paths[i], AssetDatabase.AssetPathToGUID(paths[i]));
+            return artifacts;
         }
 
         private void ResolveArtifacts(string taskName, string title, Task.ResolveHandler finished)
@@ -404,10 +415,8 @@ namespace Unity.QuickSearch
                     return;
 
                 resolveTask.Report("Producing artifacts...");
-                var guids = paths.Select(AssetDatabase.AssetPathToGUID).Where(g => !string.IsNullOrEmpty(g)).ToList();
-                resolveTask.total = guids.Count;
-                var artifacts = ProduceArtifacts(guids);
-
+                resolveTask.total = paths.Count;
+                var artifacts = ProduceArtifacts(paths);
                 if (resolveTask?.Canceled() ?? false)
                     return;
 
@@ -551,39 +560,10 @@ namespace Unity.QuickSearch
         {
             if (!this || settings.options.disabled || updating)
                 return;
-            var changeset = new AssetIndexChangeSet(updated, removed, moved, p => HasDocumentChanged(p));
+            var changeset = new AssetIndexChangeSet(updated, removed, moved, p => !index.SkipEntry(p, true));
             if (changeset.empty)
                 return;
             IncrementalUpdate(changeset);
-        }
-
-        private bool HasDocumentChanged(string path, ChangeStatus check = ChangeStatus.All)
-        {
-            if (index.SkipEntry(path, true))
-                return false;
-
-            if (HasChanges(path, check))
-                return true;
-
-            return false;
-        }
-
-        private bool HasChanges(string path, ChangeStatus check = ChangeStatus.All)
-        {
-            if (check.HasFlag(ChangeStatus.Deleted) && !File.Exists(path))
-                return true;
-
-            if (!index.TryGetHash(path, out var hash) && check.HasFlag(ChangeStatus.Missing))
-                return true;
-
-            if (check.HasFlag(ChangeStatus.Changed))
-            {
-                var changeHash = index.GetDocumentHash(path);
-                if (hash.isValid && changeHash != hash)
-                    return true;
-            }
-
-            return false;
         }
 
         private void IncrementalUpdate(AssetIndexChangeSet changeset)
@@ -600,10 +580,10 @@ namespace Unity.QuickSearch
 
             var baseScore = settings.baseScore;
             var indexName = settings.name.ToLowerInvariant();
-            var updates = changeset.updated.Select(p => AssetDatabase.AssetPathToGUID(p)).Where(g => !string.IsNullOrEmpty(g)).ToList();
+            var updates = ProduceArtifacts(changeset.updated);
 
             ++m_UpdateTasks;
-            ResolveArtifacts(ProduceArtifacts(updates), null, new Task("Update", $"Updating {settings.name} index ({updates.Count})", (Task task, TaskData data) =>
+            ResolveArtifacts(updates, null, new Task("Update", $"Updating {settings.name} index ({updates.Length})", (Task task, TaskData data) =>
             {
                 if (task.canceled || task.error != null)
                 {
@@ -624,7 +604,7 @@ namespace Unity.QuickSearch
                     --m_UpdateTasks;
                     bytes = SaveIndex(mergedBytes, Setup);
                 });
-            }, updates.Count, this));
+            }, updates.Length, this));
         }
 
         private void OnArtifactsResolved(Task task, TaskData data)
@@ -636,22 +616,21 @@ namespace Unity.QuickSearch
             bytes = SaveIndex(data.bytes, Setup);
         }
 
-        private IndexArtifact[] ProduceArtifacts(IList<string> guids)
+        private IndexArtifact[] ProduceArtifacts(IList<string> assetPaths)
         {
-            var artifactCount = guids.Count;
-            var artifacts = new IndexArtifact[artifactCount];
+            var artifacts = InitializeIndexArtifacts(assetPaths);
             var indexImporterType = SearchIndexEntryImporter.GetIndexImporterType(settings.type, settings.options.GetHashCode());
 
             #if UNITY_2020_2_OR_NEWER
-            var artifactIds = AssetDatabaseExperimental.ProduceArtifactsAsync(guids.Select(g => new GUID(g)).ToArray(), indexImporterType);
+            var artifactIds = AssetDatabaseExperimental.ProduceArtifactsAsync(artifacts.Select(a => new GUID(a.guid)).ToArray(), indexImporterType);
             for (int i = 0; i < artifactIds.Length; ++i)
-                artifacts[i] = new IndexArtifact(guids[i], artifactIds[i].value);
+                artifacts[i].key = artifactIds[i].value;
             #else
-            for (int i = 0; i < artifactCount; ++i)
+            for (int i = 0; i < artifacts.Length; ++i)
             {
-                if (String.IsNullOrEmpty(guids[i]))
+                if (String.IsNullOrEmpty(artifacts[i].guid))
                     continue;
-                artifacts[i] = new IndexArtifact(guids[i], ProduceArtifact(guids[i], indexImporterType, ImportMode.Asynchronous));
+                artifacts[i].key = ProduceArtifact(artifacts[i].guid, indexImporterType, ImportMode.Asynchronous);
             }
             #endif
 

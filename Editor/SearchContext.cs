@@ -481,9 +481,7 @@ namespace Unity.QuickSearch
         /// <summary>
         /// Returns a unique code that represents filtered providers for the current context.
         /// </summary>
-        internal int scopeHash => filters.Where(d => d.enabled && !d.provider.isExplicitProvider)
-                .Select(d => d.provider.filterId.GetHashCode())
-                .Aggregate(0, (h1, h2) => (h1 ^ h2).GetHashCode());
+        internal int scopeHash => filters.Select(d => d.provider.name.id.GetHashCode()).Aggregate(0, (h1, h2) => (h1 ^ h2).GetHashCode());
 
         /// <summary>
         /// An instance of MultiProviderAsyncSearchSession holding all the async search sessions associated with this search context.

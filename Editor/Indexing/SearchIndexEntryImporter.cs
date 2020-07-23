@@ -2,10 +2,10 @@ using System;
 using System.IO;
 using UnityEditor;
 using UnityEngine;
+using UnityEditor.Experimental;
 
 #if UNITY_2020_2_OR_NEWER
 using UnityEditor.AssetImporters;
-using UnityEditor.Experimental.AssetImporters;
 #else
 using UnityEditor.Experimental.AssetImporters;
 #endif
@@ -24,7 +24,8 @@ namespace Unity.QuickSearch
     abstract class SearchIndexEntryImporter : ScriptedImporter
     {
         // 14- Add extended options to index as many properties as possible
-        public const int version = (14 << 18) ^ SearchIndexEntry.version;
+        // 15- Add a dependency on the container folder of the asset so it gets re-indexed when the folder gets renamed
+        public const int version = (15 << 18) ^ SearchIndexEntry.version;
 
         protected abstract string type { get; }
         protected abstract IndexingOptions options { get; }
@@ -71,6 +72,7 @@ namespace Unity.QuickSearch
 
                 Debug.LogFormat(LogType.Log, LogOption.NoStacktrace, null, $"\nGenerated {type} ({GetType().Name}) {indexArtifactPath} for {ctx.assetPath} with {options}");
 
+                ctx.DependsOnSourceAsset(Path.GetDirectoryName(ctx.assetPath).Replace("\\", "/"));
                 ctx.DependsOnCustomDependency(GetType().GUID.ToString("N"));
 
                 #if UNITY_2020_1_OR_NEWER

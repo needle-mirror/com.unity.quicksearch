@@ -1216,7 +1216,7 @@ namespace Unity.QuickSearch
 
             if (matches == null)
                 return null;
-            return matches.Select(r => new SearchResult(m_Documents[r.index].id, r.index, r.score));
+            return matches.Select(r => new SearchResult(m_Documents[r.index]?.id, r.index, r.score));
         }
 
         private int SortTokensByPatternMatches(string item1, string item2)

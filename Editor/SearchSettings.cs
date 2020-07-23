@@ -87,7 +87,6 @@ namespace Unity.QuickSearch
         public static bool onBoardingDoNotAskAgain { get; set; }
         public static bool showPackageIndexes { get; set; }
         public static int debounceMs { get; set; }
-        public static Dictionary<string, bool> filters { get; private set; }
         public static Dictionary<string, string> scopes { get; private set; }
         public static Dictionary<string, SearchProviderSettings> providers { get; private set; }
 
@@ -125,7 +124,6 @@ namespace Unity.QuickSearch
             onBoardingDoNotAskAgain = ReadSetting(settings, nameof(onBoardingDoNotAskAgain), false);
             showPackageIndexes = ReadSetting(settings, nameof(showPackageIndexes), false);
             debounceMs = ReadSetting(settings, nameof(debounceMs), 250);
-            filters = ReadProperties<bool>(settings, nameof(filters));
             scopes = ReadProperties<string>(settings, nameof(scopes));
             providers = ReadProviderSettings(settings, nameof(providers));
         }
@@ -144,7 +142,6 @@ namespace Unity.QuickSearch
                 [nameof(onBoardingDoNotAskAgain)] = onBoardingDoNotAskAgain,
                 [nameof(showPackageIndexes)] = showPackageIndexes,
                 [nameof(debounceMs)] = debounceMs,
-                [nameof(filters)] = filters,
                 [nameof(scopes)] = scopes,
                 [nameof(providers)] = providers
             };

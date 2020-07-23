@@ -4,7 +4,6 @@ using System;
 using System.Collections.Generic;
 using System.Reflection;
 using UnityEditor;
-using UnityEditor.Experimental;
 using UnityEngine;
 using Object = UnityEngine.Object;
 
@@ -149,8 +148,8 @@ namespace Unity.QuickSearch
             }
 
             #if UNITY_2020_1_OR_NEWER
-            if (!AssetDatabaseExperimental.IsAssetImportWorkerProcess())
-                EditorApplication.delayCall += () => AssetDatabaseExperimental.RegisterCustomDependency(nameof(CustomObjectIndexerAttribute), globalIndexersHash);
+            if (!AssetDatabaseAPI.IsAssetImportWorkerProcess())
+                EditorApplication.delayCall += () => AssetDatabaseAPI.RegisterCustomDependency(nameof(CustomObjectIndexerAttribute), globalIndexersHash);
             #endif
         }
 

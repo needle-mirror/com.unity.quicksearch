@@ -4,6 +4,7 @@ using System.Linq;
 using JetBrains.Annotations;
 using UnityEditor;
 using UnityEditor.Experimental;
+using UnityEngine;
 
 namespace Unity.QuickSearch
 {
@@ -20,8 +21,8 @@ namespace Unity.QuickSearch
 
         public AssetIndexChangeSet(IEnumerable<string> updated, IEnumerable<string> removed, IEnumerable<string> moved, Func<string, bool> predicate)
         {
-            this.updated = updated.Where(predicate).ToArray();
-            this.removed = moved.Concat(removed).Distinct().Where(predicate).ToArray();
+            this.updated = updated.Concat(moved).Distinct().Where(predicate).ToArray();
+            this.removed = removed.Distinct().Where(predicate).ToArray();
         }
 
         public AssetIndexChangeSet(IEnumerable<string> updated, IEnumerable<string> removed, Func<string, bool> predicate)
@@ -76,7 +77,7 @@ namespace Unity.QuickSearch
 
         static AssetPostprocessorIndexer()
         {
-            if (AssetDatabaseExperimental.IsAssetImportWorkerProcess())
+            if (AssetDatabaseAPI.IsAssetImportWorkerProcess())
                 return;
             transactionManager = new TransactionManager(k_TransactionDatabasePath);
             transactionManager.Init();
@@ -97,7 +98,7 @@ namespace Unity.QuickSearch
 
         public static void Enable()
         {
-            if (AssetDatabaseExperimental.IsAssetImportWorkerProcess())
+            if (AssetDatabaseAPI.IsAssetImportWorkerProcess())
                 return;
             s_Enabled = true;
         }
@@ -139,7 +140,7 @@ namespace Unity.QuickSearch
         [UsedImplicitly]
         internal static void OnPostprocessAllAssets(string[] imported, string[] deleted, string[] movedTo, string[] movedFrom)
         {
-            if (AssetDatabaseExperimental.IsAssetImportWorkerProcess())
+            if (AssetDatabaseAPI.IsAssetImportWorkerProcess())
                 return;
 
             RaiseContentRefreshed(imported, deleted.Concat(movedFrom).Distinct().ToArray(), movedTo);
@@ -188,6 +189,23 @@ namespace Unity.QuickSearch
                 EditorApplication.delayCall -= RaiseContentRefreshed;
                 EditorApplication.delayCall += RaiseContentRefreshed;
             }
+        }
+    }
+
+    static class AssetDatabaseAPI
+    {
+        public static bool IsAssetImportWorkerProcess()
+        {
+            #pragma warning disable CS0618 // Type or member is obsolete
+            return AssetDatabaseExperimental.IsAssetImportWorkerProcess();
+            #pragma warning restore CS0618 // Type or member is obsolete
+        }
+
+        public static void RegisterCustomDependency(string name, Hash128 hash)
+        {
+            #pragma warning disable CS0618 // Type or member is obsolete
+            AssetDatabaseExperimental.RegisterCustomDependency(name, hash);
+            #pragma warning restore CS0618 // Type or member is obsolete
         }
     }
 }

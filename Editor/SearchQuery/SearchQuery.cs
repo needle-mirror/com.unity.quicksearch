@@ -43,7 +43,10 @@ namespace Unity.QuickSearch
 
         public static string RemoveInvalidChars(string filename)
         {
-            return string.Concat(filename.Split(Path.GetInvalidFileNameChars()));
+            filename = string.Concat(filename.Split(Path.GetInvalidFileNameChars()));
+            if (filename.Length > 0 && !char.IsLetterOrDigit(filename[0]))
+                filename = filename.Substring(1);
+            return filename;
         }
 
         public static void SaveQuery(SearchQuery asset, string folder, string name = null)
@@ -95,12 +98,7 @@ namespace Unity.QuickSearch
         {
             var query = EditorUtility.InstanceIDToObject(instanceID) as SearchQuery;
             if (query != null)
-            {
-                var context = SearchService.CreateContext(query.providerIds, query.searchQuery);
-                var qsWindow = QuickSearch.Create(context);
-                qsWindow.ShowWindow(dockable: SearchSettings.dockable);
-                return true;
-            }
+                return QuickSearch.OpenWithContextualProvider(query.searchQuery, false, query.providerIds.ToArray()) != null;
 
             return false;
         }

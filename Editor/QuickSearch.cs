@@ -259,7 +259,12 @@ namespace Unity.QuickSearch
         /// </example>
         public static QuickSearch OpenWithContextualProvider(params string[] providerIds)
         {
-            var providers = providerIds.Select(id => SearchService.Providers.Find(p => p.name.id == id)).Where(p=>p!=null).ToArray();
+            return OpenWithContextualProvider(null, false, providerIds);
+        }
+
+        internal static QuickSearch OpenWithContextualProvider(string searchQuery, bool saveFilters, string[] providerIds)
+        {
+            var providers = providerIds.Select(id => SearchService.Providers.Find(p => p.name.id == id)).Where(p => p != null).ToArray();
             if (providers.Length != providerIds.Length)
             {
                 Debug.LogWarning($"Quick Search cannot find one of these search providers {String.Join(", ", providerIds)}");
@@ -270,8 +275,8 @@ namespace Unity.QuickSearch
                 return Open(dockable: SearchSettings.dockable || Utils.IsRunningTests());
 
             var context = SearchService.CreateContext(providers);
-            var qsWindow = Create(context, saveFilters: false, topic: String.Join(", ", providers.Select(p => p.name.displayName.ToLower())));
-            qsWindow.SetSearchText(SearchSettings.GetScopeValue(k_LastSearchPrefKey, qsWindow.context.scopeHash, ""));
+            var qsWindow = Create(context, saveFilters: saveFilters, topic: string.Join(", ", providers.Select(p => p.name.displayName.ToLower())));
+            qsWindow.SetSearchText(searchQuery ?? SearchSettings.GetScopeValue(k_LastSearchPrefKey, qsWindow.context.scopeHash, ""));
 
             var evt = SearchAnalytics.GenericEvent.Create(qsWindow.m_WindowId, SearchAnalytics.GenericEventType.QuickSearchOpen, "Contextual");
             evt.message = providers[0].name.id;
@@ -1233,10 +1238,14 @@ namespace Unity.QuickSearch
         {
             if (Utils.IsRunningTests())
                 return false;
+            var scopeHash = context.scopeHash;
             context.ResetFilter(true);
-            foreach (var f in SearchSettings.filters)
-                context.SetFilter(f.Key, f.Value);
-            SetSearchText(SearchSettings.GetScopeValue(k_LastSearchPrefKey, context.scopeHash, ""));
+            foreach (var f in context.filters)
+            {
+                if (bool.TryParse(SearchSettings.GetScopeValue(f.provider.name.id, scopeHash, "True"), out var enabled))
+                    context.SetFilter(f.provider.name.id, enabled);
+            }
+            SetSearchText(SearchSettings.GetScopeValue(k_LastSearchPrefKey, scopeHash, ""));
             return true;
         }
 
@@ -1245,11 +1254,12 @@ namespace Unity.QuickSearch
             if (Utils.IsRunningTests())
                 return;
 
-            SearchSettings.SetScopeValue(k_LastSearchPrefKey, context.scopeHash, context.searchText);
+            var scopeHash = context.scopeHash;
+            SearchSettings.SetScopeValue(k_LastSearchPrefKey, scopeHash, context.searchText);
             if (saveFilters)
             {
                 foreach (var p in SearchService.Providers.Where(p => p.active && !p.isExplicitProvider))
-                    SearchSettings.filters[p.name.id] = context.IsEnabled(p.name.id);
+                    SearchSettings.SetScopeValue(p.name.id, scopeHash, context.IsEnabled(p.name.id).ToString());
             }
             SearchSettings.Save();
         }
@@ -1323,7 +1333,7 @@ namespace Unity.QuickSearch
         private static void OpenContextual()
         {
             var contextualProviders = SearchService.Providers.Where(p => p.active && (p.isEnabledForContextualSearch?.Invoke() ?? false));
-            OpenWithContextualProvider(contextualProviders.Select(p => p.name.id).ToArray());
+            OpenWithContextualProvider(null, true, contextualProviders.Select(p => p.name.id).ToArray());
         }
 
         /// <summary>

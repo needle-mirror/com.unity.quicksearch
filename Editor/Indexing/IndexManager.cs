@@ -4,7 +4,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using UnityEditor;
-using UnityEditor.Experimental;
 using UnityEditor.UIElements;
 using UnityEngine;
 using UnityEngine.UIElements;
@@ -966,7 +965,7 @@ namespace Unity.QuickSearch
                         {
                             var settings = m_IndexSettingsAssets[index].settings;
                             var indexImporterType = SearchIndexEntryImporter.GetIndexImporterType(settings.type, settings.options.GetHashCode());
-                            AssetDatabaseExperimental.RegisterCustomDependency(indexImporterType.GUID.ToString("N"), Hash128.Parse(Guid.NewGuid().ToString("N")));
+                            AssetDatabaseAPI.RegisterCustomDependency(indexImporterType.GUID.ToString("N"), Hash128.Parse(Guid.NewGuid().ToString("N")));
                             AssetDatabase.ImportAsset(m_IndexSettingsFilePaths[index]);
                         });
                         menu.ShowAsContext();
