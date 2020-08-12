@@ -1,20 +1,18 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
-using JetBrains.Annotations;
 using UnityEditor;
 
 namespace Unity.QuickSearch
 {
     namespace Providers
     {
-        [UsedImplicitly]
         static class Calculator
         {
             internal static string type = "calculator";
             internal static string displayName = "Calculator";
 
-            [UsedImplicitly, SearchItemProvider]
+            [SearchItemProvider]
             internal static SearchProvider CreateProvider()
             {
                 return new SearchProvider(type, displayName)
@@ -36,12 +34,12 @@ namespace Unity.QuickSearch
                 };
             }
 
-            [UsedImplicitly, SearchActionsProvider]
+            [SearchActionsProvider]
             internal static IEnumerable<SearchAction> ActionHandlers()
             {
                 return new[]
                 {
-                    new SearchAction(type, "exec", null, "Compute...") {
+                    new SearchAction(type, "exec", null, "Compute") {
                         handler = (item) =>
                         {
                             if (Evaluate(item.context.searchQuery, out var result))

@@ -10,7 +10,7 @@ namespace Unity.QuickSearch
         void Report(string status, params string[] args);
     }
 
-    class SearchTask<T> : IDisposable 
+    class SearchTask<T> : IDisposable
         where T : class
     {
         public delegate void ResolveHandler(SearchTask<T> task, T data);
@@ -96,9 +96,20 @@ namespace Unity.QuickSearch
         {
             var t = new Thread(() =>
             {
-                routine();
-                if (finalize != null)
-                    Dispatcher.Enqueue(finalize);
+                try
+                {
+                    routine();
+                    if (finalize != null)
+                        Dispatcher.Enqueue(finalize);
+                }
+                catch (ThreadAbortException)
+                {
+                    Thread.ResetAbort();
+                }
+                catch (Exception ex)
+                {
+                    Dispatcher.Enqueue(() => Resolve(ex));
+                }
             })
             {
                 Name = name

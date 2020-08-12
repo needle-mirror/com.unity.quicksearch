@@ -1,5 +1,4 @@
 using System;
-using JetBrains.Annotations;
 using UnityEditor;
 using UnityEngine;
 
@@ -69,7 +68,7 @@ namespace Unity.QuickSearch
             return rev;
         }
 
-        [UsedImplicitly, RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
         private static void EnsureLoaded()
         {
             // This method ensures that this type has been initialized before any loading of objects occurs.

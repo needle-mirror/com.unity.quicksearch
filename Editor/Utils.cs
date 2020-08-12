@@ -8,7 +8,6 @@ using System.Reflection;
 using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
-using JetBrains.Annotations;
 using UnityEditor;
 using UnityEngine;
 using Debug = UnityEngine.Debug;
@@ -657,7 +656,7 @@ namespace Unity.QuickSearch
         }
 
         // TODO: Fix issue if PingUIElement is called more than once before delayCall is called, locking the window with the new style
-        internal static void PingUIElement(VisualElement element, [CanBeNull] EditorWindow window)
+        internal static void PingUIElement(VisualElement element, EditorWindow window)
         {
             var s = element.style;
             var oldBorderTopColor = s.borderTopColor;

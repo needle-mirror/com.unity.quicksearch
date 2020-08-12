@@ -3,7 +3,6 @@ using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using JetBrains.Annotations;
 using UnityEditor;
 using UnityEditor.ShortcutManagement;
 using UnityEngine;
@@ -11,14 +10,11 @@ using Object = UnityEngine.Object;
 
 namespace Unity.QuickSearch.Providers
 {
-    [UsedImplicitly]
     static class AssetProvider
     {
         internal const string type = "asset";
         private const string displayName = "Asset";
         private const int k_ExactMatchScore = -99;
-
-        private static readonly string[] k_NonSimpleSearchTerms = new string[] {"(", ")", "-", "=", "<", ">"};
 
         private static bool reloadAssetIndexes = true;
         private static List<SearchDatabase> m_AssetIndexes= null;
@@ -37,7 +33,7 @@ namespace Unity.QuickSearch.Providers
             }
         }
 
-        [UsedImplicitly, SearchItemProvider]
+        [SearchItemProvider]
         internal static SearchProvider CreateProvider()
         {
             return new SearchProvider(type, displayName)
@@ -123,17 +119,8 @@ namespace Unity.QuickSearch.Providers
 
                 // Perform a quick search on asset paths
                 var findOptions = FindOptions.Words | FindOptions.Regex | FindOptions.Glob | (context.wantsMore ? FindOptions.Fuzzy : FindOptions.None);
-                foreach (var e in FindProvider.Search(context, provider, findOptions))
+                foreach (var e in FindProvider.Search(context, findOptions))
                     yield return CreateItem(context, provider, "Find", e.path, 998 + e.score);
-
-                // Search using the asset database API (slow)
-                if (context.options.HasFlag(SearchFlags.NoIndexing) ||
-                    (context.wantsMore && !k_NonSimpleSearchTerms.Any(t => searchQuery.IndexOf(t, StringComparison.Ordinal) != -1)))
-                {
-                    yield return AssetDatabase.FindAssets(searchQuery)
-                        .Select(guid => AssetDatabase.GUIDToAssetPath(guid))
-                        .Select(path => CreateItem(context, provider, "ADB", path, 9998));
-                }
 
                 // Finally wait for indexes that are being built to end the search.
                 if (useIndexing && !context.options.HasFlag(SearchFlags.Synchronous))
@@ -188,36 +175,37 @@ namespace Unity.QuickSearch.Providers
                 return assetPath;
             var fi = new FileInfo(assetPath);
             if (!fi.Exists)
-                return "File does not exist anymore.";
+                return $"File <i>{assetPath}</i> does not exist anymore.";
             var fileSize = new FileInfo(assetPath).Length;
             return $"{assetPath} ({EditorUtility.FormatBytes(fileSize)})";
         }
 
-        [UsedImplicitly, SearchActionsProvider]
+        [SearchActionsProvider]
         internal static IEnumerable<SearchAction> CreateActionHandlers()
         {
             #if UNITY_EDITOR_OSX
-            const string k_RevealActionLabel = "Reveal in Finder...";
+            const string k_RevealActionLabel = "Reveal in Finder";
             #else
-            const string k_RevealActionLabel = "Show in Explorer...";
+            const string k_RevealActionLabel = "Show in Explorer";
             #endif
 
             return new[]
             {
-                new SearchAction(type, "select", null, "Select asset...")
+                new SearchAction(type, "select", null, "Select asset")
                 {
                     handler = (item) => Utils.FrameAssetFromPath(item.id),
                     execute = (items) => SearchUtils.SelectMultipleItems(items, focusProjectBrowser: true)
                 },
-                new SearchAction(type, "open", null, "Open asset...")
+                new SearchAction(type, "open", null, "Open asset")
                 {
                     handler = (item) =>
                     {
                         var asset = AssetDatabase.LoadAssetAtPath<Object>(item.id);
-                        if (asset != null) AssetDatabase.OpenAsset(asset);
+                        if (asset == null || !AssetDatabase.OpenAsset(asset))
+                            EditorUtility.OpenWithDefaultApp(item.id);
                     }
                 },
-                new SearchAction(type, "add_scene", null, "Add scene...")
+                new SearchAction(type, "add_scene", null, "Add scene")
                 {
                     // Only works in single selection and adds a scene to the current hierarchy.
                     enabled = (items) => items.Count == 1 && items.Last().id.EndsWith(".unity", StringComparison.OrdinalIgnoreCase),
@@ -230,7 +218,7 @@ namespace Unity.QuickSearch.Providers
             };
         }
 
-        [UsedImplicitly, Shortcut("Help/Quick Search/Assets")]
+        [Shortcut("Help/Quick Search/Assets")]
         internal static void PopQuickSearch()
         {
             QuickSearch.OpenWithContextualProvider(type, Query.type, FindProvider.providerId);

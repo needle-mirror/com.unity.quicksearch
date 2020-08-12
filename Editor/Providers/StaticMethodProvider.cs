@@ -3,13 +3,11 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Reflection;
-using JetBrains.Annotations;
 using UnityEditor;
 using UnityEngine;
 
 namespace Unity.QuickSearch.Providers
 {
-    [UsedImplicitly]
     static class StaticMethodProvider
     {
         private const string type = "static_methods";
@@ -17,7 +15,7 @@ namespace Unity.QuickSearch.Providers
 
         private static MethodInfo[] methods;
 
-        [UsedImplicitly, SearchItemProvider]
+        [SearchItemProvider]
         internal static SearchProvider CreateProvider()
         {
             return new SearchProvider(type, displayName)
@@ -50,7 +48,6 @@ namespace Unity.QuickSearch.Providers
             };
         }
 
-        [Pure]
         private static MethodInfo[] FetchStaticAPIMethodInfo()
         {
             #if QUICKSEARCH_DEBUG
@@ -75,12 +72,12 @@ namespace Unity.QuickSearch.Providers
             Debug.LogFormat(LogType.Log, LogOption.NoStacktrace, result as UnityEngine.Object, result.ToString());
         }
 
-        [UsedImplicitly, SearchActionsProvider]
-        private static IEnumerable<SearchAction> ActionHandlers()
+        [SearchActionsProvider]
+        internal static IEnumerable<SearchAction> ActionHandlers()
         {
             return new[]
             {
-                new SearchAction(type, "exec", null, "Execute method...", (items) =>
+                new SearchAction(type, "exec", null, "Execute method", (items) =>
                 {
                     foreach (var item in items)
                     {

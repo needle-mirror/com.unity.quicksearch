@@ -199,7 +199,12 @@ namespace Unity.QuickSearch
         {
             Selection.objects = items.Select(i => i.provider.toObject(i, typeof(UnityEngine.Object))).Where(o=>o).ToArray();
             if (Selection.objects.Length == 0)
+            {
+                var firstItem = items.FirstOrDefault();
+                if (firstItem != null)
+                    EditorUtility.OpenWithDefaultApp(firstItem.id);
                 return;
+            }
             EditorApplication.delayCall += () =>
             {
                 if(focusProjectBrowser)
@@ -221,7 +226,7 @@ namespace Unity.QuickSearch
                                      ignoreCase ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
         }
 
-        private static bool MatchSearchGroups(string searchContext, string[] tokens, string content, out int startIndex, out int endIndex, StringComparison sc = StringComparison.OrdinalIgnoreCase)
+        internal static bool MatchSearchGroups(string searchContext, string[] tokens, string content, out int startIndex, out int endIndex, StringComparison sc = StringComparison.OrdinalIgnoreCase)
         {
             startIndex = endIndex = -1;
             if (String.IsNullOrEmpty(content))
@@ -236,6 +241,15 @@ namespace Unity.QuickSearch
                 endIndex = content.Length - 1;
                 return true;
             }
+
+            return MatchSearchGroups(tokens, content, out startIndex, out endIndex, sc);
+        }
+
+        internal static bool MatchSearchGroups(string[] tokens, string content, out int startIndex, out int endIndex, StringComparison sc = StringComparison.OrdinalIgnoreCase)
+        {
+            startIndex = endIndex = -1;
+            if (String.IsNullOrEmpty(content))
+                return false;
 
             // Each search group is space separated
             // Search group must match in order and be complete.

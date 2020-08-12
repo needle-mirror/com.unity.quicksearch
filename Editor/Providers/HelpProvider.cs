@@ -1,12 +1,10 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using JetBrains.Annotations;
 using UnityEditor;
 
 namespace Unity.QuickSearch.Providers
 {
-    [UsedImplicitly]
     static class HelpProvider
     {
         internal static string type = "help";
@@ -14,7 +12,7 @@ namespace Unity.QuickSearch.Providers
 
         static Dictionary<SearchItem, Action<SearchItem, SearchContext>> m_StaticItemToAction;
 
-        [UsedImplicitly, SearchItemProvider]
+        [SearchItemProvider]
         internal static SearchProvider CreateProvider()
         {
             var helpProvider = new SearchProvider(type, displayName)
@@ -43,7 +41,7 @@ namespace Unity.QuickSearch.Providers
             return helpProvider;
         }
 
-        [UsedImplicitly, SearchActionsProvider]
+        [SearchActionsProvider]
         internal static IEnumerable<SearchAction> ActionHandlers()
         {
             return new[]

@@ -1,12 +1,10 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
-using JetBrains.Annotations;
 using UnityEditor;
 
 namespace Unity.QuickSearch.Providers
 {
-    [UsedImplicitly]
     static class Settings
     {
         internal const string type = "settings";
@@ -29,7 +27,7 @@ namespace Unity.QuickSearch.Providers
             }
         }
 
-        [UsedImplicitly, SearchItemProvider]
+        [SearchItemProvider]
         internal static SearchProvider CreateProvider()
         {
             return new SearchProvider(type, displayName)
@@ -52,12 +50,12 @@ namespace Unity.QuickSearch.Providers
             };
         }
 
-        [UsedImplicitly, SearchActionsProvider]
+        [SearchActionsProvider]
         internal static IEnumerable<SearchAction> ActionHandlers()
         {
             return new[]
             {
-                new SearchAction(type, "open", null, "Open project settings...", (items) =>
+                new SearchAction(type, "open", null, "Open project settings", (items) =>
                 {
                     var item = items.Last();
                     if (item.id.StartsWith("Project/"))

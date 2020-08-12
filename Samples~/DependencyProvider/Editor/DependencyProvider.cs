@@ -3,11 +3,13 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Unity.QuickSearch;
 using UnityEditor;
 using UnityEditor.ShortcutManagement;
+using UnityEditorInternal;
 using UnityEngine;
 
 #if UNITY_2020_1_OR_NEWER
@@ -59,7 +61,10 @@ static class DependencyProvider
         sw.Start();
 
         var indexBytes = File.ReadAllBytes(indexPath);
-        index = new SearchIndexer();
+        index = new SearchIndexer()
+        {
+            resolveDocumentHandler = ResolveAssetPath
+        };
         index.LoadBytes(indexBytes, (success) =>
         {
             if (!success)
@@ -80,17 +85,11 @@ static class DependencyProvider
         var metaFiles = Directory.GetFiles("Assets", "*.meta", SearchOption.AllDirectories);
         var progressId = Progress.Start($"Scanning dependencies ({metaFiles.Length} assets)");
 
-        var exclude = new[] { ".unity", ".prefab" };
-
         Parallel.ForEach(metaFiles, mf =>
         {
             Progress.Report(progressId, completed / (float)metaFiles.Length, mf);
             var assetPath = mf.Replace("\\", "/").Substring(0, mf.Length - 5).ToLowerInvariant();
             if (!File.Exists(assetPath))
-                return;
-
-            var extension = Path.GetExtension(assetPath);
-            if (exclude.Contains(extension))
                 return;
 
             var guid = ToGuid(assetPath);
@@ -135,11 +134,11 @@ static class DependencyProvider
             var di = AddGuid(guid);
 
             index.AddExactWord("all", 0, di);
-            AddStaticProperty("id", guid, di);
-            AddStaticProperty("path", path, di);
-            AddStaticProperty("t", GetExtension(path), di);
+            AddStaticProperty("id", guid, di, exact: true);
+            AddStaticProperty("path", path, di, exact: true);
+            AddStaticProperty("t", GetExtension(path).ToLowerInvariant(), di);
             index.AddWord(guid, guid.Length, 0, di);
-            index.AddWord(Path.GetFileNameWithoutExtension(path), 0, di);
+            IndexWordComponents(di, path);
         }
 
         foreach (var kvp in guidToRefsMap)
@@ -147,10 +146,11 @@ static class DependencyProvider
             var guid = kvp.Key;
             var refs = kvp.Value.Keys;
             var di = AddGuid(guid);
+            index.AddWord(guid, guid.Length, 0, di);
 
             Progress.Report(progressId, completed++ / (float)total, guid);
 
-            index.AddNumber("count", refs.Count, 0, di);
+            index.AddNumber("out", refs.Count, 0, di);
             foreach (var r in refs)
                 AddStaticProperty("to", r, di);
         }
@@ -165,18 +165,24 @@ static class DependencyProvider
 
             index.AddNumber("in", refs.Count, 0, di);
             foreach (var r in refs)
-            {
                 AddStaticProperty("from", r, di);
-
-                if (guidToPathMap.TryGetValue(r, out var rp))
-                    AddStaticProperty("t", GetExtension(rp), di);
-            }
 
             if (guidToPathMap.TryGetValue(guid, out var path))
                 AddStaticProperty("is", "valid", di);
             else
             {
-                AddStaticProperty("is", "broken", di);
+                AddStaticProperty("is", "missing", di);
+
+                foreach (var r in refs)
+                {
+                    var refDocumentIndex = AddGuid(r);
+                    AddStaticProperty("is", "broken", refDocumentIndex);
+                    var refDoc = index.GetDocument(refDocumentIndex);
+                    if (refDoc.metadata == null)
+                        refDoc.metadata = $"Broken links {guid}";
+                    else
+                        refDoc.metadata += $", {guid}";
+                }
 
                 var refString = string.Join(", ", refs.Select(r =>
                 {
@@ -200,6 +206,12 @@ static class DependencyProvider
         }, removedDocuments: null);
     }
 
+    public static void IndexWordComponents(int documentIndex, string word)
+    {
+        foreach (var c in SearchUtils.SplitFileEntryComponents(word, SearchUtils.entrySeparators))
+            index.AddWord(c.ToLowerInvariant(), 0, documentIndex);
+    }
+
     private static string GetExtension(string path)
     {
         var ext = Path.GetExtension(path);
@@ -208,9 +220,9 @@ static class DependencyProvider
         return ext;
     }
 
-    private static void AddStaticProperty(string key, string value, int di)
+    private static void AddStaticProperty(string key, string value, int di, bool exact = false)
     {
-        index.AddProperty(key, value, value.Length, value.Length, 0, di, false, false);
+        index.AddProperty(key, value, value.Length, value.Length, 0, di, false, exact);
     }
 
     private static void ScanDependencies(string guid, string content)
@@ -277,12 +289,80 @@ static class DependencyProvider
             active = false,
             filterId = $"dep:",
             isExplicitProvider = true,
+            showDetails = true,
+            showDetailsOptions = ShowDetailsOptions.Inspector | ShowDetailsOptions.Actions,
             onEnable = OnEnable,
             fetchItems = (context, items, provider) => FetchItems(context, provider),
             fetchLabel = FetchLabel,
             fetchDescription = FetchDescription,
-            trackSelection = TrackSelection
+            fetchThumbnail = FetchThumbnail,
+            trackSelection = TrackSelection,
+            toObject = ToObject
         };
+    }
+
+    class DependencyInfo : ScriptableObject
+    {
+        public string guid;
+        public List<string> broken = new List<string>();
+        public List<UnityEngine.Object> @using = new List<UnityEngine.Object>();
+        public List<UnityEngine.Object> usedBy = new List<UnityEngine.Object>();
+        public List<string> untracked = new List<string>();
+    }
+
+    private static DependencyInfo s_CurrentDependencyInfo = null;
+    private static UnityEngine.Object ToObject(SearchItem item, Type type)
+    {
+        if (s_CurrentDependencyInfo)
+            ScriptableObject.DestroyImmediate(s_CurrentDependencyInfo);
+        s_CurrentDependencyInfo = ScriptableObject.CreateInstance<DependencyInfo>();
+        s_CurrentDependencyInfo.guid = item.id;
+        using (var context = SearchService.CreateContext(new string[] { providerId }, $"from:{item.id}"))
+        {
+            foreach (var r in SearchService.GetItems(context, SearchFlags.Synchronous))
+            {
+                var assetPath = AssetDatabase.GUIDToAssetPath(r.id);
+                if (string.IsNullOrEmpty(assetPath))
+                    s_CurrentDependencyInfo.broken.Add(r.id);
+                else
+                {
+                    var ur = AssetDatabase.LoadMainAssetAtPath(assetPath);
+                    if (ur != null)
+                        s_CurrentDependencyInfo.@using.Add(ur);
+                    else
+                        s_CurrentDependencyInfo.untracked.Add($"{assetPath} ({r.id})");
+                }
+            }
+        }
+
+        using (var context = SearchService.CreateContext(new string[] { providerId }, $"to:{item.id}"))
+        {
+            foreach (var r in SearchService.GetItems(context, SearchFlags.Synchronous))
+            {
+                var assetPath = AssetDatabase.GUIDToAssetPath(r.id);
+                if (string.IsNullOrEmpty(assetPath))
+                    s_CurrentDependencyInfo.broken.Add(r.id);
+                else
+                {
+                    {
+                        var ur = AssetDatabase.LoadMainAssetAtPath(assetPath);
+                        if (ur != null)
+                            s_CurrentDependencyInfo.usedBy.Add(ur);
+                        else
+                            s_CurrentDependencyInfo.untracked.Add($"{assetPath} ({r.id})");
+                    }
+                }
+            }
+        }
+
+        return s_CurrentDependencyInfo;
+    }
+
+    private static Texture2D FetchThumbnail(SearchItem item, SearchContext context)
+    {
+        if (ResolveAssetPath(item, out var path))
+            return InternalEditorUtility.GetIconForFile(path);
+        return null;
     }
 
     private static void OnEnable()
@@ -301,43 +381,122 @@ static class DependencyProvider
     {
         return new[]
         {
-            Goto("to", "Show references...", "to"),
-            Goto("from", "Show usage...", "from")
+            SelectAsset(),
+            Goto("to", "Show outgoing references", "to"),
+            Goto("from", "Show incoming references", "from"),
+            Goto("missing", "Show broken links", "is:missing from"),
+            LogRefs()
         };
     }
 
-    private static SearchAction Goto(string action, string title, string filter)
+    private static SearchAction SelectAsset()
     {
-        return new SearchAction("dep", action, null, title, (SearchItem item) => item.context?.searchView?.SetSearchText($"dep: {filter}:{item.id}"))
+        return new SearchAction(providerId, "select", null, "Select asset", (SearchItem item) =>
+        {
+            if (ResolveAssetPath(item, out var path))
+                Selection.activeObject = AssetDatabase.LoadMainAssetAtPath(path);
+            else
+                item.context?.searchView?.SetSearchText($"dep: to:{item.id}");
+        })
         {
             closeWindowAfterExecution = false
         };
     }
 
+    private static SearchAction LogRefs()
+    {
+        return new SearchAction(providerId, "log", null, "Log references and usages", (SearchItem[] items) =>
+        {
+            foreach (var item in items)
+            {
+                var sb = new StringBuilder();
+                if (ResolveAssetPath(item, out var assetPath))
+                    sb.AppendLine($"Dependency info: {LogAssetHref(assetPath)}");
+                using (var context = SearchService.CreateContext(new string[] { providerId }, $"from:{item.id}"))
+                {
+                    sb.AppendLine("outgoing:");
+                    foreach (var r in SearchService.GetItems(context, SearchFlags.Synchronous))
+                        LogRefItem(sb, r);
+                }
+
+                using (var context = SearchService.CreateContext(new string[] { providerId }, $"to:{item.id}"))
+                {
+                    sb.AppendLine("incoming:");
+                    foreach (var r in SearchService.GetItems(context, SearchFlags.Synchronous))
+                        LogRefItem(sb, r);
+                }
+
+                Debug.LogFormat(LogType.Log, LogOption.NoStacktrace, null, sb.ToString());
+            }
+        })
+        {
+            closeWindowAfterExecution = false
+        };
+    }
+
+    private static string LogAssetHref(string assetPath)
+    {
+        return $"<a href=\"{assetPath}\" line=\"0\">{assetPath}</a>";
+    }
+
+    private static void LogRefItem(StringBuilder sb, SearchItem item)
+    {
+        if (ResolveAssetPath(item, out var assetPath))
+            sb.AppendLine($"\t{LogAssetHref(assetPath)} ({item.id})");
+        else
+            sb.AppendLine($"\t<color=#EE9898>BROKEN</color> ({item.id})");
+    }
+
+    private static SearchAction Goto(string action, string title, string filter)
+    {
+        return new SearchAction(providerId, action, null, title, (SearchItem item) => item.context?.searchView?.SetSearchText($"dep: {filter}:{item.id}"))
+        {
+            closeWindowAfterExecution = false
+        };
+    }
+
+    private static bool ResolveAssetPath(string guid, out string path)
+    {
+        if (guidToPathMap.TryGetValue(guid, out path))
+            return true;
+
+        path = AssetDatabase.GUIDToAssetPath(guid);
+        if (!string.IsNullOrEmpty(path))
+            return true;
+
+        return false;
+    }
+
+    private static string ResolveAssetPath(string id)
+    {
+        if (ResolveAssetPath(id, out var path))
+            return path;
+        return null;
+    }
+
+    private static bool ResolveAssetPath(SearchItem item, out string path)
+    {
+        return ResolveAssetPath(item.id, out path);
+    }
+
     private static string FetchLabel(SearchItem item, SearchContext context)
     {
-        if (guidToPathMap.ContainsKey(item.id))
-            return item.id;
+        var metaString = index.GetDocument((int)item.data)?.metadata;
+        var hasMetaString = !string.IsNullOrEmpty(metaString);
+        if (ResolveAssetPath(item, out var path))
+            return !hasMetaString ? path : $"<color=#EE9898>{path}</color>";
 
-        var assetPath = AssetDatabase.GUIDToAssetPath(item.id);
-        if (!string.IsNullOrEmpty(assetPath))
-            return item.id;
-
-        if (guidFromRefsMap.ContainsKey(item.id))
-            return $"<color=#EE6666>{item.id}</color>";
-
-        return $"<color=red>{item.id}</color>";
+        return $"<color=#EE6666>{item.id}</color>";
     }
 
     private static string GetDescrition(SearchItem item)
     {
-        var assetPath = AssetDatabase.GUIDToAssetPath(item.id);
-        if (!string.IsNullOrEmpty(assetPath))
-            return assetPath;
-
         var metaString = index.GetDocument((int)item.data).metadata;
         if (!string.IsNullOrEmpty(metaString))
             return metaString;
+
+        if (ResolveAssetPath(item, out _))
+            return item.id;
 
         return "<invalid>";
     }
@@ -345,9 +504,7 @@ static class DependencyProvider
     private static string FetchDescription(SearchItem item, SearchContext context)
     {
         var description = GetDescrition(item);
-        if (item.options.HasFlag(SearchItemOptions.Compacted))
-            description = $"{FetchLabel(item, context)} ({description})";
-        return (item.description = description);
+        return $"{FetchLabel(item, context)} ({description})";
     }
 
     private static void TrackSelection(SearchItem item, SearchContext context)
@@ -359,18 +516,20 @@ static class DependencyProvider
     {
         var sw = new System.Diagnostics.Stopwatch();
         sw.Start();
-        while (!index.IsReady())
+        while (index == null || !index.IsReady())
             yield return null;
-        foreach (var e in index.Search(context.searchQuery))
-            yield return provider.CreateItem(context, e.id, e.score, null, null, null, e.index);
-        Debug.Log($"{provider.name.displayName} Searching dependencies with <b><i>{context.searchQuery}</i></b> took {sw.Elapsed.TotalMilliseconds,2:0.0} ms");
+        foreach (var e in index.Search(context.searchQuery.ToLowerInvariant()))
+        {
+            var item = provider.CreateItem(context, e.id, e.score, null, null, null, e.index);
+            item.options &= ~SearchItemOptions.Ellipsis;
+            yield return item;
+        }
     }
 
     [Shortcut("Help/Quick Search/Dependencies")]
     internal static void OpenShortcut()
     {
-        var qs = QuickSearch.OpenWithContextualProvider(providerId);
-        qs.itemIconSize = 1; // Open in list view by default.
+        QuickSearch.OpenWithContextualProvider(providerId);
     }
 }
 #endif

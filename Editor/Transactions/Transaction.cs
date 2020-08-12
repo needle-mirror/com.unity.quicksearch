@@ -18,15 +18,26 @@ namespace Unity.QuickSearch
         public int state;
 
         public Transaction(string guid, int state)
+            : this(guid, state, DateTime.Now.ToBinary())
         {
-            timestamp = DateTime.Now.ToBinary();
+        }
+
+        public Transaction(string guid, int state, long timestamp)
+        {
+            this.timestamp = timestamp;
             this.guid = Hash128.Parse(guid);
             this.state = state;
         }
 
         public Transaction(string guid, AssetModification state)
             : this(guid, (int)state)
-        {}
+        {
+        }
+
+        public Transaction(string guid, AssetModification state, long timestamp)
+            : this(guid, (int)state, timestamp)
+        {
+        }
 
         public override string ToString()
         {

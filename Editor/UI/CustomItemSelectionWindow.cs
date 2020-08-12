@@ -2,7 +2,6 @@
 using System.Collections;
 using System.Linq;
 using System.Reflection;
-using JetBrains.Annotations;
 using UnityEditor;
 using UnityEditor.IMGUI.Controls;
 using UnityEngine;
@@ -43,7 +42,6 @@ namespace Unity.QuickSearch
         private string m_SearchValue;
         private Config m_Config;
 
-        [UsedImplicitly]
         protected override void OnEnable()
         {
             base.OnEnable();
@@ -60,7 +58,6 @@ namespace Unity.QuickSearch
             CheckShowWindow(rect, () => SetupWindow(getConfig()));
         }
 
-        [UsedImplicitly]
         internal void OnGUI()
         {
             if (Event.current.type == EventType.KeyDown)

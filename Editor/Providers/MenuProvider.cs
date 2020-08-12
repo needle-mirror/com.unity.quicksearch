@@ -2,14 +2,12 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
-using JetBrains.Annotations;
 using UnityEditor;
 using UnityEditor.ShortcutManagement;
 using UnityEngine;
 
 namespace Unity.QuickSearch.Providers
 {
-    [UsedImplicitly]
     static class MenuProvider
     {
         struct MenuData
@@ -25,7 +23,7 @@ namespace Unity.QuickSearch.Providers
         private static QueryEngine<MenuData> queryEngine = null;
         private static readonly List<MenuData> menus = new List<MenuData>();
 
-        [UsedImplicitly, SearchItemProvider]
+        [SearchItemProvider]
         internal static SearchProvider CreateProvider()
         {
             List<string> itemNames = new List<string>();
@@ -113,12 +111,12 @@ namespace Unity.QuickSearch.Providers
             return $"{menuName} ({shortcutBinding})";
         }
 
-        [UsedImplicitly, SearchActionsProvider]
+        [SearchActionsProvider]
         internal static IEnumerable<SearchAction> ActionHandlers()
         {
             return new[]
             {
-                new SearchAction("menu", "select", null, "Execute shortcut...")
+                new SearchAction("menu", "select", null, "Execute shortcut")
                 {
                     handler = (item) =>
                     {
@@ -129,7 +127,7 @@ namespace Unity.QuickSearch.Providers
             };
         }
 
-        [UsedImplicitly, Shortcut("Help/Quick Search/Menu", KeyCode.M, ShortcutModifiers.Alt | ShortcutModifiers.Shift)]
+        [Shortcut("Help/Quick Search/Menu", KeyCode.M, ShortcutModifiers.Alt | ShortcutModifiers.Shift)]
         internal static void OpenQuickSearch()
         {
             var qs = QuickSearch.OpenWithContextualProvider(type, Settings.type);

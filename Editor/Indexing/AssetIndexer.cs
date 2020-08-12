@@ -17,6 +17,12 @@ namespace Unity.QuickSearch
         {
         }
 
+        [Obsolete("Async index builds are not supported anymore.")]
+        protected override System.Collections.IEnumerator BuildAsync(int progressId, object userData = null)
+        {
+            throw new NotSupportedException();
+        }
+
         public override IEnumerable<string> GetRoots()
         {
             if (settings.roots == null)
@@ -122,7 +128,7 @@ namespace Unity.QuickSearch
 
                     if (hasCustomIndexers)
                         IndexCustomProperties(path, documentIndex, mainAsset);
-                    
+
                     if (!String.IsNullOrEmpty(mainAsset.name))
                         IndexWord(documentIndex, mainAsset.name, true);
 

@@ -125,6 +125,12 @@ namespace Unity.QuickSearch
     /// <typeparam name="T">The filtered data type.</typeparam>
     public class Query<T> : Query<T, IEnumerable<T>>
     {
+        /// <summary>
+        /// Boolean indicating if the original payload should be return when the query is empty.
+        /// If set to false, an empty array is returned instead.
+        /// </summary>
+        public bool returnPayloadIfEmpty { get; set; } = true;
+
         internal Query(string text, QueryGraph evaluationGraph, QueryGraph queryGraph, ICollection<QueryError> errors, ICollection<string> tokens, IQueryHandler<T, IEnumerable<T>> graphHandler)
             : base(text, evaluationGraph, queryGraph, errors, tokens, graphHandler)
         { }
@@ -138,6 +144,12 @@ namespace Unity.QuickSearch
         {
             if (!valid)
                 return new T[] { };
+
+            if (evaluationGraph.empty)
+            {
+                return returnPayloadIfEmpty ? data : new T[] { };
+            }
+
             return graphHandler.Eval(data);
         }
     }

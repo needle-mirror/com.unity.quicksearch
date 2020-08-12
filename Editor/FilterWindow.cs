@@ -1,7 +1,5 @@
 using System;
-using System.Collections.Generic;
 using System.Linq;
-using JetBrains.Annotations;
 using UnityEditor;
 using UnityEngine;
 
@@ -100,7 +98,6 @@ namespace Unity.QuickSearch
             return true;
         }
 
-        [UsedImplicitly]
         internal void OnEnable()
         {
             if (s_SearchContext != null)
@@ -115,7 +112,6 @@ namespace Unity.QuickSearch
             }
         }
 
-        [UsedImplicitly]
         internal void OnDestroy()
         {
             s_CloseTime = EditorApplication.timeSinceStartup;
@@ -123,7 +119,6 @@ namespace Unity.QuickSearch
                 Debug.LogWarning("All filters are disabled");
         }
 
-        [UsedImplicitly]
         internal void OnGUI()
         {
             if (Event.current.type == EventType.KeyDown && Event.current.keyCode == KeyCode.Escape)

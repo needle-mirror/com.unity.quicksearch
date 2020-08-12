@@ -287,7 +287,14 @@ namespace Unity.QuickSearch
             return CreateContext(new[] { provider }, searchText);
         }
 
-        internal static SearchContext CreateContext(string providerId, string searchText = "", SearchFlags flags = SearchFlags.Default)
+        /// <summary>
+        /// Create a search context for a single provider.
+        /// </summary>
+        /// <param name="providerId">Unique provider id string (i.e. asset, scene, find, etc.)</param>
+        /// <param name="searchText">Initial search text to be used to evaluate the query.</param>
+        /// <param name="flags">Additional search options to be used for the query evaluation.</param>
+        /// <returns>The newly created search context. Remember to dispose it when you do not need it anymore.</returns>
+        public static SearchContext CreateContext(string providerId, string searchText = "", SearchFlags flags = SearchFlags.Default)
         {
             return CreateContext(new[] { providerId }, searchText, flags);
         }

@@ -1,5 +1,4 @@
 //#define DEBUG_TIMING
-using JetBrains.Annotations;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -13,7 +12,6 @@ namespace Unity.QuickSearch.Providers
     /// <summary>
     /// Scene provider. Can be used as a base class if you want to enhance the scene searching capabilities of QuickSearch.
     /// </summary>
-    [UsedImplicitly]
     public class SceneProvider : SearchProvider
     {
         /// <summary>
@@ -152,7 +150,7 @@ namespace Unity.QuickSearch.Providers
                     }
                 },
 
-                new SearchAction(providerId, "open", null, "Select containing asset...")
+                new SearchAction(providerId, "open", null, "Select containing asset")
                 {
                     handler = (item) =>
                     {
@@ -268,19 +266,19 @@ namespace Unity.QuickSearch.Providers
     {
         const string k_DefaultProviderId = "scene";
 
-        [UsedImplicitly, SearchItemProvider]
+        [SearchItemProvider]
         internal static SearchProvider CreateProvider()
         {
             return new SceneProvider(k_DefaultProviderId, "h:", "Scene");
         }
 
-        [UsedImplicitly, SearchActionsProvider]
+        [SearchActionsProvider]
         internal static IEnumerable<SearchAction> ActionHandlers()
         {
             return SceneProvider.CreateActionHandlers(k_DefaultProviderId);
         }
 
-        [UsedImplicitly, Shortcut("Help/Quick Search/Scene")]
+        [Shortcut("Help/Quick Search/Scene")]
         internal static void OpenQuickSearch()
         {
             QuickSearch.OpenWithContextualProvider(k_DefaultProviderId, Query.type);

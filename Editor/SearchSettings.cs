@@ -3,7 +3,6 @@ using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using JetBrains.Annotations;
 using UnityEditor;
 using UnityEngine;
 
@@ -185,7 +184,7 @@ namespace Unity.QuickSearch
             context.options = ApplyContextOptions(context.options);
         }
 
-        [UsedImplicitly, SettingsProvider]
+        [SettingsProvider]
         internal static SettingsProvider CreateSearchSettings()
         {
             var settings = new SettingsProvider(settingsPreferencesKey, SettingsScope.User)

@@ -349,7 +349,7 @@ namespace Unity.QuickSearch
 
             CreateOptionsVisualElements();
 
-            m_SavedIndexDataNotLoadedYet = new Label("Loading the Index...") { name = "SavedIndexDataNotLoadedYet" };
+            m_SavedIndexDataNotLoadedYet = new Label("Loading the index...") { name = "SavedIndexDataNotLoadedYet" };
             m_IndexDetailsElementScrollView.Add(m_SavedIndexDataNotLoadedYet);
             m_SavedIndexDataNotLoadedYet.style.display = DisplayStyle.None;
             m_SavedIndexData = new VisualElement() { name = "SavedIndexData" };

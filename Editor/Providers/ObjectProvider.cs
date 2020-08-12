@@ -3,14 +3,12 @@ using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using JetBrains.Annotations;
 using UnityEditor;
 using UnityEngine;
 using Object = UnityEngine.Object;
 
 namespace Unity.QuickSearch.Providers
 {
-    [UsedImplicitly]
     static class ObjectProvider
     {
         private const string type = "object";
@@ -30,7 +28,7 @@ namespace Unity.QuickSearch.Providers
             }
         }
 
-        [UsedImplicitly, SearchItemProvider]
+        [SearchItemProvider]
         internal static SearchProvider CreateProvider()
         {
             return new SearchProvider(type, "Objects")
@@ -240,17 +238,17 @@ namespace Unity.QuickSearch.Providers
             return false;
         }
 
-        [UsedImplicitly, SearchActionsProvider]
+        [SearchActionsProvider]
         internal static IEnumerable<SearchAction> CreateActionHandlers()
         {
             return new[]
             {
-                new SearchAction(type, "select", null, "Select asset(s)...", SelectItems),
-                new SearchAction(type, "open", null, "Open asset...", OpenItem)
+                new SearchAction(type, "select", null, "Select asset(s)", SelectItems),
+                new SearchAction(type, "open", null, "Open asset", OpenItem)
             };
         }
 
-        [UsedImplicitly, UnityEditor.ShortcutManagement.Shortcut("Help/Quick Search/Objects")]
+        [UnityEditor.ShortcutManagement.Shortcut("Help/Quick Search/Objects")]
         internal static void OpenQuickSearch()
         {
             QuickSearch.OpenWithContextualProvider(type);

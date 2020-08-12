@@ -1,4 +1,3 @@
-using JetBrains.Annotations;
 using UnityEditor;
 using UnityEngine;
 
@@ -59,24 +58,20 @@ namespace Unity.QuickSearch
             window.ShowAsDropDown(screenRect, Styles.windowSize);
         }
 
-        [UsedImplicitly]
         void OnEnable()
         {
             m_NeedFocus = true;
         }
 
-        [UsedImplicitly]
         void OnDisable()
         {
         }
 
-        [UsedImplicitly]
         void OnDestroy()
         {
             s_CloseTime = EditorApplication.timeSinceStartup;
         }
 
-        [UsedImplicitly]
         internal void OnGUI()
         {
             if (Event.current.type == EventType.KeyDown && Event.current.keyCode == KeyCode.Escape)

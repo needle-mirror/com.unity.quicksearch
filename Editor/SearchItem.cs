@@ -1,7 +1,6 @@
 using System;
 using System.Diagnostics;
 using System.Linq;
-using JetBrains.Annotations;
 using UnityEngine;
 
 namespace Unity.QuickSearch
@@ -46,12 +45,12 @@ namespace Unity.QuickSearch
         /// <summary>
         /// Display name of the item
         /// </summary>
-        [CanBeNull] public string label;
+        public string label;
 
         /// <summary>
         /// If no description is provided, SearchProvider.fetchDescription will be called when the item is first displayed.
         /// </summary>
-        [CanBeNull] public string description;
+        public string description;
 
         /// <summary>
         /// Various flags that dictates how the search item is displayed and used.
@@ -61,33 +60,33 @@ namespace Unity.QuickSearch
         /// <summary>
         /// If no thumbnail are provider, SearchProvider.fetchThumbnail will be called when the item is first displayed.
         /// </summary>
-        [CanBeNull] public Texture2D thumbnail;
+        public Texture2D thumbnail;
 
         /// <summary>
         /// Large preview of the search item. Usually cached by fetchPreview.
         /// </summary>
-        [CanBeNull] public Texture2D preview;
+        public Texture2D preview;
 
         /// <summary>
         /// Search provider defined content. It can be used to transport any data to custom search provider handlers (i.e. `fetchDescription`).
         /// </summary>
-        [CanBeNull] public object data;
+        public object data;
 
         /// <summary>
         /// Used to map value to a search item
         /// </summary>
-        [CanBeNull] internal object value { get => m_Value ?? id; set => m_Value = value; }
+        internal object value { get => m_Value ?? id; set => m_Value = value; }
         private object m_Value = null;
 
         /// <summary>
         /// Back pointer to the provider.
         /// </summary>
-        [CanBeNull] public SearchProvider provider;
+        public SearchProvider provider;
 
         /// <summary>
         /// Context used to create that item.
         /// </summary>
-        [CanBeNull] public SearchContext context;
+        public SearchContext context;
 
         private static readonly SearchProvider defaultProvider = new SearchProvider("default")
         {

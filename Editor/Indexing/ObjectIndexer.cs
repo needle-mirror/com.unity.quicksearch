@@ -234,10 +234,7 @@ namespace Unity.QuickSearch
         }
 
         [Obsolete("Async index builds are not supported anymore.")]
-        protected virtual System.Collections.IEnumerator BuildAsync(int progressId, object userData = null)
-        {
-            throw new NotSupportedException();
-        }
+        protected abstract System.Collections.IEnumerator BuildAsync(int progressId, object userData = null);
 
         internal static FilePattern GetFilePattern(string pattern)
         {
@@ -287,7 +284,12 @@ namespace Unity.QuickSearch
         /// <param name="obj">Object to index.</param>
         /// <param name="documentIndex">Document where the indexed object was found.</param>
         /// <param name="dependencies">Index dependencies.</param>
-        protected void IndexObject(int documentIndex, Object obj, bool dependencies = false, bool recursive = false)
+        protected void IndexObject(int documentIndex, Object obj, bool dependencies = false)
+        {
+            IndexObject(documentIndex, obj, dependencies, recursive: false);
+        }
+
+        internal void IndexObject(int documentIndex, Object obj, bool dependencies, bool recursive)
         {
             using (var so = new SerializedObject(obj))
             {

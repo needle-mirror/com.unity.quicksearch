@@ -455,6 +455,9 @@ namespace Unity.QuickSearch
 
         internal Tuple<QueryGraph, QueryGraph> BuildGraph(string text, ICollection<QueryError> errors, ICollection<string> tokens)
         {
+            if (text == null)
+                return Tuple.Create(new QueryGraph(null), new QueryGraph(null));
+
             var nodesToStringPosition = new NodesToStringPosition();
             var evaluationRootNode = BuildGraphRecursively(text, 0, text.Length, errors, tokens, nodesToStringPosition);
 

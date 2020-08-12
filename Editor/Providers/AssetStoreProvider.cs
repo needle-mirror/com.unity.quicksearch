@@ -7,7 +7,6 @@ using UnityEngine;
 using System;
 using UnityEngine.Networking;
 using System.Text;
-using JetBrains.Annotations;
 using System.Linq;
 using System.Reflection;
 using UnityEditor;
@@ -33,13 +32,13 @@ namespace Unity.QuickSearch.Providers
             public int QTime;
         }
 
-        [UsedImplicitly, Serializable]
+        [Serializable]
         class ErrorObject
         {
             public string msg;
         }
 
-        [UsedImplicitly, Serializable]
+        [Serializable]
         class StoreSearchResponseObject
         {
             public int numFound;
@@ -48,7 +47,7 @@ namespace Unity.QuickSearch.Providers
             public AssetDocument[] docs;
         }
 
-        [UsedImplicitly, Serializable]
+        [Serializable]
         class AssetDocument
         {
             public string id;
@@ -79,7 +78,7 @@ namespace Unity.QuickSearch.Providers
             public string[] images;
         }
 
-        [UsedImplicitly, Serializable]
+        [Serializable]
         class StoreSearchResponse
         {
             public StoreSearchResponseHeader responseHeader;
@@ -87,7 +86,7 @@ namespace Unity.QuickSearch.Providers
             public ErrorObject error;
         }
 
-        [UsedImplicitly, Serializable]
+        [Serializable]
         class AccessToken
         {
             public string access_token;
@@ -102,7 +101,7 @@ namespace Unity.QuickSearch.Providers
             // public string display_name;
         }
 
-        [UsedImplicitly, Serializable]
+        [Serializable]
         class TokenInfo
         {
             public string sub;
@@ -117,13 +116,13 @@ namespace Unity.QuickSearch.Providers
 
         }
 
-        [UsedImplicitly, Serializable]
+        [Serializable]
         class UserInfoName
         {
             public string fillName;
         }
 
-        [UsedImplicitly, Serializable]
+        [Serializable]
         class UserInfo
         {
             public string id;
@@ -131,20 +130,20 @@ namespace Unity.QuickSearch.Providers
             public UserInfoName name;
         }
 
-        [UsedImplicitly, Serializable]
+        [Serializable]
         class PurchaseInfo
         {
             public int packageId;
         }
 
-        [UsedImplicitly, Serializable]
+        [Serializable]
         class PurchaseResponse
         {
             public int total;
             public PurchaseInfo[] results;
         }
 
-        [UsedImplicitly, Serializable]
+        [Serializable]
         class PurchaseDetailCategory
         {
             public string id;
@@ -152,7 +151,7 @@ namespace Unity.QuickSearch.Providers
             public string slug;
         }
 
-        [UsedImplicitly, Serializable]
+        [Serializable]
         class PurchaseDetailMainImage
         {
             public string big;
@@ -164,7 +163,7 @@ namespace Unity.QuickSearch.Providers
             public string facebook;
         }
 
-        [UsedImplicitly, Serializable]
+        [Serializable]
         class PurchaseDetail
         {
             public string packageId;
@@ -177,7 +176,7 @@ namespace Unity.QuickSearch.Providers
         }
 
 
-        [UsedImplicitly, Serializable]
+        [Serializable]
         class ProductListResponse
         {
             public ProductDetails[] results;
@@ -467,7 +466,7 @@ namespace Unity.QuickSearch.Providers
 
         const string k_ProviderId = "store";
 
-        [UsedImplicitly, SearchItemProvider]
+        [SearchItemProvider]
         internal static SearchProvider CreateProvider()
         {
             return new SearchProvider(k_ProviderId, "Asset Store")
@@ -553,7 +552,7 @@ namespace Unity.QuickSearch.Providers
             return newPreview.preview;
         }
 
-        [UsedImplicitly, SearchActionsProvider]
+        [SearchActionsProvider]
         internal static IEnumerable<SearchAction> ActionHandlers()
         {
             return new[]

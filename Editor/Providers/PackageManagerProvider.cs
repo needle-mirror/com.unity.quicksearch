@@ -2,13 +2,11 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
-using JetBrains.Annotations;
 using UnityEditor;
 using UnityEngine;
 
 namespace Unity.QuickSearch.Providers
 {
-    [UsedImplicitly]
     static class PackageManagerProvider
     {
         internal static string type = "packages";
@@ -17,7 +15,7 @@ namespace Unity.QuickSearch.Providers
         private static UnityEditor.PackageManager.Requests.ListRequest s_ListRequest = null;
         private static UnityEditor.PackageManager.Requests.SearchRequest s_SearchRequest = null;
 
-        [UsedImplicitly, SearchItemProvider]
+        [SearchItemProvider]
         internal static SearchProvider CreateProvider()
         {
             return new SearchProvider(type, displayName)
@@ -107,13 +105,13 @@ namespace Unity.QuickSearch.Providers
             return WaitForRequestBase(request, msg, loopDelay) && request.Result != null;
         }
 
-        [UsedImplicitly, SearchActionsProvider]
+        [SearchActionsProvider]
         internal static IEnumerable<SearchAction> ActionHandlers()
         {
             return new[]
             {
                 #if UNITY_2020_1_OR_NEWER
-                new SearchAction(type, "open", null, "Open in Package Manager...")
+                new SearchAction(type, "open", null, "Open in Package Manager")
                 {
                     handler = (item) =>
                     {
@@ -122,7 +120,7 @@ namespace Unity.QuickSearch.Providers
                     }
                 },
                 #endif
-                new SearchAction(type, "install", null, "Install...")
+                new SearchAction(type, "install", null, "Install")
                 {
                     handler = (item) =>
                     {

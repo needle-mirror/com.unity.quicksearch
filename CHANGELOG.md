@@ -1,7 +1,9 @@
 # Changelog
 
-## [2.1.0-preview.3] - 2020-07-23
+## [2.1.0-preview.4] - 2020-08-12
 - [UX] Improve search database import pipeline by producing index artifacts per asset.
+- [UX] Add support to search asset file paths using regex (i.e. `.*\d{2,}.\w+`)
+- [UX] Add new dependency provider sample.
 - [UX] Add support to index asset import settings (using the extended index setting options).
 - [UX] Add new analytics for all interactions possible with the QuickSearch ecosystem.
 - [UX] Add a auto-complete dropdown to find properties using TAB.
@@ -9,6 +11,7 @@
 - [FIX] Fix corrupted SJSON settings parsing (case 1260242)
 - [DOC] Add a cheat sheet that covers all filters for all providers.
 - [API] Support dots in QueryEngine filter ids.
+- [API] QueryEngine supports returning the initial payload when the query is empty.
 - [API] Move query engine support to SearchIndexer.
 
 ## [2.0.2] - 2020-07-01

@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
-using JetBrains.Annotations;
 using UnityEditor;
 using UnityEditor.Experimental;
 using UnityEngine;
@@ -45,7 +45,7 @@ namespace Unity.QuickSearch
         private static readonly HashSet<string> s_MovedItems = new HashSet<string>();
 
         const string k_TransactionDatabasePath = "Library/QuickSearch/transactions.db";
-        static readonly TransactionManager transactionManager;
+        private static TransactionManager transactionManager;
 
         private static readonly object s_ContentRefreshedLock = new object();
 
@@ -79,21 +79,17 @@ namespace Unity.QuickSearch
         {
             if (AssetDatabaseAPI.IsAssetImportWorkerProcess())
                 return;
+
             transactionManager = new TransactionManager(k_TransactionDatabasePath);
             transactionManager.Init();
+
             EditorApplication.quitting += OnQuitting;
             AssemblyReloadEvents.beforeAssemblyReload += OnBeforeAssemblyReload;
-            AssemblyReloadEvents.afterAssemblyReload += OnAfterAssemblyReload;
-        }
-
-        static void OnAfterAssemblyReload()
-        {
-            transactionManager.Init();
         }
 
         static void OnBeforeAssemblyReload()
         {
-            transactionManager.Shutdown();
+            transactionManager?.Shutdown();
         }
 
         public static void Enable()
@@ -103,27 +99,33 @@ namespace Unity.QuickSearch
             s_Enabled = true;
         }
 
-        public static AssetIndexChangeSet GetDiff(long timestamp, Func<string, bool> predicate)
+        public static AssetIndexChangeSet GetDiff(long timestamp, IEnumerable<string> deletedAssets, Func<string, bool> predicate)
         {
             if (transactionManager == null)
                 return default;
 
             var updated = new HashSet<string>();
-            var removed = new HashSet<string>();
+            var moved = new HashSet<string>();
+            var removed = new HashSet<string>(deletedAssets);
             var transactions = transactionManager.Read(TimeRange.From(DateTime.FromBinary(timestamp), false));
             foreach (var t in transactions)
             {
                 var state = (AssetModification)t.state;
+                var assetPath = AssetDatabase.GUIDToAssetPath(t.guid.ToString());
                 if (state.HasFlag(AssetModification.Updated))
                 {
-                    updated.Add(AssetDatabase.GUIDToAssetPath(t.guid.ToString()));
+                    updated.Add(assetPath);
                 }
-                else if (state.HasFlag(AssetModification.Moved) || state.HasFlag(AssetModification.Removed))
+                else if (state.HasFlag(AssetModification.Moved))
                 {
-                    updated.Add(AssetDatabase.GUIDToAssetPath(t.guid.ToString()));
+                    moved.Add(assetPath);
+                }
+                else if (state.HasFlag(AssetModification.Removed))
+                {
+                    removed.Add(assetPath);
                 }
             }
-            return new AssetIndexChangeSet(updated, removed, predicate);
+            return new AssetIndexChangeSet(updated, removed, moved, predicate);
         }
 
         public static void Disable()
@@ -137,7 +139,6 @@ namespace Unity.QuickSearch
             s_Enabled = false;
         }
 
-        [UsedImplicitly]
         internal static void OnPostprocessAllAssets(string[] imported, string[] deleted, string[] movedTo, string[] movedFrom)
         {
             if (AssetDatabaseAPI.IsAssetImportWorkerProcess())
@@ -148,11 +149,16 @@ namespace Unity.QuickSearch
 
         private static void RaiseContentRefreshed(IEnumerable<string> updated, IEnumerable<string> removed, IEnumerable<string> moved)
         {
-            if (transactionManager.Initialized)
+            if (transactionManager != null && transactionManager.Initialized)
             {
-                var transactions = updated.Select(path => new Transaction(AssetDatabase.AssetPathToGUID(path), AssetModification.Updated))
-                    .Concat(removed.Select(path => new Transaction(AssetDatabase.AssetPathToGUID(path), AssetModification.Removed)))
-                    .Concat(moved.Select(path => new Transaction(AssetDatabase.AssetPathToGUID(path), AssetModification.Moved)));
+                var timestamp = DateTime.Now.ToBinary();
+                var transactions = updated.Select(path => new Transaction(AssetDatabase.AssetPathToGUID(path), AssetModification.Updated, timestamp))
+                    .Concat(removed.Select(path => new Transaction(AssetDatabase.AssetPathToGUID(path), AssetModification.Removed, timestamp)))
+                    .Concat(moved.Select(path => new Transaction(AssetDatabase.AssetPathToGUID(path), AssetModification.Moved, timestamp)));
+                #if false
+                foreach (var t in transactions)
+                    Debug.Log($"{t.timestamp} {(AssetModification)t.state} {t.guid} ({AssetDatabase.GUIDToAssetPath(t.guid.ToString())})");
+                #endif
                 transactionManager.Write(transactions);
             }
 

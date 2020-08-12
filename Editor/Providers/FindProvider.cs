@@ -7,7 +7,7 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Text.RegularExpressions;
-using System.Diagnostics;
+using UnityEngine;
 
 namespace Unity.QuickSearch.Providers
 {
@@ -25,6 +25,8 @@ namespace Unity.QuickSearch.Providers
         CustomStart = 1 << 17,
         CustomFinish = 1 << 23,
         CustomRange = CustomStart | 1 << 18 | 1 << 19 | 1 << 20 | 1 << 21 | 1 << 22 | CustomFinish,
+
+        AllFiles = 1 << 31
     }
 
     readonly struct FindResult
@@ -54,10 +56,11 @@ namespace Unity.QuickSearch.Providers
             var options = FindOptions.Words | FindOptions.Regex | FindOptions.Glob;
             if (context.wantsMore)
                 options |= FindOptions.Packages | FindOptions.Fuzzy;
-            foreach (var e in Search(context, provider, options))
+
+            foreach (var e in Search(context, options))
             {
                 yield return provider.CreateItem(context, e.path, e.score,
-                    #if true//DEBUG_FIND_PROVIDER
+                    #if DEBUG_FIND_PROVIDER
                     $"{e.path} ({(e.score & (int)FindOptions.CustomRange) >> 17}, {(FindOptions)(e.score & (int)FindOptions.All)})",
                     #else
                     null,
@@ -66,17 +69,36 @@ namespace Unity.QuickSearch.Providers
             }
         }
 
-        public static IEnumerable<FindResult> Search(SearchContext context, SearchProvider provider, FindOptions options)
+        public static IEnumerable<FindResult> Search(SearchContext context, FindOptions options)
         {
             var searchQuery = context.searchQuery;
             if (string.IsNullOrEmpty(searchQuery) || searchQuery.Length < 2)
-                yield break;
+                return Enumerable.Empty<FindResult>();
 
+            var tokens = searchQuery.ToLowerInvariant().Split(' ').ToArray();
+            var args = tokens.Where(t => t.Length > 0 && t[0] == '+').ToArray();
+            var words = tokens.Where(t => t.Length > 0 && char.IsLetterOrDigit(t[0]) && t.IndexOf(':') == -1).ToArray();
+            if (args.Contains("+all"))
+            {
+                options |= FindOptions.AllFiles;
+                searchQuery = searchQuery.Replace("+all", "");
+            }
+
+            if (args.Contains("+packages"))
+            {
+                options |= FindOptions.Packages;
+                searchQuery = searchQuery.Replace("+packages", "");
+            }
+
+            return Search(searchQuery.Trim(), words, GetRoots(options), options);
+        }
+
+        public static IEnumerable<FindResult> Search(string searchQuery, string[] words, IEnumerable<string> roots, FindOptions options)
+        {
             #if DEBUG_FIND_PROVIDER
             using (new DebugTimer($"Searching {s_FileCount} files with <i>{searchQuery}</i> ({options})"))
             #endif
             {
-                var roots = GetRoots(options);
                 var results = new ConcurrentBag<FindResult>();
                 var searchTask = Task.Run(() =>
                 {
@@ -93,22 +115,23 @@ namespace Unity.QuickSearch.Providers
 
                         if (!s_RootFilePaths.TryGetValue(r, out var files))
                         {
-                            files = new ConcurrentDictionary<string, byte>(Directory.EnumerateFiles(r, "*.meta", SearchOption.AllDirectories)
-                                .Select(p => p.Substring(0, p.Length - 5).Replace("\\", "/")).ToDictionary(p => p, p => (byte)0));
+                            files = new ConcurrentDictionary<string, byte>(Directory.EnumerateFiles(r, "*", SearchOption.AllDirectories)
+                                                .Where(p => !p.EndsWith(".meta", StringComparison.Ordinal))
+                                                .Select(p => p.Replace("\\", "/")).ToDictionary(p => p, p => (byte)0));
                             s_RootFilePaths.TryAdd(r, files);
                             #if DEBUG_FIND_PROVIDER
                             s_FileCount += files.Length;
                             #endif
                         }
 
-                        Parallel.ForEach(files, kvp => 
+                        Parallel.ForEach(files, kvp =>
                         {
                             try
                             {
                                 var f = kvp.Key;
                                 long fuzzyScore = 0;
                                 int score = isPackage ? (int)FindOptions.Packages : 0;
-                                if (validWords && SearchUtils.MatchSearchGroups(context, f, true))
+                                if (validWords && SearchUtils.MatchSearchGroups(words, f, out _, out _, StringComparison.OrdinalIgnoreCase))
                                 {
                                     results.Add(new FindResult(f, score | (int)FindOptions.Words));
                                 }
@@ -204,8 +227,18 @@ namespace Unity.QuickSearch.Providers
 
         static IEnumerable<string> GetRoots(FindOptions options)
         {
+            var projectRoots = s_ProjectRoots;
+            if (options.HasFlag(FindOptions.AllFiles))
+            {
+                var baseProjectRoot = new DirectoryInfo(Path.Combine(Application.dataPath, "..")).FullName.Replace("\\", "/");
+                projectRoots = Directory.EnumerateDirectories(baseProjectRoot, "*", SearchOption.TopDirectoryOnly)
+                    .Select(d => d.Replace(baseProjectRoot, "").Substring(1))
+                    .Where(d => d.Length > 0 && char.IsLetterOrDigit(d[0]))
+                    .ToList();
+            }
+
             if (!options.HasFlag(FindOptions.Packages))
-                return s_ProjectRoots;
+                return projectRoots;
 
             if (s_Roots != null)
                 return s_Roots;
@@ -213,7 +246,7 @@ namespace Unity.QuickSearch.Providers
             var listRequest = UnityEditor.PackageManager.Client.List(offlineMode: true);
             while (!listRequest.IsCompleted)
                 ;
-            return (s_Roots = s_ProjectRoots.Concat(listRequest.Result.Select(r => r.assetPath)).ToList());
+            return (s_Roots = projectRoots.Concat(listRequest.Result.Select(r => r.assetPath)).ToList());
         }
 
         [SearchItemProvider]
@@ -232,8 +265,7 @@ namespace Unity.QuickSearch.Providers
         [Shortcut("Help/Quick Search/Find Files")]
         internal static void OpenShortcut()
         {
-            var qs = QuickSearch.OpenWithContextualProvider(providerId);
-            qs.itemIconSize = 0; // Open in compact list view by default.
+            QuickSearch.OpenWithContextualProvider(providerId);
         }
     }
 }

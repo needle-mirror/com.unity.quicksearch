@@ -1,7 +1,4 @@
 ﻿using System;
-using System.Collections;
-using System.Collections.Generic;
-using JetBrains.Annotations;
 using UnityEditor;
 using UnityEngine;
 
@@ -78,7 +75,6 @@ namespace Unity.QuickSearch
             }
         }
 
-        [UsedImplicitly]
         protected virtual void OnDestroy()
         {
             s_CloseTime = EditorApplication.timeSinceStartup;

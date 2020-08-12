@@ -24,6 +24,12 @@ namespace Unity.QuickSearch
             return base.SkipEntry(path, false);
         }
 
+        [Obsolete("Async index builds are not supported anymore.")]
+        protected override System.Collections.IEnumerator BuildAsync(int progressId, object userData = null)
+        {
+            throw new NotSupportedException();
+        }
+
         private string ConvertTypeToFilePattern(string type)
         {
             type = type.ToLowerInvariant();

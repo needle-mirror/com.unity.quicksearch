@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Linq;
 using System.Reflection;
-using JetBrains.Annotations;
 using UnityEditor;
 using UnityEngine;
 
@@ -15,7 +14,6 @@ namespace Unity.QuickSearch
         private bool m_SearchFieldGiveFocus;
         const string k_SearchField = "ListSearchField";
 
-        [UsedImplicitly]
         protected override void OnEnable()
         {
             base.OnEnable();
@@ -38,7 +36,6 @@ namespace Unity.QuickSearch
             });
         }
 
-        [UsedImplicitly]
         internal void OnGUI()
         {
             if (Event.current.type == EventType.KeyDown)

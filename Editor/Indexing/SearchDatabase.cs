@@ -239,7 +239,7 @@ namespace Unity.QuickSearch
             }
             else
             {
-                var backupIndexPath = GetBackupIndexPath();
+                var backupIndexPath = GetBackupIndexPath(false);
                 if (File.Exists(backupIndexPath))
                 {
                     IncrementalLoad(backupIndexPath);
@@ -307,6 +307,7 @@ namespace Unity.QuickSearch
 
         private void IncrementalLoad(string indexPath)
         {
+            var indexType = settings.type;
             var loadTask = new Task("Read", $"Loading {name} index", (task, data) => Setup(), this);
             loadTask.RunThread(() =>
             {
@@ -318,12 +319,33 @@ namespace Unity.QuickSearch
                 if (!index.LoadBytes(fileBytes))
                     Debug.LogError($"Failed to load {indexPath}.", this);
 
+                var deletedAssets = new HashSet<string>();
+                if (indexType == IndexType.asset.ToString())
+                {
+                    foreach (var d in index.GetDocuments())
+                    {
+                        if (d != null && !File.Exists(d.id))
+                            deletedAssets.Add(d.id);
+                    }
+                }
+
                 bytes = fileBytes;
                 loadTask.Report($"Checking for changes...");
                 loadTask.Report(++step, step + 1);
                 Dispatcher.Enqueue(() =>
                 {
-                    var diff = AssetPostprocessorIndexer.GetDiff(index.timestamp, path => !index.SkipEntry(path, true));
+                    if (!this)
+                        return;
+                    var diff = AssetPostprocessorIndexer.GetDiff(index.timestamp, deletedAssets, path =>
+                    {
+                        if (index.SkipEntry(path, true))
+                            return false;
+
+                        if (!index.TryGetHash(path, out var hash) || !hash.isValid)
+                            return true;
+
+                        return hash != index.GetDocumentHash(path);
+                    });
                     if (!diff.empty)
                         IncrementalUpdate(diff);
 
@@ -365,9 +387,11 @@ namespace Unity.QuickSearch
 
                 if (!a.valid)
                 {
-                    a.key = ProduceArtifact(a.guid, indexImporterType, ImportMode.NoImport);
+                    a.key = ProduceArtifact(new GUID(a.guid), indexImporterType, ImportMode.NoImport, out var availableState);
                     if (!a.valid)
                     {
+                        if (availableState == OnDemandState.Unavailable)
+                            ProduceArtifact(a.guid, indexImporterType, ImportMode.Asynchronous);
                         unresolvedArtifacts.Add(a);
                         continue;
                     }
@@ -520,21 +544,43 @@ namespace Unity.QuickSearch
             AssetPostprocessorIndexer.contentRefreshed += OnContentRefreshed;
         }
 
-        private string GetBackupIndexPath()
+        private string GetBackupIndexPath(bool createDirectory)
         {
-            if (!Directory.Exists(k_QuickSearchLibraryPath))
+            if (createDirectory && !Directory.Exists(k_QuickSearchLibraryPath))
                 Directory.CreateDirectory(k_QuickSearchLibraryPath);
             return $"{k_QuickSearchLibraryPath}/{settings.guid}.{GetIndexTypeSuffix()}";
         }
 
         private byte[] SaveIndex(byte[] saveBytes, Action savedCallback = null)
         {
-            var backupIndexPath = GetBackupIndexPath();
             var saveTask = new Task("Save", $"Saving {settings.name} index", (task, data) => savedCallback?.Invoke(), this);
             saveTask.RunThread(() =>
             {
-                saveTask.Report(backupIndexPath);
-                File.WriteAllBytes(backupIndexPath, saveBytes);
+                try
+                {
+                    var backupIndexPath = GetBackupIndexPath(createDirectory: true);
+                    saveTask.Report(backupIndexPath);
+                    var tempSave = Path.GetTempFileName();
+                    File.WriteAllBytes(tempSave, saveBytes);
+
+                    try
+                    {
+                        if (File.Exists(backupIndexPath))
+                            File.Delete(backupIndexPath);
+                    }
+                    catch (IOException)
+                    {
+                        // ignore file index persistence operation, since it is not critical and will redone later.
+                    }
+
+                    File.Move(tempSave, backupIndexPath);
+                    //Debug.Log($"Save backup index {backupIndexPath}, {DateTime.FromBinary(index.timestamp)}");
+                }
+                catch (IOException ex)
+                {
+                    Debug.LogException(ex);
+                    // ignore
+                }
                 saveTask.Report(99, 100);
                 Dispatcher.Enqueue(() => saveTask.Resolve(new TaskData(saveBytes, index)));
             });
@@ -544,15 +590,15 @@ namespace Unity.QuickSearch
 
         private void DeleteBackupIndex()
         {
-            var backupIndexPath = GetBackupIndexPath();
             try
             {
+                var backupIndexPath = GetBackupIndexPath(false);
                 if (File.Exists(backupIndexPath))
-                    File.Delete(GetBackupIndexPath());
+                    File.Delete(backupIndexPath);
             }
             catch (IOException ex)
             {
-                Console.WriteLine($"Failed to delete backup index {backupIndexPath}.\r\n{ex}");
+                Console.WriteLine($"Failed to delete backup index.\r\n{ex}");
             }
         }
 
@@ -601,6 +647,8 @@ namespace Unity.QuickSearch
                     mergedBytes = index.SaveBytes();
                 }, () =>
                 {
+                    //foreach (var t in changeset.updated) Debug.Log($"updated {t}");
+                    //foreach (var t in changeset.removed) Debug.Log($"removed {t}");
                     --m_UpdateTasks;
                     bytes = SaveIndex(mergedBytes, Setup);
                 });
@@ -639,6 +687,12 @@ namespace Unity.QuickSearch
 
         private static Hash128 ProduceArtifact(GUID guid, Type importerType, ImportMode mode)
         {
+            return ProduceArtifact(guid, importerType, mode, out _);
+        }
+
+        private static Hash128 ProduceArtifact(GUID guid, Type importerType, ImportMode mode, out OnDemandState state)
+        {
+            state = OnDemandState.Unavailable;
             switch (mode)
             {
                 #if UNITY_2020_2_OR_NEWER
@@ -647,7 +701,11 @@ namespace Unity.QuickSearch
                 case ImportMode.Synchronous:
                     return AssetDatabaseExperimental.ProduceArtifact(new ArtifactKey(guid, importerType)).value;
                 case ImportMode.NoImport:
-                    return AssetDatabaseExperimental.LookupArtifact(new ArtifactKey(guid, importerType)).value;
+                    var akey = new ArtifactKey(guid, importerType);
+                    var id = AssetDatabaseExperimental.LookupArtifact(akey).value;
+                    if (!id.isValid)
+                        state = AssetDatabaseExperimental.GetOnDemandArtifactProgress(akey).state;
+                    return id;
                 #else
                 case ImportMode.Asynchronous:
                     return AssetDatabaseExperimental.GetArtifactHash(guid.ToString(), importerType, AssetDatabaseExperimental.ImportSyncMode.Queue);

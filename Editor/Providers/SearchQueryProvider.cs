@@ -1,15 +1,13 @@
 using System.Collections.Generic;
-using JetBrains.Annotations;
 
 namespace Unity.QuickSearch.Providers
 {
-    [UsedImplicitly]
     static class Query
     {
         internal const string type = "query";
         private const string displayName = "Queries";
 
-        [UsedImplicitly, SearchItemProvider]
+        [SearchItemProvider]
         internal static SearchProvider CreateProvider()
         {
             return new SearchProvider(type, displayName)
@@ -40,7 +38,7 @@ namespace Unity.QuickSearch.Providers
             };
         }
 
-        [UsedImplicitly, SearchActionsProvider]
+        [SearchActionsProvider]
         internal static IEnumerable<SearchAction> ActionHandlers()
         {
             return new[]

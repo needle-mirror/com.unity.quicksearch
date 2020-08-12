@@ -3,7 +3,6 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
-using JetBrains.Annotations;
 using UnityEditor;
 
 namespace Unity.QuickSearch
@@ -352,18 +351,18 @@ namespace Unity.QuickSearch
         /// <summary>
         /// Search view holding and presenting the search results.
         /// </summary>
-        [CanBeNull] public ISearchView searchView { get; internal set; }
+        public ISearchView searchView { get; internal set; }
 
         /// <summary>
         /// The search action id to be executed.
         /// </summary>
-        [CanBeNull] public string actionId { get; private set; }
+        public string actionId { get; private set; }
 
         /// <summary>
         /// Explicit filter id. Usually it is the first search token like h:, p: to do an explicit search for a given provider.
         /// Can be null
         /// </summary>
-        [CanBeNull] public string filterId { get; private set; }
+        public string filterId { get; private set; }
 
         /// <summary>
         /// This event is used to receive any async search result.
@@ -476,7 +475,7 @@ namespace Unity.QuickSearch
         /// <summary>
         /// Indicates that the search results should be filter for this type.
         /// </summary>
-        [CanBeNull] internal Type filterType { get; set; }
+        internal Type filterType { get; set; }
 
         /// <summary>
         /// Returns a unique code that represents filtered providers for the current context.

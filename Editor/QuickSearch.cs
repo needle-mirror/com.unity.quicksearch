@@ -1,12 +1,8 @@
 ﻿//#define QUICKSEARCH_DEBUG
-#if (UNITY_2020_2_OR_NEWER)
-//#define USE_SEARCH_ENGINE_API
-#endif
 
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using JetBrains.Annotations;
 using UnityEditor;
 using UnityEditor.ShortcutManagement;
 using UnityEngine;
@@ -130,6 +126,10 @@ namespace Unity.QuickSearch
         /// </summary>
         public bool multiselect { get; set; }
 
+        #if !UNITY_2020_1_OR_NEWER
+        internal bool docked => SearchSettings.dockable;
+        #endif
+
         /// <summary>
         /// Sets the search query text.
         /// </summary>
@@ -138,6 +138,8 @@ namespace Unity.QuickSearch
         public void SetSearchText(string searchText, TextCursorPlacement moveCursor = TextCursorPlacement.Default)
         {
             context.searchText = searchText ?? String.Empty;
+            if (!string.IsNullOrWhiteSpace(context.searchText))
+                SearchField.UpdateLastSearchText(context.searchText);
             DebouncedRefresh();
             nextFrame += () =>
             {
@@ -492,15 +494,15 @@ namespace Unity.QuickSearch
             }
             else
             {
-                if (endSearch)
-                    SearchField.UpdateLastSearchText(context.searchText);
+                SearchField.UpdateLastSearchText(context.searchText);
 
                 if (action.execute != null)
                     action.execute(items);
-                else action.handler?.Invoke(item);
+                else 
+                    action.handler?.Invoke(item);
             }
 
-            if (endSearch && action.closeWindowAfterExecution)
+            if (endSearch && action.closeWindowAfterExecution && !docked)
                 CloseSearchWindow();
         }
 
@@ -544,7 +546,6 @@ namespace Unity.QuickSearch
                 menu.DropDown(position);
         }
 
-        [UsedImplicitly]
         internal void OnEnable()
         {
             hideFlags |= HideFlags.DontSaveInEditor;
@@ -593,7 +594,6 @@ namespace Unity.QuickSearch
             DebugInfo.Enable(this);
         }
 
-        [UsedImplicitly]
         internal void OnDisable()
         {
             DebugInfo.Disable();
@@ -623,7 +623,6 @@ namespace Unity.QuickSearch
                 Resources.UnloadUnusedAssets();
         }
 
-        [UsedImplicitly]
         internal void OnGUI()
         {
             if (context == null)
@@ -686,13 +685,11 @@ namespace Unity.QuickSearch
             UpdateFocusControlState(evt);
         }
 
-        [UsedImplicitly]
         internal void OnLostFocus()
         {
             AutoComplete.Clear();
         }
 
-        [UsedImplicitly]
         internal void Update()
         {
             if (focusedWindow != this)
@@ -1310,13 +1307,13 @@ namespace Unity.QuickSearch
                 System.IO.File.Delete(quickSearchFirstUseTokenPath);
         }
 
-        [UsedImplicitly, CommandHandler(nameof(OpenQuickSearch))]
+        [CommandHandler(nameof(OpenQuickSearch))]
         private static void OpenQuickSearchCommand(CommandExecuteContext c)
         {
             OpenDefaultQuickSearch();
         }
 
-        [UsedImplicitly, Shortcut("Help/Quick Search", KeyCode.O, ShortcutModifiers.Alt | ShortcutModifiers.Shift)]
+        [Shortcut("Help/Quick Search", KeyCode.O, ShortcutModifiers.Alt | ShortcutModifiers.Shift)]
         private static void OpenQuickSearch()
         {
             OpenDefaultQuickSearch();

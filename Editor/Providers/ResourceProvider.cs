@@ -3,17 +3,15 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using System.Text;
-using JetBrains.Annotations;
 using UnityEditor;
 using UnityEngine;
 using Object = UnityEngine.Object;
 
 namespace Unity.QuickSearch.Providers
 {
-    [UsedImplicitly]
     static class ResourcesProvider
     {
-        private interface IMatchOperation
+        internal interface IMatchOperation
         {
             Type filterType { get; }
             string name { get; }
@@ -60,7 +58,7 @@ namespace Unity.QuickSearch.Providers
             .Select(t => t.GetConstructor(new Type[] { })?.Invoke(new object[] { }) as ResourceDescriptor)
             .OrderBy(descriptor => descriptor.Priority).Reverse().ToList();
 
-        [UsedImplicitly, SearchItemProvider]
+        [SearchItemProvider]
         internal static SearchProvider CreateProvider()
         {
             return new SearchProvider(type, displayName)
@@ -105,8 +103,7 @@ namespace Unity.QuickSearch.Providers
             typedMethod.Invoke(null, new object[] { matchOperation });
         }
 
-        [UsedImplicitly]
-        static void AddTypedFilter<T>(IMatchOperation matchOperation)
+        internal static void AddTypedFilter<T>(IMatchOperation matchOperation)
         {
             var typedMatchOperation = (MatchOperation<T>)matchOperation;
             s_QueryEngine.AddFilter(typedMatchOperation.matchToken, typedMatchOperation.getFilterData);
@@ -119,14 +116,14 @@ namespace Unity.QuickSearch.Providers
             return new[] { data.GetType().FullName, data.name, data.GetInstanceID().ToString(), tag };
         }
 
-        [UsedImplicitly, SearchActionsProvider]
+        [SearchActionsProvider]
         internal static IEnumerable<SearchAction> ActionHandlers()
         {
             return new[]
             {
-                new SearchAction(type, "select", null, "Select resource...") { handler = (item) => TrackSelection(item) },
+                new SearchAction(type, "select", null, "Select resource") { handler = (item) => TrackSelection(item) },
                 #if UNITY_2020_1_OR_NEWER
-                new SearchAction(type, "inspect", null, "Open property editor...") { handler = item => OpenPropertyEditor(item) }
+                new SearchAction(type, "inspect", null, "Open property editor") { handler = item => OpenPropertyEditor(item) }
                 #endif
             };
         }

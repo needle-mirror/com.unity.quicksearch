@@ -1,5 +1,4 @@
 //#define QUICKSEARCH_DEBUG
-using JetBrains.Annotations;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -59,7 +58,6 @@ namespace Unity.QuickSearch.Providers
     /// </summary>
     public class SceneQueryEngineParameterTransformerAttribute : QueryEngineParameterTransformerAttribute { }
 
-    [UsedImplicitly]
     class SceneQueryEngine
     {
         private readonly GameObject[] m_GameObjects;

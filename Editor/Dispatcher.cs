@@ -1,5 +1,5 @@
 using System;
-using System.Collections.Generic;
+using System.Collections.Concurrent;
 using UnityEditor;
 
 namespace Unity.QuickSearch
@@ -7,8 +7,7 @@ namespace Unity.QuickSearch
     [InitializeOnLoad]
     static class Dispatcher
     {
-        private static volatile bool s_Active = false;
-        private static readonly Queue<Action> s_ExecutionQueue = new Queue<Action>();
+        private static readonly ConcurrentQueue<Action> s_ExecutionQueue = new ConcurrentQueue<Action>();
 
         static Dispatcher()
         {
@@ -17,24 +16,16 @@ namespace Unity.QuickSearch
 
         public static void Enqueue(Action action)
         {
-            lock (s_ExecutionQueue)
-            {
-                s_ExecutionQueue.Enqueue(action);
-                s_Active = true;
-            }
+            s_ExecutionQueue.Enqueue(action);
         }
 
         static void Update()
         {
-            if (!s_Active)
+            if (s_ExecutionQueue.IsEmpty)
                 return;
 
-            lock (s_ExecutionQueue)
-            {
-                while (s_ExecutionQueue.Count > 0)
-                    s_ExecutionQueue.Dequeue().Invoke();
-                s_Active = false;
-            }
+            while (s_ExecutionQueue.TryDequeue(out var action))
+                action.Invoke();
         }
     }
 }
