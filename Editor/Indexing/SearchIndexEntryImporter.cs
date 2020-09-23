@@ -55,7 +55,6 @@ namespace Unity.QuickSearch
 
                 type = type,
                 options = GetOptions(),
-
             };
 
             EditorApplication.LockReloadAssemblies();
@@ -73,10 +72,7 @@ namespace Unity.QuickSearch
 
                 ctx.DependsOnSourceAsset(Path.GetDirectoryName(ctx.assetPath).Replace("\\", "/"));
                 ctx.DependsOnCustomDependency(GetType().GUID.ToString("N"));
-
-                #if UNITY_2020_1_OR_NEWER
                 ctx.DependsOnCustomDependency(nameof(CustomObjectIndexerAttribute));
-                #endif
             }
             catch (Exception ex)
             {

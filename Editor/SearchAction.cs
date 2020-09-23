@@ -15,10 +15,12 @@ namespace Unity.QuickSearch
         /// Default constructor to build a search action.
         /// </summary>
         /// <param name="providerId">Provider Id that supports this action.</param>
+        /// <param name="id">Action unique id.</param>
         /// <param name="content">Display information when displaying the action in the Action Menu</param>
-        public SearchAction(string providerId, GUIContent content)
+        public SearchAction(string providerId, string id, GUIContent content)
         {
             this.providerId = providerId;
+            this.id = id;
             this.content = content;
             handler = null;
             execute = null;
@@ -29,10 +31,11 @@ namespace Unity.QuickSearch
         /// Default constructor to build a search action.
         /// </summary>
         /// <param name="providerId">Provider Id that supports this action.</param>
+        /// <param name="id">Action unique id.</param>
         /// <param name="content">Display information when displaying the action in the Action Menu</param>
         /// <param name="handler">Handler that will execute the action.</param>
-        public SearchAction(string providerId, GUIContent content, Action<SearchItem[]> handler)
-            : this(providerId, content)
+        public SearchAction(string providerId, string id, GUIContent content, Action<SearchItem[]> handler)
+            : this(providerId, id, content)
         {
             execute = handler;
         }
@@ -41,10 +44,11 @@ namespace Unity.QuickSearch
         /// Default constructor to build a search action.
         /// </summary>
         /// <param name="providerId">Provider Id that supports this action.</param>
+        /// <param name="id">Action unique id.</param>
         /// <param name="content">Display information when displaying the action in the Action Menu</param>
         /// <param name="handler">Handler that will execute the action.</param>
-        public SearchAction(string providerId, GUIContent content, Action<SearchItem> handler)
-            : this(providerId, content)
+        public SearchAction(string providerId, string id, GUIContent content, Action<SearchItem> handler)
+            : this(providerId, id, content)
         {
             this.handler = handler;
         }
@@ -58,7 +62,7 @@ namespace Unity.QuickSearch
         /// <param name="tooltip">Tooltip assocoated with the when displayed in the Action Menu</param>
         /// <param name="handler">Handler that will execute the action.</param>
         public SearchAction(string providerId, string name, Texture2D icon, string tooltip, Action<SearchItem[]> handler)
-            : this(providerId, new GUIContent(name, icon, tooltip ?? name), handler)
+            : this(providerId, name, new GUIContent(UppercaseFirst(name), icon, tooltip ?? name), handler)
         {
         }
 
@@ -71,7 +75,7 @@ namespace Unity.QuickSearch
         /// <param name="tooltip">Tooltip assocoated with the when displayed in the Action Menu</param>
         /// <param name="handler">Handler that will execute the action.</param>
         public SearchAction(string providerId, string name, Texture2D icon, string tooltip, Action<SearchItem> handler)
-            : this(providerId, new GUIContent(name, icon, tooltip ?? name), handler)
+            : this(providerId, name, new GUIContent(UppercaseFirst(name), icon, tooltip ?? name), handler)
         {
         }
 
@@ -83,14 +87,14 @@ namespace Unity.QuickSearch
         /// <param name="icon">Icon when displaying the action in the Action Menu</param>
         /// <param name="tooltip">Tooltip assocoated with the when displayed in the Action Menu</param>
         public SearchAction(string providerId, string name, Texture2D icon = null, string tooltip = null)
-            : this(providerId, new GUIContent(name, icon, tooltip ?? name))
+            : this(providerId, name, new GUIContent(UppercaseFirst(name), icon, tooltip ?? name))
         {
         }
 
         /// <summary>
         /// Action unique identifier.
         /// </summary>
-        public string id => content.text;
+        public string id { get; private set; }
 
         /// <summary>
         /// Name used to display
@@ -127,5 +131,16 @@ namespace Unity.QuickSearch
         /// </summary>
         // [Obsolete]
         public Action<SearchItem> handler;
+
+        static string UppercaseFirst(string s)
+        {
+            // Check for empty string.
+            if (string.IsNullOrEmpty(s))
+            {
+                return string.Empty;
+            }
+            // Return char and concat substring.
+            return char.ToUpper(s[0]) + s.Substring(1);
+        }
     }
 }

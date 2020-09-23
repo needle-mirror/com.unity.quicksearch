@@ -1,11 +1,10 @@
-//#define DEBUG_QUICKSEARCH
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using UnityEditor;
 using UnityEngine;
 using System.Text;
 using System.Text.RegularExpressions;
+using UnityEditor;
 
 namespace Unity.QuickSearch
 {
@@ -48,8 +47,9 @@ namespace Unity.QuickSearch
         public readonly string replacement;
         public string help;
         public readonly int priority;
+        public readonly TextCursorPlacement moveCursor;
 
-        public SearchProposition(string label, string replacement = null, string help = null, int priority = int.MaxValue)
+        public SearchProposition(string label, string replacement = null, string help = null, int priority = int.MaxValue, TextCursorPlacement moveCursor = TextCursorPlacement.MoveAutoComplete)
         {
             var kparts = label.Split(new char[] { '|' });
             this.label = kparts[0];
@@ -59,6 +59,7 @@ namespace Unity.QuickSearch
             else
                 this.help = help;
             this.priority = priority;
+            this.moveCursor = moveCursor;
         }
 
         public int CompareTo(SearchProposition other)
@@ -183,11 +184,12 @@ namespace Unity.QuickSearch
         private static string s_LastInput;
         private static int s_CurrentSelection = 0;
         private static List<SearchProposition> s_FilteredList = null;
+        private static SearchProposition s_Empty = new SearchProposition(string.Empty);
 
         private static Rect position;
         private static Rect parent { get; set; }
         private static SearchPropositionOptions options { get; set; }
-        private static HashSet<SearchProposition> propositions { get; set; }
+        private static SortedSet<SearchProposition> propositions { get; set; }
 
         public static bool enabled { get; set; }
 
@@ -223,19 +225,14 @@ namespace Unity.QuickSearch
             parent = parentRect;
             options = new SearchPropositionOptions(context.searchText, te.cursorIndex);
 
-            #if DEBUG_QUICKSEARCH
-            using (new DebugTimer(GetLogString("Show")))
-            #endif
-            {
-                propositions = FetchPropositions(context, options);
+            propositions = FetchPropositions(context, options);
 
-                enabled = propositions.Count > 0;
-                if (!enabled)
-                    return false;
+            enabled = propositions.Count > 0;
+            if (!enabled)
+                return false;
 
-                UpdateCompleteList(te, options);
-                return true;
-            }
+            UpdateCompleteList(te, options);
+            return true;
         }
 
         public static void Draw(SearchContext context, ISearchView view)
@@ -259,11 +256,13 @@ namespace Unity.QuickSearch
                 return;
 
             var autoFill = DrawItems(evt);
-            if (!string.IsNullOrEmpty(autoFill))
+            if (autoFill != null && autoFill != s_Empty)
             {
-                Log($"Select({autoFill}, {options.cursor}, {options.token})");
-
-                if (!options.token.StartsWith(autoFill, StringComparison.OrdinalIgnoreCase))
+                if (autoFill.moveCursor == TextCursorPlacement.MoveLineEnd)
+                {
+                    view.SetSearchText(autoFill.replacement, autoFill.moveCursor);
+                }
+                else if (!options.token.StartsWith(autoFill.replacement, StringComparison.OrdinalIgnoreCase))
                 {
                     var searchText = context.searchText;
 
@@ -280,13 +279,13 @@ namespace Unity.QuickSearch
                         replaceTo = searchText.Length;
                     var sb = new StringBuilder(searchText);
                     sb.Remove(replaceFrom, replaceTo - replaceFrom);
-                    sb.Insert(replaceFrom, autoFill);
+                    sb.Insert(replaceFrom, autoFill.replacement);
 
-                    view.SetSearchText(sb.ToString(), TextCursorPlacement.MoveAutoComplete);
+                    view.SetSearchText(sb.ToString(), autoFill.moveCursor);
                 }
                 Clear();
             }
-            else if (autoFill == string.Empty)
+            else if (autoFill == s_Empty)
             {
                 // No more results
                 Clear();
@@ -301,14 +300,12 @@ namespace Unity.QuickSearch
             if (evt.keyCode == KeyCode.DownArrow)
             {
                 s_CurrentSelection = Utils.Wrap(s_CurrentSelection + 1, s_FilteredList.Count);
-                Log($"Down({evt.type}, {evt.keyCode}, {s_CurrentSelection}, {s_FilteredList.Count})");
                 evt.Use();
                 return true;
             }
             else if (evt.keyCode == KeyCode.UpArrow)
             {
                 s_CurrentSelection = Utils.Wrap(s_CurrentSelection - 1, s_FilteredList.Count);
-                Log($"Up({evt.type}, {evt.keyCode}, {s_CurrentSelection}, {s_FilteredList.Count})");
                 evt.Use();
                 return true;
             }
@@ -320,7 +317,6 @@ namespace Unity.QuickSearch
             }
             else if (IsKeySelection(evt))
             {
-                Log($"Return({evt.type}, {evt.keyCode}, {s_CurrentSelection}, {s_FilteredList.Count})");
                 return enabled;
             }
 
@@ -343,44 +339,33 @@ namespace Unity.QuickSearch
             s_CurrentSelection = 0;
             s_LastInput = null;
             s_FilteredList = null;
-
-            Log("Clear");
         }
 
-        private static string GetLogString(string step)
+        private static SortedSet<SearchProposition> FetchPropositions(SearchContext context, SearchPropositionOptions options)
         {
-            var cursorInsertOffset = 0;
-            var debugQuery = options.query;
-            if (!string.IsNullOrEmpty(options.word))
+            var propositions = new SortedSet<SearchProposition>();
+
+            FillBuiltInPropositions(context, propositions);
+            FillProviderPropositions(context, propositions);
+
+            foreach (var p in propositions)
             {
-                cursorInsertOffset += 3;
-                debugQuery = debugQuery.Replace(options.word, $"<b>{options.word}</b>");
+                if (string.IsNullOrEmpty(p.help) && BuiltinPropositions.help.TryGetValue(p.replacement, out var helpText))
+                    p.help = helpText;
             }
-            if (debugQuery.Length > options.cursor + cursorInsertOffset && debugQuery.Substring(options.cursor + cursorInsertOffset - 1, 4) == "</b>")
-                cursorInsertOffset += 4;
-            debugQuery = debugQuery.Insert(options.cursor + cursorInsertOffset, "\u2193");
-            return  $"<b>{step}</b>: enabled={enabled}, propositions={propositions?.Count ?? -1}, [<i>{debugQuery}</i>] " +
-                    $"token={options.token}, " +
-                    $"word={options.word}, " +
-                    $"cursor={options.cursor}";
+
+            return propositions;
         }
 
-        [System.Diagnostics.Conditional("DEBUG_QUICKSEARCH")]
-        private static void Log(string step)
+        private static void FillProviderPropositions(SearchContext context, SortedSet<SearchProposition> propositions)
         {
-            Debug.Log(GetLogString(step));
-        }
-
-        private static HashSet<SearchProposition> FetchPropositions(SearchContext context, SearchPropositionOptions options)
-        {
-            var propositions = new HashSet<SearchProposition>();
             var providers = context.filters.Where(f => context.filterId == null ? f.enabled : context.filterId == f.provider.filterId).Select(f => f.provider).ToList();
             var queryEmpty = string.IsNullOrWhiteSpace(context.searchText) && providers.Count(p => !p.isExplicitProvider) > 1;
             foreach (var p in providers)
             {
                 if (queryEmpty)
                 {
-                    propositions.Add(new SearchProposition($"{p.filterId} ({p.name.id})", $"{p.filterId} ", p.name.displayName, p.priority));
+                    propositions.Add(new SearchProposition($"{p.filterId} ({p.id})", $"{p.filterId} ", p.name, p.priority));
                 }
                 else
                 {
@@ -391,14 +376,30 @@ namespace Unity.QuickSearch
                         propositions.UnionWith(currentPropositions);
                 }
             }
+        }
 
-            foreach (var p in propositions)
+        private static void FillBuiltInPropositions(SearchContext context, SortedSet<SearchProposition> propositions)
+        {
+            int builtPriority = -50;
+            var savedQueries = SearchQuery.GetAllSearchQueryItems(context);
+            foreach (var item in savedQueries)
             {
-                if (string.IsNullOrEmpty(p.help) && BuiltinPropositions.help.TryGetValue(p.replacement, out var helpText))
-                    p.help = helpText;
+                if (item.data is SearchQuery sq)
+                {
+                    var helpText = sq.description;
+                    if (string.IsNullOrEmpty(helpText))
+                        helpText = sq.searchQuery;
+                    helpText = $"<i>{helpText}</i> (Saved Query)";
+                    propositions.Add(new SearchProposition(item.GetLabel(context, true), sq.searchQuery, helpText, priority: builtPriority, moveCursor: TextCursorPlacement.MoveLineEnd));
+                    builtPriority += 10;
+                }
             }
 
-            return propositions;
+            foreach (var rs in SearchSettings.recentSearches.Take(5))
+            {
+                propositions.Add(new SearchProposition(rs, rs, "Recent search", priority: builtPriority, moveCursor: TextCursorPlacement.MoveLineEnd));
+                builtPriority += 10;
+            }
         }
 
         private static void UpdateCompleteList(in TextEditor te, in SearchPropositionOptions? baseOptions = null)
@@ -466,7 +467,7 @@ namespace Unity.QuickSearch
                 });
             }
 
-            s_CurrentSelection = Math.Max(-1, Math.Min(s_CurrentSelection, s_FilteredList.Count-1));
+            s_CurrentSelection = Math.Max(-1, Math.Min(s_CurrentSelection, s_FilteredList.Count - 1));
         }
 
         private static void SelectPropositions(ref int srcCnt, int maxCount, List<SearchProposition> source, Func<SearchProposition, bool> compare)
@@ -484,21 +485,22 @@ namespace Unity.QuickSearch
             }
         }
 
-        private static string DrawItems(Event evt)
+        private static SearchProposition DrawItems(Event evt)
         {
             int cnt = s_FilteredList.Count;
             if (cnt == 0)
-                return string.Empty;
+                return s_Empty;
 
+            position = new Rect(position.x, position.y, position.width, cnt * Styles.autoCompleteItemLabel.fixedHeight + 20f);
+            GUI.Box(position, GUIContent.none, Styles.autoCompleteBackground);
             using (new GUI.ClipScope(position))
             {
-                Rect line = new Rect(0, 0, position.width, Styles.autoCompleteItemLabel.fixedHeight);
-
+                Rect lineRect = new Rect(1, 10, position.width - 2, Styles.autoCompleteItemLabel.fixedHeight);
                 for (int i = 0; i < cnt; i++)
                 {
-                    if (DrawItem(evt, line, i == s_CurrentSelection, s_FilteredList[i]))
-                        return s_FilteredList[i].replacement;
-                    line.y += line.height;
+                    if (DrawItem(evt, lineRect, i == s_CurrentSelection, s_FilteredList[i]))
+                        return s_FilteredList[i];
+                    lineRect.y += lineRect.height;
                 }
             }
 

@@ -24,12 +24,6 @@ namespace Unity.QuickSearch
             return base.SkipEntry(path, false);
         }
 
-        [Obsolete("Async index builds are not supported anymore.")]
-        protected override System.Collections.IEnumerator BuildAsync(int progressId, object userData = null)
-        {
-            throw new NotSupportedException();
-        }
-
         private string ConvertTypeToFilePattern(string type)
         {
             type = type.ToLowerInvariant();
@@ -46,7 +40,7 @@ namespace Unity.QuickSearch
                 .Select(path => path.Replace("\\", "/"));
         }
 
-        public override IEnumerable<string> GetRoots()
+        internal override IEnumerable<string> GetRoots()
         {
             var scenePaths = new List<string>();
             var searchFilePattern = ConvertTypeToFilePattern(settings.type);
@@ -71,13 +65,13 @@ namespace Unity.QuickSearch
             return scenePaths;
         }
 
-        public override List<string> GetDependencies()
+        internal override List<string> GetDependencies()
         {
             return GetRoots()
                 .Where(path => !base.SkipEntry(path, false)).ToList();
         }
 
-        public override Hash128 GetDocumentHash(string path)
+        internal override Hash128 GetDocumentHash(string path)
         {
             return AssetDatabase.GetAssetDependencyHash(path);
         }

@@ -47,7 +47,7 @@ namespace Unity.QuickSearch
             {
                 Done();
                 success = true;
-                providerId = item.provider.name.id;
+                providerId = item.provider.id;
                 if (action != null)
                     actionId = action.content.text;
             }
@@ -58,7 +58,7 @@ namespace Unity.QuickSearch
                     duration = elapsedTimeMs;
             }
 
-            public long elapsedTimeMs => (long) (DateTime.Now - startTime).TotalMilliseconds;
+            public long elapsedTimeMs => (long)(DateTime.Now - startTime).TotalMilliseconds;
 
             // Start time when the SearchWindow opened
             private DateTime startTime;
@@ -190,13 +190,12 @@ namespace Unity.QuickSearch
             ExpressionBuilderCreateExpressionFromMenu
         }
 
-        public static string Version;
+        public static readonly string Version = "2.2";
         private static bool s_Registered;
-        private static HashSet<int> s_OnceHashCodes = new HashSet<int>();
+        private static readonly HashSet<int> s_OnceHashCodes = new HashSet<int>();
 
         static SearchAnalytics()
         {
-            Version = Utils.GetQuickSearchVersion();
             EditorApplication.delayCall += () =>
             {
                 Application.logMessageReceived += (condition, trace, type) =>
@@ -271,9 +270,9 @@ namespace Unity.QuickSearch
             var providers = searchContext.providers;
             evt.providerDatas = providers.Select(provider => new ProviderData()
             {
-                id = provider.name.id,
+                id = provider.id,
                 avgTime = (long)searchContext.searchElapsedTime,
-                isEnabled = evt.useOverrideFilter || searchContext.IsEnabled(provider.name.id),
+                isEnabled = evt.useOverrideFilter || searchContext.IsEnabled(provider.id),
                 custom = ""
             }).ToArray();
 
@@ -315,27 +314,26 @@ namespace Unity.QuickSearch
             switch (result)
             {
                 case AnalyticsResult.Ok:
-                    {
-                        #if QUICKSEARCH_ANALYTICS_LOGGING
-                        Debug.Log($"QuickSearch: Registered event: {eventName}");
-                        #endif
-                        return true;
-                    }
+                {
+                    #if QUICKSEARCH_ANALYTICS_LOGGING
+                    Debug.Log($"QuickSearch: Registered event: {eventName}");
+                    #endif
+                    return true;
+                }
                 case AnalyticsResult.TooManyRequests:
 
                     // this is fine - event registration survives domain reload (native)
                     return true;
                 default:
-                    {
-                        Console.WriteLine($"[QS] Failed to register analytics event '{eventName}'. Result: '{result}'");
-                        return false;
-                    }
+                {
+                    Console.WriteLine($"[QS] Failed to register analytics event '{eventName}'. Result: '{result}'");
+                    return false;
+                }
             }
         }
 
         private static void SendEvent(GenericEventType category, string name, string message, string description, long durationInMs)
         {
-            
         }
 
         private static void Send(EventName eventName, object eventData)

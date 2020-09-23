@@ -171,6 +171,7 @@ namespace Unity.QuickSearch
                 return index.GetHashCode();
             }
         }
+
         /// <summary>
         /// Compare Search Result using their index value.
         /// </summary>
@@ -574,6 +575,7 @@ namespace Unity.QuickSearch
                     indexWriter.Write(t);
             }
         }
+
         /// <summary>
         /// Get the bytes representation of this index. See <see cref="SearchIndexer.Write"/>.
         /// </summary>
@@ -727,7 +729,7 @@ namespace Unity.QuickSearch
                 documentIndexing?.Invoke(di, this);
                 m_BatchIndexes.AddRange(
                     si.m_Indexes.Where(i => i.index == sourceIndex)
-                                .Select(i => new SearchIndexEntry(i.key, i.crc, i.type, di, baseScore + i.score)));
+                        .Select(i => new SearchIndexEntry(i.key, i.crc, i.type, di, baseScore + i.score)));
                 sourceIndex++;
             }
 
@@ -987,7 +989,7 @@ namespace Unity.QuickSearch
 
             if (value.Length > maxVariations)
             {
-                indexes.Add(new SearchIndexEntry(valueHash, nameHash, SearchIndexEntry.Type.Property, documentIndex, score-1));
+                indexes.Add(new SearchIndexEntry(valueHash, nameHash, SearchIndexEntry.Type.Property, documentIndex, score - 1));
 
                 #if DEBUG_INDEXING
                 UnityEngine.Debug.Log($"[O] {name}:{value} -> {nameHash}:{valueHash}");
@@ -1140,13 +1142,11 @@ namespace Unity.QuickSearch
 
         internal void Print()
         {
-            #if UNITY_2020_1_OR_NEWER
             foreach (var i in m_Indexes)
             {
                 UnityEngine.Debug.LogFormat(UnityEngine.LogType.Log, UnityEngine.LogOption.NoStacktrace, null,
                     $"{i.type} - {i.crc} - {i.key} - {i.index} - {i.score}");
             }
-            #endif
         }
 
         private IEnumerable<SearchResult> SearchWord(string word, SearchIndexOperator op, int maxScore, SearchResultCollection subset, int patternMatchLimit)
@@ -1458,7 +1458,7 @@ namespace Unity.QuickSearch
         private bool Advance(int foundIndex, in SearchIndexEntry term, SearchIndexOperator op)
         {
             if (foundIndex < 0 || foundIndex >= m_Indexes.Length ||
-                    m_Indexes[foundIndex].crc != term.crc || m_Indexes[foundIndex].type != term.type)
+                m_Indexes[foundIndex].crc != term.crc || m_Indexes[foundIndex].type != term.type)
                 return false;
 
             if (term.type == SearchIndexEntry.Type.Number)
@@ -1583,9 +1583,9 @@ namespace Unity.QuickSearch
         }
 
         private IEnumerable<SearchResult> SearchRange(
-                int foundIndex, in SearchIndexEntry term,
-                int maxScore, SearchIndexComparer comparer,
-                SearchResultCollection subset, int limit)
+            int foundIndex, in SearchIndexEntry term,
+            int maxScore, SearchIndexComparer comparer,
+            SearchResultCollection subset, int limit)
         {
             if (foundIndex < 0 && comparer.op != SearchIndexOperator.Contains && comparer.op != SearchIndexOperator.Equal)
             {
@@ -1625,14 +1625,15 @@ namespace Unity.QuickSearch
                 }
 
                 // Advance to last matching element
-            } while (Upper(ref foundIndex, term, comparer.op));
+            }
+            while (Upper(ref foundIndex, term, comparer.op));
 
             return matches;
         }
 
         private IEnumerable<SearchResult> SearchIndexes(
-                long key, int crc, SearchIndexEntry.Type type, int maxScore,
-                SearchIndexComparer comparer, SearchResultCollection subset, int limit = int.MaxValue)
+            long key, int crc, SearchIndexEntry.Type type, int maxScore,
+            SearchIndexComparer comparer, SearchResultCollection subset, int limit = int.MaxValue)
         {
             if (subset != null && subset.Count == 0)
                 return Enumerable.Empty<SearchResult>();
@@ -1648,7 +1649,7 @@ namespace Unity.QuickSearch
             return Regex.Matches(query, @"([\!]*([\""](.+?)[\""]|[^\s_\/]))+").Cast<Match>()
                 .Select(m => m.Value.Replace("\"", "").ToLowerInvariant())
                 .Where(t => t.Length > 0)
-                .OrderBy(t => -t.Length)
+                .OrderBy(t => - t.Length)
                 .ToArray();
         }
 

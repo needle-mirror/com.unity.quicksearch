@@ -69,44 +69,19 @@ namespace Unity.QuickSearch
         Description = 1 << 3,
 
         /// <summary>
+        /// If possible, default the list view to list view.
+        /// </summary>
+        ListView = 1 << 4,
+
+        /// <summary>
         /// Default set of options used when [[showDetails]] is set to true.
         /// </summary>
         Default = Preview | Actions | Description
     }
 
     /// <summary>
-    /// The name entry holds a name and an identifier at once.
-    /// </summary>
-    [DebuggerDisplay("{displayName} ({id})")]
-    public class NameEntry
-    {
-        /// <summary>
-        /// Construct a new name identifier
-        /// </summary>
-        /// <param name="id">Unique id of the Entry.</param>
-        /// <param name="displayName">Name to display in UI.</param>
-        /// <param name="enabled">Is the component enabled.</param>
-        public NameEntry(string id, string displayName = null, bool enabled = true)
-        {
-            this.id = id;
-            this.displayName = displayName ?? id;
-            this.isEnabled = enabled;
-        }
-
-        /// <summary> Unique name for an object </summary>
-        public string id;
-
-        /// <summary> Display name (use by UI) </summary>
-        public string displayName;
-
-        /// <summary>Indicates if the entry is enabled</summary>
-        public bool isEnabled;
-    }
-
-    /// <summary>
     /// SearchProvider manages search for specific type of items and manages thumbnails, description and subfilters, etc.
     /// </summary>
-    [DebuggerDisplay("{name.id}")]
     public class SearchProvider
     {
         internal SearchContext defaultContext;
@@ -172,8 +147,9 @@ namespace Unity.QuickSearch
             if (String.IsNullOrEmpty(id))
                 throw new ArgumentException("provider id must be non-empty", nameof(id));
 
+            this.id = id;
             active = true;
-            name = new NameEntry(id, displayName);
+            name = displayName;
             actions = new List<SearchAction>();
             fetchItems = fetchItemsHandler ?? ((context, items, provider) => null);
             fetchThumbnail = (item, context) => item.thumbnail ?? Icons.quicksearch;
@@ -300,8 +276,11 @@ namespace Unity.QuickSearch
             fetchTime  = t;
         }
 
-        /// <summary> Unique id of the provider.</summary>
-        public NameEntry name;
+        /// <summary>Unique id of the provider.</summary>
+        public string id { get; private set; }
+
+        /// <summary>Display name of the provider.</summary>
+        public string name { get; private set; }
 
         /// <summary>
         /// Indicates if the provider is active or not. Inactive providers are completely ignored by the search service. The active state can be toggled in the search settings.
@@ -364,12 +343,6 @@ namespace Unity.QuickSearch
         public Func<SearchSelection, Rect, bool> openContextual;
 
         /// <summary>
-        /// Provider can return a list of words that will help the user complete his search query
-        /// </summary>
-        [Obsolete("GetKeywords is deprecated. Define fetchPropositions on your provider instead.")]
-        public Action<SearchContext, string, List<string>> fetchKeywords;
-
-        /// <summary>
         /// Provider can return a list of words that will help the user complete his search query.
         /// </summary>
         internal Func<SearchContext, SearchPropositionOptions, IEnumerable<SearchProposition>> fetchPropositions;
@@ -385,7 +358,7 @@ namespace Unity.QuickSearch
         public Action onDisable;
 
         /// <summary>
-        /// Hint to sort the Provider. Affect the order of search results and the order in which provider are shown in the FilterWindow.
+        /// Hint to sort the provider. Affect the order of search results.
         /// </summary>
         public int priority;
 
@@ -436,6 +409,15 @@ namespace Unity.QuickSearch
                     UnityEngine.Debug.LogException(ex);
                 }
             }
+        }
+
+        /// <summary>
+        /// Returns a short description of the SearchProvider.
+        /// </summary>
+        /// <returns>Returns a short description of the SearchProvider.</returns>
+        public override string ToString()
+        {
+            return $"[{id}] {name}, active={active}";
         }
     }
 }

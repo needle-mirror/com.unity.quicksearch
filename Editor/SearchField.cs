@@ -4,7 +4,6 @@ using System.Linq;
 using System.Reflection;
 using UnityEditor;
 using UnityEngine;
-using Debug = UnityEngine.Debug;
 
 namespace Unity.QuickSearch
 {
@@ -36,7 +35,6 @@ namespace Unity.QuickSearch
         private static double s_NextBlinkTime = 0;
         private static bool s_CursorBlinking;
         private static int s_RecentSearchIndex = -1;
-        private static List<string> s_RecentSearches = new List<string>(10);
         private static string m_CycledSearch;
         private static string m_LastSearch;
 
@@ -460,7 +458,7 @@ namespace Unity.QuickSearch
                 te.MoveRight();
 
             // If there is a space at the end of the text, move through it.
-            if (te.cursorIndex == te.text.Length-1 && char.IsWhiteSpace(te.text[te.cursorIndex]))
+            if (te.cursorIndex == te.text.Length - 1 && char.IsWhiteSpace(te.text[te.cursorIndex]))
                 te.MoveRight();
         }
 
@@ -471,9 +469,6 @@ namespace Unity.QuickSearch
 
         public static bool UpdateBlinkCursorState(double time)
         {
-            if (SearchSettings.debug)
-                return false;
-
             if (time >= s_NextBlinkTime)
             {
                 s_NextBlinkTime = time + 0.5;
@@ -683,12 +678,12 @@ namespace Unity.QuickSearch
 
         private static string CyclePreviousSearch(int shift)
         {
-            if (s_RecentSearches.Count == 0)
+            if (SearchSettings.recentSearches.Count == 0)
                 return m_LastSearch;
 
-            s_RecentSearchIndex = Utils.Wrap(s_RecentSearchIndex + shift, s_RecentSearches.Count);
+            s_RecentSearchIndex = Utils.Wrap(s_RecentSearchIndex + shift, SearchSettings.recentSearches.Count);
 
-            return s_RecentSearches[s_RecentSearchIndex];
+            return SearchSettings.recentSearches[s_RecentSearchIndex];
         }
 
         public static void UpdateLastSearchText(string value)
@@ -699,10 +694,7 @@ namespace Unity.QuickSearch
             if (string.IsNullOrEmpty(value))
                 return;
             s_RecentSearchIndex = 0;
-            s_RecentSearches.Insert(0, value);
-            if (s_RecentSearches.Count > 10)
-                s_RecentSearches.RemoveRange(10, s_RecentSearches.Count - 10);
-            s_RecentSearches = s_RecentSearches.Distinct().ToList();
+            SearchSettings.AddRecentSearch(value);
         }
     }
 }

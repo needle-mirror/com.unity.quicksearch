@@ -42,7 +42,7 @@ namespace Unity.QuickSearch
             m_ScrollPosition = GUI.BeginScrollView(screenRect, m_ScrollPosition, viewRect);
 
             var itemIndex = 0;
-            var itemRect = new Rect(0, topSpaceSkipped + screenRect.y, viewRect.width, itemRowHeight);
+            var itemRect = new Rect(screenRect.x, topSpaceSkipped + screenRect.y, viewRect.width, itemRowHeight);
             foreach (var item in items)
             {
                 if (itemIndex >= itemSkipCount && itemIndex <= itemSkipCount + limitCount)
@@ -111,7 +111,7 @@ namespace Unity.QuickSearch
                 // Draw label
                 var maxWidth = itemRect.width
                     - (hasActionDropdown ? Styles.actionButtonSize : 0)
-                    - (compactView ? Styles.itemPreviewSize/2.0f : Styles.itemPreviewSize)
+                    - (compactView ? Styles.itemPreviewSize / 2.0f : Styles.itemPreviewSize)
                     - Styles.descriptionPadding;
                 var labelStyle = isItemSelected ?
                     (compactView ? Styles.selectedItemLabelCompact : Styles.selectedItemLabel) :

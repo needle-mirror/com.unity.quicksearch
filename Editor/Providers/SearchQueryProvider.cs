@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using UnityEditor;
 
 namespace Unity.QuickSearch.Providers
 {
@@ -14,7 +15,6 @@ namespace Unity.QuickSearch.Providers
             {
                 filterId = "q:",
                 isExplicitProvider = true,
-                isEnabledForContextualSearch = () => true,
                 fetchItems = (context, items, provider) =>
                 {
                     var queryItems = SearchQuery.GetAllSearchQueryItems(context);
@@ -48,7 +48,12 @@ namespace Unity.QuickSearch.Providers
                     closeWindowAfterExecution = false,
                     handler = (item) => SearchQuery.ExecuteQuery(item?.context.searchView, (SearchQuery)item.data)
                 },
-                new SearchAction(type, "select", null, "Select search query", (item) => Utils.FrameAssetFromPath(item.id))
+                new SearchAction(type, "select", null, "Select search query", (item) =>
+                {
+                    var queryPath = AssetDatabase.GetAssetPath((SearchQuery)item.data);
+                    if (!string.IsNullOrEmpty(queryPath))
+                        Utils.FrameAssetFromPath(queryPath);
+                })
             };
         }
     }

@@ -111,11 +111,6 @@ namespace Unity.QuickSearch
         void SetSearchText(string searchText, TextCursorPlacement moveCursor = TextCursorPlacement.Default);
 
         /// <summary>
-        /// Open the associated filter window.
-        /// </summary>
-        void PopFilterWindow();
-
-        /// <summary>
         /// Make sure the search is now focused.
         /// </summary>
         void Focus();

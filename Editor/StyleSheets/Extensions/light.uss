@@ -1,0 +1,12 @@
+:root {
+    --theme-view-background-color-lighter: #BEBEBE;
+    --unity-theme-background-color-17: #C8C8C8;
+    --unity-theme-background-color-50: #3a72b0;
+    --unity-theme-background-color-53: #F0F0F0;
+    --unity-theme-background-color-54: #A5A5A5;
+    --unity-theme-background-color-58: #9A9A9A;
+    --unity-theme-background-color-80: #CACACA;
+    --unity-theme-border-color-1: #A0A0A0;
+    --unity-theme-border-color-23: #222222;
+    --unity-theme-border-color-7: #999999;
+}

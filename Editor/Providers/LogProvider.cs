@@ -67,16 +67,16 @@ namespace Unity.QuickSearch.Providers
                     var logEntry = (LogEntry)item.data;
                     switch (logEntry.logType)
                     {
-                    case LogType.Log:
-                        return (item.thumbnail = Icons.logInfo);
-                    case LogType.Warning:
-                        return (item.thumbnail = Icons.logWarning);
-                    case LogType.Error:
-                    case LogType.Assert:
-                    case LogType.Exception:
-                        return (item.thumbnail = Icons.logError);
-                    default:
-                        return null;
+                        case LogType.Log:
+                            return (item.thumbnail = Icons.logInfo);
+                        case LogType.Warning:
+                            return (item.thumbnail = Icons.logWarning);
+                        case LogType.Error:
+                        case LogType.Assert:
+                        case LogType.Exception:
+                            return (item.thumbnail = Icons.logError);
+                        default:
+                            return null;
                     }
                 }
             };

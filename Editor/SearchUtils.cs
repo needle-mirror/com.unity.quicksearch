@@ -64,10 +64,10 @@ namespace Unity.QuickSearch
             var nameTokens = entry.Split(entrySeparators).Distinct();
             var scc = nameTokens.SelectMany(s => SplitCamelCase(s)).Where(s => s.Length > 0);
             var fcc = scc.Aggregate("", (current, s) => current + s[0]);
-            return new []{ fcc, entry }.Concat(scc.Where(s => s.Length > 1))
-                                .Where(s => s.Length > 1)
-                                .Select(s => s.ToLowerInvariant())
-                                .Distinct();
+            return new[] { fcc, entry }.Concat(scc.Where(s => s.Length > 1))
+                .Where(s => s.Length > 1)
+                .Select(s => s.ToLowerInvariant())
+                .Distinct();
         }
 
         /// <summary>
@@ -197,7 +197,7 @@ namespace Unity.QuickSearch
         /// <param name="focusProjectBrowser">If true, will focus the project browser before pining the objects.</param>
         public static void SelectMultipleItems(IEnumerable<SearchItem> items, bool focusProjectBrowser = false)
         {
-            Selection.objects = items.Select(i => i.provider.toObject(i, typeof(UnityEngine.Object))).Where(o=>o).ToArray();
+            Selection.objects = items.Select(i => i.provider.toObject(i, typeof(UnityEngine.Object))).Where(o => o).ToArray();
             if (Selection.objects.Length == 0)
             {
                 var firstItem = items.FirstOrDefault();
@@ -207,7 +207,7 @@ namespace Unity.QuickSearch
             }
             EditorApplication.delayCall += () =>
             {
-                if(focusProjectBrowser)
+                if (focusProjectBrowser)
                     EditorWindow.FocusWindowIfItsOpen(Utils.GetProjectBrowserWindowType());
                 EditorApplication.delayCall += () => EditorGUIUtility.PingObject(Selection.objects.LastOrDefault());
             };
@@ -223,7 +223,7 @@ namespace Unity.QuickSearch
         public static bool MatchSearchGroups(SearchContext context, string content, bool ignoreCase = false)
         {
             return MatchSearchGroups(context.searchQuery, context.searchWords, content, out _, out _,
-                                     ignoreCase ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
+                ignoreCase ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
         }
 
         internal static bool MatchSearchGroups(string searchContext, string[] tokens, string content, out int startIndex, out int endIndex, StringComparison sc = StringComparison.OrdinalIgnoreCase)
@@ -295,7 +295,7 @@ namespace Unity.QuickSearch
         /// Utility function to fetch all the game objects for the current stage (i.e. scene or prefab)
         /// </summary>
         /// <returns>The array of game objects in the current stage.</returns>
-        public static GameObject[] FetchGameObjects()
+        public static IEnumerable<GameObject> FetchGameObjects()
         {
             var prefabStage = PrefabStageUtility.GetCurrentPrefabStage();
             if (prefabStage != null)
@@ -314,7 +314,7 @@ namespace Unity.QuickSearch
             }
 
             return SceneModeUtility.GetObjects(goRoots.ToArray(), true)
-                .Where(o => !o.hideFlags.HasFlag(HideFlags.HideInHierarchy)).ToArray();
+                .Where(o => !o.hideFlags.HasFlag(HideFlags.HideInHierarchy));
         }
 
         internal static ISet<string> GetReferences(UnityEngine.Object obj, int level = 1)

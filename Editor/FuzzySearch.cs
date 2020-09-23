@@ -14,10 +14,6 @@ namespace Unity.QuickSearch
     /// </summary>
     public static class FuzzySearch
     {
-        [Obsolete("Not supported anymore")] public static string HighlightColorTag = null;
-
-        [Obsolete("Not supported anymore")] public static string HighlightColorTagSpecial = null;
-
         struct ScoreIndx
         {
             public int i;
@@ -56,14 +52,14 @@ namespace Unity.QuickSearch
             public ScopedProfiler(string name)
             {
                 #if QUICKSERACH_DEBUG
-                Profiler.BeginSample( name );
+                Profiler.BeginSample(name);
                 #endif
             }
 
             public ScopedProfiler(string name, UnityEngine.Object targetObject)
             {
                 #if QUICKSERACH_DEBUG
-                Profiler.BeginSample( name, targetObject );
+                Profiler.BeginSample(name, targetObject);
                 #endif
             }
 
@@ -76,7 +72,7 @@ namespace Unity.QuickSearch
         }
 
         /// <summary>
-        /// Performs a fuzzy search on a string to see if it matches a pattern. 
+        /// Performs a fuzzy search on a string to see if it matches a pattern.
         /// </summary>
         /// <param name="pattern">Pattern that we try to match the source string</param>
         /// <param name="origin">String we are looking into for a match</param>
@@ -265,7 +261,6 @@ namespace Unity.QuickSearch
                         {
                             s += first_letter_bonus;
                         }
-
                         else
                         {
                             var currOrigI = origin[si];
@@ -373,7 +368,7 @@ namespace Unity.QuickSearch
         /// Color for matching text when using fuzzy search.
         /// </summary>
         public static string HighlightColorTag = EditorGUIUtility.isProSkin ? "<color=#FF6100>" : "<color=#EE4400>";
-        
+
         /// <summary>
         /// Color for special tags when using fuzzy search.
         /// </summary>
@@ -430,7 +425,7 @@ namespace Unity.QuickSearch
                 }
                 else
                 {
-                    result[guard] = title[Math.Min(t_i++, title.Length-1)];
+                    result[guard] = title[Math.Min(t_i++, title.Length - 1)];
 
                     if (needToClose)
                     {

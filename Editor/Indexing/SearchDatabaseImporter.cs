@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.IO;
 using UnityEditor;
 using UnityEngine;
@@ -10,6 +11,72 @@ using UnityEditor.Experimental.AssetImporters;
 
 namespace Unity.QuickSearch
 {
+    class SearchDatabaseTemplates
+    {
+        public static readonly string @default =
+@"{
+    ""name"": ""Assets"",
+    ""roots"": [""Assets""],
+    ""includes"": [],
+    ""excludes"": [""Temp/"", ""External/""],
+    ""options"": {
+        ""types"": true,
+        ""properties"": false,
+        ""extended"": false,
+        ""dependencies"": false
+    },
+    ""baseScore"": 999
+}";
+
+        public static readonly string assets =
+@"{
+    ""roots"": [],
+    ""includes"": [],
+    ""excludes"": [""Temp/"", ""External/""],
+    ""options"": {
+        ""types"": true,
+        ""properties"": false,
+        ""extended"": false,
+        ""dependencies"": false
+    },
+    ""baseScore"": 100
+}";
+        public static readonly string prefabs = @"{
+    ""type"": ""prefab"",
+    ""roots"": [],
+    ""includes"": [],
+    ""excludes"": [],
+    ""options"": {
+        ""types"": true,
+        ""properties"": true,
+        ""extended"": false,
+        ""dependencies"": true
+    },
+    ""baseScore"": 150
+}";
+        public static readonly string scenes = @"{
+    ""type"": ""scene"",
+    ""roots"": [],
+    ""includes"": [],
+    ""excludes"": [],
+    ""options"": {
+        ""types"": true,
+        ""properties"": true,
+        ""extended"": false,
+        ""dependencies"": false
+    },
+    ""baseScore"": 155
+}";
+
+        public static readonly Dictionary<string, string> all = new Dictionary<string, string>()
+        {
+            { "Assets", assets },
+            { "Prefabs", prefabs },
+            { "Scenes", scenes },
+            { "_Default", @default }
+        };
+    }
+
     [ExcludeFromPreset, ScriptedImporter(version: SearchDatabase.version, ext: "index", importQueueOffset: 1999)] // kImportOrderPrefabs = 1500
     class SearchDatabaseImporter : ScriptedImporter
     {
@@ -17,20 +84,12 @@ namespace Unity.QuickSearch
         {
             try
             {
-                if (Utils.IsUsingADBV1())
-                {
-                    ctx.LogImportWarning("Search indexes are not supported with the Asset Database V1");
-                    return;
-                }
-
                 var db = ScriptableObject.CreateInstance<SearchDatabase>();
                 db.Import(ctx.assetPath);
-                ctx.AddObjectToAsset("index", db);
+                ctx.AddObjectToAsset("index", db, Icons.quicksearch);
                 ctx.SetMainObject(db);
 
-                #if UNITY_2020_1_OR_NEWER
                 ctx.DependsOnCustomDependency(nameof(CustomObjectIndexerAttribute));
-                #endif
 
                 hideFlags |= HideFlags.HideInInspector;
             }
@@ -40,15 +99,13 @@ namespace Unity.QuickSearch
             }
         }
 
-        public static string CreateTemplateIndex(string templateFilename, string path, string name = null)
+        public static string CreateTemplateIndex(string template, string path, string name = null)
         {
-            var templatePath = $"{Utils.packageFolderName}/Templates/{templateFilename}.index.template";
-
-            if (!File.Exists(templatePath))
+            if (!SearchDatabaseTemplates.all.ContainsKey(template))
                 return null;
 
             var dirPath = path;
-            var templateContent = File.ReadAllText(templatePath);
+            var templateContent = SearchDatabaseTemplates.all[template];
 
             if (File.Exists(path))
             {
@@ -57,13 +114,16 @@ namespace Unity.QuickSearch
                     path = dirPath;
             }
 
+            if (!Directory.Exists(dirPath))
+                Directory.CreateDirectory(dirPath);
+
             var indexFileName = string.IsNullOrEmpty(name) ? Path.GetFileNameWithoutExtension(path) : name;
             var indexPath = AssetDatabase.GenerateUniqueAssetPath(Path.Combine(dirPath, $"{indexFileName}.index")).Replace("\\", "/");
 
             Debug.LogFormat(LogType.Log, LogOption.NoStacktrace, null,
-                $"Creating {templateFilename} index at <a file=\"{indexPath}\">{indexPath}</a>");
+                $"Creating {template.Trim('_')} index at <a file=\"{indexPath}\">{indexPath}</a>");
 
-            SearchAnalytics.SendEvent(null, SearchAnalytics.GenericEventType.CreateIndexFromTemplate, templateFilename);
+            SearchAnalytics.SendEvent(null, SearchAnalytics.GenericEventType.CreateIndexFromTemplate, template);
 
             File.WriteAllText(indexPath, templateContent);
             AssetDatabase.ImportAsset(indexPath);
@@ -79,43 +139,47 @@ namespace Unity.QuickSearch
             return CreateIndexProjectValidation();
         }
 
-        [MenuItem("Assets/Create/Quick Search/Project Index")]
+        [MenuItem("Assets/Create/Search/Project Index")]
         internal static void CreateIndexProject()
         {
-            var folderPath = AssetDatabase.GetAssetPath(Selection.activeObject);
+            var folderPath = "Assets";
+            if (Selection.activeObject != null)
+                folderPath = AssetDatabase.GetAssetPath(Selection.activeObject);
             CreateTemplateIndex("Assets", folderPath);
         }
 
-        [MenuItem("Assets/Create/Quick Search/Project Index", validate = true)]
+        [MenuItem("Assets/Create/Search/Project Index", validate = true)]
         internal static bool CreateIndexProjectValidation()
         {
+            if (Selection.activeObject == null)
+                return true;
             var folder = Selection.activeObject as DefaultAsset;
             if (!folder)
                 return false;
             return Directory.Exists(AssetDatabase.GetAssetPath(folder));
         }
 
-        [MenuItem("Assets/Create/Quick Search/Prefab Index")]
+        [MenuItem("Assets/Create/Search/Prefab Index")]
         internal static void CreateIndexPrefab()
         {
             var assetPath = AssetDatabase.GetAssetPath(Selection.activeObject);
             CreateTemplateIndex("Prefabs", assetPath);
         }
 
-        [MenuItem("Assets/Create/Quick Search/Prefab Index", validate = true)]
+        [MenuItem("Assets/Create/Search/Prefab Index", validate = true)]
         internal static bool CreateIndexPrefabValidation()
         {
             return ValidateTemplateIndexCreation<GameObject>();
         }
 
-        [MenuItem("Assets/Create/Quick Search/Scene Index")]
+        [MenuItem("Assets/Create/Search/Scene Index")]
         internal static void CreateIndexScene()
         {
             var assetPath = AssetDatabase.GetAssetPath(Selection.activeObject);
             CreateTemplateIndex("Scenes", assetPath);
         }
 
-        [MenuItem("Assets/Create/Quick Search/Scene Index", validate = true)]
+        [MenuItem("Assets/Create/Search/Scene Index", validate = true)]
         internal static bool CreateIndexSceneValidation()
         {
             return ValidateTemplateIndexCreation<SceneAsset>();

@@ -4,8 +4,9 @@ using System.Globalization;
 using System.Linq;
 using System.Reflection;
 using System.Text.RegularExpressions;
+using UnityEditor;
 using UnityEngine;
-using NodesToStringPosition = System.Collections.Generic.Dictionary<Unity.QuickSearch.IQueryNode, System.Tuple<int,int>>;
+using NodesToStringPosition = System.Collections.Generic.Dictionary<Unity.QuickSearch.IQueryNode, System.Tuple<int, int>>;
 
 namespace Unity.QuickSearch
 {
@@ -63,6 +64,7 @@ namespace Unity.QuickSearch
             this.success = success;
             this.parsedValue = value;
         }
+
         /// <summary>
         /// Default value when no ParsetResult are available.
         /// </summary>
@@ -123,9 +125,9 @@ namespace Unity.QuickSearch
         Dictionary<Type, IFilterOperationGenerator> m_FilterOperationGenerators = new Dictionary<Type, IFilterOperationGenerator>();
 
         Regex m_PartialFilterRx = new Regex(QueryRegexValues.k_PartialFilterNamePattern +
-                                            QueryRegexValues.k_PartialFilterFunctionPattern +
-                                            QueryRegexValues.k_PartialFilterOperatorsPattern +
-                                            QueryRegexValues.k_PartialFilterValuePattern, RegexOptions.Compiled);
+            QueryRegexValues.k_PartialFilterFunctionPattern +
+            QueryRegexValues.k_PartialFilterOperatorsPattern +
+            QueryRegexValues.k_PartialFilterValuePattern, RegexOptions.Compiled);
 
         static readonly Dictionary<string, Func<IQueryNode>> k_CombiningTokenGenerators = new Dictionary<string, Func<IQueryNode>>
         {
@@ -185,7 +187,7 @@ namespace Unity.QuickSearch
 
         public QueryEngineImpl()
             : this(new QueryValidationOptions())
-        { }
+        {}
 
         public QueryEngineImpl(QueryValidationOptions validationOptions)
         {
@@ -690,7 +692,7 @@ namespace Unity.QuickSearch
                     return null;
                 }
                 if (string.IsNullOrEmpty(filterParam))
-                    filter = new DefaultFilter<TData>(filterType, m_DefaultFilterHandler ?? ((o, s, fo, value) => false) );
+                    filter = new DefaultFilter<TData>(filterType, m_DefaultFilterHandler ?? ((o, s, fo, value) => false));
                 else
                     filter = new DefaultParamFilter<TData>(filterType, m_DefaultParamFilterHandler ?? ((o, s, param, fo, value) => false));
             }
@@ -984,7 +986,9 @@ namespace Unity.QuickSearch
                 if (!combinedNode.leaf)
                     continue;
 
-                var (startIndex, length) = nodesToStringPosition[currentNode];
+                var t = nodesToStringPosition[currentNode];
+                var startIndex = t.Item1;
+                var length = t.Item2;
                 if (nextNode == null)
                 {
                     errors.Add(new QueryError(startIndex + length, $"Missing operand to combine with node {currentNode.type}."));
@@ -1015,7 +1019,9 @@ namespace Unity.QuickSearch
                 if (!combinedNode.leaf)
                     continue;
 
-                var (startIndex, length) = nodesToStringPosition[currentNode];
+                var t = nodesToStringPosition[currentNode];
+                var startIndex = t.Item1;
+                var length = t.Item2;
                 if (previousNode == null)
                 {
                     errors.Add(new QueryError(startIndex + length, $"Missing left-hand operand to combine with node {currentNode.type}."));
@@ -1071,7 +1077,9 @@ namespace Unity.QuickSearch
 
             if (nestedQueriesCount != root.children.Count)
             {
-                var (startIndex, length) = nodesToStringPosition[root];
+                var t = nodesToStringPosition[root];
+                var startIndex = t.Item1;
+                var length = t.Item2;
                 errors.Add(new QueryError(startIndex, length, $"Cannot mix root level nested query operations with regular operations."));
                 return;
             }
@@ -1165,7 +1173,8 @@ namespace Unity.QuickSearch
                 var index = combinedNode.parent.children.IndexOf(combinedNode);
                 if (index == -1)
                 {
-                    var (nodeStringIndex, _) = nodesToStringPosition[node];
+                    var t = nodesToStringPosition[node];
+                    var nodeStringIndex = t.Item1;
                     errors.Add(new QueryError(nodeStringIndex, $"Node {combinedNode.type} not found in its parent's children list."));
                     return;
                 }
@@ -1181,7 +1190,9 @@ namespace Unity.QuickSearch
                 errors.Add(new QueryError(0, "Encountered a null node."));
                 return;
             }
-            var (position, length) = nodesToStringPosition[root];
+            var t = nodesToStringPosition[root];
+            var position = t.Item1;
+            var length = t.Item2;
             if (root is CombinedNode cn)
             {
                 if (root.leaf)
@@ -1299,7 +1310,7 @@ namespace Unity.QuickSearch
             where TFilterAttribute : QueryEngineFilterAttribute
             where TTransformerAttribute : QueryEngineParameterTransformerAttribute
         {
-            var filters = Utils.GetAllMethodsWithAttribute<TFilterAttribute>()
+            var filters = TypeCache.GetMethodsWithAttribute<TFilterAttribute>()
                 .Select(CreateFilterFromFilterAttribute<TFilterAttribute, TTransformerAttribute>)
                 .Where(filter => filter != null);
             foreach (var filter in filters)
@@ -1324,7 +1335,7 @@ namespace Unity.QuickSearch
                 attr.useParamTransformer,
                 attr.paramTransformerFunction,
                 typeof(TTransformerAttribute)
-                );
+            );
 
             try
             {
@@ -1461,7 +1472,7 @@ namespace Unity.QuickSearch
 
         static Func<string, TParam> GetParameterTransformerFunction<TParam>(MethodInfo mi, string functionName, Type transformerAttributeType)
         {
-            var transformerMethod = Utils.GetAllMethodsWithAttribute(transformerAttributeType)
+            var transformerMethod = TypeCache.GetMethodsWithAttribute(transformerAttributeType)
                 .Where(transformerMethodInfo =>
                 {
                     var sameType = transformerMethodInfo.ReturnType == typeof(TParam);
@@ -1586,7 +1597,7 @@ namespace Unity.QuickSearch
         /// </summary>
         public QueryEngine()
         {
-            m_Impl = new QueryEngineImpl<TData>(new QueryValidationOptions{ validateFilters = true });
+            m_Impl = new QueryEngineImpl<TData>(new QueryValidationOptions { validateFilters = true });
         }
 
         /// <summary>
@@ -1889,7 +1900,9 @@ namespace Unity.QuickSearch
         {
             var errors = new List<QueryError>();
             var tokens = new List<string>();
-            var (evalGraph, queryGraph) = m_Impl.BuildGraph(text, errors, tokens);
+            var t = m_Impl.BuildGraph(text, errors, tokens);
+            var evalGraph = t.Item1;
+            var queryGraph = t.Item2;
             return queryCreator(evalGraph, queryGraph, errors, tokens, queryHandlerFactory.Create(evalGraph, errors));
         }
 
@@ -1948,7 +1961,7 @@ namespace Unity.QuickSearch
         /// Construct a new QueryEngine.
         /// </summary>
         public QueryEngine()
-        { }
+        {}
 
         /// <summary>
         /// Construct a new QueryEngine.
@@ -1956,7 +1969,7 @@ namespace Unity.QuickSearch
         /// <param name="validateFilters">Indicates if the engine must validate filters when parsing the query.</param>
         public QueryEngine(bool validateFilters)
             : base(validateFilters)
-        { }
+        {}
 
         /// <summary>
         /// Construct a new QueryEngine with the specified validation options.
@@ -1964,6 +1977,6 @@ namespace Unity.QuickSearch
         /// <param name="validationOptions">The validation options to use in this engine.</param>
         public QueryEngine(QueryValidationOptions validationOptions)
             : base(validationOptions)
-        { }
+        {}
     }
 }

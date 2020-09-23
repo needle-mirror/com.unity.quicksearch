@@ -23,7 +23,6 @@ namespace Unity.QuickSearch
     }
     internal interface IOrInstruction<T> : IOperandInstruction<T>
     {
-
     }
     internal interface IResultInstruction<T> : IInstruction<T>
     {

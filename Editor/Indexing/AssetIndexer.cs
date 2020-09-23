@@ -17,13 +17,7 @@ namespace Unity.QuickSearch
         {
         }
 
-        [Obsolete("Async index builds are not supported anymore.")]
-        protected override System.Collections.IEnumerator BuildAsync(int progressId, object userData = null)
-        {
-            throw new NotSupportedException();
-        }
-
-        public override IEnumerable<string> GetRoots()
+        internal override IEnumerable<string> GetRoots()
         {
             if (settings.roots == null)
                 settings.roots = new string[0];
@@ -33,20 +27,20 @@ namespace Unity.QuickSearch
             return roots.Select(r => r.Replace("\\", "/"));
         }
 
-        public override List<string> GetDependencies()
+        internal override List<string> GetDependencies()
         {
             List<string> paths = new List<string>();
             foreach (var root in GetRoots())
             {
                 paths.AddRange(Directory.GetFiles(root, "*.meta", SearchOption.AllDirectories)
-                    .Select(path => path.Replace("\\", "/").Substring(0, path.Length-5))
+                    .Select(path => path.Replace("\\", "/").Substring(0, path.Length - 5))
                     .Where(path => File.Exists(path) && !SkipEntry(path)));
             }
 
             return paths;
         }
 
-        public override Hash128 GetDocumentHash(string path)
+        internal override Hash128 GetDocumentHash(string path)
         {
             var guid = AssetDatabase.AssetPathToGUID(path);
             return Utils.GetSourceAssetFileHash(guid);
@@ -82,7 +76,7 @@ namespace Unity.QuickSearch
                     IndexProperty(documentIndex, "ext", fi.Extension.Replace(".", "").ToLowerInvariant(), saveKeyword: false);
                     IndexNumber(documentIndex, "age", (DateTime.Now - fi.LastWriteTime).TotalDays);
 
-                    foreach (var dir in Path.GetDirectoryName(path).Split(new [] { '/', '\\' }).Skip(1))
+                    foreach (var dir in Path.GetDirectoryName(path).Split(new[] { '/', '\\' }).Skip(1))
                         IndexProperty(documentIndex, "dir", dir.ToLowerInvariant(), saveKeyword: false, exact: true);
 
                     IndexProperty(documentIndex, "t", "file", saveKeyword: true, exact: true);

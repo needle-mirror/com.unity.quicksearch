@@ -383,7 +383,7 @@ namespace Unity.QuickSearch
         public override string identifier => "-" + children[0].identifier;
 
         public override void SwapChildNodes()
-        { }
+        {}
 
         protected override IQueryNode CopySelf()
         {
@@ -443,7 +443,7 @@ namespace Unity.QuickSearch
         public override string identifier => children[0].identifier;
 
         public override void SwapChildNodes()
-        { }
+        {}
 
         protected override IQueryNode CopySelf()
         {
@@ -463,7 +463,7 @@ namespace Unity.QuickSearch
         public override bool leaf => children.Count == 0;
 
         public InFilterNode(IFilter filter, FilterOperator op, string filterValue, string paramValue, string filterString)
-            : base(filter, op, filterValue, paramValue, filterString) { }
+            : base(filter, op, filterValue, paramValue, filterString) {}
     }
 
     class UnionNode : OrNode
@@ -509,7 +509,7 @@ namespace Unity.QuickSearch
         }
 
         public override void SwapChildNodes()
-        { }
+        {}
 
         protected override IQueryNode CopySelf()
         {

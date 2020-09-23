@@ -17,7 +17,7 @@ namespace Unity.QuickSearch.Providers
         }
 
         private const string type = "menu";
-        private const string displayName = "Menu";
+        private const string displayName = "Menus";
 
         private static string[] shortcutIds;
         private static QueryEngine<MenuData> queryEngine = null;
@@ -33,10 +33,10 @@ namespace Unity.QuickSearch.Providers
             for (int i = 0; i < itemNames.Count; ++i)
             {
                 var menuItem = itemNames[i];
-                menus.Add(new MenuData() 
+                menus.Add(new MenuData()
                 {
                     path = menuItem,
-                    words = SplitMenuPath(menuItem).Concat(new string[]{ menuItem }).Select(w => w.ToLowerInvariant()).ToArray()
+                    words = SplitMenuPath(menuItem).Concat(new string[] { menuItem }).Select(w => w.ToLowerInvariant()).ToArray()
                 });
             }
 
@@ -44,13 +44,14 @@ namespace Unity.QuickSearch.Providers
             queryEngine.AddFilter("id", m => m.path);
             queryEngine.SetSearchDataCallback(m => m.words, s => s.ToLowerInvariant(), StringComparison.Ordinal);
 
-            queryEngine.SetNestedQueryHandler((q, f) => q.Split(',').Select(w=>w.Trim()));
+            queryEngine.SetNestedQueryHandler((q, f) => q.Split(',').Select(w => w.Trim()));
             queryEngine.SetFilterNestedQueryTransformer<string, string>("id", s => s);
 
             return new SearchProvider(type, displayName)
             {
                 priority = 80,
-                filterId = "me:",
+                filterId = "m:",
+                showDetailsOptions = ShowDetailsOptions.ListView | ShowDetailsOptions.Actions,
 
                 onEnable = () =>
                 {
@@ -64,6 +65,8 @@ namespace Unity.QuickSearch.Providers
 
                 fetchItems = (context, items, provider) =>
                 {
+                    if (string.IsNullOrEmpty(context.searchQuery))
+                        return null;
                     var query = queryEngine.Parse(context.searchQuery);
                     if (!query.valid)
                         return null;
@@ -127,7 +130,7 @@ namespace Unity.QuickSearch.Providers
             };
         }
 
-        [Shortcut("Help/Quick Search/Menu", KeyCode.M, ShortcutModifiers.Alt | ShortcutModifiers.Shift)]
+        [Shortcut("Help/Search/Menu", KeyCode.M, ShortcutModifiers.Alt | ShortcutModifiers.Shift)]
         internal static void OpenQuickSearch()
         {
             var qs = QuickSearch.OpenWithContextualProvider(type, Settings.type);

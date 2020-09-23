@@ -95,7 +95,7 @@ namespace Unity.QuickSearch
             fetchLabel = (item, context) => item.label ?? item.id,
             fetchDescription = (item, context) => item.label ?? item.id,
             fetchThumbnail = (item, context) => item.thumbnail ?? Icons.logInfo,
-            actions = new[] { new SearchAction("select", "select", null, null, (SearchItem item) => { }) }.ToList()
+            actions = new[] { new SearchAction("select", "select", null, null, (SearchItem item) => {}) }.ToList()
         };
 
         /// <summary>
@@ -158,7 +158,12 @@ namespace Unity.QuickSearch
         /// <returns>Returns true if SearchItem have the same id.</returns>
         public int Compare(SearchItem x, SearchItem y)
         {
-            return x.id.CompareTo(y.id);
+            if (x.id.Equals(y.id, StringComparison.Ordinal))
+                return 0;
+            int c = x.score.CompareTo(y.score);
+            if (c == 0)
+                return string.CompareOrdinal(x.id, y.id);
+            return c;
         }
 
         /// <summary>

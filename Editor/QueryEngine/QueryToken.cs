@@ -1,4 +1,3 @@
-
 namespace Unity.QuickSearch
 {
     /// <summary>

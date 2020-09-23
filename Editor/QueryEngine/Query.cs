@@ -133,7 +133,7 @@ namespace Unity.QuickSearch
 
         internal Query(string text, QueryGraph evaluationGraph, QueryGraph queryGraph, ICollection<QueryError> errors, ICollection<string> tokens, IQueryHandler<T, IEnumerable<T>> graphHandler)
             : base(text, evaluationGraph, queryGraph, errors, tokens, graphHandler)
-        { }
+        {}
 
         /// <summary>
         /// Apply the filtering on an IEnumerable data set.
@@ -143,11 +143,11 @@ namespace Unity.QuickSearch
         public override IEnumerable<T> Apply(IEnumerable<T> data)
         {
             if (!valid)
-                return new T[] { };
+                return new T[] {};
 
             if (evaluationGraph.empty)
             {
-                return returnPayloadIfEmpty ? data : new T[] { };
+                return returnPayloadIfEmpty ? data : new T[] {};
             }
 
             return graphHandler.Eval(data);

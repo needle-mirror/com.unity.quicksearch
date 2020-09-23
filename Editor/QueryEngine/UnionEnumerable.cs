@@ -1,4 +1,3 @@
-
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -18,7 +17,7 @@ namespace Unity.QuickSearch
         }
 
         public void SetPayload(IEnumerable<T> payload)
-        { }
+        {}
 
         public IEnumerator<T> GetEnumerator()
         {

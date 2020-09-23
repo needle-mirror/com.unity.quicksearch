@@ -1,4 +1,3 @@
-//#define DEBUG_TIMING
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -9,40 +8,19 @@ using UnityEngine;
 
 namespace Unity.QuickSearch.Providers
 {
-    /// <summary>
-    /// Scene provider. Can be used as a base class if you want to enhance the scene searching capabilities of QuickSearch.
-    /// </summary>
-    public class SceneProvider : SearchProvider
+    class SceneProvider : SearchProvider
     {
-        /// <summary>
-        /// Fetch all the scene GameObjects.
-        /// </summary>
-        protected Func<GameObject[]> fetchGameObjects { get; set; }
-        /// <summary>
-        /// Build a list of keywords for all of the different components found in the scene.
-        /// </summary>
-        protected Func<GameObject, string[]> buildKeywordComponents { get; set; }
-        /// <summary>
-        /// Has the hierarchy since last search.
-        /// </summary>
-        protected bool m_HierarchyChanged = true;
-
-        private GameObject[] m_GameObjects = null;
+        private bool m_HierarchyChanged = true;
+        private List<GameObject> m_GameObjects = null;
         private SceneQueryEngine m_SceneQueryEngine;
 
-        /// <summary>
-        /// Create a new SceneProvider.
-        /// </summary>
-        /// <param name="providerId">Unique Id for the scene provider.</param>
-        /// <param name="filterId">Filter token id use to search only with this provider.</param>
-        /// <param name="displayName">Provider display name used in UI.</param>
         public SceneProvider(string providerId, string filterId, string displayName)
             : base(providerId, displayName)
         {
             priority = 50;
             this.filterId = filterId;
             showDetails = true;
-            showDetailsOptions = ShowDetailsOptions.Inspector | ShowDetailsOptions.Actions;
+            showDetailsOptions = ShowDetailsOptions.Inspector | ShowDetailsOptions.Actions | ShowDetailsOptions.Preview;
 
             isEnabledForContextualSearch = () =>
                 Utils.IsFocusedWindowTypeName("SceneView") ||
@@ -111,7 +89,7 @@ namespace Unity.QuickSearch.Providers
                 var obj = ObjectFromItem(item);
                 if (obj == null)
                     return item.thumbnail;
-                return Utils.GetSceneObjectPreview(obj, options, item.thumbnail);
+                return Utils.GetSceneObjectPreview(obj, size, options, item.thumbnail);
             };
 
             startDrag = (item, context) =>
@@ -119,7 +97,7 @@ namespace Unity.QuickSearch.Providers
                 if (context.selection.Count > 1)
                     Utils.StartDrag(context.selection.Select(i => ObjectFromItem(i)).ToArray(), item.GetLabel(context, true));
                 else
-                    Utils.StartDrag(new [] { ObjectFromItem(item) }, item.GetLabel(context, true));
+                    Utils.StartDrag(new[] { ObjectFromItem(item) }, item.GetLabel(context, true));
             };
 
             fetchPropositions = (context, options) =>
@@ -128,16 +106,8 @@ namespace Unity.QuickSearch.Providers
             };
 
             trackSelection = (item, context) => PingItem(item);
-
-            fetchGameObjects = SearchUtils.FetchGameObjects;
-            buildKeywordComponents = SceneQueryEngine.BuildKeywordComponents;
         }
 
-        /// <summary>
-        /// Create default action handles for scene SearchItem. See <see cref="SearchAction"/>.
-        /// </summary>
-        /// <param name="providerId">Provider Id registered for the action.</param>
-        /// <returns>A collection of SearchActions working for a Scene SearchItem.</returns>
         public static IEnumerable<SearchAction> CreateActionHandlers(string providerId)
         {
             return new SearchAction[]
@@ -146,7 +116,7 @@ namespace Unity.QuickSearch.Providers
                 {
                     execute = (items) =>
                     {
-                        FrameObjects(items.Select(i => i.provider.toObject(i, typeof(GameObject))).Where(i=>i).ToArray());
+                        FrameObjects(items.Select(i => i.provider.toObject(i, typeof(GameObject))).Where(i => i).ToArray());
                     }
                 },
 
@@ -171,11 +141,11 @@ namespace Unity.QuickSearch.Providers
 
         private IEnumerator SearchItems(SearchContext context, SearchProvider provider)
         {
-            if (!String.IsNullOrEmpty(context.searchQuery))
+            if (!string.IsNullOrEmpty(context.searchQuery))
             {
                 if (m_HierarchyChanged)
                 {
-                    m_GameObjects = fetchGameObjects();
+                    m_GameObjects = new List<GameObject>(SearchUtils.FetchGameObjects());
                     m_SceneQueryEngine = new SceneQueryEngine(m_GameObjects);
                     m_HierarchyChanged = false;
                 }
@@ -187,7 +157,7 @@ namespace Unity.QuickSearch.Providers
                     return AddResult(context, provider, gameObject.GetInstanceID().ToString(), 0, false);
                 });
             }
-            else if (context.wantsMore && context.filterType != null && String.IsNullOrEmpty(context.searchQuery))
+            else if (context.wantsMore && context.filterType != null && string.IsNullOrEmpty(context.searchQuery))
             {
                 yield return GameObject.FindObjectsOfType(context.filterType)
                     .Select(obj =>
@@ -269,7 +239,7 @@ namespace Unity.QuickSearch.Providers
         [SearchItemProvider]
         internal static SearchProvider CreateProvider()
         {
-            return new SceneProvider(k_DefaultProviderId, "h:", "Scene");
+            return new SceneProvider(k_DefaultProviderId, "s:", "Scene");
         }
 
         [SearchActionsProvider]
@@ -278,7 +248,7 @@ namespace Unity.QuickSearch.Providers
             return SceneProvider.CreateActionHandlers(k_DefaultProviderId);
         }
 
-        [Shortcut("Help/Quick Search/Scene")]
+        [Shortcut("Help/Search/Scene")]
         internal static void OpenQuickSearch()
         {
             QuickSearch.OpenWithContextualProvider(k_DefaultProviderId, Query.type);

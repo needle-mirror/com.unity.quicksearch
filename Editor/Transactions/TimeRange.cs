@@ -49,32 +49,32 @@ namespace Unity.QuickSearch
             }
         }
 
-        public static bool operator <(TimeRangeLimit lhs, DateTime other)
+        public static bool operator<(TimeRangeLimit lhs, DateTime other)
         {
             return lhs.timeStamp < other;
         }
 
-        public static bool operator >(TimeRangeLimit lhs, DateTime other)
+        public static bool operator>(TimeRangeLimit lhs, DateTime other)
         {
             return lhs.timeStamp > other;
         }
 
-        public static bool operator <=(TimeRangeLimit lhs, DateTime other)
+        public static bool operator<=(TimeRangeLimit lhs, DateTime other)
         {
             return lhs.timeStamp <= other;
         }
 
-        public static bool operator >=(TimeRangeLimit lhs, DateTime other)
+        public static bool operator>=(TimeRangeLimit lhs, DateTime other)
         {
             return lhs.timeStamp >= other;
         }
 
-        public static bool operator ==(TimeRangeLimit lhs, DateTime other)
+        public static bool operator==(TimeRangeLimit lhs, DateTime other)
         {
             return lhs.timeStamp == other;
         }
 
-        public static bool operator !=(TimeRangeLimit lhs, DateTime other)
+        public static bool operator!=(TimeRangeLimit lhs, DateTime other)
         {
             return lhs.timeStamp != other;
         }

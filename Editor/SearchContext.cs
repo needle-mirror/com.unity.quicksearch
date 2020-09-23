@@ -51,7 +51,54 @@ namespace Unity.QuickSearch
         /// <summary>
         /// Default Search Flag
         /// </summary>
-        Default = Sorted
+        Default = Sorted,
+
+        /// <summary>
+        /// Search View Flags
+        /// </summary>
+        SaveFilters = 1 << 25,
+
+        /// <summary>
+        /// Open QuickSearch reusing an existing window if any.
+        /// </summary>
+        ReuseExistingWindow = 1 << 26,
+
+        /// <summary>
+        /// Specify that a QuickSearch window list view supports multi-selection.
+        /// </summary>
+        Multiselect = 1 << 27,
+
+        /// <summary>
+        /// Specify that a QuickSearch window is dockable instead of being a modal popup window.
+        /// </summary>
+        Dockable = 1 << 28,
+
+        /// <summary>
+        /// Focus the search query when opening QuickSearch. 
+        /// </summary>
+        FocusContext = 1 << 29,
+
+        /// <summary>
+        /// Hide all QuickSearch side panels.
+        /// </summary>
+        HidePanels = 1 << 30,
+
+        /// <summary>
+        /// Default options when opening a QuickSearch window.
+        /// </summary>
+        OpenDefault = SaveFilters | Multiselect | Dockable,
+        /// <summary>
+        /// Default options when opening a QuickSearch using the global shortcut.
+        /// </summary>
+        OpenGlobal = OpenDefault | ReuseExistingWindow,
+        /// <summary>
+        /// Options when opening QuickSearch in contextual mode (with only a few selected providers enabled).
+        /// </summary>
+        OpenContextual = Multiselect | Dockable | FocusContext,
+        /// <summary>
+        /// Options when opening QuickSearch as an Object Picker.
+        /// </summary>
+        OpenPicker = FocusContext | HidePanels | WantsMore
     }
 
     /// <summary>
@@ -148,7 +195,7 @@ namespace Unity.QuickSearch
         /// <param name="isEnabled">If true, enable the provider to perform query.</param>
         public void SetFilter(string providerId, bool isEnabled)
         {
-            var index = m_ProviderDescs.FindIndex(t => t.provider.name.id == providerId);
+            var index = m_ProviderDescs.FindIndex(t => t.provider.id == providerId);
             if (index != -1)
             {
                 m_ProviderDescs[index].enabled = isEnabled;
@@ -162,23 +209,13 @@ namespace Unity.QuickSearch
         /// <returns></returns>
         public bool IsEnabled(string providerId)
         {
-            var index = m_ProviderDescs.FindIndex(t => t.provider.name.id == providerId);
+            var index = m_ProviderDescs.FindIndex(t => t.provider.id == providerId);
             if (index != -1)
             {
                 return m_ProviderDescs[index].enabled;
             }
 
             return false;
-        }
-
-        /// <summary>
-        /// This function is invoked during when a search is performed asynchronously to display progress.
-        /// </summary>
-        /// <param name="progress">Progress value. Varies between 0 and 1.</param>
-        /// <param name="status">Current status/description of the Search.</param>
-        public void ReportProgress(float progress = 0f, string status = null)
-        {
-            SearchService.ReportProgress(this, progress, status);
         }
 
         /// <summary>
@@ -478,13 +515,17 @@ namespace Unity.QuickSearch
         internal Type filterType { get; set; }
 
         /// <summary>
-        /// Returns a unique code that represents filtered providers for the current context.
-        /// </summary>
-        internal int scopeHash => filters.Select(d => d.provider.name.id.GetHashCode()).Aggregate(0, (h1, h2) => (h1 ^ h2).GetHashCode());
-
-        /// <summary>
         /// An instance of MultiProviderAsyncSearchSession holding all the async search sessions associated with this search context.
         /// </summary>
         internal MultiProviderAsyncSearchSession sessions { get; } = new MultiProviderAsyncSearchSession();
+
+        /// <summary>
+        /// Get the SearchContext unique hashcode.
+        /// </summary>
+        /// <returns>Returns the SearchContext unique hashcode.</returns>
+        public override int GetHashCode()
+        {
+            return filters.Select(d => d.provider.id.GetHashCode()).Aggregate((int)options, (h1, h2) => (h1 ^ h2).GetHashCode());
+        }
     }
 }

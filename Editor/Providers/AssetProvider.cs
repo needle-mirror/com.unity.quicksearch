@@ -13,11 +13,11 @@ namespace Unity.QuickSearch.Providers
     static class AssetProvider
     {
         internal const string type = "asset";
-        private const string displayName = "Asset";
+        private const string displayName = "Project";
         private const int k_ExactMatchScore = -99;
 
         private static bool reloadAssetIndexes = true;
-        private static List<SearchDatabase> m_AssetIndexes= null;
+        private static List<SearchDatabase> m_AssetIndexes = null;
         private static List<SearchDatabase> assetIndexes
         {
             get
@@ -48,7 +48,7 @@ namespace Unity.QuickSearch.Providers
                 fetchItems = (context, items, provider) => SearchAssets(context, provider),
                 fetchDescription = (item, context) => (item.description = GetAssetDescription(item.id)),
                 fetchThumbnail = (item, context) => Utils.GetAssetThumbnailFromPath(item.id),
-                fetchPreview = (item, context, size, options) => Utils.GetAssetPreviewFromPath(item.id, options),
+                fetchPreview = (item, context, size, options) => Utils.GetAssetPreviewFromPath(item.id, size, options),
                 openContextual = (selection, rect) => OpenContextualMenu(selection, rect),
                 startDrag = (item, context) => StartDrag(item, context),
                 trackSelection = (item, context) => Utils.PingAsset(item.id),
@@ -71,7 +71,7 @@ namespace Unity.QuickSearch.Providers
 
         private static void TrackAssetIndexChanges(string[] updated, string[] deleted, string[] moved)
         {
-            var loaded = assetIndexes?.Where(db => db).Select(db => AssetDatabase.GetAssetPath(db)).ToArray() ?? new string[0];
+            var loaded = assetIndexes?.Where(db => db).Select(db => db.path).ToArray() ?? new string[0];
             if (FilterIndexes(updated).Except(loaded).Count() > 0 || loaded.Intersect(FilterIndexes(deleted)).Count() > 0)
                 reloadAssetIndexes = true;
 
@@ -96,7 +96,7 @@ namespace Unity.QuickSearch.Providers
                 Utils.StartDrag(selectedObjects.ToArray(), paths, item.GetLabel(context, true));
             }
             else
-                Utils.StartDrag(new [] { AssetDatabase.LoadAssetAtPath<Object>(item.id) }, new []{ item.id }, item.GetLabel(context, true));
+                Utils.StartDrag(new[] { AssetDatabase.LoadAssetAtPath<Object>(item.id) }, new[] { item.id }, item.GetLabel(context, true));
         }
 
         private static IEnumerator SearchAssets(SearchContext context, SearchProvider provider)
@@ -153,7 +153,9 @@ namespace Unity.QuickSearch.Providers
             // Search index
             var index = db.index;
             db.Report("Search", searchQuery);
-            yield return index.Search(searchQuery.ToLowerInvariant()).Select(e => CreateItem(context, provider, db.name, e.id, e.score));
+            yield return index.Search(searchQuery.ToLowerInvariant())
+                .Where(e => e.id != null)
+                .Select(e => CreateItem(context, provider, db.name, e.id, e.score));
         }
 
         private static SearchItem CreateItem(SearchContext context, SearchProvider provider, string dbName, string assetPath, int itemScore)
@@ -183,20 +185,16 @@ namespace Unity.QuickSearch.Providers
         [SearchActionsProvider]
         internal static IEnumerable<SearchAction> CreateActionHandlers()
         {
-            #if UNITY_EDITOR_OSX
-            const string k_RevealActionLabel = "Reveal in Finder";
-            #else
-            const string k_RevealActionLabel = "Show in Explorer";
-            #endif
+            string k_RevealActionLabel = Application.platform != RuntimePlatform.OSXEditor ? "Show in Explorer" : "Reveal in Finder";
 
             return new[]
             {
-                new SearchAction(type, "select", null, "Select asset")
+                new SearchAction(type, "select", null, "Select")
                 {
                     handler = (item) => Utils.FrameAssetFromPath(item.id),
                     execute = (items) => SearchUtils.SelectMultipleItems(items, focusProjectBrowser: true)
                 },
-                new SearchAction(type, "open", null, "Open asset")
+                new SearchAction(type, "open", null, "Open")
                 {
                     handler = (item) =>
                     {
@@ -218,7 +216,7 @@ namespace Unity.QuickSearch.Providers
             };
         }
 
-        [Shortcut("Help/Quick Search/Assets")]
+        [Shortcut("Help/Search/Assets")]
         internal static void PopQuickSearch()
         {
             QuickSearch.OpenWithContextualProvider(type, Query.type, FindProvider.providerId);

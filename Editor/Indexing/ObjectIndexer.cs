@@ -25,12 +25,6 @@ namespace Unity.QuickSearch
     {
         internal SearchDatabase.Settings settings { get; private set; }
 
-        /// <summary>
-        /// Event that triggers while indexing is happening to report progress. The event signature is
-        /// <code>event(int progressId, string value, float progressReport, bool finished).</code>
-        /// </summary>
-        public event Action<int, string, float, bool> reportProgress;
-
         internal ObjectIndexer(string name, SearchDatabase.Settings settings)
             : base(name)
         {
@@ -101,20 +95,20 @@ namespace Unity.QuickSearch
         ///  Get all this indexer root paths.
         /// </summary>
         /// <returns>Returns a list of root paths.</returns>
-        public abstract IEnumerable<string> GetRoots();
+        internal abstract IEnumerable<string> GetRoots();
 
         /// <summary>
         /// Get all documents that would be indexed.
         /// </summary>
         /// <returns>Returns a list of file paths.</returns>
-        public abstract List<string> GetDependencies();
+        internal abstract List<string> GetDependencies();
 
         /// <summary>
         /// Compute the hash of a specific document id. Generally a file path.
         /// </summary>
         /// <param name="id">Document id.</param>
         /// <returns>Returns the hash of this document id.</returns>
-        public abstract Hash128 GetDocumentHash(string id);
+        internal abstract Hash128 GetDocumentHash(string id);
 
         /// <summary>
         /// Function to override in a concrete SearchIndexer to index the content of a document.
@@ -156,7 +150,7 @@ namespace Unity.QuickSearch
         /// <param name="entry">The string to be split.</param>
         /// <param name="documentIndex">The document index that will index that entry.</param>
         /// <returns>The entry components.</returns>
-        protected virtual IEnumerable<string> GetEntryComponents(string entry, int documentIndex)
+        public virtual IEnumerable<string> GetEntryComponents(string entry, int documentIndex)
         {
             return SearchUtils.SplitFileEntryComponents(entry, SearchUtils.entrySeparators);
         }
@@ -221,21 +215,6 @@ namespace Unity.QuickSearch
             AddNumber(name, number, settings.baseScore, documentIndex);
         }
 
-        /// <summary>
-        /// Report progress of indexing.
-        /// </summary>
-        /// <param name="progressId">Progress id.</param>
-        /// <param name="value">Progress description.</param>
-        /// <param name="progressReport">Progress report value (between 0 and 1).</param>
-        /// <param name="finished">Is the indexing done?</param>
-        protected void ReportProgress(int progressId, string value, float progressReport, bool finished)
-        {
-            reportProgress?.Invoke(progressId, value, progressReport, finished);
-        }
-
-        [Obsolete("Async index builds are not supported anymore.")]
-        protected abstract System.Collections.IEnumerator BuildAsync(int progressId, object userData = null);
-
         internal static FilePattern GetFilePattern(string pattern)
         {
             if (!string.IsNullOrEmpty(pattern))
@@ -267,18 +246,6 @@ namespace Unity.QuickSearch
         }
 
         /// <summary>
-        /// Get the property value of a specific property. This will converts the property to either a double or a string.
-        /// </summary>
-        /// <param name="property">Property to get value from.</param>
-        /// <param name="saveKeyword">If set to true, this means we need to save the property name in the index.</param>
-        /// <returns>Property value as a double or a string or null if we weren't able to convert it.</returns>
-        [Obsolete("This override is not supported anymore")]
-        protected object GetPropertyValue(SerializedProperty property, ref bool saveKeyword)
-        {
-            throw new NotSupportedException("This not supported anymore");
-        }
-
-        /// <summary>
         /// Index all the properties of an object.
         /// </summary>
         /// <param name="obj">Object to index.</param>
@@ -298,7 +265,7 @@ namespace Unity.QuickSearch
                 while (next)
                 {
                     var fieldName = p.displayName.Replace("m_", "").Replace(" ", "").ToLowerInvariant();
-                    if (p.propertyPath[p.propertyPath.Length-1] != ']')
+                    if (p.propertyPath[p.propertyPath.Length - 1] != ']')
                         IndexProperty(documentIndex, fieldName, p);
 
                     if (dependencies)
@@ -375,7 +342,7 @@ namespace Unity.QuickSearch
                     break;
             }
 
-            MapKeyword(fieldName+":", $"{p.displayName} ({p.propertyType})");
+            MapKeyword(fieldName + ":", $"{p.displayName} ({p.propertyType})");
         }
 
         private void AddReference(int documentIndex, SerializedProperty p)
@@ -402,7 +369,7 @@ namespace Unity.QuickSearch
         /// <param name="documentId">Document index.</param>
         /// <param name="documentIndex">Document where the indexed object was found.</param>
         /// <param name="obj">Object to index.</param>
-        protected void IndexCustomProperties(string documentId, int documentIndex, Object obj)
+        internal void IndexCustomProperties(string documentId, int documentIndex, Object obj)
         {
             using (var so = new SerializedObject(obj))
             {
@@ -418,7 +385,7 @@ namespace Unity.QuickSearch
         /// <param name="documentIndex">Document where the indexed object was found.</param>
         /// <param name="so">SerializedObject representation of obj.</param>
         /// <param name="multiLevel">If true, calls all the indexer that would fit the type of the object (all assignable type). If false only check for an indexer registered for the exact type of the Object.</param>
-        protected void CallCustomIndexers(string documentId, int documentIndex, Object obj, SerializedObject so, bool multiLevel = true)
+        private void CallCustomIndexers(string documentId, int documentIndex, Object obj, SerializedObject so, bool multiLevel = true)
         {
             var objectType = obj.GetType();
             List<CustomIndexerHandler> customIndexers;
@@ -458,7 +425,7 @@ namespace Unity.QuickSearch
         /// <param name="type">Type to lookup</param>
         /// <param name="multiLevel">Check for subtypes too.</param>
         /// <returns>True if a custom indexer exists, otherwise false is returned.</returns>
-        protected bool HasCustomIndexers(Type type, bool multiLevel = true)
+        internal bool HasCustomIndexers(Type type, bool multiLevel = true)
         {
             return CustomIndexers.HasCustomIndexers(type, multiLevel);
         }

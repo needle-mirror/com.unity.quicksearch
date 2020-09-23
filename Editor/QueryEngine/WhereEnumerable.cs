@@ -133,7 +133,6 @@ namespace Unity.QuickSearch
             {
                 if (node.filter?.queryHandlerTransformer == null)
                 {
-
                     errors.Add(new QueryError(filterValueIndex, node.filterValue.Length, $"No nested query handler transformer set on filter \"{node.filter.token}\"."));
                     return null;
                 }

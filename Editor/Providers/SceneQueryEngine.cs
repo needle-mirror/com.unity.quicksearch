@@ -1,4 +1,3 @@
-//#define QUICKSEARCH_DEBUG
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -19,7 +18,7 @@ namespace Unity.QuickSearch.Providers
         /// <param name="token">The identifier of the filter. Typically what precedes the operator in a filter (i.e. "id" in "id>=2").</param>
         /// <param name="supportedOperators">List of supported operator tokens. Null for all operators.</param>
         public SceneQueryEngineFilterAttribute(string token, string[] supportedOperators = null)
-            : base(token, supportedOperators) { }
+            : base(token, supportedOperators) {}
 
         /// <summary>
         /// Create a filter with the corresponding token, string comparison options and supported operators.
@@ -29,7 +28,7 @@ namespace Unity.QuickSearch.Providers
         /// <param name="supportedOperators">List of supported operator tokens. Null for all operators.</param>
         /// <remarks>This sets the flag overridesStringComparison to true.</remarks>
         public SceneQueryEngineFilterAttribute(string token, StringComparison options, string[] supportedOperators = null)
-            : base(token, options, supportedOperators) { }
+            : base(token, options, supportedOperators) {}
 
         /// <summary>
         /// Create a filter with the corresponding token, parameter transformer function and supported operators.
@@ -39,7 +38,7 @@ namespace Unity.QuickSearch.Providers
         /// <param name="supportedOperators">List of supported operator tokens. Null for all operators.</param>
         /// <remarks>Sets the flag useParamTransformer to true.</remarks>
         public SceneQueryEngineFilterAttribute(string token, string paramTransformerFunction, string[] supportedOperators = null)
-            : base(token, paramTransformerFunction, supportedOperators) { }
+            : base(token, paramTransformerFunction, supportedOperators) {}
 
         /// <summary>
         /// Create a filter with the corresponding token, parameter transformer function, string comparison options and supported operators.
@@ -50,25 +49,25 @@ namespace Unity.QuickSearch.Providers
         /// <param name="supportedOperators">List of supported operator tokens. Null for all operators.</param>
         /// <remarks>Sets both overridesStringComparison and useParamTransformer flags to true.</remarks>
         public SceneQueryEngineFilterAttribute(string token, string paramTransformerFunction, StringComparison options, string[] supportedOperators = null)
-            : base(token, paramTransformerFunction, options, supportedOperators) { }
+            : base(token, paramTransformerFunction, options, supportedOperators) {}
     }
 
     /// <summary>
     /// Attribute class that defines a custom parameter transformer function applied for query running in a scene provider.
     /// </summary>
-    public class SceneQueryEngineParameterTransformerAttribute : QueryEngineParameterTransformerAttribute { }
+    [AttributeUsage(AttributeTargets.Method)]
+    public class SceneQueryEngineParameterTransformerAttribute : QueryEngineParameterTransformerAttribute {}
 
     class SceneQueryEngine
     {
-        private readonly GameObject[] m_GameObjects;
+        private readonly List<GameObject> m_GameObjects;
         private readonly Dictionary<int, GOD> m_GODS = new Dictionary<int, GOD>();
         private readonly QueryEngine<GameObject> m_QueryEngine = new QueryEngine<GameObject>(true);
         private List<SearchProposition> m_PropertyPrositions;
         private HashSet<SearchProposition> m_TypePropositions;
 
-        private static readonly string[] none = new string[0];
-        private static readonly char[] entrySeparators = { '/', ' ', '_', '-', '.' };
-        private static readonly SearchProposition[] fixedPropositions = new SearchProposition[] 
+        private static readonly char[] s_EntrySeparators = { '/', ' ', '_', '-', '.' };
+        private static readonly SearchProposition[] s_FixedPropositions = new SearchProposition[]
         {
             new SearchProposition("id:", null, "Search object by id"),
             new SearchProposition("path:", null, "Search object by transform path"),
@@ -94,14 +93,12 @@ namespace Unity.QuickSearch.Providers
             new SearchProposition("prefab:variant", null, "Search variant prefab objects"),
             new SearchProposition("prefab:modified", null, "Search modified prefab assets"),
             new SearchProposition("prefab:altered", null, "Search modified prefab instances"),
-            new SearchProposition("t:", null, "Search object by type"),
+            new SearchProposition("t:", null, "Search object by type", priority: -1),
             new SearchProposition("ref:", null, "Search object references"),
             new SearchProposition("p", "p(", "Search object's properties"),
         };
 
         private static readonly Regex s_RangeRx = new Regex(@"\[(-?[\d\.]+)[,](-?[\d\.]+)\s*\]");
-
-        public Func<GameObject, string[]> buildKeywordComponents { get; set; }
 
         class PropertyRange
         {
@@ -184,7 +181,12 @@ namespace Unity.QuickSearch.Providers
             }
         }
 
-        public SceneQueryEngine(GameObject[] gameObjects)
+        public bool InvalidateObject(int instanceId)
+        {
+            return m_GODS.Remove(instanceId);
+        }
+
+        public SceneQueryEngine(List<GameObject> gameObjects)
         {
             m_GameObjects = gameObjects;
             m_QueryEngine.AddFilter("id", GetId);
@@ -193,10 +195,10 @@ namespace Unity.QuickSearch.Providers
             m_QueryEngine.AddFilter("layer", GetLayer);
             m_QueryEngine.AddFilter("size", GetSize);
             m_QueryEngine.AddFilter("overlap", GetOverlapCount);
-            m_QueryEngine.AddFilter<string>("is", OnIsFilter, new []{":"});
+            m_QueryEngine.AddFilter<string>("is", OnIsFilter, new[] {":"});
             m_QueryEngine.AddFilter<string>("prefab", OnPrefabFilter, new[] { ":" });
-            m_QueryEngine.AddFilter<string>("t", OnTypeFilter, new []{"=", ":"});
-            m_QueryEngine.AddFilter<string>("ref", GetReferences, new []{"=", ":"});
+            m_QueryEngine.AddFilter<string>("t", OnTypeFilter, new[] {"=", ":"});
+            m_QueryEngine.AddFilter<string>("ref", GetReferences, new[] {"=", ":"});
 
             m_QueryEngine.AddFilter("p", OnPropertyFilter, s => s, StringComparison.OrdinalIgnoreCase);
 
@@ -352,7 +354,7 @@ namespace Unity.QuickSearch.Providers
             if (options.token.StartsWith("t:", StringComparison.OrdinalIgnoreCase))
                 return FetchTypePropositions();
 
-            return fixedPropositions;
+            return s_FixedPropositions;
         }
 
         private IEnumerable<SearchProposition> FetchTypePropositions()
@@ -415,29 +417,16 @@ namespace Unity.QuickSearch.Providers
         {
             var query = m_QueryEngine.Parse(context.searchQuery);
             if (!query.valid)
-            {
-                #if QUICKSEARCH_DEBUG
-                foreach (var err in query.errors)
-                    Debug.LogWarning($"Invalid search query. {err.reason} ({err.index},{err.length})");
-                #endif
                 yield break;
-            }
 
-            var progress = 0f;
-            var step = 1f / m_GameObjects.Length;
             var goa = new GameObject[1];
             foreach (var go in m_GameObjects)
             {
+                if (!go)
+                    continue;
                 goa[0] = go;
-                progress += step;
-                context.ReportProgress(progress, go.name);
                 yield return query.Apply(goa).FirstOrDefault();
             }
-        }
-
-        public static string[] BuildKeywordComponents(GameObject go)
-        {
-            return null;
         }
 
         public string GetId(GameObject go)
@@ -501,7 +490,7 @@ namespace Unity.QuickSearch.Providers
         {
             int overlapCount = -1;
 
-            if(go.TryGetComponent<Renderer>(out var renderer))
+            if (go.TryGetComponent<Renderer>(out var renderer))
             {
                 overlapCount = 0;
 
@@ -575,7 +564,6 @@ namespace Unity.QuickSearch.Providers
         {
             using (var so = new SerializedObject(obj))
             {
-                //Utils.LogProperties(so);
                 var property = so.FindProperty(propertyName) ?? so.FindProperty($"m_{propertyName}");
                 if (property != null)
                     return ConvertPropertyValue(property);
@@ -637,17 +625,17 @@ namespace Unity.QuickSearch.Providers
         {
             switch (sp.propertyType)
             {
-                case SerializedPropertyType.Integer: return replacement+">0";
-                case SerializedPropertyType.Boolean: return replacement+"=true";
-                case SerializedPropertyType.Float: return replacement+">=0.0";
-                case SerializedPropertyType.String: return replacement+":\"\"";
-                case SerializedPropertyType.Enum: return replacement+":";
-                case SerializedPropertyType.ObjectReference: return replacement+":";
-                case SerializedPropertyType.Color: return replacement + "=FFFFBB"; ;
+                case SerializedPropertyType.Integer: return replacement + ">0";
+                case SerializedPropertyType.Boolean: return replacement + "=true";
+                case SerializedPropertyType.Float: return replacement + ">=0.0";
+                case SerializedPropertyType.String: return replacement + ":\"\"";
+                case SerializedPropertyType.Enum: return replacement + ":";
+                case SerializedPropertyType.ObjectReference: return replacement + ":";
+                case SerializedPropertyType.Color: return replacement + "=FFFFBB";
                 case SerializedPropertyType.Bounds:
                 case SerializedPropertyType.BoundsInt:
                 case SerializedPropertyType.Rect:
-                    return replacement+">0";
+                    return replacement + ">0";
 
                 case SerializedPropertyType.Generic:
                 case SerializedPropertyType.LayerMask:
@@ -827,8 +815,7 @@ namespace Unity.QuickSearch.Providers
 
             if (god.words == null)
             {
-                god.words = SplitWords(go.name, entrySeparators)
-                    .Concat(buildKeywordComponents?.Invoke(go) ?? none)
+                god.words = SplitWords(go.name, s_EntrySeparators)
                     .Select(w => w.ToLowerInvariant())
                     .ToArray();
             }
@@ -842,8 +829,8 @@ namespace Unity.QuickSearch.Providers
             var scc = nameTokens.SelectMany(s => SearchUtils.SplitCamelCase(s)).Where(s => s.Length > 0);
             var fcc = scc.Aggregate("", (current, s) => current + s[0]);
             return new[] { fcc, entry }.Concat(scc.Where(s => s.Length > 1))
-                                .Where(s => s.Length > 0)
-                                .Distinct();
+                .Where(s => s.Length > 0)
+                .Distinct();
         }
 
         private static string CleanName(string s)
@@ -868,7 +855,7 @@ namespace Unity.QuickSearch.Providers
 
             // Is in FOV
             if ((pointOnScreen.x < 0) || (pointOnScreen.x > Screen.width) ||
-                    (pointOnScreen.y < 0) || (pointOnScreen.y > Screen.height))
+                (pointOnScreen.y < 0) || (pointOnScreen.y > Screen.height))
                 return false;
 
             if (Physics.Linecast(cam.transform.position, renderer.bounds.center, out var hit))

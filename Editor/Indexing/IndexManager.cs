@@ -7,24 +7,16 @@ using UnityEditor;
 using UnityEditor.UIElements;
 using UnityEngine;
 using UnityEngine.UIElements;
-using static Unity.QuickSearch.ObjectIndexer;
-using static Unity.QuickSearch.SearchDatabase;
 using UIToolkitListView = UnityEngine.UIElements.ListView;
 
 namespace Unity.QuickSearch
 {
-    internal class IndexManager : EditorWindow
+    class IndexManager : EditorWindow
     {
-        [MenuItem("Window/Quick Search/Index Manager")]
+        [MenuItem("Window/Search/Index Manager")]
         public static void OpenWindow()
         {
             OpenWindow(-1);
-        }
-
-        [MenuItem("Window/Quick Search/Index Manager", validate = true)]
-        public static bool CanOpenWindow()
-        {
-            return !Utils.IsUsingADBV1();
         }
 
         public static void OpenWindow(int instanceID)
@@ -64,7 +56,6 @@ namespace Unity.QuickSearch
         private Foldout m_ExcludesFoldout;
         private Foldout m_OptionsFoldout;
         private VisualElement m_IndexDetailsElement;
-        private VisualElement m_ContainerFilePath;
         private TextField m_IndexFilePathTextField;
         private IntegerField m_IndexScore;
         private Button m_CreateButton;
@@ -94,7 +85,7 @@ namespace Unity.QuickSearch
         string selectedItemPath => m_IndexSettingsFilePaths != null && selectedIndex >= 0 && selectedIndex < m_IndexSettingsFilePaths.Count ? m_IndexSettingsFilePaths[selectedIndex] : null;
         bool selectedItemExists => m_IndexSettingsExists != null && selectedIndex >= 0 && selectedIndex < m_IndexSettingsExists.Count ? m_IndexSettingsExists[selectedIndex] : false;
 
-        private void OnEnable()
+        internal void OnEnable()
         {
             titleContent.image = Icons.quicksearch;
             titleContent.text = "Search Index Manager";
@@ -115,14 +106,10 @@ namespace Unity.QuickSearch
             int indexToSelect = AddSearchDatabases(SearchSettings.showPackageIndexes);
 
             m_ListViewIndexSettings = new ListViewIndexSettings(m_IndexSettings, MakeIndexItem, BindIndexItem, CreateNewIndexSettingMenu, DeleteIndexSetting, this, false, 40) { name = "IndexListView" };
-            #if UNITY_2020_1_OR_NEWER
             m_ListViewIndexSettings.ListView.onSelectionChange += OnSelectedIndexChanged;
-            #else
-            m_ListViewIndexSettings.ListView.onSelectionChanged += OnSelectedIndexChanged;
-            #endif
 
             m_IndexDetailsElement = new VisualElement() { name = "Details" };
-            indexLoaded += OnIndexLoaded;
+            SearchDatabase.indexLoaded += OnIndexLoaded;
             if (m_IndexSettings.Any())
                 CreateIndexDetailsElement();
 
@@ -137,9 +124,9 @@ namespace Unity.QuickSearch
             rootVisualElement.Add(splitter);
 
             m_IndexSettingsTemplates = new List<SearchDatabase.Settings>();
-            foreach (var path in Directory.EnumerateFiles(k_ProjectPath + "/Packages/com.unity.quicksearch/Templates", "*.template"))
+            foreach (var templateName in SearchDatabaseTemplates.all.Keys.Where(k => k[0] != '_'))
             {
-                m_IndexSettingsTemplates.Add(ExtractIndexFromFile(path));
+                m_IndexSettingsTemplates.Add(ExtractIndexFromTemplate(templateName));
             }
 
             rootVisualElement.RegisterCallback<GeometryChangedEvent>(OnSizeChange);
@@ -164,13 +151,11 @@ namespace Unity.QuickSearch
                     }
                 }
                 int addedItems = 0;
-                foreach (var path in AssetDatabase.FindAssets($"t:{nameof(SearchDatabase)} a:packages")
-                            .Select(AssetDatabase.GUIDToAssetPath).OrderByDescending(p => Path.GetFileNameWithoutExtension(p)))
+                foreach (var searchDatabase in SearchDatabase.Enumerate(SearchDatabase.IndexLocation.packages))
                 {
-                    var searchDatabase = AssetDatabase.LoadAssetAtPath<SearchDatabase>(path);
                     m_IndexSettingsAssets.Insert(m_IndexToInsertPackagesOnToggle, searchDatabase);
                     m_IndexSettings.Insert(m_IndexToInsertPackagesOnToggle, new IndexManagerViewModel(searchDatabase.settings, false));
-                    m_IndexSettingsFilePaths.Insert(m_IndexToInsertPackagesOnToggle, path);
+                    m_IndexSettingsFilePaths.Insert(m_IndexToInsertPackagesOnToggle, searchDatabase.path);
                     m_IndexSettingsExists.Insert(m_IndexToInsertPackagesOnToggle, true);
                     addedItems++;
                 }
@@ -206,14 +191,11 @@ namespace Unity.QuickSearch
         {
             int indexToSelect = -1;
 
-            string tagAssets = includePackages ? "all" : "assets";
-            foreach (var path in AssetDatabase.FindAssets($"t:{nameof(SearchDatabase)} a:{tagAssets}")
-                        .Select(AssetDatabase.GUIDToAssetPath).OrderBy(p => Path.GetFileNameWithoutExtension(p)))
+            foreach (var searchDatabase in SearchDatabase.Enumerate(includePackages ? SearchDatabase.IndexLocation.all : SearchDatabase.IndexLocation.assets))
             {
-                var searchDatabase = AssetDatabase.LoadAssetAtPath<SearchDatabase>(path);
                 m_IndexSettingsAssets.Add(searchDatabase);
                 m_IndexSettings.Add(new IndexManagerViewModel(searchDatabase.settings, false));
-                m_IndexSettingsFilePaths.Add(AssetDatabase.GetAssetPath(searchDatabase));
+                m_IndexSettingsFilePaths.Add(searchDatabase.path);
                 m_IndexSettingsExists.Add(true);
 
                 if (searchDatabase.GetInstanceID() == s_SelectedAssetOnOpen)
@@ -224,34 +206,21 @@ namespace Unity.QuickSearch
             return indexToSelect;
         }
 
-        private void OnDisable()
+        internal void OnDisable()
         {
             #if !UNITY_2020_2_OR_NEWER
             if (hasUnsavedChanges && EditorUtility.DisplayDialog(L10n.Tr("Unsaved Changes Detected"),
                     L10n.Tr("There are unsaved changes."), L10n.Tr("Save"), L10n.Tr("Discard")))
                 SaveChanges();
             #endif
-
-            #if UNITY_2020_1_OR_NEWER
             m_ListViewIndexSettings.ListView.onSelectionChange -= OnSelectedIndexChanged;
-            #else
-            m_ListViewIndexSettings.ListView.onSelectionChanged -= OnSelectedIndexChanged;
-            #endif
 
-            indexLoaded -= OnIndexLoaded;
+            SearchDatabase.indexLoaded -= OnIndexLoaded;
 
             if (m_DocumentsListView != null)
-                #if UNITY_2020_1_OR_NEWER
                 m_DocumentsListView.onSelectionChange -= PingAsset;
-                #else
-                m_DocumentsListView.onSelectionChanged -= PingAsset;
-                #endif
             if (m_DependenciesListView != null)
-                #if UNITY_2020_1_OR_NEWER
                 m_DependenciesListView.onSelectionChange -= PingAsset;
-                #else
-                m_DependenciesListView.onSelectionChanged -= PingAsset;
-                #endif
         }
 
         private void OnSizeChange(GeometryChangedEvent evt)
@@ -259,11 +228,20 @@ namespace Unity.QuickSearch
             UpdateIndexStatsListViewHeight(evt);
         }
 
-    	internal static SearchDatabase.Settings ExtractIndexFromFile(string path)
+        internal static SearchDatabase.Settings ExtractIndexFromTemplate(string name)
         {
-            var jsonText = System.IO.File.ReadAllText(path);
+            return ExtractIndexFromText(name, SearchDatabaseTemplates.all[name]);
+        }
+
+        private static SearchDatabase.Settings ExtractIndexFromFile(string filePath)
+        {
+            return ExtractIndexFromText(Path.GetFileName(filePath), File.ReadAllText(filePath));
+        }
+
+        private static SearchDatabase.Settings ExtractIndexFromText(string name, string jsonText)
+        {
             var settings = JsonUtility.FromJson<SearchDatabase.Settings>(jsonText);
-            settings.name = Path.GetFileNameWithoutExtension(Path.GetFileNameWithoutExtension(path));
+            settings.name = name;
             return settings;
         }
 
@@ -309,12 +287,16 @@ namespace Unity.QuickSearch
             UpdateSaveButtonDisplay();
             buttonsContainer.Add(m_CreateButton = new Button(CreateIndexSettings) { text = "Create", name = "CreateButton" });
 
-            m_IndexDetailsElementScrollView.Add(m_IndexFilePathTextField = new TextField("File Path") { name = "FilePathTextField",
-                tooltip = "The path to this index in the Project", value = selectedItemPath });
+            m_IndexDetailsElementScrollView.Add(m_IndexFilePathTextField = new TextField("File Path") {
+                name = "FilePathTextField",
+                tooltip = "The path to this index in the Project", value = selectedItemPath
+            });
             m_IndexFilePathTextField.SetEnabled(false);
 
-            m_IndexDetailsElementScrollView.Add(m_IndexNameTextField = new TextField("Name") { name = "NameTextField",
-                tooltip = "The name of this index (can be different than the file)", value = selectedItem.name });
+            m_IndexDetailsElementScrollView.Add(m_IndexNameTextField = new TextField("Name") {
+                name = "NameTextField",
+                tooltip = "The name of this index (can be different than the file)", value = selectedItem.name
+            });
             m_IndexNameTextField.RegisterValueChangedCallback(evt => { selectedItem.name = evt.newValue; UpdateUnsavedChanges(true); });
 
             m_IndexScore = new IntegerField("Score")
@@ -360,20 +342,12 @@ namespace Unity.QuickSearch
 
             m_DependenciesListView = new UIToolkitListView() { itemHeight = 20, makeItem = () => { return new Label(); }, bindItem = (e, i) => { e.Q<Label>().text = (string)(m_DependenciesListView.itemsSource[i]); } };
             m_DependenciesListView.AddToClassList("PreviewListView");
-            #if UNITY_2020_1_OR_NEWER
             m_DependenciesListView.onSelectionChange += PingAsset;
-            #else
-            m_DependenciesListView.onSelectionChanged += PingAsset;
-            #endif
             m_SavedIndexData.Add(m_DependenciesListView);
 
             m_DocumentsListView = new UIToolkitListView() { itemHeight = 20, makeItem = () => { return new Label(); }, bindItem = (e, i) => { e.Q<Label>().text = (string)(m_DocumentsListView.itemsSource[i]); } };
             m_DocumentsListView.AddToClassList("PreviewListView");
-            #if UNITY_2020_1_OR_NEWER
             m_DocumentsListView.onSelectionChange += PingAsset;
-            #else
-            m_DocumentsListView.onSelectionChanged += PingAsset;
-            #endif
             m_SavedIndexData.Add(m_DocumentsListView);
 
             m_KeywordsListView = new UIToolkitListView() { itemHeight = 20, makeItem = () => { return new Label(); }, bindItem = (e, i) => { e.Q<Label>().text = (string)(m_KeywordsListView.itemsSource[i]); } };
@@ -415,12 +389,12 @@ namespace Unity.QuickSearch
 
         private void CreateOptionsVisualElements()
         {
-            foreach (var field in typeof(Options).GetFields())
+            foreach (var field in typeof(SearchDatabase.Options).GetFields())
             {
                 if (!(field.GetValue(selectedItem.options) is bool optionValue))
                     continue;
                 string name = char.ToUpper(field.Name[0]) + field.Name.Substring(1);
-                var toggle = new Toggle(name) { value = optionValue, name="OptionsToggle"+field.Name };
+                var toggle = new Toggle(name) { value = optionValue, name = "OptionsToggle" + field.Name };
                 toggle.RegisterValueChangedCallback(evt =>
                 {
                     field.SetValue(selectedItem.options, evt.newValue);
@@ -431,7 +405,7 @@ namespace Unity.QuickSearch
                 switch (field.Name)
                 {
                     case "disabled":
-                        toggle.tooltip = "Toggles this index off so Quick Search does not use it";
+                        toggle.tooltip = "Toggles this index off so search does not use it";
                         toggle.RegisterValueChangedCallback(evt => m_ListViewIndexSettings.ListView.Refresh());
                         break;
                     case "files":
@@ -455,7 +429,7 @@ namespace Unity.QuickSearch
 
         private void UpdateOptionsVisualElements()
         {
-            foreach (var field in typeof(Options).GetFields())
+            foreach (var field in typeof(SearchDatabase.Options).GetFields())
             {
                 m_OptionsFoldout.Q<Toggle>("OptionsToggle" + field.Name).value = (bool)field.GetValue(selectedItem.options);
             }
@@ -485,11 +459,6 @@ namespace Unity.QuickSearch
             {
                 if (selectedItemAsset.index == null || !selectedItemAsset.index.IsReady())
                 {
-                    #if !UNITY_2020_1_OR_NEWER
-                    m_SavedIndexDataNotLoadedYet.text = Progress.Current().text;
-                    EditorApplication.delayCall -= UpdatePreview;
-                    EditorApplication.delayCall += UpdatePreview;
-                    #endif
                     m_SavedIndexDataNotLoadedYet.style.display = DisplayStyle.Flex;
                     m_SavedIndexData.style.display = DisplayStyle.None;
                 }
@@ -541,6 +510,7 @@ namespace Unity.QuickSearch
                 container.style.height = availableSpace;// - 30;
             }
         }
+
         private void UpdateIndexPreviewListView(IList list, UIToolkitListView listView)
         {
             listView.itemsSource = list;
@@ -646,7 +616,7 @@ namespace Unity.QuickSearch
                 m_IndexSettingsExists[selectedIndex] = true;
                 m_IndexSettingsFilePaths[selectedIndex] = path;
                 m_IndexFilePathTextField.value = selectedItemPath;
-                AssetDatabase.ImportAsset(selectedItemPath);
+                SearchDatabase.ImportAsset(selectedItemPath);
                 m_IndexSettingsAssets[selectedIndex] = (SearchDatabase)AssetDatabase.LoadAssetAtPath(selectedItemPath, typeof(SearchDatabase));
 
                 m_IndexNameTextField.SetValueWithoutNotify(selectedItem.name); // Update the textfield with the file name
@@ -660,7 +630,7 @@ namespace Unity.QuickSearch
         {
             if (m_IndexSettingsAssets[selectedIndex] == null) // 'else' should not appear but just in case
             {
-                var newItem = (SearchDatabase)ScriptableObject.CreateInstance("SearchDatabase");
+                var newItem = ScriptableObject.CreateInstance<SearchDatabase>();
                 newItem.settings = new SearchDatabase.Settings()
                 {
                     options = new SearchDatabase.Options()
@@ -694,7 +664,7 @@ namespace Unity.QuickSearch
             if (CreateOrUpdateAsset(selectedItemPath))
             {
                 UpdateUnsavedChanges(false);
-                AssetDatabase.ImportAsset(selectedItemPath);
+                SearchDatabase.ImportAsset(selectedItemPath);
                 m_ListViewIndexSettings.ListView.Refresh();
                 UpdatePreviewCheckIfNeedDelay();
             }
@@ -723,13 +693,13 @@ namespace Unity.QuickSearch
                                 path = path.Substring(k_ProjectPath.Length + 1); // Only the project part
                                 SetupNewAsset(path);
                                 CreateOrUpdateAsset(path);
-                                AssetDatabase.ImportAsset(path);
+                                SearchDatabase.ImportAsset(path);
                             }
                         }
                         else
                         {
                             CreateOrUpdateAsset(m_IndexSettingsFilePaths[i]);
-                            AssetDatabase.ImportAsset(m_IndexSettingsFilePaths[i]);
+                            SearchDatabase.ImportAsset(m_IndexSettingsFilePaths[i]);
                         }
                     }
                 }
@@ -826,6 +796,7 @@ namespace Unity.QuickSearch
 
             listView.UpdateListViewOnAdd();
         }
+
         private void RemoveListElement(List<string> list, ListViewIndexSettings listView)
         {
             if (listView.selectedIndex >= 0)
@@ -847,7 +818,10 @@ namespace Unity.QuickSearch
                 m_IndexSettings.RemoveAt(deleteIndex);
                 m_IndexSettingsAssets.RemoveAt(deleteIndex);
                 if (m_IndexSettingsExists[deleteIndex])
-                    AssetDatabase.DeleteAsset(path);
+                {
+                    File.Delete(path);
+                    AssetPostprocessorIndexer.RaiseContentRefreshed(new string[0], new string[] { path }, new string[0]);
+                }
                 m_IndexSettingsFilePaths.RemoveAt(deleteIndex);
                 m_IndexSettingsExists.RemoveAt(deleteIndex);
 
@@ -858,25 +832,28 @@ namespace Unity.QuickSearch
         private void CreateNewIndexSettingMenu()
         {
             var menu = new GenericMenu();
-            // TODO: template order (quicksearch package templates vs user templates)
             foreach (var template in m_IndexSettingsTemplates)
             {
                 menu.AddItem(new GUIContent(template.name), false, () => { CreateNewIndexSettingFromTemplate(template); });
             }
-            menu.AddSeparator("");
-            menu.AddItem(new GUIContent("Select File..."), false, () =>
+            if (SearchDatabase.EnumeratePaths(SearchDatabase.IndexLocation.assets).Count() == 0 && !File.Exists(SearchDatabase.defaultSearchDatabaseIndexPath))
             {
-                var result = EditorUtility.OpenFilePanel("Select Template File", Application.dataPath, "index,index.template");
-                if (!string.IsNullOrEmpty(result))
+                menu.AddSeparator("");
+                menu.AddItem(new GUIContent("Create Default"), false, () =>
                 {
-                    if (File.Exists(result))
-                    {
-                        CreateNewIndexSettingFromTemplate(ExtractIndexFromFile(result));
-                    }
-                }
-            });
+                    var defaultDB = SearchDatabase.CreateDefaultIndex();
+                    var newItem = new IndexManagerViewModel(defaultDB.settings, false);
+                    m_IndexSettings.Add(newItem);
+                    m_IndexSettingsFilePaths.Add(defaultDB.path);
+                    m_IndexSettingsExists.Add(true);
+                    m_IndexSettingsAssets.Add(defaultDB);
+                    SendIndexEvent(SearchAnalytics.GenericEventType.IndexManagerCreateIndex, newItem);
+                    m_ListViewIndexSettings.UpdateListViewOnAdd();
+                });
+            }
             menu.ShowAsContext();
         }
+
         private void CreateNewIndexSettingFromTemplate(SearchDatabase.Settings template)
         {
             if (template == null)
@@ -937,16 +914,16 @@ namespace Unity.QuickSearch
             var icon = element.Q<VisualElement>("IndexTypeIcon");
             if (m_IndexSettingsExists[index])
             {
-                icon.tooltip = "Index of type " + Enum.GetName(typeof(IndexType), m_IndexSettings[index].type);
+                icon.tooltip = "Index of type " + Enum.GetName(typeof(SearchDatabase.IndexType), m_IndexSettings[index].type);
                 switch (m_IndexSettings[index].type)
                 {
-                    case IndexType.asset:
+                    case SearchDatabase.IndexType.asset:
                         icon.style.backgroundImage = new StyleBackground(Icons.quicksearch);
                         break;
-                    case IndexType.prefab:
+                    case SearchDatabase.IndexType.prefab:
                         icon.style.backgroundImage = new StyleBackground(EditorGUIUtility.IconContent("Prefab Icon").image as Texture2D);
                         break;
-                    case IndexType.scene:
+                    case SearchDatabase.IndexType.scene:
                         icon.style.backgroundImage = new StyleBackground(EditorGUIUtility.IconContent("SceneAsset Icon").image as Texture2D);
                         break;
                 }
@@ -966,7 +943,7 @@ namespace Unity.QuickSearch
                             var settings = m_IndexSettingsAssets[index].settings;
                             var indexImporterType = SearchIndexEntryImporter.GetIndexImporterType(settings.type, settings.options.GetHashCode());
                             AssetDatabaseAPI.RegisterCustomDependency(indexImporterType.GUID.ToString("N"), Hash128.Parse(Guid.NewGuid().ToString("N")));
-                            AssetDatabase.ImportAsset(m_IndexSettingsFilePaths[index]);
+                            SearchDatabase.ImportAsset(m_IndexSettingsFilePaths[index]);
                         });
                         menu.ShowAsContext();
                     }
@@ -996,17 +973,10 @@ namespace Unity.QuickSearch
         {
             if (selectedIndex != m_PreviousSelectedIndex)
             {
-                #if UNITY_2020_1_OR_NEWER
                 if (m_DependenciesListView != null)
                     m_DependenciesListView.onSelectionChange -= PingAsset;
                 if (m_DocumentsListView != null)
                     m_DocumentsListView.onSelectionChange -= PingAsset;
-                #else
-                if (m_DependenciesListView != null)
-                    m_DependenciesListView.onSelectionChanged -= PingAsset;
-                if (m_DocumentsListView != null)
-                    m_DocumentsListView.onSelectionChanged -= PingAsset;
-                #endif
                 m_IndexDetailsElement.Clear();
 
                 if (obj.Any())
@@ -1040,7 +1010,7 @@ namespace Unity.QuickSearch
                     objectField.value = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(path);
                 }
             })
-            { name = "RootButton" });
+                { name = "RootButton" });
             objectField.RegisterValueChangedCallback(e =>
             {
                 var assetPath = AssetDatabase.GetAssetPath(e.newValue);
@@ -1064,6 +1034,7 @@ namespace Unity.QuickSearch
         {
             return new IncludeExcludePathElement(m_ListViewIncludes, this);
         }
+
         private VisualElement MakeExcludeItem()
         {
             return new IncludeExcludePathElement(m_ListViewExcludes, this);
@@ -1073,6 +1044,7 @@ namespace Unity.QuickSearch
         {
             ((IncludeExcludePathElement)element).UpdateValues(selectedItem.includes[index], index);
         }
+
         private void BindExcludeItem(VisualElement element, int index)
         {
             ((IncludeExcludePathElement)element).UpdateValues(selectedItem.excludes[index], index);
@@ -1118,6 +1090,7 @@ namespace Unity.QuickSearch
                 Add(m_SuffixTextField = new TextField() { name = "Suffix", value = "/" });
                 Add(m_ExplorerButton = new Button(ChooseFolder));
             }
+
             private class DraggableTextField : TextField
             {
                 private IncludeExcludePathElement m_Parent;
@@ -1187,6 +1160,7 @@ namespace Unity.QuickSearch
                 m_PathsListView.itemsSource[(int)userData] = m_Path;
                 m_Window.UpdateUnsavedChanges(true);
             }
+
             private void FilePatternChanged()
             {
                 m_PrefixTextField.style.display = DisplayStyle.None;
@@ -1209,6 +1183,7 @@ namespace Unity.QuickSearch
                 }
                 UpdateAndGetPath();
             }
+
             private string UpdateAndGetPath()
             {
                 switch (m_Pattern)
@@ -1225,14 +1200,16 @@ namespace Unity.QuickSearch
                 }
                 return m_Path;
             }
+
             internal void UpdateValues(string path, int index)
             {
                 userData = index;
                 UpdateValues(path);
             }
+
             internal void UpdateValues(string path)
             {
-                m_Pattern = GetFilePattern(path);
+                m_Pattern = ObjectIndexer.GetFilePattern(path);
                 m_EnumField.value = m_Pattern;
                 FilePatternChanged();
                 m_Path = path;
@@ -1284,16 +1261,15 @@ namespace Unity.QuickSearch
             return folderName;
         }
 
-
         class IndexManagerViewModel
         {
             public string name;
-            public IndexType type;
+            public SearchDatabase.IndexType type;
             public int score;
             public List<string> roots;
             public List<string> includes;
             public List<string> excludes;
-            public Options options;
+            public SearchDatabase.Options options;
             public bool hasUnsavedChanges;
 
             public IndexManagerViewModel()
@@ -1302,13 +1278,13 @@ namespace Unity.QuickSearch
                 this.roots = new List<string>();
                 this.includes = new List<string>();
                 this.excludes = new List<string>();
-                this.options = new Options();
+                this.options = new SearchDatabase.Options();
             }
 
             public IndexManagerViewModel(SearchDatabase.Settings searchDatabaseSettings, bool newItem) : this()
             {
                 this.name = !newItem ? searchDatabaseSettings.name : null;
-                type = (IndexType)Enum.Parse(typeof(IndexType), searchDatabaseSettings.type);
+                type = (SearchDatabase.IndexType)Enum.Parse(typeof(SearchDatabase.IndexType), searchDatabaseSettings.type);
                 this.score = searchDatabaseSettings.baseScore;
                 this.roots = new List<string>();
                 if (searchDatabaseSettings.roots != null)
@@ -1334,7 +1310,7 @@ namespace Unity.QuickSearch
                 // it is null at creation, in that case, it is automatically set when importing
                 //searchDatabase.settings.path = path;
 
-                searchDatabase.settings.type = Enum.GetName(typeof(IndexType), type);
+                searchDatabase.settings.type = Enum.GetName(typeof(SearchDatabase.IndexType), type);
                 searchDatabase.settings.baseScore = score;
                 searchDatabase.settings.roots = roots.ToArray();
                 searchDatabase.settings.includes = includes.ToArray();
@@ -1342,9 +1318,9 @@ namespace Unity.QuickSearch
                 SetOptions(searchDatabase.settings.options, this.options);
             }
 
-            private static void SetOptions(Options optionsToModify, Options input)
+            private static void SetOptions(SearchDatabase.Options optionsToModify, SearchDatabase.Options input)
             {
-                foreach (var field in typeof(Options).GetFields())
+                foreach (var field in typeof(SearchDatabase.Options).GetFields())
                 {
                     var value = field.GetValue(input);
                     field.SetValue(optionsToModify, value);
@@ -1376,9 +1352,7 @@ namespace Unity.QuickSearch
             Add(AddRemoveButtons(addButtonAction, removeButtonAction));
 
             ListView.selectionType = SelectionType.Single;
-            #if UNITY_2020_1_OR_NEWER
             ListView.reorderable = isReorderable;
-            #endif
             if (itemsSource.Count > 0)
             {
                 ListView.selectedIndex = 0;
@@ -1387,12 +1361,13 @@ namespace Unity.QuickSearch
             else
                 ListView.style.display = DisplayStyle.None;
             UpdateHeight();
-
         }
+
         internal void UpdateHeight()
         {
             ListView.style.height = ListView.itemsSource.Count * m_ItemHeight + 2 + 4; //+2 for the borders +4 for the margins
         }
+
         private VisualElement AddRemoveButtons(Action add, Action remove)
         {
             var container = new VisualElement() { name = "Footer" };
@@ -1413,6 +1388,7 @@ namespace Unity.QuickSearch
             container.Add(buttonsContainer);
             return container;
         }
+
         internal void UpdateListView()
         {
             UpdateHeight();
@@ -1427,6 +1403,7 @@ namespace Unity.QuickSearch
                 ListView.style.display = DisplayStyle.Flex;
             }
         }
+
         internal void UpdateListViewOnAdd()
         {
             ListView.Refresh();
@@ -1434,6 +1411,7 @@ namespace Unity.QuickSearch
             UpdateListView();
             m_Window.UpdateUnsavedChanges(true);
         }
+
         internal void UpdateListViewOnRemove()
         {
             if (selectedIndex > 0 || itemsSource.Count == 0) // if == 0 and 0 then we need to go to -1
@@ -1441,22 +1419,15 @@ namespace Unity.QuickSearch
             ListView.Refresh();
             UpdateListView();
         }
+
         internal void SetSelection(int index)
         {
-            #if UNITY_2020_1_OR_NEWER
             ListView.SetSelection(index);
-            #else
-            ListView.selectedIndex = index;
-            #endif
         }
 
         internal void SetSelectionWithoutNotify(int index)
         {
-            #if UNITY_2020_1_OR_NEWER
             ListView.SetSelectionWithoutNotify(new int[] { index });
-            #else
-            ListView.selectedIndex = index;
-            #endif
         }
     }
 }

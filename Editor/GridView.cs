@@ -43,8 +43,8 @@ namespace Unity.QuickSearch
             var viewRect = screenRect; viewRect.width = gridWidth; viewRect.height = gridHeight;
             m_ScrollPosition = GUI.BeginScrollView(screenRect, m_ScrollPosition, viewRect);
 
-            Rect gridRect = new Rect(0, screenRect.y + m_ScrollPosition.y, gridWidth, availableHeight);
-            Rect itemRect = new Rect(spaceBetweenTiles, screenRect.y, itemWidth, itemHeight);
+            Rect gridRect = new Rect(screenRect.x, screenRect.y + m_ScrollPosition.y, gridWidth, availableHeight);
+            Rect itemRect = new Rect(screenRect.x + spaceBetweenTiles, screenRect.y + spaceBetweenTiles, itemWidth, itemHeight);
 
             var evt = Event.current;
             int index = 0;
@@ -99,8 +99,8 @@ namespace Unity.QuickSearch
                 }
 
                 itemRect = new Rect(itemRect.x + itemWidth + spaceBetweenTiles, itemRect.y, itemWidth, itemHeight);
-                if (itemRect.xMax > gridWidth)
-                    itemRect = new Rect(spaceBetweenTiles, itemRect.y + itemHeight, itemRect.width, itemRect.height);
+                if (itemRect.xMax > screenRect.x + gridWidth)
+                    itemRect = new Rect(screenRect.x + spaceBetweenTiles, itemRect.y + itemHeight, itemRect.width, itemRect.height);
 
                 ++index;
             }
@@ -134,7 +134,7 @@ namespace Unity.QuickSearch
 
         private void DrawGridItem(int index, SearchItem item, Rect itemRect, bool canHover, ICollection<int> selection, Event evt)
         {
-            var backgroundRect = new Rect(itemRect.x+1, itemRect.y+1, itemRect.width-2, itemRect.height-2);
+            var backgroundRect = new Rect(itemRect.x + 1, itemRect.y + 1, itemRect.width - 2, itemRect.height - 2);
             var itemContent = canHover ? new GUIContent("", item.GetDescription(context, true)) : GUIContent.none;
             if (selection.Contains(index))
                 GUI.Label(backgroundRect, itemContent, Styles.selectedGridItemBackground);
@@ -193,7 +193,7 @@ namespace Unity.QuickSearch
             var itemLabel = item.GetLabel(context);
             if (itemLabel.Length > maxCharLength)
             {
-                maxCharLength = Math.Max(0, maxCharLength-3);
+                maxCharLength = Math.Max(0, maxCharLength - 3);
                 itemLabel = Utils.StripHTML(itemLabel);
                 itemLabel = itemLabel.Substring(0, maxCharLength / 2) + "\u2026" + itemLabel.Substring(itemLabel.Length - maxCharLength / 2);
             }

@@ -55,7 +55,7 @@ namespace Unity.QuickSearch.Providers
         static readonly List<ResourceDescriptor> k_Descriptors = Assembly
             .GetAssembly(typeof(ResourceDescriptor))
             .GetTypes().Where(t => typeof(ResourceDescriptor).IsAssignableFrom(t))
-            .Select(t => t.GetConstructor(new Type[] { })?.Invoke(new object[] { }) as ResourceDescriptor)
+            .Select(t => t.GetConstructor(new Type[] {})?.Invoke(new object[] {}) as ResourceDescriptor)
             .OrderBy(descriptor => descriptor.Priority).Reverse().ToList();
 
         [SearchItemProvider]
@@ -121,10 +121,7 @@ namespace Unity.QuickSearch.Providers
         {
             return new[]
             {
-                new SearchAction(type, "select", null, "Select resource") { handler = (item) => TrackSelection(item) },
-                #if UNITY_2020_1_OR_NEWER
-                new SearchAction(type, "inspect", null, "Open property editor") { handler = item => OpenPropertyEditor(item) }
-                #endif
+                new SearchAction(type, "select", null, "Select resource") { handler = (item) => TrackSelection(item) }
             };
         }
 
@@ -173,7 +170,7 @@ namespace Unity.QuickSearch.Providers
             if (context.selection.Count > 1)
                 Utils.StartDrag(context.selection.Select(i => GetItemObject(i)).ToArray(), item.label);
             else
-                Utils.StartDrag(new [] { GetItemObject(item) }, item.label);
+                Utils.StartDrag(new[] { GetItemObject(item) }, item.label);
         }
 
         private static string FetchDescription(SearchItem item, SearchContext context)
@@ -222,13 +219,5 @@ namespace Unity.QuickSearch.Providers
             var instanceID = Convert.ToInt32(item.id);
             return EditorUtility.InstanceIDToObject(instanceID);
         }
-
-        #if UNITY_2020_1_OR_NEWER
-        private static void OpenPropertyEditor(SearchItem item)
-        {
-            Utils.OpenPropertyEditor(GetItemObject(item));
-        }
-        #endif
     }
 }
-

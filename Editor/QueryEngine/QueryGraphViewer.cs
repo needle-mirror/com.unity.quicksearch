@@ -13,7 +13,7 @@ namespace Unity.QuickSearch
     {
         public IEnumerable<object> Eval(object payload)
         {
-            return new object[] { };
+            return new object[] {};
         }
     }
 
@@ -43,6 +43,7 @@ namespace Unity.QuickSearch
         {
             GetWindow<QueryGraphViewWindow>();
         }
+
         #endif
 
         public virtual void OnEnable()
@@ -264,7 +265,7 @@ namespace Unity.QuickSearch
 
         private void LayoutGraphNodes(QueryGraph graph, Dictionary<IQueryNode, Node> queryNodesToViewNodes)
         {
-            var levelIndexByNode = new Dictionary<IQueryNode, Tuple<int,int>>();
+            var levelIndexByNode = new Dictionary<IQueryNode, Tuple<int, int>>();
             var nodesByLevel = new Dictionary<int, List<IQueryNode>>();
             var nodesToProcess = new Queue<IQueryNode>();
             nodesToProcess.Enqueue(graph.root);

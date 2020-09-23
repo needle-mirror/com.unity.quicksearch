@@ -36,9 +36,9 @@ namespace Unity.QuickSearch
     abstract class QueryTokenizer<TUserData>
     {
         Regex m_FilterRx = new Regex(QueryRegexValues.k_FilterNamePattern +
-                                     QueryRegexValues.k_FilterFunctionPattern +
-                                     QueryRegexValues.k_FilterOperatorsPattern +
-                                     QueryRegexValues.k_FilterValuePattern, RegexOptions.Compiled);
+            QueryRegexValues.k_FilterFunctionPattern +
+            QueryRegexValues.k_FilterOperatorsPattern +
+            QueryRegexValues.k_FilterValuePattern, RegexOptions.Compiled);
 
         static readonly List<string> k_CombiningToken = new List<string>
         {
@@ -51,7 +51,7 @@ namespace Unity.QuickSearch
         protected delegate int TokenMatcher(string text, int startIndex, int endIndex, ICollection<QueryError> errors, out StringView sv, out Match match, out bool matched);
         protected delegate bool TokenConsumer(string text, int startIndex, int endIndex, StringView sv, Match match, ICollection<QueryError> errors, TUserData userData);
 
-        protected List<Tuple<TokenMatcher, TokenConsumer>> m_TokenConsumers;
+        protected List<System.Tuple<TokenMatcher, TokenConsumer>> m_TokenConsumers;
 
         protected QueryTokenizer()
         {
@@ -80,8 +80,10 @@ namespace Unity.QuickSearch
             while (index < endIndex)
             {
                 var matched = false;
-                foreach (var (matcher, consumer) in m_TokenConsumers)
+                foreach (var t in m_TokenConsumers)
                 {
+                    var matcher = t.Item1;
+                    var consumer = t.Item2;
                     var matchLength = matcher(text, index, endIndex, errors, out var sv, out var match, out var consumerMatched);
                     if (!consumerMatched)
                         continue;
@@ -190,7 +192,7 @@ namespace Unity.QuickSearch
             matched = true;
             if (groupStartIndex < 0 || groupStartIndex >= text.Length)
             {
-                errors.Add(new QueryError{index = 0, reason = $"A group should have been found but index was {groupStartIndex}"});
+                errors.Add(new QueryError {index = 0, reason = $"A group should have been found but index was {groupStartIndex}"});
                 return -1;
             }
 
@@ -211,7 +213,7 @@ namespace Unity.QuickSearch
 
             if (parenthesisCounter != 0)
             {
-                errors.Add(new QueryError{index = groupStartIndex, reason = $"Unbalanced parenthesis"});
+                errors.Add(new QueryError {index = groupStartIndex, reason = $"Unbalanced parenthesis"});
                 return -1;
             }
 

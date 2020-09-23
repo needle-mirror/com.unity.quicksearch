@@ -17,6 +17,7 @@ namespace Unity.QuickSearch
         IQueryEnumerable<T> Create<T>(IQueryNode root, QueryEngine<T> engine, ICollection<QueryError> errors);
     }
 
+    [AttributeUsage(AttributeTargets.Class)]
     class EnumerableCreatorAttribute : Attribute
     {
         public QueryNodeType nodeType { get; }

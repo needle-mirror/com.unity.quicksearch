@@ -32,15 +32,16 @@ namespace Unity.QuickSearch.Providers
         {
             return new SearchProvider(type, displayName)
             {
-                filterId = "se:",
+                filterId = "set:",
+                showDetailsOptions = ShowDetailsOptions.ListView,
                 fetchItems = (context, items, provider) =>
                 {
                     if (string.IsNullOrEmpty(context.searchQuery))
                         return null;
 
                     items.AddRange(SettingsPaths.value
-                                    .Where(path => SearchUtils.MatchSearchGroups(context, path, true))
-                                    .Select(path => provider.CreateItem(context, path, null, path, null, null)));
+                        .Where(path => SearchUtils.MatchSearchGroups(context, path, true))
+                        .Select(path => provider.CreateItem(context, path, null, path, null, null)));
                     return null;
                 },
 

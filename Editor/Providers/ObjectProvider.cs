@@ -35,6 +35,7 @@ namespace Unity.QuickSearch.Providers
             {
                 priority = 55,
                 filterId = "o:",
+                isExplicitProvider = true,
                 showDetails = true,
                 showDetailsOptions = ShowDetailsOptions.Inspector | ShowDetailsOptions.Description | ShowDetailsOptions.Actions | ShowDetailsOptions.Preview,
 
@@ -109,7 +110,7 @@ namespace Unity.QuickSearch.Providers
             if (context.selection.Count > 1)
                 Utils.StartDrag(context.selection.Select(i => ToObject(i, typeof(Object))).ToArray(), item.GetLabel(context, true));
             else
-                Utils.StartDrag(new [] { ToObject(item, typeof(Object)) }, item.GetLabel(context, true));
+                Utils.StartDrag(new[] { ToObject(item, typeof(Object)) }, item.GetLabel(context, true));
         }
 
         private static void TrackSelection(SearchItem item)
@@ -126,8 +127,8 @@ namespace Unity.QuickSearch.Providers
 
             var assetPath = AssetDatabase.GUIDToAssetPath(gid.assetGUID.ToString());
             return ToObjectType(GlobalObjectId.GlobalObjectIdentifierToObjectSlow(gid), type) ??
-                   ToObjectType(AssetDatabase.LoadAssetAtPath(assetPath, type), type) ??
-                   ToObjectType(AssetDatabase.LoadMainAssetAtPath(assetPath), type);
+                ToObjectType(AssetDatabase.LoadAssetAtPath(assetPath, type), type) ??
+                ToObjectType(AssetDatabase.LoadMainAssetAtPath(assetPath), type);
         }
 
         private static Object ToObjectType(Object obj, Type type)
@@ -194,7 +195,7 @@ namespace Unity.QuickSearch.Providers
 
         private static void SelectItems(SearchItem[] items)
         {
-            Selection.instanceIDs = items.Select(i => ToObject(i, typeof(Object))).Where(o => o).Select(o=>o.GetInstanceID()).ToArray();
+            Selection.instanceIDs = items.Select(i => ToObject(i, typeof(Object))).Where(o => o).Select(o => o.GetInstanceID()).ToArray();
             if (Selection.instanceIDs.Length == 0)
                 return;
             EditorApplication.delayCall += () =>
@@ -243,12 +244,12 @@ namespace Unity.QuickSearch.Providers
         {
             return new[]
             {
-                new SearchAction(type, "select", null, "Select asset(s)", SelectItems),
-                new SearchAction(type, "open", null, "Open asset", OpenItem)
+                new SearchAction(type, "select", null, "Select", SelectItems),
+                new SearchAction(type, "open", null, "Open", OpenItem)
             };
         }
 
-        [UnityEditor.ShortcutManagement.Shortcut("Help/Quick Search/Objects")]
+        [UnityEditor.ShortcutManagement.Shortcut("Help/Search/Objects")]
         internal static void OpenQuickSearch()
         {
             QuickSearch.OpenWithContextualProvider(type);

@@ -1,17 +1,15 @@
-
 .quick-search-item-background1 {
     -unity-enable-hovering: --enable-style-hovering;
 }
 
 .quick-search-item-background2 {
     -unity-enable-hovering: --enable-style-hovering;
-
-    background-color: --theme-background-color-alternate;
+    background-color: --unity-theme-background-color-80;
 }
 
 .quick-search-item-background1:hover,
 .quick-search-item-background2:hover {
-    background-color: --theme-line-selection-background-color-hover;
+    background-color: --unity-theme-background-color-58;
 }
 
 .quick-search-item-selected-background {
@@ -31,7 +29,7 @@
 .quick-search-selected-item-grid-background {
    -unity-enable-hovering: --enable-style-hovering;
     background-color: --theme-line-selection-background-color-focus;
-	border-radius: 4px;
+    border-radius: --theme-default-border-radius;
 }
 
 .quick-search-action-button {
@@ -42,72 +40,126 @@
     background-color: --theme-toolbar-button-background-color-hover;
 }
 
-.quick-search-debug-toolbar {
-    height: --window-toolbar-height;
-    margin: 0 0 0 0;
-    padding: 0 0 0 1px;
-    border: --theme-toolbar-border;
-    border-top-width: 1px;
-    border-right-width: 0;
-    border-bottom-width: 1px;
-    background-color: --theme-toolbar-background-color;
-}
-
-.quick-search-debug-toolbarbutton {
-    left: -1;
-
-    padding-left: 5px;
-    padding-right: 5px;
-    padding-top: --unity-toolbar-padding-top;
-    padding-bottom: --unity-toolbar-padding-bottom;
-    margin: 0 0 0 0;
-
-    height: --window-toolbar-button-height;
-
-    color: --theme-toolbar-button-text-color;
-    background-color: --theme-toolbar-button-background-color;
-    -unity-content-image-offset-y: --unity-toolbar-button-icon-offset-y;
-    border: --theme-toolbar-button-border-2;
-    border-top-width: 1px;
-    border-right-width: 0;
-    border-bottom-width: 0;
-
-    -unity-enable-hovering: --enable-style-hovering;
-    font-size: --unity-font-size;
-}
-
-.quick-search-debug-toolbarbutton:active,
-.quick-search-debug-toolbarbutton:checked {
-    color: --theme-toolbar-button-text-color-checked;
-    background-color: --theme-toolbar-button-background-color-checked;
-    border: --theme-toolbar-button-border-2;
-    border-top-width: 0;
-    border-bottom-width: 0;
-}
-
-.quick-search-debug-toolbarbutton:hover {
-    color: --theme-toolbar-button-text-color-hover;
-    background-color: --theme-toolbar-button-background-color-hover;
-}
-
 .quick-search-status-bar-background {
     background-color: --theme-header-box-background-color;
+    height: --unity-metrics-toolbar-height;
+    border: 0px solid --unity-theme-border-color-7;
+    border-top-width: 1;
+}
+
+.quick-search-auto-complete-background {
+    background-color: --unity-theme-background-color-54;
+    border: 1px solid #000000;
+    border-radius: 6px;
+    border-top-left-radius: 0;
+    border-top-right-radius: 0;
 }
 
 .quick-search-auto-complete-item-label {
     -unity-enable-hovering: --enable-style-hovering;
-    background-color: #252526;
+    background-color: --unity-theme-background-color-54;
 }
 
 .quick-search-auto-complete-item-selected-label {
     -unity-enable-hovering: --enable-style-hovering;
-    background-color: #2C5D87;
+    background-color: --unity-theme-background-color-50;
 }
 
 .quick-search-auto-complete-item-label:hover {
-    background-color: #454545;
+    background-color: --theme-header-bar-background-color-hover;
 }
 
 .quick-search-auto-complete-item-selected-label:hover {
-    background-color: #3C6D97;
+    background-color: --unity-theme-background-color-16;
+}
+
+.quick-search-search-field {
+    background-color: --unity-theme-background-color-53;
+    border: 1px solid --unity-theme-border-color-1;
+    border-radius: --theme-default-border-radius;
+}
+
+.quick-search-result-view {
+    background-color: --theme-view-background-color-lighter;
+}
+
+.quick-search-panel-background,
+.quick-search-panel-background-left,
+.quick-search-panel-background-right {
+    padding: 1px 1px;
+    background-color: --unity-theme-background-color-17;
+    border: 1px solid --unity-theme-border-color-7;
+    bottom: 1px;
+}
+
+.quick-search-panel-background {
+    border-left-width: 0;
+    border-right-width: 0;
+}
+
+.quick-search-panel-background-left {
+    border-left-width: 0;
+}
+
+.quick-search-panel-background-right {
+    border-right-width: 0;
+}
+
+.quick-search-tab-background {
+    background-color: --theme-header-bar-background-color;
+    border: --theme-header-bar-border;
+    border-top-width: 1px;
+    border-bottom-width: 1px;
+}
+
+.quick-search-tab {
+    -unity-enable-hovering: --enable-style-hovering;
+    -unity-text-align: middle-center;
+    -unity-clipping: clip;
+    height: 30px;
+    padding: 0px 0px 2px 0px;
+    color: --unity-theme-text-color-3;
+    border: 0px solid red;
+    font-size: --unity-font-size-big;
+}
+
+.quick-search-tab:hover {
+    border: 0px solid --unity-theme-border-color-23;
+    border-bottom-width: 2px;
+}
+
+.quick-search-tab:active {
+    -unity-font: --unity-font-bold;
+    color: --unity-theme-text-color-7;
+    border: 0px solid #0E81C1;
+    border-bottom-width: 2px;
+}
+
+.quick-search-panel-header {
+    color: --theme-label-text-color;
+    margin: 7px 10px;
+    font-size: --unity-font-size-big;
+    -unity-word-wrap: true;
+}
+
+.quick-search-saved-search-item, .quick-search-saved-search-item-selected {
+    -unity-enable-hovering: --enable-style-hovering;
+    color: --unity-text-color;
+    margin: 0 1px 0 0;
+    padding: 1px 2px 1px 20px;
+    font-size: --unity-font-size;
+    height: --window-toolbar-button-height;
+    -unity-text-align: middle-left;
+}
+
+.quick-search-saved-search-item-selected {
+    background-color: --unity-theme-background-color-50;
+}
+
+.quick-search-saved-search-item:hover {
+    background-color: --theme-header-bar-background-color-hover;
+}
+
+.quick-search-saved-search-item-selected:hover {
+    background-color: --unity-theme-background-color-16;
 }

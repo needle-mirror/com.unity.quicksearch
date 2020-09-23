@@ -1,7 +1,3 @@
-#if UNITY_2020_1_OR_NEWER && PACKAGE_PERFORMANCE_TRACKING
-#define USE_DEBUG_PERFORMANCE_TRACKER
-#endif
-
 using System;
 using System.Diagnostics;
 using UnityEngine;

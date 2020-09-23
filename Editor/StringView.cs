@@ -46,12 +46,12 @@ namespace Unity.QuickSearch
             return other is string s && Equals(s);
         }
 
-        public static bool operator ==(StringView lhs, string rhs)
+        public static bool operator==(StringView lhs, string rhs)
         {
             return lhs.Equals(rhs);
         }
 
-        public static bool operator !=(StringView lhs, string rhs)
+        public static bool operator!=(StringView lhs, string rhs)
         {
             return !lhs.Equals(rhs);
         }
@@ -72,6 +72,7 @@ namespace Unity.QuickSearch
 
     static class StringExtensions
     {
+        static readonly char[] k_OneLetterWords = new char[] { ':', '-', '!' };
         static readonly char[] k_WordSplitters = new char[] { '(', ')', '{', '}', '[', ']', ':', '-' };
 
         public static StringView GetStringView(this string baseString, int startIndex, int endIndex)
@@ -90,6 +91,9 @@ namespace Unity.QuickSearch
                 throw new ArgumentException("Index out of string range", nameof(startIndex));
 
             var i = startIndex;
+            if (Array.IndexOf(k_OneLetterWords, baseString[i]) != -1)
+                return new StringView(baseString, startIndex, i + 1);
+
             var lod = char.IsLetterOrDigit(baseString[i++]);
             while (i < baseString.Length)
             {

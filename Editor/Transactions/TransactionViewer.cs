@@ -22,7 +22,7 @@ namespace Unity.QuickSearch
 
         // Add menu named "My Window" to the Window menu
         #if USE_TRANSACTION_VIEWER
-        [MenuItem("Window/Quick Search/Transaction Viewer")]
+        [MenuItem("Window/Search/Transaction Viewer")]
         #endif
         static void Init()
         {

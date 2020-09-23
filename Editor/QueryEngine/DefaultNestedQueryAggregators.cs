@@ -1,4 +1,3 @@
-
 using System.Collections.Generic;
 using System.Linq;
 
@@ -9,7 +8,7 @@ namespace Unity.QuickSearch
         public static IEnumerable<T> Aggregate(IEnumerable<T> enumerable)
         {
             var empty = !enumerable.Any();
-            return empty ? new T[] {} : new T[]{enumerable.Max()};
+            return empty ? new T[] {} : new T[] {enumerable.Max()};
         }
     }
 
@@ -18,7 +17,7 @@ namespace Unity.QuickSearch
         public static IEnumerable<T> Aggregate(IEnumerable<T> enumerable)
         {
             var empty = !enumerable.Any();
-            return empty ? new T[] {} : new T[]{enumerable.Min()};
+            return empty ? new T[] {} : new T[] {enumerable.Min()};
         }
     }
 
@@ -27,7 +26,7 @@ namespace Unity.QuickSearch
         public static IEnumerable<T> Aggregate(IEnumerable<T> enumerable)
         {
             var empty = !enumerable.Any();
-            return empty ? new T[] {} : new T[]{enumerable.First()};
+            return empty ? new T[] {} : new T[] {enumerable.First()};
         }
     }
 
@@ -36,7 +35,7 @@ namespace Unity.QuickSearch
         public static IEnumerable<T> Aggregate(IEnumerable<T> enumerable)
         {
             var empty = !enumerable.Any();
-            return empty ? new T[] {} : new T[]{enumerable.Last()};
+            return empty ? new T[] {} : new T[] {enumerable.Last()};
         }
     }
 }

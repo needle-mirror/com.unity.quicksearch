@@ -1,7 +1,5 @@
-﻿#if UNITY_2020_1_OR_NEWER
-#define USE_ASSET_STORE_PROVIDER
-#endif
-// #define QUICKSEARCH_DEBUG
+﻿// #define QUICKSEARCH_DEBUG
+
 using System.Collections.Generic;
 using UnityEngine;
 using System;
@@ -11,8 +9,7 @@ using System.Linq;
 using System.Reflection;
 using UnityEditor;
 using Debug = UnityEngine.Debug;
-
-#if USE_ASSET_STORE_PROVIDER
+using UnityEditor.Connect;
 
 namespace Unity.QuickSearch.Providers
 {
@@ -113,7 +110,6 @@ namespace Unity.QuickSearch.Providers
             // public string scopes;
             // public string client_id;
             // public string ip_address;
-
         }
 
         [Serializable]
@@ -200,7 +196,6 @@ namespace Unity.QuickSearch.Providers
             // public string slug;
             public PurchaseDetailMainImage mainImage;
             public ImageDesc[] images;
-
         }
         #pragma warning restore CS0649
 
@@ -238,10 +233,10 @@ namespace Unity.QuickSearch.Providers
 
         private const string kSearchEndPoint = "https://assetstore.unity.com/api/search";
         private const string kProductDetailsEndPoint = "https://api.unity.com/v1/products/list";
-        private static Dictionary<string, PreviewData> s_Previews = new Dictionary<string, PreviewData>();
+        private static readonly Dictionary<string, PreviewData> s_Previews = new Dictionary<string, PreviewData>();
         private static bool s_RequestCheckPurchases;
         private static bool s_StartPurchaseRequest;
-        private static List<PurchaseInfo> s_Purchases = new List<PurchaseInfo>();
+        private static readonly List<PurchaseInfo> s_Purchases = new List<PurchaseInfo>();
         internal static HashSet<string> purchasePackageIds;
         private static string s_PackagesKey;
         private static string s_AuthCode;
@@ -370,7 +365,7 @@ namespace Unity.QuickSearch.Providers
         static SearchItem CreateItem(SearchContext context, SearchProvider provider, AssetDocument doc, int score)
         {
             var priceStr = "";
-            if (purchasePackageIds!= null && purchasePackageIds.Contains(doc.id))
+            if (purchasePackageIds != null && purchasePackageIds.Contains(doc.id))
             {
                 priceStr = "Owned";
             }
@@ -471,12 +466,8 @@ namespace Unity.QuickSearch.Providers
         {
             return new SearchProvider(k_ProviderId, "Asset Store")
             {
-                #if UNITY_2020_1_OR_NEWER
                 active = true,
                 isExplicitProvider = true,
-                #else
-                active = false,
-                #endif
                 filterId = "store:",
                 onEnable = OnEnable,
                 showDetails = true,
@@ -493,14 +484,14 @@ namespace Unity.QuickSearch.Providers
                         if (doc.productDetail == null)
                         {
                             var productId = Convert.ToInt32(doc.id);
-                            RequestProductDetailsInfo(new [] { productId }, (detail, error) =>
+                            RequestProductDetailsInfo(new[] { productId }, (detail, error) =>
                             {
                                 if (error != null || detail.results.Length == 0)
                                 {
                                     return;
                                 }
                                 doc.productDetail = detail.results[0];
-                                doc.images = new [] {doc.productDetail.mainImage.big}.Concat(
+                                doc.images = new[] {doc.productDetail.mainImage.big}.Concat(
                                     doc.productDetail.images.Where(img => img.type == "screenshot").Select(imgDesc => imgDesc.imageUrl)).ToArray();
                             });
                             return null;
@@ -935,16 +926,17 @@ namespace Unity.QuickSearch.Providers
                 }
             };
         }
+
         #endregion
 
-        [MenuItem("Help/Search Asset Store", priority = 270)]
+        [MenuItem("Window/Search/Asset Store", priority = 1270)]
         internal static void SearchAssetStoreMenu()
         {
             SearchAnalytics.SendEvent(null, SearchAnalytics.GenericEventType.QuickSearchOpen, "SearchAssetStore");
             var storeContext = SearchService.CreateContext(SearchService.GetProvider(k_ProviderId));
-            var qs = QuickSearch.Create(storeContext, topic: "asset store", saveFilters: false, multiselect: false);
+            var qs = QuickSearch.Create(storeContext, topic: "asset store", SearchFlags.HidePanels);
             qs.itemIconSize = 128;
-            qs.SetSearchText(String.Empty);
+            qs.SetSearchText(string.Empty);
             qs.ShowWindow();
         }
 
@@ -1004,7 +996,7 @@ namespace Unity.QuickSearch.Providers
         [MenuItem("Tools/GetDetailsInfo")]
         static void GetDetailsInfo()
         {
-            RequestProductDetailsInfo(new []{ 116455 }, (detail, err) =>
+            RequestProductDetailsInfo(new[] { 116455 }, (detail, err) =>
             {
                 Debug.Log($"GetDetailsInfo: nb images {detail.results[0].images.Length} {detail.results[0].images[0].imageUrl}");
             });
@@ -1024,16 +1016,14 @@ namespace Unity.QuickSearch.Providers
                 startRequest.Stop();
                 var sb = new StringBuilder();
                 sb.AppendLine($"Purchases: {purchaseList.Count} in {startRequest.ElapsedMilliseconds}ms");
-                foreach(var info in purchaseList)
+                foreach (var info in purchaseList)
                 {
                     sb.AppendLine(info.packageId.ToString());
                 }
                 Debug.Log(sb.ToString());
-
             });
         }
+
         #endif
     }
 }
-
-#endif

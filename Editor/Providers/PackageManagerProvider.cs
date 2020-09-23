@@ -110,7 +110,6 @@ namespace Unity.QuickSearch.Providers
         {
             return new[]
             {
-                #if UNITY_2020_1_OR_NEWER
                 new SearchAction(type, "open", null, "Open in Package Manager")
                 {
                     handler = (item) =>
@@ -119,15 +118,14 @@ namespace Unity.QuickSearch.Providers
                         UnityEditor.PackageManager.UI.Window.Open(packageInfo.name);
                     }
                 },
-                #endif
                 new SearchAction(type, "install", null, "Install")
                 {
                     handler = (item) =>
                     {
                         var packageInfo = (UnityEditor.PackageManager.PackageInfo)item.data;
                         if (EditorUtility.DisplayDialog("About to install package " + item.id,
-                                                        "Are you sure you want to install the following package?\r\n\r\n" +
-                                                        FormatName(packageInfo), "Install...", "Cancel"))
+                            "Are you sure you want to install the following package?\r\n\r\n" +
+                            FormatName(packageInfo), "Install...", "Cancel"))
                         {
                             WaitForRequest(UnityEditor.PackageManager.Client.Add(item.id), $"Installing {item.id}...", 25);
                         }

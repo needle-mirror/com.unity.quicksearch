@@ -52,12 +52,12 @@ namespace Unity.QuickSearch
             return obj is BinarySearchRange other && Equals(other);
         }
 
-        public static bool operator ==(BinarySearchRange lhs, BinarySearchRange rhs)
+        public static bool operator==(BinarySearchRange lhs, BinarySearchRange rhs)
         {
             return lhs.Equals(rhs);
         }
 
-        public static bool operator !=(BinarySearchRange lhs, BinarySearchRange rhs)
+        public static bool operator!=(BinarySearchRange lhs, BinarySearchRange rhs)
         {
             return !lhs.Equals(rhs);
         }
@@ -251,8 +251,8 @@ namespace Unity.QuickSearch
         Task m_CurrentTask;
 
         public TransactionWriter(string fileName, int headerSize)
-        : base(fileName, headerSize)
-        { }
+            : base(fileName, headerSize)
+        {}
 
         public override bool Open()
         {

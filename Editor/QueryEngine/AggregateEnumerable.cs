@@ -16,7 +16,7 @@ namespace Unity.QuickSearch
         }
 
         public void SetPayload(IEnumerable<T> payload)
-        { }
+        {}
 
         public IEnumerator<T> GetEnumerator()
         {

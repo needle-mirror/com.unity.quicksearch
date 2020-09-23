@@ -8,6 +8,13 @@ using UnityEditor.Callbacks;
 
 namespace Unity.QuickSearch
 {
+    enum SearchQuerySortOrder
+    {
+        RecentlyUsed,
+        AToZ,
+        ZToA
+    }
+
     /// <summary>
     /// Asset storing a query that will be executable by a SearchEngine.
     /// </summary>
@@ -15,10 +22,25 @@ namespace Unity.QuickSearch
     class SearchQuery : ScriptableObject
     {
         static List<SearchQuery> s_SavedQueries;
+        internal static IEnumerable<SearchQuery> savedQueries
+        {
+            get
+            {
+                if (s_SavedQueries == null || s_SavedQueries.Any(qs => !qs))
+                {
+                    s_SavedQueries = AssetDatabase.FindAssets($"t:{nameof(SearchQuery)}").Select(AssetDatabase.GUIDToAssetPath)
+                        .Select(path => AssetDatabase.LoadAssetAtPath<SearchQuery>(path))
+                        .Where(asset => asset != null).ToList();
+                    SortQueries();
+                }
+
+                return s_SavedQueries;
+            }
+        }
 
         public static SearchQuery Create(SearchContext context, string description = null, Texture2D icon = null)
         {
-            return Create(context.searchText, context.providers.Select(p => p.name.id), description, icon);
+            return Create(context.searchText, context.providers.Select(p => p.id), description, icon);
         }
 
         public static SearchQuery Create(string searchQuery, IEnumerable<string> providerIds, string description = null, Texture2D icon = null)
@@ -33,15 +55,15 @@ namespace Unity.QuickSearch
 
         public static SearchQuery Create(string searchQuery, IEnumerable<SearchProvider> providers, string description = null, Texture2D icon = null)
         {
-            return Create(searchQuery, providers.Select(p => p.name.id), description, icon);
+            return Create(searchQuery, providers.Select(p => p.id), description, icon);
         }
 
-        public static void SaveQueryInDefaultFolder(SearchQuery asset)
+        public static string GetQueryName(string query)
         {
-            SaveQuery(asset, SearchSettings.queryFolder);
+            return RemoveInvalidChars(query.Replace(":", "_").Replace(" ", "_"));
         }
 
-        public static string RemoveInvalidChars(string filename)
+        private static string RemoveInvalidChars(string filename)
         {
             filename = string.Concat(filename.Split(Path.GetInvalidFileNameChars()));
             if (filename.Length > 0 && !char.IsLetterOrDigit(filename[0]))
@@ -58,7 +80,7 @@ namespace Unity.QuickSearch
 
             if (name == null)
             {
-                name = RemoveInvalidChars(asset.searchQuery.Replace(":", "_").Replace(" ", "_"));
+                name = GetQueryName(asset.searchQuery);
             }
 
             name += ".asset";
@@ -67,25 +89,44 @@ namespace Unity.QuickSearch
             AssetDatabase.ImportAsset(fullPath);
         }
 
-        public static List<SearchQuery> GetAllQueries()
+        public static IEnumerable<SearchItem> GetAllSearchQueryItems(SearchContext context)
         {
-            return AssetDatabase.FindAssets($"t:{nameof(SearchQuery)}").Select(AssetDatabase.GUIDToAssetPath)
-                .Select(path => AssetDatabase.LoadAssetAtPath<SearchQuery>(path))
-                .Where(asset => asset != null)
-                .OrderBy(asset => asset.name).ToList();
-        }
-
-        public static List<SearchItem> GetAllSearchQueryItems(SearchContext context)
-        {
-            s_SavedQueries = s_SavedQueries ?? GetAllQueries();
             var queryProvider = SearchService.GetProvider(Providers.Query.type);
-            return s_SavedQueries.Where(query => query && query.providerIds.Any(id => context.filters.Any(f => f.enabled && f.provider.name.id == id))).Select(query =>
+            return savedQueries.Where(query => query && query.providerIds.Any(id => context.filters.Any(f => f.enabled && f.provider.id == id))).Select(query =>
             {
                 var id = GlobalObjectId.GetGlobalObjectIdSlow(query).ToString();
-                var description = string.IsNullOrEmpty(query.description) ? $"{query.searchQuery} - {AssetDatabase.GetAssetPath(query)}" : query.description;
+                var description = string.IsNullOrEmpty(query.description) ? $"{query.searchQuery}" : $"{query.description} ({query.searchQuery})";
                 var thumbnail = query.icon ? query.icon : Icons.favorite;
                 return queryProvider.CreateItem(context, id, query.name, description, thumbnail, query);
-            }).ToList();
+            }).OrderBy(item => item.label);
+        }
+
+        public static void SortQueries()
+        {
+            switch (SearchSettings.savedSearchesSortOrder)
+            {
+                case SearchQuerySortOrder.RecentlyUsed:
+                {
+                    var now = DateTime.Now.Ticks;
+                    s_SavedQueries = savedQueries.OrderByDescending(asset =>
+                    {
+                        var recentSearchIndex = SearchSettings.recentSearches.IndexOf(asset.searchQuery);
+                        if (recentSearchIndex != -1)
+                        {
+                            return now + SearchSettings.recentSearches.Count - recentSearchIndex;
+                        }
+
+                        return asset.creationTime;
+                    }).ToList();
+                }
+                break;
+                case SearchQuerySortOrder.AToZ:
+                    s_SavedQueries = savedQueries.OrderBy(asset => asset.name).ToList();
+                    break;
+                case SearchQuerySortOrder.ZToA:
+                    s_SavedQueries = savedQueries.OrderByDescending(asset => asset.name).ToList();
+                    break;
+            }
         }
 
         public static void ResetSearchQueryItems()
@@ -98,7 +139,11 @@ namespace Unity.QuickSearch
         {
             var query = EditorUtility.InstanceIDToObject(instanceID) as SearchQuery;
             if (query != null)
-                return QuickSearch.OpenWithContextualProvider(query.searchQuery, false, query.providerIds.ToArray()) != null;
+            {
+                var searchWindow = QuickSearch.OpenWithContextualProvider(null, query.providerIds.ToArray(), SearchFlags.OpenContextual);
+                ExecuteQuery(searchWindow, query, SearchAnalytics.GenericEventType.SearchQueryOpen);
+                return searchWindow != null;
+            }
 
             return false;
         }
@@ -108,16 +153,27 @@ namespace Unity.QuickSearch
             if (view is QuickSearch qs)
             {
                 qs.SendEvent(sourceEvt, query.searchQuery);
+                qs.ExecuteSearchQuery(query);
             }
-            
-            view.context.SetFilteredProviders(query.providerIds);
-            view.SetSearchText(query.searchQuery);
         }
 
+        private long m_CreationTime;
+        public long creationTime
+        {
+            get
+            {
+                if (m_CreationTime == 0)
+                {
+                    var path = AssetDatabase.GetAssetPath(this);
+                    var fileInfo = new FileInfo(path);
+                    m_CreationTime = fileInfo.CreationTime.Ticks;
+                }
+                return m_CreationTime;
+            }
+        }
         public string description;
         public Texture2D icon;
         public string searchQuery;
         public List<string> providerIds;
     }
 }
-

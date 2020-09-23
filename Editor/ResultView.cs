@@ -11,56 +11,18 @@ namespace Unity.QuickSearch
     /// </summary>
     interface IResultView
     {
-        /// <summary>Items to be displayed.</summary>
         ISearchList items { get; }
-
-        /// <summary>Item size in pixels.</summary>
         float itemSize { get; }
-
-        /// <summary>Scroll position of the content area of the view.</summary>
         Vector2 scrollPosition { get; }
-
-        /// <summary>Search view that contains the text area where a query is entered.</summary>
         ISearchView searchView { get; }
-
-        /// <summary>Rect of the result view.</summary>
         Rect rect { get; }
 
-        /// <summary>
-        /// Indicates if the result view should focus the selected index.
-        /// </summary>
         bool focusSelectedItem { get; set; }
-
-        /// <summary>
-        /// Indicates if a scrollbar is displayed
-        /// </summary>
         bool scrollbarVisible { get; }
 
-        /// <summary>
-        /// Draw the items in a specified rect area specifying which items are selected.
-        /// </summary>
-        /// <param name="rect">Rect of the drawing area.</param>
-        /// <param name="selection">Indexes of items to draw as selected</param>
         void Draw(Rect rect, ICollection<int> selection);
-
-        /// <summary>
-        /// Draw the items specifying which items are selected.
-        /// </summary>
-        /// <param name="selection"></param>
-        /// <param name="sliderPos"></param>
-        /// <param name="focusSelectedItem"></param>
-        void Draw(ICollection<int> selection, float sliderPos);
-
-        /// <summary>
-        ///  Get how many items can be shown in the display area depending on the <see cref="IResultView.itemSize"/>
-        /// </summary>
-        /// <returns>Returns the number of visible items.</returns>
+        void Draw(ICollection<int> selection, float viewWidth);
         int GetDisplayItemCount();
-
-        /// <summary>
-        /// Handle user input events.
-        /// </summary>
-        /// <param name="evt"></param>
         void HandleInputEvent(Event evt, List<int> selection);
     }
 
@@ -93,9 +55,9 @@ namespace Unity.QuickSearch
         public abstract int GetDisplayItemCount();
         public abstract void Draw(Rect rect, ICollection<int> selection);
 
-        public void Draw(ICollection<int> selection, float sliderPos)
+        public void Draw(ICollection<int> selection, float viewWidth)
         {
-            GUILayout.Box(String.Empty, GUIStyle.none, GUILayout.ExpandHeight(true), GUILayout.Width(sliderPos-2f));
+            GUILayout.Box(string.Empty, Styles.resultview, GUILayout.ExpandHeight(true), GUILayout.Width(viewWidth));
             if (Event.current.type == EventType.Repaint)
                 m_DrawItemsRect = GUILayoutUtility.GetLastRect();
 
@@ -151,7 +113,7 @@ namespace Unity.QuickSearch
                             {
                                 var r = 0;
                                 var range = new int[clickedItemIndex - max];
-                                for (int i = max+1; i <= clickedItemIndex; ++i)
+                                for (int i = max + 1; i <= clickedItemIndex; ++i)
                                     range[r++] = i;
                                 searchView.AddSelection(range);
                             }
@@ -170,7 +132,7 @@ namespace Unity.QuickSearch
                             {
                                 var r = 0;
                                 var range = new int[min - clickedItemIndex];
-                                for (int i = min-1; i >= clickedItemIndex; --i)
+                                for (int i = min - 1; i >= clickedItemIndex; --i)
                                     range[r++] = i;
                                 searchView.AddSelection(range);
                             }
@@ -195,7 +157,7 @@ namespace Unity.QuickSearch
                     {
                         var item = items.ElementAt(clickedItemIndex);
                         if (item.provider.actions.Count > 0)
-                            searchView.ExecuteAction(item.provider.actions[0], new []{item});
+                            searchView.ExecuteAction(item.provider.actions[0], new[] {item}, !SearchSettings.keepOpen);
                         GUIUtility.ExitGUI();
                     }
                     SearchField.Focus();
@@ -230,16 +192,12 @@ namespace Unity.QuickSearch
                 {
                     if (searchView is QuickSearch search)
                     {
-                        search.SendEvent(SearchAnalytics.GenericEventType.QuickSearchDragItem, item.provider.name.id);
+                        search.SendEvent(SearchAnalytics.GenericEventType.QuickSearchDragItem, item.provider.id);
                     }
                     item.provider.startDrag(item, searchView.context);
                     m_PrepareDrag = false;
 
                     Event.current.Use();
-                    #if UNITY_EDITOR_OSX
-                    searchView.Close();
-                    GUIUtility.ExitGUI();
-                    #endif
                 }
             }
         }
@@ -334,7 +292,7 @@ namespace Unity.QuickSearch
                         if (action != null)
                         {
                             evt.Use();
-                            searchView.ExecuteAction(action, searchView.selection.ToArray());
+                            searchView.ExecuteAction(action, searchView.selection.ToArray(), !SearchSettings.keepOpen);
                             GUIUtility.ExitGUI();
                         }
                     }

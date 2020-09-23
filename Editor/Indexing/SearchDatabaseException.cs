@@ -2,7 +2,7 @@ using System;
 
 namespace Unity.QuickSearch
 {
-    public class SearchDatabaseException : Exception
+    class SearchDatabaseException : Exception
     {
         public readonly string guid;
 

@@ -16,7 +16,7 @@ namespace Unity.QuickSearch
         public int Count => m_ItemsEnumerator.Count;
 
         public StackedEnumerator()
-        { }
+        {}
 
         public StackedEnumerator(object itemEnumerator)
         {
@@ -117,10 +117,10 @@ namespace Unity.QuickSearch
 
     internal class StackedEnumerator : StackedEnumerator<object>
     {
-        public StackedEnumerator() { }
+        public StackedEnumerator() {}
 
         public StackedEnumerator(object itemEnumerator)
             : base(itemEnumerator)
-        { }
+        {}
     }
 }

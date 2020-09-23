@@ -23,7 +23,7 @@ namespace Unity.QuickSearch
 
         public SearchApiSession(SearchProvider provider)
         {
-            context = new SearchContext(new []{ provider });
+            context = new SearchContext(new[] { provider });
         }
 
         ~SearchApiSession()
@@ -58,7 +58,6 @@ namespace Unity.QuickSearch
                 context?.Dispose();
                 m_Disposed = true;
                 context = null;
-
             }
         }
 
@@ -85,7 +84,7 @@ namespace Unity.QuickSearch
             if (searchSessions.ContainsKey(context.guid))
                 return;
 
-            var provider = SearchService.Providers.First(p => p.name.id == providerId);
+            var provider = SearchService.Providers.First(p => p.id == providerId);
             searchSessions.Add(context.guid, new SearchApiSession(provider));
         }
 
@@ -142,7 +141,7 @@ namespace Unity.QuickSearch
         public virtual IEnumerable<string> Search(ISearchContext context, string query, Action<IEnumerable<string>> asyncItemsReceived)
         {
             if (!searchSessions.ContainsKey(context.guid))
-                return new string[] { };
+                return new string[] {};
 
             var searchSession = searchSessions[context.guid];
 
@@ -246,10 +245,12 @@ namespace Unity.QuickSearch
         {
             var selectContext = (ObjectSelectorSearchContext)context;
 
-            Func<ObjectSelectorTargetInfo, bool> selectorConstraintHandler = item => selectContext.selectorConstraint(item, selectContext.editedObjects, selectContext);
-            qsWindow = QuickSearch.ShowObjectPicker(selectHandler, trackingHandler, selectorConstraintHandler,
+            var viewFlags = SearchFlags.OpenPicker;
+            if (Utils.IsRunningTests())
+                viewFlags |= SearchFlags.Dockable;
+            qsWindow = QuickSearch.ShowObjectPicker(selectHandler, trackingHandler,
                 selectContext.currentObject?.name ?? "",
-                selectContext.requiredTypeNames.First(), selectContext.requiredTypes.First(), dockable: Utils.IsRunningTests());
+                selectContext.requiredTypeNames.First(), selectContext.requiredTypes.First(), flags: viewFlags);
 
             return qsWindow != null;
         }

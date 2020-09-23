@@ -77,7 +77,7 @@ namespace Unity.QuickSearch
 
         static AssetPostprocessorIndexer()
         {
-            if (AssetDatabaseAPI.IsAssetImportWorkerProcess())
+            if (!IsMainProcess())
                 return;
 
             transactionManager = new TransactionManager(k_TransactionDatabasePath);
@@ -92,9 +92,17 @@ namespace Unity.QuickSearch
             transactionManager?.Shutdown();
         }
 
-        public static void Enable()
+        public static bool IsMainProcess()
         {
             if (AssetDatabaseAPI.IsAssetImportWorkerProcess())
+                return false;
+
+            return true;
+        }
+
+        public static void Enable()
+        {
+            if (!IsMainProcess())
                 return;
             s_Enabled = true;
         }
@@ -147,7 +155,7 @@ namespace Unity.QuickSearch
             RaiseContentRefreshed(imported, deleted.Concat(movedFrom).Distinct().ToArray(), movedTo);
         }
 
-        private static void RaiseContentRefreshed(IEnumerable<string> updated, IEnumerable<string> removed, IEnumerable<string> moved)
+        internal static void RaiseContentRefreshed(IEnumerable<string> updated, IEnumerable<string> removed, IEnumerable<string> moved)
         {
             if (transactionManager != null && transactionManager.Initialized)
             {

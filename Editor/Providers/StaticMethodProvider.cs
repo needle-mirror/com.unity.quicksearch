@@ -1,8 +1,9 @@
-//#define QUICKSEARCH_DEBUG
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
+using System.Text.RegularExpressions;
 using UnityEditor;
 using UnityEngine;
 
@@ -23,29 +24,30 @@ namespace Unity.QuickSearch.Providers
                 priority = 85,
                 filterId = "#",
                 isExplicitProvider = true,
-                fetchItems = (context, items, provider) =>
-                {
-                    if (!context.searchText.StartsWith(provider.filterId))
-                        return null;
-
-                    // Cache all available static APIs
-                    if (methods == null)
-                        methods = FetchStaticAPIMethodInfo();
-
-                    foreach (var m in methods)
-                    {
-                        if (!SearchUtils.MatchSearchGroups(context, m.Name))
-                            continue;
-
-                        var visibilityString = !m.IsPublic ? "<i>Internal</i> - " : String.Empty;
-                        items.Add(provider.CreateItem(context, m.Name, m.IsPublic ? 0 : 1, m.Name, $"{visibilityString}{m.DeclaringType} - {m}" , null, m));
-                    }
-
-                    return null;
-                },
-
+                fetchItems = (context, items, provider) => FetchItems(context, provider),
                 fetchThumbnail = (item, context) => Icons.shortcut
             };
+        }
+
+        private static IEnumerable<SearchItem> FetchItems(SearchContext context, SearchProvider provider)
+        {
+            // Cache all available static APIs
+            if (methods == null)
+                methods = FetchStaticAPIMethodInfo();
+
+            var lowerCasePattern = context.searchQuery.ToLowerInvariant();
+            var matches = new List<int>();
+            foreach (var m in methods)
+            {
+                long score = 0;
+                if (FuzzySearch.FuzzyMatch(lowerCasePattern, m.Name.ToLowerInvariant(), ref score, matches))
+                {
+                    var visibilityString = !m.IsPublic ? "<i>Internal</i> - " : string.Empty;
+                    yield return provider.CreateItem(context, m.Name, m.IsPublic ? ~(int)score - 999 : ~(int)score, m.Name, $"{visibilityString}{m.DeclaringType} - {m}", null, m);
+                }
+                else
+                    yield return null;
+            }
         }
 
         private static MethodInfo[] FetchStaticAPIMethodInfo()
@@ -87,8 +89,7 @@ namespace Unity.QuickSearch.Providers
                         var result = m.Invoke(null, null);
                         if (result == null)
                             return;
-                        var list = result as IEnumerable;
-                        if (result is string || list == null)
+                        if (result is string || !(result is IEnumerable list))
                         {
                             LogResult(result);
                             EditorGUIUtility.systemCopyBuffer = result.ToString();

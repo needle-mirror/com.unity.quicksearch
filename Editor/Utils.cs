@@ -12,10 +12,7 @@ using UnityEditor;
 using UnityEngine;
 using Debug = UnityEngine.Debug;
 using UnityEditorInternal;
-
-#if UNITY_2020_1_OR_NEWER
 using UnityEngine.UIElements;
-#endif
 
 [assembly: InternalsVisibleTo("com.unity.quicksearch.tests")]
 
@@ -114,7 +111,7 @@ namespace Unity.QuickSearch
 
         private static Type[] GetAllEditorWindowTypes()
         {
-            return GetAllDerivedTypes(AppDomain.CurrentDomain, typeof(EditorWindow));
+            return TypeCache.GetTypesDerivedFrom<EditorWindow>().ToArray();
         }
 
         /// <summary>
@@ -171,6 +168,11 @@ namespace Unity.QuickSearch
 
         public static Texture2D GetAssetPreviewFromPath(string path, FetchPreviewOptions previewOptions)
         {
+            return GetAssetPreviewFromPath(path, new Vector2(128, 128), previewOptions);
+        }
+
+        public static Texture2D GetAssetPreviewFromPath(string path, Vector2 previewSize, FetchPreviewOptions previewOptions)
+        {
             var tex = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
             if (tex)
                 return tex;
@@ -200,7 +202,7 @@ namespace Unity.QuickSearch
             return preview;
         }
 
-        internal static int Wrap(int index, int n)
+        public static int Wrap(int index, int n)
         {
             return ((index % n) + n) % n;
         }
@@ -256,23 +258,18 @@ namespace Unity.QuickSearch
             }
         }
 
-        internal static Type[] GetAllDerivedTypes(this AppDomain aAppDomain, Type aType)
-        {
-            return TypeCache.GetTypesDerivedFrom(aType).ToArray();
-        }
-
-        internal static string FormatProviderList(IEnumerable<SearchProvider> providers, bool fullTimingInfo = false, bool showFetchTime = true)
+        public static string FormatProviderList(IEnumerable<SearchProvider> providers, bool fullTimingInfo = false, bool showFetchTime = true)
         {
             return string.Join(fullTimingInfo ? "\r\n" : ", ", providers.Select(p =>
             {
                 var fetchTime = p.fetchTime;
                 if (fullTimingInfo)
-                    return $"{p.name.displayName} ({fetchTime:0.#} ms, Enable: {p.enableTime:0.#} ms, Init: {p.loadTime:0.#} ms)";
+                    return $"{p.name} ({fetchTime:0.#} ms, Enable: {p.enableTime:0.#} ms, Init: {p.loadTime:0.#} ms)";
 
                 var avgTimeLabel = String.Empty;
                 if (showFetchTime && fetchTime > 9.99)
                     avgTimeLabel = $" ({fetchTime:#} ms)";
-                return $"<b>{p.name.displayName}</b>{avgTimeLabel}";
+                return $"<b>{p.name}</b>{avgTimeLabel}";
             }));
         }
 
@@ -349,7 +346,7 @@ namespace Unity.QuickSearch
         {
             if (s_MainWindow == null)
             {
-                var containerWinType = AppDomain.CurrentDomain.GetAllDerivedTypes(typeof(ScriptableObject)).FirstOrDefault(t => t.Name == "ContainerWindow");
+                var containerWinType = typeof(EditorWindow).Assembly.GetType("UnityEditor.ContainerWindow");
                 if (containerWinType == null)
                     throw new MissingMemberException("Can't find internal type ContainerWindow. Maybe something has changed inside Unity");
                 var showModeField = containerWinType.GetField("m_ShowMode", BindingFlags.NonPublic | BindingFlags.Instance);
@@ -376,7 +373,7 @@ namespace Unity.QuickSearch
             return (Rect)positionProperty.GetValue(s_MainWindow, null);
         }
 
-        internal static Rect GetCenteredWindowPosition(Rect parentWindowPosition, Vector2 size)
+        public static Rect GetCenteredWindowPosition(Rect parentWindowPosition, Vector2 size)
         {
             var pos = new Rect
             {
@@ -391,23 +388,13 @@ namespace Unity.QuickSearch
             return pos;
         }
 
-        internal static IEnumerable<MethodInfo> GetAllMethodsWithAttribute<T>() where T : System.Attribute
-        {
-            return TypeCache.GetMethodsWithAttribute<T>();
-        }
-
-        internal static IEnumerable<MethodInfo> GetAllMethodsWithAttribute(Type attributeType)
-        {
-            return TypeCache.GetMethodsWithAttribute(attributeType);
-        }
-
-        internal static Rect GetMainWindowCenteredPosition(Vector2 size)
+        public static Rect GetMainWindowCenteredPosition(Vector2 size)
         {
             var mainWindowRect = GetEditorMainWindowPos();
             return GetCenteredWindowPosition(mainWindowRect, size);
         }
 
-        internal static void ShowDropDown(this EditorWindow window, Vector2 size)
+        public static void ShowDropDown(this EditorWindow window, Vector2 size)
         {
             window.maxSize = window.minSize = size;
             window.position = GetMainWindowCenteredPosition(size);
@@ -787,22 +774,6 @@ namespace Unity.QuickSearch
             return (Hash128)s_GetSourceAssetFileHash.Invoke(null, parameters);
         }
 
-        private static MethodInfo s_IsUsingADBV1;
-        public static bool IsUsingADBV1()
-        {
-            #if UNITY_2019_4
-            if (s_IsUsingADBV1 == null)
-            {
-                var type = typeof(AssetDatabase);
-                s_IsUsingADBV1 = type.GetMethod("IsV1Enabled", BindingFlags.NonPublic | BindingFlags.Static);
-                Debug.Assert(s_IsUsingADBV1 != null);
-            }
-            return (bool)s_IsUsingADBV1.Invoke(null, null);
-            #else
-            return false;
-            #endif
-        }
-
         public static void LogProperties(SerializedObject so, bool includeChildren = true)
         {
             so.Update();
@@ -872,7 +843,8 @@ namespace Unity.QuickSearch
                 path = new FileInfo(path).FullName;
             }
 
-            return CleanPath(path).StartsWith(Application.dataPath + "/");
+            path = CleanPath(path);
+            return Application.dataPath == path || path.StartsWith(Application.dataPath + "/");
         }
 
         public static string GetPathUnderProject(string path)
@@ -886,7 +858,7 @@ namespace Unity.QuickSearch
             return cleanPath.Substring(Application.dataPath.Length - 6);
         }
 
-        public static Texture2D GetSceneObjectPreview(GameObject obj, FetchPreviewOptions options, Texture2D defaultThumbnail)
+        public static Texture2D GetSceneObjectPreview(GameObject obj, Vector2 previewSize, FetchPreviewOptions options, Texture2D defaultThumbnail)
         {
             var sr = obj.GetComponent<SpriteRenderer>();
             if (sr && sr.sprite && sr.sprite.texture)
@@ -898,14 +870,17 @@ namespace Unity.QuickSearch
                 return uiit;
             #endif
 
-            var preview = AssetPreview.GetAssetPreview(obj);
-            if (preview)
-                return preview;
+            if (!options.HasFlag(FetchPreviewOptions.Large))
+            {
+                var preview = AssetPreview.GetAssetPreview(obj);
+                if (preview)
+                    return preview;
+            }
 
             var assetPath = SearchUtils.GetHierarchyAssetPath(obj, true);
-            if (String.IsNullOrEmpty(assetPath))
-                return defaultThumbnail;
-            return GetAssetPreviewFromPath(assetPath, options);
+            if (string.IsNullOrEmpty(assetPath))
+                return AssetPreview.GetAssetPreview(obj) ?? defaultThumbnail;
+            return GetAssetPreviewFromPath(assetPath, previewSize, options);
         }
 
         private static object[] s_SearchFilterArgs;
@@ -942,18 +917,17 @@ namespace Unity.QuickSearch
 
         public static bool TryGetNumber(object value, out double number)
         {
-            number = double.NaN;
             if (value is sbyte
-                    || value is byte
-                    || value is short
-                    || value is ushort
-                    || value is int
-                    || value is uint
-                    || value is long
-                    || value is ulong
-                    || value is float
-                    || value is double
-                    || value is decimal)
+                || value is byte
+                || value is short
+                || value is ushort
+                || value is int
+                || value is uint
+                || value is long
+                || value is ulong
+                || value is float
+                || value is double
+                || value is decimal)
             {
                 number = Convert.ToDouble(value);
                 return true;

@@ -1,12 +1,7 @@
 //#define QUICKSEARCH_DEBUG
 
-#if UNITY_2020_1_OR_NEWER
-//#define SHOW_SEARCH_PROGRESS
-#endif
-
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using UnityEditor;
 
@@ -15,6 +10,7 @@ namespace Unity.QuickSearch
     /// <summary>
     /// Attribute used to declare a static method that will create a new search provider at load time.
     /// </summary>
+    [AttributeUsage(AttributeTargets.Method)]
     public class SearchItemProviderAttribute : Attribute
     {
     }
@@ -22,6 +18,7 @@ namespace Unity.QuickSearch
     /// <summary>
     /// Attribute used to declare a static method that define new actions for specific search providers.
     /// </summary>
+    [AttributeUsage(AttributeTargets.Method)]
     public class SearchActionsProviderAttribute : Attribute
     {
     }
@@ -67,7 +64,7 @@ namespace Unity.QuickSearch
         /// <returns>The matching provider</returns>
         public static SearchProvider GetProvider(string providerId)
         {
-            return Providers.Find(p => p.name.id == providerId);
+            return Providers.Find(p => p.id == providerId);
         }
 
         /// <summary>
@@ -91,7 +88,7 @@ namespace Unity.QuickSearch
         /// <param name="active">Activation state</param>
         public static void SetActive(string providerId, bool active = true)
         {
-            var provider = Providers.FirstOrDefault(p => p.name.id == providerId);
+            var provider = Providers.FirstOrDefault(p => p.id == providerId);
             if (provider == null)
                 return;
             SearchSettings.GetProviderSettings(providerId).active = active;
@@ -106,18 +103,6 @@ namespace Unity.QuickSearch
         {
             RefreshProviders();
             RefreshProviderActions();
-        }
-
-        /// <summary>
-        /// Returns a list of keywords used by auto-completion for the active providers.
-        /// </summary>
-        /// <param name="context">Current search context</param>
-        /// <param name="lastToken">Search token currently being typed.</param>
-        /// <returns>A list of keywords that can be shown in an auto-complete dropdown.</returns>
-        [Obsolete("GetKeywords is deprecated. Define fetchPropositions on your provider instead.")]
-        public static string[] GetKeywords(SearchContext context, string lastToken)
-        {
-            throw new NotSupportedException();
         }
 
         /// <summary>
@@ -152,19 +137,11 @@ namespace Unity.QuickSearch
         /// <returns>A list of search items matching the search query.</returns>
         public static List<SearchItem> GetItems(SearchContext context, SearchFlags options = SearchFlags.Default)
         {
-            DebugInfo.gcFetch = GC.GetTotalMemory(false);
-
             // Stop all search sessions every time there is a new search.
             context.sessions.StopAllAsyncSearchSessions();
             context.searchFinishTime = context.searchStartTime = EditorApplication.timeSinceStartup;
             context.sessionEnded -= OnSearchEnded;
             context.sessionEnded += OnSearchEnded;
-
-            #if SHOW_SEARCH_PROGRESS
-            if (Progress.Exists(context.progressId))
-                Progress.Finish(context.progressId, Progress.Status.Succeeded);
-            context.progressId = Progress.Start($"Searching...", options: Progress.Options.Indefinite);
-            #endif
 
             if (options.HasFlag(SearchFlags.WantsMore))
                 context.wantsMore = true;
@@ -176,7 +153,7 @@ namespace Unity.QuickSearch
             var allItems = new List<SearchItem>(3);
             #if QUICKSEARCH_DEBUG
             var debugProviderList = context.providers.ToList();
-            using (new DebugTimer($"Search get items {String.Join(", ", debugProviderList.Select(p=>p.name.id))} -> {context.searchQuery}"));
+            using (new DebugTimer($"Search get items {String.Join(", ", debugProviderList.Select(p=>p.name.id))} -> {context.searchQuery}")) ;
             #endif
             foreach (var provider in context.providers)
             {
@@ -197,7 +174,7 @@ namespace Unity.QuickSearch
                     }
                     else
                     {
-                        var session = context.sessions.GetProviderSession(context, provider.name.id);
+                        var session = context.sessions.GetProviderSession(context, provider.id);
                         session.Reset(context, iterator, k_MaxFetchTimeMs);
                         session.Start();
                         var sessionEnded = !session.FetchSome(allItems, k_MaxFetchTimeMs);
@@ -210,7 +187,7 @@ namespace Unity.QuickSearch
                 }
                 catch (Exception ex)
                 {
-                    UnityEngine.Debug.LogException(new Exception($"Failed to get fetch {provider.name.displayName} provider items.", ex));
+                    UnityEngine.Debug.LogException(new Exception($"Failed to get fetch {provider.name} provider items.", ex));
                 }
             }
 
@@ -219,8 +196,6 @@ namespace Unity.QuickSearch
                 OnSearchEnded(context);
                 context.sessions.StopAllAsyncSearchSessions();
             }
-
-            DebugInfo.gcFetch = GC.GetTotalMemory(false) - DebugInfo.gcFetch;
 
             if (!options.HasFlag(SearchFlags.Sorted))
                 return allItems;
@@ -240,7 +215,7 @@ namespace Unity.QuickSearch
             if (options.HasFlag(SearchFlags.Synchronous))
             {
                 throw new NotSupportedException($"Use {nameof(SearchService)}.{nameof(GetItems)}(context, " +
-                                    $"{nameof(SearchFlags)}.{nameof(SearchFlags.Synchronous)}) to fetch items synchronously.");
+                    $"{nameof(SearchFlags)}.{nameof(SearchFlags.Synchronous)}) to fetch items synchronously.");
             }
 
             ISearchList results = null;
@@ -251,35 +226,6 @@ namespace Unity.QuickSearch
 
             results.AddItems(GetItems(context, options));
             return results;
-        }
-
-        /// <summary>
-        /// Load a search expression asset.
-        /// </summary>
-        /// <param name="expressionPath">Asset path of the search expression</param>
-        /// <param name="options">Options defining how the query will be performed</param>
-        /// <returns>Returns a SearchExpression ready to be evaluated.</returns>
-        public static ISearchExpression LoadExpression(string expressionPath, SearchFlags options = SearchFlags.Default)
-        {
-            if (!File.Exists(expressionPath))
-                throw new ArgumentException($"Cannot find expression {expressionPath}", nameof(expressionPath));
-
-            var se = new SearchExpression(options);
-            se.Load(expressionPath);
-            return se;
-        }
-
-        /// <summary>
-        /// Parse a simple json document string as a SearchExpression.
-        /// </summary>
-        /// <param name="sjson">Simple Json string defining a SearchExpression</param>
-        /// <param name="options">Options defining how the query will be performed</param>
-        /// <returns>Returns a SearchExpression ready to be evaluated.</returns>
-        public static ISearchExpression ParseExpression(string sjson, SearchFlags options = SearchFlags.Default)
-        {
-            var se = new SearchExpression(options);
-            se.Parse(sjson);
-            return se;
         }
 
         internal static SearchContext CreateContext(SearchProvider provider, string searchText = "")
@@ -307,20 +253,6 @@ namespace Unity.QuickSearch
         private static void OnSearchEnded(SearchContext context)
         {
             context.searchFinishTime = EditorApplication.timeSinceStartup;
-
-            #if SHOW_SEARCH_PROGRESS
-            if (context.progressId != -1 && Progress.Exists(context.progressId))
-                Progress.Finish(context.progressId, Progress.Status.Succeeded);
-            context.progressId = -1;
-            #endif
-        }
-
-        internal static void ReportProgress(SearchContext context, float progress = 0f, string status = null)
-        {
-            #if SHOW_SEARCH_PROGRESS
-            if (context.progressId != -1 && Progress.Exists(context.progressId))
-                Progress.Report(context.progressId, progress, status);
-            #endif
         }
 
         private static int SortItemComparer(SearchItem item1, SearchItem item2)
@@ -336,7 +268,7 @@ namespace Unity.QuickSearch
 
         private static void RefreshProviders()
         {
-            Providers = Utils.GetAllMethodsWithAttribute<SearchItemProviderAttribute>().Select(methodInfo =>
+            Providers = TypeCache.GetMethodsWithAttribute<SearchItemProviderAttribute>().Select(methodInfo =>
             {
                 try
                 {
@@ -350,7 +282,7 @@ namespace Unity.QuickSearch
                         fetchedProvider.loadTime = fetchLoadTimer.timeMs;
 
                         // Load per provider user settings
-                        if (SearchSettings.TryGetProviderSettings(fetchedProvider.name.id, out var providerSettings))
+                        if (SearchSettings.TryGetProviderSettings(fetchedProvider.id, out var providerSettings))
                         {
                             fetchedProvider.active = providerSettings.active;
                             fetchedProvider.priority = providerSettings.priority;
@@ -369,11 +301,11 @@ namespace Unity.QuickSearch
         private static void RefreshProviderActions()
         {
             ActionIdToProviders = new Dictionary<string, List<string>>();
-            foreach (var action in Utils.GetAllMethodsWithAttribute<SearchActionsProviderAttribute>()
-                                        .SelectMany(methodInfo => methodInfo.Invoke(null, null) as IEnumerable<object>)
-                                        .Where(a => a != null).Cast<SearchAction>())
+            foreach (var action in TypeCache.GetMethodsWithAttribute<SearchActionsProviderAttribute>()
+                     .SelectMany(methodInfo => methodInfo.Invoke(null, null) as IEnumerable<object>)
+                     .Where(a => a != null).Cast<SearchAction>())
             {
-                var provider = Providers.Find(p => p.name.id == action.providerId);
+                var provider = Providers.Find(p => p.id == action.providerId);
                 if (provider == null)
                     continue;
                 provider.actions.Add(action);
@@ -382,9 +314,63 @@ namespace Unity.QuickSearch
                     providerIds = new List<string>();
                     ActionIdToProviders[action.id] = providerIds;
                 }
-                providerIds.Add(provider.name.id);
+                providerIds.Add(provider.id);
             }
             SearchSettings.SortActionsPriority();
+        }
+
+        /// <summary>
+        /// Creates and open a new instance of Quick Search
+        /// </summary>
+        /// <param name="context">Initial search context of QuickSearch</param>
+        /// <param name="topic">QuickSearch search topic</param>
+        /// <param name="defaultWidth">Initial width of the window.</param>
+        /// <param name="defaultHeight">Initial height of the window.</param>
+        /// <param name="multiselect">True if the search support multi-selection or not.</param>
+        /// <param name="dockable">If true, creates a dockable QuickSearch Window (that will be closed when an item is activated). If false, it will create a DropDown (borderless, undockable and unmovable) version of QuickSearch.</param>
+        /// <param name="saveFilters">True if user provider filters should be saved for next search session</param>
+        /// <param name="reuseExisting">If true, try to reuse an already existing instance of QuickSearch. If false will create a new QuickSearch window.</param>
+        /// <returns>Returns the Quick Search editor window instance.</returns>
+        public static ISearchView ShowWindow(SearchContext context = null, string topic = "Unity", float defaultWidth = 850, float defaultHeight = 539,
+            bool saveFilters = true, bool reuseExisting = false, bool multiselect = true, bool dockable = true)
+        {
+            var flags = SearchFlags.None;
+            if (saveFilters) flags |= SearchFlags.SaveFilters;
+            if (reuseExisting) flags |= SearchFlags.ReuseExistingWindow;
+            if (multiselect) flags |= SearchFlags.Multiselect;
+            if (dockable) flags |= SearchFlags.Dockable;
+            return QuickSearch.Create(context, topic, flags).ShowWindow(defaultWidth, defaultHeight, flags);
+        }
+
+        /// <summary>
+        /// Open QuickSearch in contextual mode enabling only the providers specified.
+        /// </summary>
+        /// <param name="providerIds">List of provider ids to enabled for QuickSearch</param>
+        /// <returns>Returns the QuickSearch window.</returns>
+        public static ISearchView ShowContextual(params string[] providerIds)
+        {
+            return QuickSearch.OpenWithContextualProvider(null, providerIds, SearchFlags.OpenContextual);
+        }
+
+        /// <summary>
+        /// Use Quick Search to as an object picker to select any object based on the specified filter type.
+        /// </summary>
+        /// <param name="selectHandler">Callback to trigger when a user selects an item.</param>
+        /// <param name="trackingHandler">Callback to trigger when the user is modifying QuickSearch selection (i.e. tracking the currently selected item)</param>
+        /// <param name="searchText">Initial search text for QuickSearch.</param>
+        /// <param name="typeName">Type name of the object to select. Can be used to replace filterType.</param>
+        /// <param name="filterType">Type of the object to select.</param>
+        /// <param name="defaultWidth">Initial width of the window.</param>
+        /// <param name="defaultHeight">Initial height of the window.</param>
+        /// <param name="flags">Options flags modifying how the Search window will be opened.</param>
+        /// <returns>Returns the QuickSearch window.</returns>
+        public static ISearchView ShowObjectPicker(
+            Action<UnityEngine.Object, bool> selectHandler,
+            Action<UnityEngine.Object> trackingHandler,
+            string searchText, string typeName, Type filterType,
+            float defaultWidth = 850, float defaultHeight = 539, SearchFlags flags = SearchFlags.OpenPicker)
+        {
+            return QuickSearch.ShowObjectPicker(selectHandler, trackingHandler, searchText, typeName, filterType, defaultWidth, defaultHeight, flags);
         }
     }
 }

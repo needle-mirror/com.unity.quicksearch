@@ -44,8 +44,8 @@ namespace Unity.QuickSearch
         [CustomObjectIndexer(typeof(Shader), version = 1)]
         internal static void ShaderIndexing(CustomObjectIndexerTarget context, ObjectIndexer indexer)
         {
-            if (!(context.target is Shader shader) || 
-                !indexer.settings.options.properties || 
+            if (!(context.target is Shader shader) ||
+                !indexer.settings.options.properties ||
                 !indexer.settings.type.Equals("asset", System.StringComparison.Ordinal))
                 return;
 
@@ -148,8 +148,8 @@ namespace Unity.QuickSearch
 
         internal static void IndexVector(string propertyName, Vector2 v, ObjectIndexer indexer, int documentIndex)
         {
-            indexer.AddNumber(propertyName+".x", v.x, indexer.settings.baseScore, documentIndex);
-            indexer.AddNumber(propertyName+".y", v.y, indexer.settings.baseScore, documentIndex);
+            indexer.AddNumber(propertyName + ".x", v.x, indexer.settings.baseScore, documentIndex);
+            indexer.AddNumber(propertyName + ".y", v.y, indexer.settings.baseScore, documentIndex);
         }
 
         internal static void IndexVector(string propertyName, Vector3 v, ObjectIndexer indexer, int documentIndex)

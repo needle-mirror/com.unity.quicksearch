@@ -65,24 +65,21 @@ namespace Unity.QuickSearch.Providers
 
         static void BuildHelpItems(SearchContext context, SearchProvider helpProvider)
         {
+            if (context.searchView != null)
+                context.searchView.itemIconSize = 1f;
+
             m_StaticItemToAction = new Dictionary<SearchItem, Action<SearchItem, SearchContext>>();
-            {
-                var helpItem = helpProvider.CreateItem(null, "help_open_quicksearch_doc", "Open Quick Search Documentation", null, null, null);
-                helpItem.score = m_StaticItemToAction.Count;
-                helpItem.thumbnail = Icons.settings;
-                m_StaticItemToAction.Add(helpItem, (item, _context) => Utils.OpenDocumentationUrl());
-            }
 
             // Settings provider: id, Search for...
             foreach (var provider in SearchService.OrderedProviders)
             {
                 var helpItem = provider.isExplicitProvider ?
-                    helpProvider.CreateItem(context, $"help_provider_{provider.name.id}",
-                        $"Activate only <b>{provider.name.displayName}</b>",
-                        $"Type <b>{provider.filterId}</b> to activate <b>{provider.name.displayName}</b>", null, null) :
-                    helpProvider.CreateItem(context, $"help_provider_{provider.name.id}",
-                        $"Search only <b>{provider.name.displayName}</b>",
-                        $"Type <b>{provider.filterId}</b> to search <b>{provider.name.displayName}</b>", null, null);
+                    helpProvider.CreateItem(context, $"help_provider_{provider.id}",
+                    $"Activate only <b>{provider.name}</b>",
+                    $"Type <b>{provider.filterId}</b> to activate <b>{provider.name}</b>", null, null) :
+                    helpProvider.CreateItem(context, $"help_provider_{provider.id}",
+                    $"Search only <b>{provider.name}</b>",
+                    $"Type <b>{provider.filterId}</b> to search <b>{provider.name}</b>", null, null);
 
                 helpItem.score = m_StaticItemToAction.Count;
                 helpItem.thumbnail = Icons.search;
@@ -90,7 +87,7 @@ namespace Unity.QuickSearch.Providers
             }
 
             // Action queries
-            foreach(var kvp in SearchService.ActionIdToProviders)
+            foreach (var kvp in SearchService.ActionIdToProviders)
             {
                 var actionId = kvp.Key;
                 var supportedProviderIds = kvp.Value;
@@ -109,17 +106,10 @@ namespace Unity.QuickSearch.Providers
             }
 
             {
-                var helpItem = helpProvider.CreateItem(context, "help_open_pref", "Open Quick Search Preferences", null, null, null);
+                var helpItem = helpProvider.CreateItem(context, "help_open_pref", "Open Search Preferences", null, null, null);
                 helpItem.score = m_StaticItemToAction.Count;
                 helpItem.thumbnail = Icons.settings;
                 m_StaticItemToAction.Add(helpItem, (item, _context) => SettingsService.OpenUserPreferences(SearchSettings.settingsPreferencesKey));
-            }
-
-            {
-                var helpItem = helpProvider.CreateItem(context, "help_open_filter_window", "Open Filter Window", "Type Alt + Left Arrow to open the Filter Window", null, null);
-                helpItem.score = m_StaticItemToAction.Count;
-                helpItem.thumbnail = Icons.settings;
-                m_StaticItemToAction.Add(helpItem, (item, _context) => _context.searchView.PopFilterWindow());
             }
         }
     }
