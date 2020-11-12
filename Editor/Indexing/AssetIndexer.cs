@@ -8,12 +8,12 @@ using UnityEditor;
 using UnityEngine;
 using Object = UnityEngine.Object;
 
-namespace Unity.QuickSearch
+namespace UnityEditor.Search
 {
     class AssetIndexer : ObjectIndexer
     {
         public AssetIndexer(SearchDatabase.Settings settings)
-            : base(String.IsNullOrEmpty(settings.name) ? "assets" : settings.name, settings)
+            : base(string.IsNullOrEmpty(settings.name) ? "assets" : settings.name, settings)
         {
         }
 
@@ -52,7 +52,7 @@ namespace Unity.QuickSearch
             if (documentIndex < 0)
                 return;
 
-            AddDocumentHash(path, GetDocumentHash(path));
+            AddSourceDocument(path, GetDocumentHash(path));
             IndexWordComponents(documentIndex, path);
 
             try
@@ -92,8 +92,12 @@ namespace Unity.QuickSearch
                 if (settings.options.types && at != null)
                 {
                     IndexWord(documentIndex, at.Name);
-                    while (at != null && at != typeof(Object) && at != typeof(GameObject))
+                    while (at != null && at != typeof(Object))
                     {
+                        if (at == typeof(GameObject))
+                            IndexProperty(documentIndex, "t", "prefab", saveKeyword: true);
+                        if (at == typeof(MonoScript))
+                            IndexProperty(documentIndex, "t", "script", saveKeyword: true);
                         IndexProperty(documentIndex, "t", at.Name, saveKeyword: true);
                         at = at.BaseType;
                     }
@@ -103,14 +107,23 @@ namespace Unity.QuickSearch
                     IndexProperty(documentIndex, "t", at.Name, saveKeyword: true);
                 }
 
-                if (settings.options.properties || hasCustomIndexers)
+                #if USE_SEARCH_MODULE
+                var guid = AssetDatabase.GUIDFromAssetPath(path);
+                var labels = AssetDatabase.GetLabels(guid);
+                foreach (var label in labels)
+                    IndexProperty(documentIndex, "l", label, saveKeyword: true);
+                #endif
+
+                if (settings.options.properties || settings.options.extended)
                 {
                     bool wasLoaded = AssetDatabase.IsMainAssetAtPathLoaded(path);
+                    bool isPrefab = path.EndsWith(".prefab");
 
-                    var mainAsset = path.EndsWith(".prefab") ? PrefabUtility.LoadPrefabContents(path) : AssetDatabase.LoadMainAssetAtPath(path);
+                    var mainAsset = isPrefab ? PrefabUtility.LoadPrefabContents(path) : AssetDatabase.LoadMainAssetAtPath(path);
                     if (!mainAsset)
                         return;
 
+                    #if !USE_SEARCH_MODULE
                     #if !UNITY_2020_2_OR_NEWER
                     var labels = AssetDatabase.GetLabels(mainAsset);
                     #else
@@ -119,6 +132,7 @@ namespace Unity.QuickSearch
                     #endif
                     foreach (var label in labels)
                         IndexProperty(documentIndex, "l", label, saveKeyword: true);
+                    #endif
 
                     if (hasCustomIndexers)
                         IndexCustomProperties(path, documentIndex, mainAsset);
@@ -140,7 +154,6 @@ namespace Unity.QuickSearch
                     {
                         if (mainAsset is GameObject go)
                         {
-                            IndexProperty(documentIndex, "t", "prefab", saveKeyword: true);
                             foreach (var v in go.GetComponents(typeof(Component)))
                             {
                                 if (!v || v.GetType() == typeof(Transform))
@@ -155,10 +168,12 @@ namespace Unity.QuickSearch
 
                     if (!wasLoaded)
                     {
-                        if (mainAsset && !mainAsset.hideFlags.HasFlag(HideFlags.DontUnloadUnusedAsset) &&
-                            !(mainAsset is GameObject) &&
-                            !(mainAsset is Component) &&
-                            !(mainAsset is AssetBundle))
+                        if (isPrefab && mainAsset is GameObject prefabObject)
+                            PrefabUtility.UnloadPrefabContents(prefabObject);
+                        else if (mainAsset && !mainAsset.hideFlags.HasFlag(HideFlags.DontUnloadUnusedAsset) &&
+                                 !(mainAsset is GameObject) &&
+                                 !(mainAsset is Component) &&
+                                 !(mainAsset is AssetBundle))
                         {
                             Resources.UnloadAsset(mainAsset);
                         }

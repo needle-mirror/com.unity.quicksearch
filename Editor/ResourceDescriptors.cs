@@ -1,13 +1,13 @@
-﻿using System;
+using System;
 using System.Text;
-using Unity.QuickSearch.Providers;
+using UnityEditor.Search.Providers;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.Experimental.Rendering;
 using UnityEngine.Rendering;
 using Object = UnityEngine.Object;
 
-namespace Unity.QuickSearch
+namespace UnityEditor.Search
 {
     // TODO: Make this public and add documentation.
     internal class ResourceDescriptor

@@ -1,11 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Reflection;
 using UnityEditor;
 using UnityEngine;
 
-namespace Unity.QuickSearch
+namespace UnityEditor.Search
 {
     static class SearchField
     {
@@ -37,8 +36,6 @@ namespace Unity.QuickSearch
         private static int s_RecentSearchIndex = -1;
         private static string m_CycledSearch;
         private static string m_LastSearch;
-
-        private static MethodInfo s_HasCurrentWindowKeyFocusMethod;
 
         public static int controlID { get; private set; } = -1;
 
@@ -505,7 +502,7 @@ namespace Unity.QuickSearch
 
         private static bool IsEditingControl(this TextEditor self, int id)
         {
-            return GUIUtility.keyboardControl == id && self.controlID == id && s_ActuallyEditing && HasCurrentWindowKeyFocus();
+            return GUIUtility.keyboardControl == id && self.controlID == id && s_ActuallyEditing && Utils.HasCurrentWindowKeyFocus();
         }
 
         private static void BeginEditing(this TextEditor self, int id, string newText, Rect _position, GUIStyle _style, bool _multiline, bool passwordField)
@@ -546,7 +543,7 @@ namespace Unity.QuickSearch
             // Every EditorWindow has its own keyboardControl state so we also need to
             // check if the current OS view has focus to determine if the control has actual key focus (gets the input)
             // and not just being a focused control in an unfocused window.
-            return GUIUtility.keyboardControl == controlID && HasCurrentWindowKeyFocus();
+            return GUIUtility.keyboardControl == controlID && Utils.HasCurrentWindowKeyFocus();
         }
 
         private static EventType GetEventTypeForControlAllowDisabledContextMenuPaste(Event evt, int id)
@@ -665,17 +662,6 @@ namespace Unity.QuickSearch
             return true;
         }
 
-        private static bool HasCurrentWindowKeyFocus()
-        {
-            if (s_HasCurrentWindowKeyFocusMethod == null)
-            {
-                var type = typeof(EditorGUIUtility);
-                s_HasCurrentWindowKeyFocusMethod = type.GetMethod("HasCurrentWindowKeyFocus", BindingFlags.NonPublic | BindingFlags.Static);
-                Debug.Assert(s_HasCurrentWindowKeyFocusMethod != null);
-            }
-            return (bool)s_HasCurrentWindowKeyFocusMethod.Invoke(null, null);
-        }
-
         private static string CyclePreviousSearch(int shift)
         {
             if (SearchSettings.recentSearches.Count == 0)
@@ -695,6 +681,44 @@ namespace Unity.QuickSearch
                 return;
             s_RecentSearchIndex = 0;
             SearchSettings.AddRecentSearch(value);
+        }
+
+        public static void DrawError(int errorIndex, int errorLength, string errorTooltip)
+        {
+            DrawLineWithTooltip(errorIndex, errorIndex + errorLength, errorTooltip, Styles.Wiggle.wiggle, Styles.Wiggle.wiggleTooltip);
+        }
+
+        public static void DrawWarning(int errorIndex, int errorLength, string errorTooltip)
+        {
+            DrawLineWithTooltip(errorIndex, errorIndex + errorLength, errorTooltip, Styles.Wiggle.wiggleWarning, Styles.Wiggle.wiggleTooltip);
+        }
+
+        private static void DrawLineWithTooltip(int lineStartIndex, int lineEndIndex, string tooltip, GUIStyle lineStyle, GUIStyle tooltipStyle)
+        {
+            if (Event.current.type != EventType.Repaint)
+                return;
+
+            var te = GetTextEditor();
+
+            var content = new GUIContent(te.text);
+            var startPosition = te.style.GetCursorPixelPosition(te.position, content, lineStartIndex);
+            var endPosition = te.style.GetCursorPixelPosition(te.position, content, lineEndIndex);
+
+            var visibleRect = te.style.padding.Remove(te.position);
+            startPosition.x -= te.scrollOffset.x;
+            endPosition.x -= te.scrollOffset.x;
+            if (startPosition.x < visibleRect.x && endPosition.x < visibleRect.x)
+                return;
+
+            startPosition.x = Mathf.Max(startPosition.x, visibleRect.x);
+            var tooltipRect = new Rect(te.position) { xMin = startPosition.x, xMax = endPosition.x };
+
+            var lineRect = new Rect(tooltipRect);
+            lineRect.yMax = visibleRect.yMax; // Offset the line so it is floating above the bottom of the search field wrt to padding.
+            lineRect.yMin = lineRect.yMax - lineStyle.fixedHeight;
+
+            lineStyle.Draw(lineRect, new GUIContent(""), controlID);
+            tooltipStyle.Draw(tooltipRect, new GUIContent("", null, tooltip), controlID);
         }
     }
 }

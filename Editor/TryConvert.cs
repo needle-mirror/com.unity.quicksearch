@@ -1,6 +1,6 @@
 using System;
 
-namespace Unity.QuickSearch
+namespace UnityEditor.Search
 {
     internal static class TryConvert
     {

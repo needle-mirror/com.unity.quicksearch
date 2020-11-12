@@ -1,4 +1,4 @@
-﻿namespace Unity.QuickSearch
+namespace UnityEditor.Search
 {
     /// <summary>
     /// A QueryError holds the definition of a query parsing error.

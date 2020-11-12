@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -7,7 +7,7 @@ using UnityEditor;
 using UnityEngine;
 using Object = UnityEngine.Object;
 
-namespace Unity.QuickSearch.Providers
+namespace UnityEditor.Search.Providers
 {
     static class ResourcesProvider
     {
@@ -148,7 +148,10 @@ namespace Unity.QuickSearch.Providers
 
             var query = s_QueryEngine.Parse(sanitizedSearchQuery);
             if (!query.valid)
+            {
+                context.AddSearchQueryErrors(query.errors.Select(e => new SearchQueryError(e.index, e.length, e.reason, context, provider)));
                 yield break;
+            }
 
             var allObjects = Resources.FindObjectsOfTypeAll(typeof(Object));
             var filteredObjects = query.Apply(allObjects);

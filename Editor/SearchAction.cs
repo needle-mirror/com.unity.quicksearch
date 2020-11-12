@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using UnityEngine;
 
-namespace Unity.QuickSearch
+namespace UnityEditor.Search
 {
     /// <summary>
     /// Define an action that can be applied on SearchItem of a specific provider type.
@@ -62,7 +62,7 @@ namespace Unity.QuickSearch
         /// <param name="tooltip">Tooltip assocoated with the when displayed in the Action Menu</param>
         /// <param name="handler">Handler that will execute the action.</param>
         public SearchAction(string providerId, string name, Texture2D icon, string tooltip, Action<SearchItem[]> handler)
-            : this(providerId, name, new GUIContent(UppercaseFirst(name), icon, tooltip ?? name), handler)
+            : this(providerId, name, new GUIContent(SearchUtils.ToPascalWithSpaces(name), icon, tooltip ?? name), handler)
         {
         }
 
@@ -75,7 +75,7 @@ namespace Unity.QuickSearch
         /// <param name="tooltip">Tooltip assocoated with the when displayed in the Action Menu</param>
         /// <param name="handler">Handler that will execute the action.</param>
         public SearchAction(string providerId, string name, Texture2D icon, string tooltip, Action<SearchItem> handler)
-            : this(providerId, name, new GUIContent(UppercaseFirst(name), icon, tooltip ?? name), handler)
+            : this(providerId, name, new GUIContent(SearchUtils.ToPascalWithSpaces(name), icon, tooltip ?? name), handler)
         {
         }
 
@@ -85,9 +85,9 @@ namespace Unity.QuickSearch
         /// <param name="providerId">Provider Id that supports this action.</param>
         /// <param name="name">Label name when displaying the action in the Action Menu</param>
         /// <param name="icon">Icon when displaying the action in the Action Menu</param>
-        /// <param name="tooltip">Tooltip assocoated with the when displayed in the Action Menu</param>
+        /// <param name="tooltip">Tooltip associated with the when displayed in the Action Menu</param>
         public SearchAction(string providerId, string name, Texture2D icon = null, string tooltip = null)
-            : this(providerId, name, new GUIContent(UppercaseFirst(name), icon, tooltip ?? name))
+            : this(providerId, name, new GUIContent(SearchUtils.ToPascalWithSpaces(name), icon, tooltip ?? name))
         {
         }
 
@@ -131,16 +131,5 @@ namespace Unity.QuickSearch
         /// </summary>
         // [Obsolete]
         public Action<SearchItem> handler;
-
-        static string UppercaseFirst(string s)
-        {
-            // Check for empty string.
-            if (string.IsNullOrEmpty(s))
-            {
-                return string.Empty;
-            }
-            // Return char and concat substring.
-            return char.ToUpper(s[0]) + s.Substring(1);
-        }
     }
 }

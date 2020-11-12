@@ -7,13 +7,18 @@ using UnityEditor.Experimental.GraphView;
 using UnityEngine;
 using UnityEngine.UIElements;
 
-namespace Unity.QuickSearch
+namespace UnityEditor.Search
 {
     class GraphViewerQueryHandler : IQueryHandler<object, object>
     {
         public IEnumerable<object> Eval(object payload)
         {
             return new object[] {};
+        }
+
+        bool IQueryHandler<object, object>.Eval(object element)
+        {
+            return false;
         }
     }
 
@@ -25,10 +30,23 @@ namespace Unity.QuickSearch
         }
     }
 
+    struct LayoutPosition
+    {
+        public int level;
+        public int index;
+
+        public LayoutPosition(int level, int index)
+        {
+            this.level = level;
+            this.index = index;
+        }
+    }
+
     internal class QueryGraphViewWindow : GraphViewEditorWindow
     {
         private string m_QueryInput;
         private QueryEngine m_QueryEngine;
+        private GraphViewerQueryHandlerFactory m_QueryHandlerFactory;
 
         public GraphView graphView { get; private set; }
 
@@ -38,7 +56,7 @@ namespace Unity.QuickSearch
         }
 
         #if USE_GRAPH_VIEWER
-        [MenuItem("QueryEngine/Graph Viewer")]
+        [MenuItem("Window/Search/Graph Viewer")]
         public static void ShowWindow()
         {
             GetWindow<QueryGraphViewWindow>();
@@ -91,11 +109,12 @@ namespace Unity.QuickSearch
         private void SetupQueryEngine()
         {
             m_QueryEngine = new QueryEngine(false);
+            m_QueryHandlerFactory = new GraphViewerQueryHandlerFactory();
         }
 
         private void UpdateGraphView()
         {
-            var query = m_QueryEngine.Parse(m_QueryInput, new GraphViewerQueryHandlerFactory());
+            var query = m_QueryEngine.Parse(m_QueryInput, m_QueryHandlerFactory);
             if (!query.valid && !string.IsNullOrEmpty(m_QueryInput))
             {
                 foreach (var error in query.errors)
@@ -265,7 +284,7 @@ namespace Unity.QuickSearch
 
         private void LayoutGraphNodes(QueryGraph graph, Dictionary<IQueryNode, Node> queryNodesToViewNodes)
         {
-            var levelIndexByNode = new Dictionary<IQueryNode, Tuple<int, int>>();
+            var levelIndexByNode = new Dictionary<IQueryNode, LayoutPosition>();
             var nodesByLevel = new Dictionary<int, List<IQueryNode>>();
             var nodesToProcess = new Queue<IQueryNode>();
             nodesToProcess.Enqueue(graph.root);
@@ -282,12 +301,12 @@ namespace Unity.QuickSearch
                 }
                 else
                 {
-                    var parentLevel = levelIndexByNode[currentNode.parent].Item1;
-                    var parentIndex = levelIndexByNode[currentNode.parent].Item2;
+                    var parentLevel = levelIndexByNode[currentNode.parent].level;
+                    var parentIndex = levelIndexByNode[currentNode.parent].index;
                     currentLevel = parentLevel + 1;
                     currentIndex = parentIndex * 2 + (currentNode.parent.children[0] == currentNode ? 0 : 1);
                 }
-                levelIndexByNode.Add(currentNode, new Tuple<int, int>(currentLevel, currentIndex));
+                levelIndexByNode.Add(currentNode, new LayoutPosition(currentLevel, currentIndex));
 
                 if (!nodesByLevel.ContainsKey(currentLevel))
                 {
@@ -333,7 +352,7 @@ namespace Unity.QuickSearch
                 {
                     var viewNode = queryNodesToViewNodes[queryNode];
                     var oldRect = viewNode.GetPosition();
-                    var newPos = GetNodePosition(level, levelIndexByNode[queryNode].Item2);
+                    var newPos = GetNodePosition(level, levelIndexByNode[queryNode].index);
                     var newRect = new Rect(newPos, oldRect.size);
                     viewNode.SetPosition(newRect);
                 }

@@ -1,9 +1,7 @@
 using System;
 using System.Collections.Generic;
-using System.Collections;
-using UnityEngine;
 
-namespace Unity.QuickSearch
+namespace UnityEditor.Search
 {
     interface INestedQueryHandlerTransformer
     {

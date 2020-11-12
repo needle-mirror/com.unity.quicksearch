@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using UnityEngine;
 
-namespace Unity.QuickSearch
+namespace UnityEditor.Search
 {
     /// <summary>
     /// Defines at set of options that indicates to the search provider how the preview should be fetched.
@@ -177,10 +177,12 @@ namespace Unity.QuickSearch
         /// <returns>The newly created search item attached to the current search provider.</returns>
         public SearchItem CreateItem(SearchContext context, string id, int score, string label, string description, Texture2D thumbnail, object data)
         {
-            #if false // Debug sorting
-            description = $"DEBUG: id={id} - label={label} - description={description} - thumbnail={thumbnail} - data={data}";
-            label = $"{label ?? id} ({score})";
-            #endif
+            if (context.options.HasFlag(SearchFlags.Debug))
+            {
+                // Debug sorting
+                description = $"DEBUG: id={id} - label={label} - description={description} - thumbnail={thumbnail} - data={data}";
+                label = $"{label ?? id} ({score})";
+            }
 
             return new SearchItem(id)
             {
@@ -293,6 +295,9 @@ namespace Unity.QuickSearch
         /// <summary> This provider is only active when specified explicitly using his filterId</summary>
         public bool isExplicitProvider;
 
+        /// <summary> Does this provider supports synchronized view searches (ex: Scene provider can be synchronized with Hierarchy view).</summary>
+        internal bool supportsSyncViewSearch;
+
         /// <summary> Indicates if the provider can show additional details or not.</summary>
         public bool showDetails;
 
@@ -336,11 +341,6 @@ namespace Unity.QuickSearch
 
         /// <summary> Returns any valid Unity object held by the search item.</summary>
         public Func<SearchItem, Type, UnityEngine.Object> toObject;
-
-        /// <summary>
-        /// This callback is used to open additional context for a given item.
-        /// </summary>
-        public Func<SearchSelection, Rect, bool> openContextual;
 
         /// <summary>
         /// Provider can return a list of words that will help the user complete his search query.
@@ -417,7 +417,7 @@ namespace Unity.QuickSearch
         /// <returns>Returns a short description of the SearchProvider.</returns>
         public override string ToString()
         {
-            return $"[{id}] {name}, active={active}";
+            return $"[{id}] {name} active={active}";
         }
     }
 }

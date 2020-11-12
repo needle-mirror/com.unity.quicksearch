@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 
-namespace Unity.QuickSearch
+namespace UnityEditor.Search
 {
     static class MaxAggregator<T>
     {

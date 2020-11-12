@@ -1,13 +1,13 @@
-﻿//#define QUICKSEARCH_DEBUG
+//#define QUICKSEARCH_DEBUG
 using System;
 using System.Collections.Generic;
-using UnityEditor;
 
 #if QUICKSEARCH_DEBUG
+using UnityEditor;
 using UnityEngine.Profiling;
 #endif
 
-namespace Unity.QuickSearch
+namespace UnityEditor.Search
 {
     /// <summary>
     /// Utility class to perform matching against query text using a fuzzy search algorithm.
@@ -98,13 +98,6 @@ namespace Unity.QuickSearch
                 str = origin.ToLowerInvariant();
                 pattern_n = pattern.Length;
 
-                var allowEmptyQuery = false; //filter.HasFilters();
-                if (allowEmptyQuery && string.IsNullOrEmpty(pattern))
-                {
-                    outScore = 10;
-                    return true;
-                }
-
                 // find [str_start..str_end) that contains pattern's first and last letter
                 str_start = 0;
                 var str_end = str.Length - 1;
@@ -168,49 +161,10 @@ namespace Unity.QuickSearch
 
                             var si = i + str_start;
 
-                            var inQuoteExpectEquality = false; //i > 0 && j > 0 && filter.indexesAreInSameQuotes(j, j - 1);
-
                             var match = false;
-                            var cancel = false;
 
                             if (pattern[j] == str[si])
-                            {
-                                if (inQuoteExpectEquality)
-                                {
-                                    if (d.matchData[i - 1, j - 1])
-                                    {
-                                        match = true;
-                                    }
-                                    else
-                                    {
-                                        cancel = true;
-                                    }
-                                }
-                                else
-                                    match = true;
-                            }
-                            else
-                            {
-                                if (inQuoteExpectEquality && d.matchData[i - 1, j - 1])
-                                {
-                                    cancel = true;
-                                }
-                            }
-
-                            if (cancel)
-                            {
-                                // cancel quote
-                                var j_start = 0; //filter.indexOfQuoteStart(j);
-
-                                var n = j - j_start;
-                                for (var k = 1; k <= n; k++)
-                                {
-                                    //Assert.IsTrue(matchData[i - k, j - k]);
-                                    if (i < k || j < k)
-                                        break;
-                                    d.matchData[i - k, j - k] = false;
-                                }
-                            }
+                                match = true;
 
                             if (i >= d.matchData.GetLength(0) || j >= d.matchData.GetLength(1))
                                 return false;

@@ -2,7 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using UnityEditor;
 
-namespace Unity.QuickSearch
+namespace UnityEditor.Search
 {
     [InitializeOnLoad]
     static class Dispatcher
@@ -11,7 +11,7 @@ namespace Unity.QuickSearch
 
         static Dispatcher()
         {
-            EditorApplication.update += Update;
+            Utils.tick += Update;
         }
 
         public static void Enqueue(Action action)

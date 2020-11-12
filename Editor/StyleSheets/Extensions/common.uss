@@ -4,12 +4,12 @@
 
 .quick-search-item-background2 {
     -unity-enable-hovering: --enable-style-hovering;
-    background-color: --unity-theme-background-color-80;
+    background-color: --unity-colors-alternated_rows-background;
 }
 
 .quick-search-item-background1:hover,
 .quick-search-item-background2:hover {
-    background-color: --unity-theme-background-color-58;
+    background-color: --unity-colors-highlight-background-hover-lighter;
 }
 
 .quick-search-item-selected-background {
@@ -26,10 +26,17 @@
     border: --theme-window-border;
 }
 
-.quick-search-selected-item-grid-background {
-   -unity-enable-hovering: --enable-style-hovering;
-    background-color: --theme-line-selection-background-color-focus;
-    border-radius: --theme-default-border-radius;
+.quick-search-grid-item-background {
+    -unity-enable-hovering: --enable-style-hovering;
+}
+
+.quick-search-grid-item-background:hover {
+    border: 1px solid --unity-theme-border-color-14;
+}
+
+.quick-search-grid-item-background:checked,
+.quick-search-grid-item-background:hover:checked {
+    border: 1px solid --unity-theme-border-color-13;
 }
 
 .quick-search-action-button {
@@ -43,7 +50,7 @@
 .quick-search-status-bar-background {
     background-color: --theme-header-box-background-color;
     height: --unity-metrics-toolbar-height;
-    border: 0px solid --unity-theme-border-color-7;
+    border: 0px solid --unity-colors-toolbar-border;
     border-top-width: 1;
 }
 
@@ -87,8 +94,8 @@
 .quick-search-panel-background-left,
 .quick-search-panel-background-right {
     padding: 1px 1px;
-    background-color: --unity-theme-background-color-17;
-    border: 1px solid --unity-theme-border-color-7;
+    background-color: --unity-colors-window-background;
+    border: 1px solid --unity-colors-toolbar-border;
     bottom: 1px;
 }
 
@@ -116,10 +123,13 @@
     -unity-enable-hovering: --enable-style-hovering;
     -unity-text-align: middle-center;
     -unity-clipping: clip;
+
     height: 30px;
     padding: 0px 0px 2px 0px;
+
     color: --unity-theme-text-color-3;
     border: 0px solid red;
+
     font-size: --unity-font-size-big;
 }
 

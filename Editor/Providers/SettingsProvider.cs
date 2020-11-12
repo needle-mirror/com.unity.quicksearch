@@ -1,9 +1,8 @@
 using System.Collections.Generic;
 using System.Linq;
-using System.Reflection;
 using UnityEditor;
 
-namespace Unity.QuickSearch.Providers
+namespace UnityEditor.Search.Providers
 {
     static class Settings
     {
@@ -21,9 +20,7 @@ namespace Unity.QuickSearch.Providers
 
             private static SettingsProvider[] FetchSettingsProviders()
             {
-                var type = typeof(SettingsService);
-                var method = type.GetMethod("FetchSettingsProviders", BindingFlags.NonPublic | BindingFlags.Static);
-                return (SettingsProvider[])method.Invoke(null, null);
+                return Utils.FetchSettingsProviders();
             }
         }
 

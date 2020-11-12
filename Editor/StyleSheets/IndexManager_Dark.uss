@@ -9,4 +9,5 @@
     --button-add-image: resource("d_Toolbar Plus");
     --button-remove-image: resource("d_Toolbar Minus");
     --folder-icon: resource("d_Folder Icon");
+    --reorderable-list-grip-icon: resource("Builtin Skins/DarkSkin/Images/WindowBottomResize.png");
 }

@@ -4,18 +4,37 @@ using UnityEditor;
 using UnityEditor.Experimental;
 using UnityEngine;
 
-namespace Unity.QuickSearch
+namespace UnityEditor.Search
 {
     internal static class Icons
     {
+        #if USE_SEARCH_MODULE
+        public static string iconFolder = $"Icons/QuickSearch";
+        public static Texture2D quicksearch = EditorGUIUtility.FindTexture("Search Icon");
+        public static Texture2D shortcut = EditorGUIUtility.FindTexture("Shortcut Icon");
+        public static Texture2D staticAPI = EditorGUIUtility.FindTexture("cs Script Icon");
+        public static Texture2D settings = EditorGUIUtility.FindTexture("Settings Icon");
+        public static Texture2D favorite = EditorGUIUtility.FindTexture("Favorite Icon");
+        public static Texture2D store = EditorGUIUtility.FindTexture("AssetStore Icon");
+        public static Texture2D help = EditorGUIUtility.LoadIcon($"Icons/_Help.png");
+        public static Texture2D clear = EditorGUIUtility.LoadIcon("StyleSheets/Northstar/Images/clear.png");
+        public static Texture2D more = EditorGUIUtility.LoadIcon($"{iconFolder}/more.png");
+        public static Texture2D logInfo = EditorGUIUtility.LoadIcon("UIPackageResources/Images/console.infoicon.png");
+        public static Texture2D logWarning = EditorGUIUtility.LoadIcon("UIPackageResources/Images/cconsole.warnicon.png");
+        public static Texture2D logError = EditorGUIUtility.LoadIcon("UIPackageResources/Images/console.erroricon.png");
+        public static Texture2D packageInstalled = EditorGUIUtility.LoadIcon($"{iconFolder}/package_installed.png");
+        public static Texture2D packageUpdate = EditorGUIUtility.LoadIcon($"{iconFolder}/package_update.png");
+        #else
         public static string iconFolder = $"{Utils.packageFolderName}/Editor/Icons";
         public static Texture2D shortcut = LoadIcon($"{iconFolder}/shortcut.png");
+        public static Texture2D staticAPI = EditorGUIUtility.FindTexture("cs Script Icon");
         public static Texture2D quicksearch = LoadIcon($"{iconFolder}/quicksearch.png");
         public static Texture2D searchQuery = LoadIcon($"{iconFolder}/search_query.png");
         public static Texture2D filter = LoadIcon($"{iconFolder}/filter.png");
         public static Texture2D settings = LoadIcon($"{iconFolder}/settings.png");
         public static Texture2D favorite = EditorGUIUtility.FindTexture("Favorite");
         public static Texture2D folder = EditorGUIUtility.FindTexture("FolderOpened Icon");
+        public static Texture2D help = EditorGUIUtility.FindTexture($"Icons/_Help.png");
         public static Texture2D search = LoadIcon($"{iconFolder}/search.png");
         public static Texture2D clear = LoadIcon($"{iconFolder}/clear.png");
         public static Texture2D more = LoadIcon($"{iconFolder}/more.png");
@@ -92,5 +111,7 @@ namespace Unity.QuickSearch
             outColor.a = color.a;
             return outColor;
         }
+
+        #endif
     }
 }

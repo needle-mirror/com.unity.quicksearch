@@ -1,9 +1,14 @@
+// #define DEBUG_STACKED_ENUMERATOR_DISPOSING
 using System;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine.Assertions;
 
-namespace Unity.QuickSearch
+#if DEBUG_STACKED_ENUMERATOR_DISPOSING
+using UnityEngine;
+#endif
+
+namespace UnityEditor.Search
 {
     internal class StackedEnumerator<T> : IEnumerator<T>
     {
@@ -13,10 +18,23 @@ namespace Unity.QuickSearch
 
         private static readonly bool k_IsNullable = default(T) == null;
 
+        #if DEBUG_STACKED_ENUMERATOR_DISPOSING
+        bool m_Disposed;
+        #endif
+
         public int Count => m_ItemsEnumerator.Count;
 
         public StackedEnumerator()
         {}
+
+        #if DEBUG_STACKED_ENUMERATOR_DISPOSING
+        ~StackedEnumerator()
+        {
+            if (!m_Disposed)
+                Debug.LogAssertion("Stacked Enumerator not properly disposed");
+        }
+
+        #endif
 
         public StackedEnumerator(object itemEnumerator)
         {
@@ -29,11 +47,6 @@ namespace Unity.QuickSearch
                 m_ItemsEnumerator.Push(enumerator);
             else
                 throw new ArgumentException($"Parameter {nameof(itemEnumerator)} is not an IEnumerable or IEnumerator.", nameof(itemEnumerator));
-        }
-
-        public void Clear()
-        {
-            m_ItemsEnumerator.Clear();
         }
 
         public bool NextItem(out T nextItem)
@@ -111,6 +124,15 @@ namespace Unity.QuickSearch
 
         public void Dispose()
         {
+            #if DEBUG_STACKED_ENUMERATOR_DISPOSING
+            m_Disposed = true;
+            #endif
+
+            foreach (var enumerator in m_ItemsEnumerator)
+            {
+                if (enumerator is IDisposable disposable)
+                    disposable.Dispose();
+            }
             m_ItemsEnumerator.Clear();
         }
     }

@@ -2,7 +2,7 @@ using UnityEditor;
 using UnityEngine;
 using UnityEngine.UIElements;
 
-namespace Unity.QuickSearch
+namespace UnityEditor.Search
 {
     class VisualSplitter : VisualElement
     {

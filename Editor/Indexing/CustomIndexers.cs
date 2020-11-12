@@ -7,7 +7,7 @@ using UnityEditor;
 using UnityEngine;
 using Object = UnityEngine.Object;
 
-namespace Unity.QuickSearch
+namespace UnityEditor.Search
 {
     delegate void CustomIndexerHandler(CustomObjectIndexerTarget context, ObjectIndexer indexer);
 

@@ -2,14 +2,15 @@
 //#define DEBUG_LOG_CHANGES
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using UnityEditor;
+using System.Threading;
 using UnityEditor.Experimental;
 using UnityEngine;
 
-namespace Unity.QuickSearch
+namespace UnityEditor.Search
 {
     using Task = SearchTask<TaskData>;
 
@@ -36,8 +37,8 @@ namespace Unity.QuickSearch
         // 6- Use produce artifacts async
         // 7- Update how keywords are encoded
         public const int version = (7 << 8) ^ SearchIndexEntryImporter.version;
-        private const string k_QuickSearchLibraryPath = "Library/QuickSearch";
-        public const string defaultSearchDatabaseIndexPath = "UserSettings/QuickSearch.index";
+        private const string k_QuickSearchLibraryPath = "Library/Search";
+        public const string defaultSearchDatabaseIndexPath = "UserSettings/Search.index";
 
         public enum IndexType
         {
@@ -137,8 +138,9 @@ namespace Unity.QuickSearch
         [NonSerialized] private int m_InstanceID = 0;
         [NonSerialized] private Task m_CurrentTask;
         [NonSerialized] private static readonly Dictionary<string, Type> IndexerFactory = new Dictionary<string, Type>();
-        [NonSerialized] private volatile int m_UpdateTasks = 0;
+        [NonSerialized] private int m_UpdateTasks = 0;
         [NonSerialized] private string m_IndexSettingsPath;
+        [NonSerialized] private ConcurrentBag<AssetIndexChangeSet> m_UpdateQueue = new ConcurrentBag<AssetIndexChangeSet>();
 
         public ObjectIndexer index { get; internal set; }
         public bool loaded { get; private set; }
@@ -159,6 +161,7 @@ namespace Unity.QuickSearch
         public static SearchDatabase Create(string settingsPath)
         {
             var db = CreateInstance<SearchDatabase>();
+            db.hideFlags |= HideFlags.DontUnloadUnusedAsset | HideFlags.DontSaveInEditor;
             return db.Reload(settingsPath);
         }
 
@@ -207,13 +210,13 @@ namespace Unity.QuickSearch
 
         public static IEnumerable<SearchDatabase> Enumerate(IndexLocation location, params string[] types)
         {
-            if (s_DefaultDB == null && File.Exists(defaultSearchDatabaseIndexPath))
+            if (!s_DefaultDB && File.Exists(defaultSearchDatabaseIndexPath))
                 s_DefaultDB = Create(defaultSearchDatabaseIndexPath);
 
             return EnumeratePaths(location, types)
                 .Select(path => AssetDatabase.LoadAssetAtPath<SearchDatabase>(path))
                 .Concat(new[] { s_DefaultDB })
-                .Where(db => db != null)
+                .Where(db => db)
                 .Select(db => { db.Log("Enumerate"); return db; });
         }
 
@@ -253,8 +256,6 @@ namespace Unity.QuickSearch
 
         public void Import(string settingsPath)
         {
-            AssetPostprocessorIndexer.contentRefreshed -= OnContentRefreshed;
-
             settings = LoadSettings(settingsPath);
             index = CreateIndexer(settings);
             name = settings.name;
@@ -262,18 +263,18 @@ namespace Unity.QuickSearch
             DeleteBackupIndex();
 
             var paths = index.GetDependencies();
-            using (var importTask = new Task("Import", $"Importing {name} index", paths.Count, this))
+            using (var importTask = new Task("Import", $"Importing search index ({name})", paths.Count, this))
             {
                 var completed = 0;
                 var artifacts = ProduceArtifacts(paths);
                 if (ResolveArtifactPaths(artifacts, out var _, importTask, ref completed))
-                    SaveIndex(CombineIndexes(settings, artifacts, importTask));
+                    SaveIndex(CombineIndexes(settings, artifacts, importTask), importTask);
             }
         }
 
         public static void ImportAsset(string settingsPath)
         {
-            if (s_DefaultDB != null && s_DefaultDB.path == settingsPath)
+            if (s_DefaultDB && s_DefaultDB.path == settingsPath)
                 s_DefaultDB.Reload(settingsPath);
             else
             {
@@ -283,9 +284,7 @@ namespace Unity.QuickSearch
                 }
                 else
                 {
-                    var guid = AssetDatabase.AssetPathToGUID(settingsPath);
-                    if (!string.IsNullOrEmpty(guid))
-                        AssetDatabase.ImportAsset(settingsPath);
+                    AssetDatabase.ImportAsset(settingsPath);
                 }
             }
         }
@@ -306,8 +305,7 @@ namespace Unity.QuickSearch
 
             if (bytes?.Length > 0)
             {
-                EditorApplication.update -= Load;
-                EditorApplication.update += Load;
+                Utils.tick += Load;
             }
             else
             {
@@ -330,8 +328,7 @@ namespace Unity.QuickSearch
             }
             else
             {
-                EditorApplication.update -= Build;
-                EditorApplication.update += Build;
+                Utils.tick += Build;
             }
         }
 
@@ -362,13 +359,12 @@ namespace Unity.QuickSearch
 
         private void Load()
         {
-            EditorApplication.update -= Load;
-            AssetPostprocessorIndexer.contentRefreshed -= OnContentRefreshed;
+            Utils.tick -= Load;
 
             if (!this)
                 return;
 
-            var loadTask = new Task("Load", $"Loading {name} index", (task, data) => Setup(), this);
+            var loadTask = new Task("Load", $"Loading search index ({name})", (task, data) => Setup(), this);
             loadTask.RunThread(() =>
             {
                 var step = 0;
@@ -385,7 +381,7 @@ namespace Unity.QuickSearch
         private void IncrementalLoad(string indexPath)
         {
             var indexType = settings.type;
-            var loadTask = new Task("Read", $"Loading {name} index", (task, data) => Setup(), this);
+            var loadTask = new Task("Read", $"Loading search index ({name})", (task, data) => Setup(), this);
             loadTask.RunThread(() =>
             {
                 var step = 0;
@@ -401,8 +397,8 @@ namespace Unity.QuickSearch
                 {
                     foreach (var d in index.GetDocuments())
                     {
-                        if (d != null && !File.Exists(d.id))
-                            deletedAssets.Add(d.id);
+                        if (d.valid && !File.Exists(d.path))
+                            deletedAssets.Add(d.path);
                     }
                 }
 
@@ -543,7 +539,7 @@ namespace Unity.QuickSearch
                 }
 
                 // Retry
-                EditorApplication.delayCall += () => ResolveArtifacts(artifacts, remainingArtifacts, task);
+                Utils.CallDelayed(() => ResolveArtifacts(artifacts, remainingArtifacts, task), 0.5);
             }
             catch (Exception err)
             {
@@ -579,8 +575,7 @@ namespace Unity.QuickSearch
                 if (task.Canceled())
                     return null;
 
-                combineIndexer.CombineIndexes(si, baseScore: settings.baseScore,
-                    (di, indexer) => indexer.AddProperty("a", indexName, di, saveKeyword: true, exact: true));
+                combineIndexer.CombineIndexes(si, baseScore: settings.baseScore, (di, indexer) => AddIndexNameArea(di, indexer, indexName));
             }
 
             if (task.Canceled())
@@ -601,15 +596,19 @@ namespace Unity.QuickSearch
             return null;
         }
 
+        private static void AddIndexNameArea(int documentIndex, SearchIndexer indexer, string indexName)
+        {
+            indexer.AddProperty("a", indexName, indexName.Length, indexName.Length, 0, documentIndex, saveKeyword: true, exact: true);
+        }
+
         private void Build()
         {
-            EditorApplication.update -= Build;
-            AssetPostprocessorIndexer.contentRefreshed -= OnContentRefreshed;
+            Utils.tick -= Build;
 
             if (!this)
                 return;
 
-            ResolveArtifacts("Build", $"Building {name} index", OnArtifactsResolved);
+            ResolveArtifacts("Build", $"Building search index ({name})", OnArtifactsResolved);
         }
 
         private void Setup()
@@ -628,37 +627,41 @@ namespace Unity.QuickSearch
             return $"{k_QuickSearchLibraryPath}/{settings.guid}.{GetIndexTypeSuffix()}";
         }
 
-        private byte[] SaveIndex(byte[] saveBytes, Action savedCallback = null)
+        private void SaveIndex(byte[] saveBytes, Task saveTask = null)
         {
-            var saveTask = new Task("Save", $"Saving {settings.name} index", (task, data) => savedCallback?.Invoke(), this);
-            saveTask.RunThread(() =>
+            try
             {
+                var backupIndexPath = GetBackupIndexPath(createDirectory: true);
+                saveTask?.Report(backupIndexPath);
+                var tempSave = Path.GetTempFileName();
+                File.WriteAllBytes(tempSave, saveBytes);
+
                 try
                 {
-                    var backupIndexPath = GetBackupIndexPath(createDirectory: true);
-                    saveTask.Report(backupIndexPath);
-                    var tempSave = Path.GetTempFileName();
-                    File.WriteAllBytes(tempSave, saveBytes);
-
-                    try
-                    {
-                        if (File.Exists(backupIndexPath))
-                            File.Delete(backupIndexPath);
-                    }
-                    catch (IOException)
-                    {
-                        // ignore file index persistence operation, since it is not critical and will redone later.
-                    }
-
-                    File.Move(tempSave, backupIndexPath);
-                    //Debug.Log($"Save backup index {backupIndexPath}, {DateTime.FromBinary(index.timestamp)}");
+                    if (File.Exists(backupIndexPath))
+                        File.Delete(backupIndexPath);
                 }
-                catch (IOException ex)
+                catch (IOException)
                 {
-                    Debug.LogException(ex);
-                    // ignore
+                    // ignore file index persistence operation, since it is not critical and will redone later.
                 }
-                saveTask.Report(99, 100);
+
+                File.Move(tempSave, backupIndexPath);
+            }
+            catch (IOException ex)
+            {
+                Debug.LogException(ex);
+                // ignore
+            }
+            saveTask?.Report(99, 100);
+        }
+
+        private byte[] SaveIndex(byte[] saveBytes, Action savedCallback = null)
+        {
+            var saveTask = new Task("Save", $"Saving search index ({settings.name})", (task, data) => savedCallback?.Invoke(), this);
+            saveTask.RunThread(() =>
+            {
+                SaveIndex(saveBytes, saveTask);
                 Dispatcher.Enqueue(() => saveTask.Resolve(new TaskData(saveBytes, index)));
             });
 
@@ -691,45 +694,66 @@ namespace Unity.QuickSearch
 
         private void IncrementalUpdate(AssetIndexChangeSet changeset)
         {
-            #if DEBUG_LOG_CHANGES
-            if (changeset.updated.Length > 0) Log("Change", string.Join(", ", changeset.updated));
-            if (changeset.removed.Length > 0) Log("Remove", string.Join(", ", changeset.removed));
-            #endif
-
             if (!this)
                 return;
 
-            AssetPostprocessorIndexer.contentRefreshed -= OnContentRefreshed;
+            m_UpdateQueue.Add(changeset);
+            ProcessIncrementalUpdates();
+        }
+
+        private void ProcessIncrementalUpdates()
+        {
+            if (ready && !updating)
+            {
+                if (m_UpdateQueue.TryTake(out var diff))
+                    ProcessIncrementalUpdate(diff);
+            }
+            else
+            {
+                Utils.CallDelayed(ProcessIncrementalUpdates, 0.5);
+            }
+        }
+
+        private void ProcessIncrementalUpdate(AssetIndexChangeSet changeset)
+        {
+            Interlocked.Increment(ref m_UpdateTasks);
 
             var baseScore = settings.baseScore;
             var indexName = settings.name.ToLowerInvariant();
             var updates = ProduceArtifacts(changeset.updated);
 
-            ++m_UpdateTasks;
-            ResolveArtifacts(updates, null, new Task("Update", $"Updating {settings.name} index ({updates.Length})", (Task task, TaskData data) =>
+            ResolveArtifacts(updates, null, new Task("Update", $"Updating search index ({settings.name})", (Task task, TaskData data) =>
             {
                 if (task.canceled || task.error != null)
                 {
-                    if (task.error != null)
-                        Debug.LogException(task.error);
-                    --m_UpdateTasks;
+                    ResolveIncrementalUpdate(task.error);
                     return;
                 }
 
                 byte[] mergedBytes = null;
                 task.Report("Merging changes to index...");
-                task.RunThread(() =>
-                {
-                    index.Merge(changeset.removed, data.combinedIndex, baseScore, (di, indexer) => indexer.AddProperty("a", indexName, di, true, true));
-                    mergedBytes = index.SaveBytes();
-                }, () =>
+                task.RunThread(
+                    () =>
                     {
-                        //foreach (var t in changeset.updated) Debug.Log($"updated {t}");
-                        //foreach (var t in changeset.removed) Debug.Log($"removed {t}");
-                        --m_UpdateTasks;
+                        index.Merge(changeset.removed, data.combinedIndex, baseScore, (di, indexer) => AddIndexNameArea(di, indexer, indexName));
+                        mergedBytes = index.SaveBytes();
+                    },
+                    () =>
+                    {
                         bytes = SaveIndex(mergedBytes, Setup);
+                        ResolveIncrementalUpdate();
                     });
             }, updates.Length, this));
+        }
+
+        private void ResolveIncrementalUpdate(Exception err = null)
+        {
+            if (err != null)
+                Debug.LogException(err);
+            Interlocked.Decrement(ref m_UpdateTasks);
+            ProcessIncrementalUpdates();
+
+            // TODO: Call SearchService.RefreshWindows()
         }
 
         private void OnArtifactsResolved(Task task, TaskData data)
@@ -746,7 +770,7 @@ namespace Unity.QuickSearch
             var artifacts = InitializeIndexArtifacts(assetPaths);
             var indexImporterType = SearchIndexEntryImporter.GetIndexImporterType(settings.type, settings.options.GetHashCode());
 
-            #if UNITY_2020_2_OR_NEWER
+            #if USE_SEARCH_MODULE || UNITY_2020_2_OR_NEWER
             var artifactIds = AssetDatabaseExperimental.ProduceArtifactsAsync(artifacts.Select(a => new GUID(a.guid)).ToArray(), indexImporterType);
             for (int i = 0; i < artifactIds.Length; ++i)
                 artifacts[i].key = artifactIds[i].value;
@@ -772,7 +796,7 @@ namespace Unity.QuickSearch
             state = OnDemandState.Unavailable;
             switch (mode)
             {
-                #if UNITY_2020_2_OR_NEWER
+                #if USE_SEARCH_MODULE || UNITY_2020_2_OR_NEWER
                 case ImportMode.Asynchronous:
                     return AssetDatabaseExperimental.ProduceArtifactAsync(new ArtifactKey(guid, importerType)).value;
                 case ImportMode.Synchronous:
@@ -803,7 +827,7 @@ namespace Unity.QuickSearch
 
         private static bool GetArtifactPaths(Hash128 artifactHash, out string[] paths)
         {
-            #if UNITY_2020_2_OR_NEWER
+            #if USE_SEARCH_MODULE || UNITY_2020_2_OR_NEWER
             return AssetDatabaseExperimental.GetArtifactPaths(new ArtifactID { value = artifactHash }, out paths);
             #else
             return AssetDatabaseExperimental.GetArtifactPaths(artifactHash, out paths);
@@ -814,8 +838,9 @@ namespace Unity.QuickSearch
         {
             if (File.Exists(defaultSearchDatabaseIndexPath))
                 File.Delete(defaultSearchDatabaseIndexPath);
-            var searchUserIndexLibraryFolder = Path.GetDirectoryName(defaultSearchDatabaseIndexPath);
-            var defaultDbIndexPath = SearchDatabaseImporter.CreateTemplateIndex("_Default", searchUserIndexLibraryFolder, "QuickSearch");
+            var defaultIndexFilename = Path.GetFileNameWithoutExtension(defaultSearchDatabaseIndexPath);
+            var defaultIndexFolder = Path.GetDirectoryName(defaultSearchDatabaseIndexPath);
+            var defaultDbIndexPath = SearchDatabaseImporter.CreateTemplateIndex("_Default", defaultIndexFolder, defaultIndexFilename);
             ImportAsset(defaultDbIndexPath);
             return s_DefaultDB;
         }

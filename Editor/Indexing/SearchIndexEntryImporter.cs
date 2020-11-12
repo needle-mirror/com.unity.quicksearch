@@ -1,15 +1,14 @@
 using System;
 using System.IO;
-using UnityEditor;
 using UnityEngine;
 
-#if UNITY_2020_2_OR_NEWER
-using UnityEditor.AssetImporters;
-#else
+#if UNITY_2020_1
 using UnityEditor.Experimental.AssetImporters;
+#else
+using UnityEditor.AssetImporters;
 #endif
 
-namespace Unity.QuickSearch
+namespace UnityEditor.Search
 {
     [Flags]
     enum IndexingOptions : byte
@@ -22,9 +21,11 @@ namespace Unity.QuickSearch
 
     abstract class SearchIndexEntryImporter : ScriptedImporter
     {
-        // 14- Add extended options to index as many properties as possible
-        // 15- Add a dependency on the container folder of the asset so it gets re-indexed when the folder gets renamed
-        public const int version = (15 << 18) ^ SearchIndexEntry.version;
+        // 1- Add extended options to index as many properties as possible
+        // 2- Add a dependency on the container folder of the asset so it gets re-indexed when the folder gets renamed
+        // 3- Index colors with a # sign instead of just the hexadecimal value.
+        // 4- Optimize the scene indexing content
+        public const int version = (4 << 18) ^ SearchIndexEntry.version;
 
         protected abstract string type { get; }
         protected abstract IndexingOptions options { get; }
@@ -57,7 +58,6 @@ namespace Unity.QuickSearch
                 options = GetOptions(),
             };
 
-            EditorApplication.LockReloadAssemblies();
             try
             {
                 var indexer = SearchDatabase.CreateIndexer(settings);
@@ -68,7 +68,7 @@ namespace Unity.QuickSearch
                 using (var fileStream = new FileStream(indexArtifactPath, FileMode.CreateNew, FileAccess.Write, FileShare.Read))
                     indexer.Write(fileStream);
 
-                Debug.LogFormat(LogType.Log, LogOption.NoStacktrace, null, $"\nGenerated {type} ({GetType().Name}) {indexArtifactPath} for {ctx.assetPath} with {options}");
+                Console.WriteLine($"Generated {type} ({GetType().Name}) {indexArtifactPath} for {ctx.assetPath} with {options}");
 
                 ctx.DependsOnSourceAsset(Path.GetDirectoryName(ctx.assetPath).Replace("\\", "/"));
                 ctx.DependsOnCustomDependency(GetType().GUID.ToString("N"));
@@ -78,10 +78,6 @@ namespace Unity.QuickSearch
             {
                 Debug.LogException(ex);
                 ctx.LogImportError(ex.Message);
-            }
-            finally
-            {
-                EditorApplication.UnlockReloadAssemblies();
             }
         }
 

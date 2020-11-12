@@ -3,11 +3,10 @@ using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using UnityEditor;
 using UnityEngine;
 using Object = UnityEngine.Object;
 
-namespace Unity.QuickSearch.Providers
+namespace UnityEditor.Search.Providers
 {
     static class ObjectProvider
     {
@@ -63,7 +62,7 @@ namespace Unity.QuickSearch.Providers
 
         private static string FetchLabel(SearchItem item)
         {
-            return (item.label = ((SearchDocument)item.data).metadata);
+            return (item.label = ((SearchDocument)item.data).path);
         }
 
         private static string FetchDescription(SearchItem item)
@@ -175,7 +174,7 @@ namespace Unity.QuickSearch.Providers
             while (!index.IsReady())
                 yield return null;
 
-            yield return index.Search(searchQuery.ToLowerInvariant()).Select(e =>
+            yield return index.Search(searchQuery.ToLowerInvariant(), context, provider).Select(e =>
             {
                 var itemScore = e.score + scoreModifier;
                 return provider.CreateItem(context, e.id, itemScore, null, null, null, index.GetDocument(e.index));

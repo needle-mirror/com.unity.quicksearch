@@ -1,7 +1,8 @@
 using System;
 using UnityEngine;
+using UnityEngine.Internal;
 
-namespace Unity.QuickSearch
+namespace UnityEditor.Search
 {
     /// <summary>
     /// DisplayMode for a <see cref="ISearchView"/>
@@ -9,11 +10,15 @@ namespace Unity.QuickSearch
     public enum DisplayMode
     {
         /// <summary>Unspecified ISearchView display mode</summary>
-        None,
+        None = 0,
         /// <summary>Display as a list view</summary>
-        List,
+        List = 32,
         /// <summary>Display as a Grid of icons of various size.</summary>
-        Grid
+        Grid = 96,
+
+        [ExcludeFromDocs]
+        /// <summary>Maximum grid size</summary>
+        Limit = 128
     }
 
     /// <summary>
@@ -44,7 +49,7 @@ namespace Unity.QuickSearch
     /// <summary>
     /// Search view interface used by the search context to execute a few UI operations.
     /// </summary>
-    public interface ISearchView
+    public interface ISearchView : IDisposable
     {
         /// <summary>
         /// Returns the selected item in the view

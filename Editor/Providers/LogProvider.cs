@@ -1,11 +1,10 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Threading;
-using UnityEditor;
 using UnityEngine;
 
-namespace Unity.QuickSearch.Providers
+namespace UnityEditor.Search.Providers
 {
     static class LogProvider
     {
@@ -21,7 +20,7 @@ namespace Unity.QuickSearch.Providers
         private const string type = "log";
         private const string displayName = "Logs";
 
-        private static volatile int s_LogIndex = 0;
+        private static int s_LogIndex = 0;
         private static List<LogEntry> s_Logs = new List<LogEntry>();
         private static volatile bool s_Initialized = false;
 
@@ -94,7 +93,7 @@ namespace Unity.QuickSearch.Providers
             return new LogEntry
             {
                 id = "__log_" + s_LogIndex,
-                lineNumber = ++s_LogIndex,
+                lineNumber = Interlocked.Increment(ref s_LogIndex),
                 msg = s,
                 msgLowerCased = s.ToLowerInvariant(),
                 logType = logType

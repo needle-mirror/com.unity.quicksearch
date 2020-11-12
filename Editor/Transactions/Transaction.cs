@@ -1,7 +1,7 @@
 using System;
 using UnityEngine;
 
-namespace Unity.QuickSearch
+namespace UnityEditor.Search
 {
     [Flags]
     enum AssetModification

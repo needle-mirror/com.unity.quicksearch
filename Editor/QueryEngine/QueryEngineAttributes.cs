@@ -1,6 +1,6 @@
 using System;
 
-namespace Unity.QuickSearch
+namespace UnityEditor.Search
 {
     /// <summary>
     /// Base attribute class used to define a custom filter on a QueryEngine.

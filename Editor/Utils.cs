@@ -6,107 +6,62 @@ using System.Diagnostics;
 using System.IO;
 using System.Reflection;
 using System.Globalization;
-using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
-using UnityEditor;
 using UnityEngine;
-using Debug = UnityEngine.Debug;
 using UnityEditorInternal;
 using UnityEngine.UIElements;
 
-[assembly: InternalsVisibleTo("com.unity.quicksearch.tests")]
+#if USE_SEARCH_MODULE
+using UnityEditor.Connect;
+using UnityEditor.StyleSheets;
+#endif
 
-namespace Unity.QuickSearch
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("com.unity.quicksearch.tests")]
+
+namespace UnityEditor.Search
 {
+    #if !USE_SEARCH_MODULE
+    internal sealed class RequiredSignatureAttribute : Attribute
+    {
+    }
+    #endif
+
+    /// <summary>
+    /// This utility class mainly contains proxy to internal API that are shared between the version in trunk and the package version.
+    /// </summary>
     static class Utils
     {
+        #if !USE_SEARCH_MODULE
         const string packageName = "com.unity.quicksearch";
-
         public static readonly string packageFolderName = $"Packages/{packageName}";
-        public static readonly bool isDeveloperBuild = false;
 
-        internal class CallDelayer
+        internal struct InspectorWindowUtils_LayoutGroupChecker : IDisposable
         {
-            private double m_LastExecutionTime;
-            private readonly Action<object> m_Action;
-            private readonly double m_DebounceDelay;
-            private object m_Context;
-            private readonly bool m_IsThrottle;
-
-            public static CallDelayer Throttle(Action<object> action, double delay = 0.2)
+            public void Dispose()
             {
-                return new CallDelayer(action, delay, true);
-            }
-
-            public static CallDelayer Debounce(Action<object> action, double delay = 0.2)
-            {
-                return new CallDelayer(action, delay, false);
-            }
-
-            public void Execute(object context = null)
-            {
-                m_Context = context;
-                if (m_IsThrottle)
-                {
-                    if (m_LastExecutionTime == 0)
-                        Throttle();
-                }
-                else
-                {
-                    m_LastExecutionTime = EditorApplication.timeSinceStartup;
-                    Debounce();
-                }
-            }
-
-            private CallDelayer(Action<object> action, double delay, bool isThrottle)
-            {
-                m_Action = action;
-                m_DebounceDelay = delay;
-                m_IsThrottle = isThrottle;
-            }
-
-            private void Debounce()
-            {
-                EditorApplication.delayCall -= Debounce;
-                var currentTime = EditorApplication.timeSinceStartup;
-                if (m_LastExecutionTime != 0 && currentTime - m_LastExecutionTime > m_DebounceDelay)
-                {
-                    m_Action(m_Context);
-                    m_LastExecutionTime = 0;
-                }
-                else
-                {
-                    EditorApplication.delayCall += Debounce;
-                }
-            }
-
-            private void Throttle()
-            {
-                EditorApplication.delayCall -= Throttle;
-                var currentTime = EditorApplication.timeSinceStartup;
-                if (m_LastExecutionTime != 0 && currentTime - m_LastExecutionTime > m_DebounceDelay)
-                {
-                    m_Action(m_Context);
-                    m_LastExecutionTime = 0;
-                }
-                else
-                {
-                    if (m_LastExecutionTime == 0)
-                        m_LastExecutionTime = currentTime;
-                    EditorApplication.delayCall += Throttle;
-                }
             }
         }
+        #endif
 
-        private static string[] _ignoredAssemblies =
-        {
-            "^UnityScript$", "^System$", "^mscorlib$", "^netstandard$",
-            "^System\\..*", "^nunit\\..*", "^Microsoft\\..*", "^Mono\\..*", "^SyntaxTree\\..*"
-        };
+        internal static readonly bool isDeveloperBuild = false;
 
-        static Utils()
+        private static UnityEngine.Object[] s_LastDraggedObjects;
+
+        #if !USE_SEARCH_MODULE
+        static UnityEngine.Object s_MainWindow = null;
+        private static MethodInfo s_GetNumCharactersThatFitWithinWidthMethod;
+        private static MethodInfo s_GetMainAssetInstanceID;
+        private static MethodInfo s_FindTextureMethod;
+        private static MethodInfo s_GetIconForObject;
+        private static MethodInfo s_CallDelayed;
+        private static MethodInfo s_FromUSSMethod;
+        private static MethodInfo s_HasCurrentWindowKeyFocusMethod;
+        private static Action<string> s_OpenPackageManager;
+        private static MethodInfo s_GetSourceAssetFileHash;
+
+        internal static string GetPackagePath(string relativePath)
         {
-            isDeveloperBuild = Directory.Exists($"{packageFolderName}/.git");
+            return Path.Combine(packageFolderName, relativePath).Replace("\\", "/");
         }
 
         private static Type[] GetAllEditorWindowTypes()
@@ -114,17 +69,18 @@ namespace Unity.QuickSearch
             return TypeCache.GetTypesDerivedFrom<EditorWindow>().ToArray();
         }
 
-        /// <summary>
-        /// Opens the Quick Search documentation page
-        /// </summary>
-        public static void OpenDocumentationUrl()
+        #endif
+
+        static Utils()
         {
-            string documentationUrl = $"https://docs.unity3d.com/Packages/com.unity.quicksearch{GetQuickSearchDocVersion()}/manual/search-syntax.html";
-            var uri = new Uri(documentationUrl);
-            Process.Start(uri.AbsoluteUri);
+            #if USE_SEARCH_MODULE
+            isDeveloperBuild = Unsupported.IsSourceBuild();
+            #else
+            isDeveloperBuild = File.Exists($"{packageFolderName}/.dev");
+            #endif
         }
 
-        public static void OpenInBrowser(string baseUrl, List<Tuple<string, string>> query = null)
+        internal static void OpenInBrowser(string baseUrl, List<Tuple<string, string>> query = null)
         {
             var url = baseUrl;
 
@@ -146,9 +102,15 @@ namespace Unity.QuickSearch
             Process.Start(uri.AbsoluteUri);
         }
 
-        internal static Type GetProjectBrowserWindowType()
+        internal static SettingsProvider[] FetchSettingsProviders()
         {
-            return GetAllEditorWindowTypes().FirstOrDefault(t => t.Name == "ProjectBrowser");
+            #if USE_SEARCH_MODULE
+            return SettingsService.FetchSettingsProviders();
+            #else
+            var type = typeof(SettingsService);
+            var method = type.GetMethod("FetchSettingsProviders", BindingFlags.NonPublic | BindingFlags.Static);
+            return (SettingsProvider[])method.Invoke(null, null);
+            #endif
         }
 
         internal static string GetNameFromPath(string path)
@@ -160,37 +122,107 @@ namespace Unity.QuickSearch
             return path.Substring(lastSep + 1);
         }
 
-        public static Texture2D GetAssetThumbnailFromPath(string path)
+        internal static Hash128 GetSourceAssetFileHash(string guid)
         {
-            Texture2D thumbnail = AssetDatabase.GetCachedIcon(path) as Texture2D;
-            return thumbnail ?? UnityEditorInternal.InternalEditorUtility.FindIconForFile(path);
+            #if USE_SEARCH_MODULE
+            return AssetDatabase.GetSourceAssetFileHash(guid);
+            #else
+            if (s_GetSourceAssetFileHash == null)
+            {
+                var type = typeof(UnityEditor.AssetDatabase);
+                s_GetSourceAssetFileHash = type.GetMethod("GetSourceAssetFileHash", BindingFlags.NonPublic | BindingFlags.Static);
+                if (s_GetSourceAssetFileHash == null)
+                    return default;
+            }
+            object[] parameters = new object[] { guid };
+            return (Hash128)s_GetSourceAssetFileHash.Invoke(null, parameters);
+            #endif
         }
 
-        public static Texture2D GetAssetPreviewFromPath(string path, FetchPreviewOptions previewOptions)
+        internal static Texture2D GetAssetThumbnailFromPath(string path)
+        {
+            var thumbnail = GetAssetPreviewFromGUID(AssetDatabase.AssetPathToGUID(path));
+            if (thumbnail)
+                return thumbnail;
+            thumbnail = AssetDatabase.GetCachedIcon(path) as Texture2D;
+            return thumbnail ?? InternalEditorUtility.FindIconForFile(path);
+        }
+
+        private static Texture2D GetAssetPreviewFromGUID(string guid)
+        {
+            #if USE_SEARCH_MODULE
+            return AssetPreview.GetAssetPreviewFromGUID(guid);
+            #else
+            return null;
+            #endif
+        }
+
+        internal static Texture2D GetAssetPreviewFromPath(string path, FetchPreviewOptions previewOptions)
         {
             return GetAssetPreviewFromPath(path, new Vector2(128, 128), previewOptions);
         }
 
-        public static Texture2D GetAssetPreviewFromPath(string path, Vector2 previewSize, FetchPreviewOptions previewOptions)
+        internal static Texture2D GetAssetPreviewFromPath(string path, Vector2 previewSize, FetchPreviewOptions previewOptions)
         {
-            var tex = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
-            if (tex)
-                return tex;
+            var assetType = AssetDatabase.GetMainAssetTypeAtPath(path);
+            if (assetType == typeof(SceneAsset))
+                return AssetDatabase.GetCachedIcon(path) as Texture2D;
 
-            if (!previewOptions.HasFlag(FetchPreviewOptions.Large))
+            //UnityEngine.Debug.Log($"Generate preview for {path}, {previewSize}, {previewOptions}");
+
+            if (previewOptions.HasFlag(FetchPreviewOptions.Normal))
             {
-                var assetType = AssetDatabase.GetMainAssetTypeAtPath(path);
                 if (assetType == typeof(AudioClip))
                     return GetAssetThumbnailFromPath(path);
+
+                var fi = new FileInfo(path);
+                if (!fi.Exists)
+                    return null;
+                if (fi.Length > 16 * 1024 * 1024)
+                    return GetAssetThumbnailFromPath(path);
+            }
+
+            if (!typeof(Texture).IsAssignableFrom(assetType))
+            {
+                var tex = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
+                if (tex)
+                    return tex;
             }
 
             var obj = AssetDatabase.LoadMainAssetAtPath(path);
             if (obj == null)
                 return null;
-            return GetAssetPreview(obj, previewOptions);
+
+            #if USE_SEARCH_MODULE
+            if (previewOptions.HasFlag(FetchPreviewOptions.Large))
+            {
+                var tex = AssetPreviewUpdater.CreatePreview(obj, null, path, (int)previewSize.x, (int)previewSize.y);
+                if (tex)
+                    return tex;
+            }
+            #endif
+
+            return GetAssetPreview(obj, previewOptions) ?? AssetDatabase.GetCachedIcon(path) as Texture2D;
         }
 
-        public static Texture2D GetAssetPreview(UnityEngine.Object obj, FetchPreviewOptions previewOptions)
+        internal static int GetMainAssetInstanceID(string assetPath)
+        {
+            #if USE_SEARCH_MODULE
+            return AssetDatabase.GetMainAssetInstanceID(assetPath);
+            #else
+            if (s_GetMainAssetInstanceID == null)
+            {
+                var type = typeof(UnityEditor.AssetDatabase);
+                s_GetMainAssetInstanceID = type.GetMethod("GetMainAssetInstanceID", BindingFlags.NonPublic | BindingFlags.Static);
+                if (s_GetMainAssetInstanceID == null)
+                    return default;
+            }
+            object[] parameters = new object[] { assetPath };
+            return (int)s_GetMainAssetInstanceID.Invoke(null, parameters);
+            #endif
+        }
+
+        internal static Texture2D GetAssetPreview(UnityEngine.Object obj, FetchPreviewOptions previewOptions)
         {
             var preview = AssetPreview.GetAssetPreview(obj);
             if (preview == null || previewOptions.HasFlag(FetchPreviewOptions.Large))
@@ -202,12 +234,22 @@ namespace Unity.QuickSearch
             return preview;
         }
 
-        public static int Wrap(int index, int n)
+        internal static bool IsEditorValid(Editor e)
+        {
+            #if USE_SEARCH_MODULE
+            return e && e.serializedObject != null && e.serializedObject.isValid;
+            #else
+            return e && e.serializedObject != null &&
+                (bool)typeof(SerializedObject).GetProperty("isValid", BindingFlags.NonPublic | BindingFlags.Instance).GetValue(e.serializedObject);
+            #endif
+        }
+
+        internal static int Wrap(int index, int n)
         {
             return ((index % n) + n) % n;
         }
 
-        public static void SelectObject(UnityEngine.Object obj, bool ping = false)
+        internal static void SelectObject(UnityEngine.Object obj, bool ping = false)
         {
             if (!obj)
                 return;
@@ -222,14 +264,14 @@ namespace Unity.QuickSearch
             }
         }
 
-        public static UnityEngine.Object SelectAssetFromPath(string path, bool ping = false)
+        internal static UnityEngine.Object SelectAssetFromPath(string path, bool ping = false)
         {
             var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(path);
             SelectObject(asset, ping);
             return asset;
         }
 
-        public static void FrameAssetFromPath(string path)
+        internal static void FrameAssetFromPath(string path)
         {
             var asset = SelectAssetFromPath(path);
             if (asset != null)
@@ -246,7 +288,7 @@ namespace Unity.QuickSearch
             }
         }
 
-        public static IEnumerable<Type> GetLoadableTypes(this Assembly assembly)
+        internal static IEnumerable<Type> GetLoadableTypes(this Assembly assembly)
         {
             try
             {
@@ -258,7 +300,18 @@ namespace Unity.QuickSearch
             }
         }
 
-        public static string FormatProviderList(IEnumerable<SearchProvider> providers, bool fullTimingInfo = false, bool showFetchTime = true)
+        internal static void GetMenuItemDefaultShortcuts(List<string> outItemNames, List<string> outItemDefaultShortcuts)
+        {
+            #if USE_SEARCH_MODULE
+            Menu.GetMenuItemDefaultShortcuts(outItemNames, outItemDefaultShortcuts);
+            #else
+            var method = typeof(Menu).GetMethod("GetMenuItemDefaultShortcuts", BindingFlags.NonPublic | BindingFlags.Static);
+            var arguments = new object[] { outItemNames, outItemDefaultShortcuts };
+            method.Invoke(null, arguments);
+            #endif
+        }
+
+        internal static string FormatProviderList(IEnumerable<SearchProvider> providers, bool fullTimingInfo = false, bool showFetchTime = true)
         {
             return string.Join(fullTimingInfo ? "\r\n" : ", ", providers.Select(p =>
             {
@@ -273,7 +326,7 @@ namespace Unity.QuickSearch
             }));
         }
 
-        public static string FormatBytes(long byteCount)
+        internal static string FormatBytes(long byteCount)
         {
             string[] suf = { "B", "KB", "MB", "GB", "TB", "PB", "EB" };
             if (byteCount == 0)
@@ -284,7 +337,7 @@ namespace Unity.QuickSearch
             return $"{Math.Sign(byteCount) * num} {suf[place]}";
         }
 
-        public static string ToGuid(string assetPath)
+        internal static string ToGuid(string assetPath)
         {
             string metaFile = $"{assetPath}.meta";
             if (!File.Exists(metaFile))
@@ -304,46 +357,18 @@ namespace Unity.QuickSearch
             return null;
         }
 
-        private static bool IsIgnoredAssembly(AssemblyName assemblyName)
-        {
-            var name = assemblyName.Name;
-            return _ignoredAssemblies.Any(candidate => Regex.IsMatch(name, candidate));
-        }
-
-        internal static MethodInfo[] GetAllStaticMethods(this AppDomain aAppDomain, bool showInternalAPIs)
-        {
-            var result = new List<MethodInfo>();
-            var assemblies = aAppDomain.GetAssemblies();
-            foreach (var assembly in assemblies)
-            {
-                if (IsIgnoredAssembly(assembly.GetName()))
-                    continue;
-                var types = assembly.GetLoadableTypes();
-                foreach (var type in types)
-                {
-                    var methods = type.GetMethods(BindingFlags.Static | (showInternalAPIs ? BindingFlags.Public | BindingFlags.NonPublic : BindingFlags.Public) | BindingFlags.DeclaredOnly);
-                    foreach (var m in methods)
-                    {
-                        if (m.IsPrivate)
-                            continue;
-
-                        if (m.IsGenericMethod)
-                            continue;
-
-                        if (m.Name.Contains("Begin") || m.Name.Contains("End"))
-                            continue;
-
-                        if (m.GetParameters().Length == 0)
-                            result.Add(m);
-                    }
-                }
-            }
-            return result.ToArray();
-        }
-
-        static UnityEngine.Object s_MainWindow = null;
         internal static Rect GetEditorMainWindowPos()
         {
+            #if USE_SEARCH_MODULE
+            var windows = Resources.FindObjectsOfTypeAll<ContainerWindow>();
+            foreach (var win in windows)
+            {
+                if (win.showMode == ShowMode.MainWindow)
+                    return win.position;
+            }
+
+            return new Rect(0, 0, 800, 600);
+            #else
             if (s_MainWindow == null)
             {
                 var containerWinType = typeof(EditorWindow).Assembly.GetType("UnityEditor.ContainerWindow");
@@ -371,9 +396,10 @@ namespace Unity.QuickSearch
             if (positionProperty == null)
                 throw new MissingFieldException("Can't find internal fields 'position'. Maybe something has changed inside Unity.");
             return (Rect)positionProperty.GetValue(s_MainWindow, null);
+            #endif
         }
 
-        public static Rect GetCenteredWindowPosition(Rect parentWindowPosition, Vector2 size)
+        internal static Rect GetCenteredWindowPosition(Rect parentWindowPosition, Vector2 size)
         {
             var pos = new Rect
             {
@@ -388,18 +414,32 @@ namespace Unity.QuickSearch
             return pos;
         }
 
-        public static Rect GetMainWindowCenteredPosition(Vector2 size)
+        internal static Type GetProjectBrowserWindowType()
+        {
+            #if USE_SEARCH_MODULE
+            return typeof(ProjectBrowser);
+            #else
+            return GetAllEditorWindowTypes().FirstOrDefault(t => t.Name == "ProjectBrowser");
+            #endif
+        }
+
+        internal static Rect GetMainWindowCenteredPosition(Vector2 size)
         {
             var mainWindowRect = GetEditorMainWindowPos();
             return GetCenteredWindowPosition(mainWindowRect, size);
         }
 
-        public static void ShowDropDown(this EditorWindow window, Vector2 size)
+        internal static void ShowDropDown(this EditorWindow window, Vector2 size)
         {
             window.maxSize = window.minSize = size;
             window.position = GetMainWindowCenteredPosition(size);
             window.ShowPopup();
 
+            #if USE_SEARCH_MODULE
+            var parentView = window.m_Parent;
+            parentView.AddToAuxWindowList();
+            parentView.window.m_DontSaveToLayout = true;
+            #else
             Assembly assembly = typeof(EditorWindow).Assembly;
 
             var editorWindowType = typeof(EditorWindow);
@@ -416,11 +456,15 @@ namespace Unity.QuickSearch
             var parentContainerWindowValue = containerWindowProperty.GetValue(parentViewValue);
             var dontSaveToLayoutField = containerWindowType.GetField("m_DontSaveToLayout", BindingFlags.Instance | BindingFlags.NonPublic);
             dontSaveToLayoutField.SetValue(parentContainerWindowValue, true);
-            Debug.Assert((bool) dontSaveToLayoutField.GetValue(parentContainerWindowValue));
+            UnityEngine.Debug.Assert((bool)dontSaveToLayoutField.GetValue(parentContainerWindowValue));
+            #endif
         }
 
         internal static string JsonSerialize(object obj)
         {
+            #if USE_SEARCH_MODULE
+            return Json.Serialize(obj);
+            #else
             var assembly = typeof(Selection).Assembly;
             var managerType = assembly.GetTypes().First(t => t.Name == "Json");
             var method = managerType.GetMethod("Serialize", BindingFlags.Public | BindingFlags.Static);
@@ -428,20 +472,27 @@ namespace Unity.QuickSearch
             var arguments = new object[] { obj, false, "  " };
             jsonString = method.Invoke(null, arguments) as string;
             return jsonString;
+            #endif
         }
 
-        internal static object JsonDeserialize(object obj)
+        internal static object JsonDeserialize(string json)
         {
+            #if USE_SEARCH_MODULE
+            return Json.Deserialize(json);
+            #else
             Assembly assembly = typeof(Selection).Assembly;
             var managerType = assembly.GetTypes().First(t => t.Name == "Json");
             var method = managerType.GetMethod("Deserialize", BindingFlags.Public | BindingFlags.Static);
-            var arguments = new object[] { obj };
+            var arguments = new object[] { json };
             return method.Invoke(null, arguments);
+            #endif
         }
 
-        private static MethodInfo s_GetNumCharactersThatFitWithinWidthMethod;
         internal static int GetNumCharactersThatFitWithinWidth(GUIStyle style, string text, float width)
         {
+            #if USE_SEARCH_MODULE
+            return style.GetNumCharactersThatFitWithinWidth(text, width);
+            #else
             if (s_GetNumCharactersThatFitWithinWidthMethod == null)
             {
                 var kType = typeof(GUIStyle);
@@ -449,51 +500,7 @@ namespace Unity.QuickSearch
             }
             var arguments = new object[] { text, width };
             return (int)s_GetNumCharactersThatFitWithinWidthMethod.Invoke(style, arguments);
-        }
-
-        private static MethodInfo s_GetPackagesPathsMethod;
-        internal static string[] GetPackagesPaths()
-        {
-            if (s_GetPackagesPathsMethod == null)
-            {
-                Assembly assembly = typeof(UnityEditor.PackageManager.Client).Assembly;
-                var type = assembly.GetTypes().First(t => t.FullName == "UnityEditor.PackageManager.Folders");
-                s_GetPackagesPathsMethod = type.GetMethod("GetPackagesPaths", BindingFlags.Public | BindingFlags.Static);
-            }
-            return (string[])s_GetPackagesPathsMethod.Invoke(null, null);
-        }
-
-        internal static string GetQuickSearchVersion()
-        {
-            string version = null;
-            try
-            {
-                var filePath = File.ReadAllText($"{packageFolderName}/package.json");
-                if (JsonDeserialize(filePath) is Dictionary<string, object> manifest && manifest.ContainsKey("version"))
-                {
-                    version = manifest["version"] as string;
-                }
-            }
-            catch (Exception)
-            {
-                // ignored
-            }
-
-            return version ?? "unknown";
-        }
-
-        internal static string GetQuickSearchDocVersion()
-        {
-            var version = GetQuickSearchVersion();
-            var docVersion = version.Split('.');
-            if (docVersion.Length > 2)
-            {
-                return $"@{docVersion[0]}.{docVersion[1]}";
-            }
-            else
-            {
-                return "@latest";
-            }
+            #endif
         }
 
         internal static string GetNextWord(string src, ref int index)
@@ -519,17 +526,7 @@ namespace Unity.QuickSearch
             return src.Substring(startIndex, index - startIndex);
         }
 
-        public static string GetPackagePath(string relativePath)
-        {
-            return Path.Combine(packageFolderName, relativePath).Replace("\\", "/");
-        }
-
-        public static T LoadPackageAsset<T>(string relativePath) where T : UnityEngine.Object
-        {
-            return AssetDatabase.LoadAssetAtPath<T>(GetPackagePath(relativePath));
-        }
-
-        public static int LevenshteinDistance<T>(IEnumerable<T> lhs, IEnumerable<T> rhs) where T : System.IEquatable<T>
+        internal static int LevenshteinDistance<T>(IEnumerable<T> lhs, IEnumerable<T> rhs) where T : System.IEquatable<T>
         {
             if (lhs == null) throw new System.ArgumentNullException("lhs");
             if (rhs == null) throw new System.ArgumentNullException("rhs");
@@ -573,7 +570,7 @@ namespace Unity.QuickSearch
             return rows[curRow][m];
         }
 
-        public static int LevenshteinDistance(string lhs, string rhs, bool caseSensitive = true)
+        internal static int LevenshteinDistance(string lhs, string rhs, bool caseSensitive = true)
         {
             if (!caseSensitive)
             {
@@ -593,30 +590,39 @@ namespace Unity.QuickSearch
             return EditorGUIUtility.ObjectContent(go, go.GetType()).image as Texture2D;
         }
 
-        private static MethodInfo s_FindTextureMethod;
         internal static Texture2D FindTextureForType(Type type)
         {
+            #if USE_SEARCH_MODULE
+            return EditorGUIUtility.FindTexture(type);
+            #else
             if (s_FindTextureMethod == null)
             {
                 var t = typeof(EditorGUIUtility);
-                s_FindTextureMethod = t.GetMethod("FindTexture", BindingFlags.NonPublic| BindingFlags.Static);
+                s_FindTextureMethod = t.GetMethod("FindTexture", BindingFlags.NonPublic | BindingFlags.Static);
             }
-            return (Texture2D)s_FindTextureMethod.Invoke(null, new object[]{type});
+            return (Texture2D)s_FindTextureMethod.Invoke(null, new object[] {type});
+            #endif
         }
 
-        private static MethodInfo s_GetIconForObject;
         internal static Texture2D GetIconForObject(UnityEngine.Object obj)
         {
+            #if USE_SEARCH_MODULE
+            return EditorGUIUtility.GetIconForObject(obj);
+            #else
             if (s_GetIconForObject == null)
             {
                 var t = typeof(EditorGUIUtility);
                 s_GetIconForObject = t.GetMethod("GetIconForObject", BindingFlags.NonPublic | BindingFlags.Static);
             }
             return (Texture2D)s_GetIconForObject.Invoke(null, new object[] { obj });
+            #endif
         }
 
         internal static void PingAsset(string assetPath)
         {
+            #if USE_SEARCH_MODULE
+            EditorGUIUtility.PingObject(AssetDatabase.GetMainAssetInstanceID(assetPath));
+            #else
             var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(assetPath);
             if (asset != null)
             {
@@ -624,74 +630,10 @@ namespace Unity.QuickSearch
                 if (!(asset is GameObject))
                     Resources.UnloadAsset(asset);
             }
+            #endif
         }
 
-        #if UNITY_2020_1_OR_NEWER
-
-        private static MethodInfo s_OpenPropertyEditorMethod;
-        internal static EditorWindow OpenPropertyEditor(UnityEngine.Object obj)
-        {
-            if (s_OpenPropertyEditorMethod == null)
-            {
-                Assembly assembly = typeof(UnityEditor.EditorWindow).Assembly;
-                var type = assembly.GetTypes().First(t => t.FullName == "UnityEditor.PropertyEditor");
-                s_OpenPropertyEditorMethod = type.GetMethod("OpenPropertyEditor", BindingFlags.NonPublic | BindingFlags.Static);
-                if (s_OpenPropertyEditorMethod == null)
-                    return null;
-            }
-            return (EditorWindow)s_OpenPropertyEditorMethod.Invoke(null, new object[] {obj, true});
-        }
-
-        // TODO: Fix issue if PingUIElement is called more than once before delayCall is called, locking the window with the new style
-        internal static void PingUIElement(VisualElement element, EditorWindow window)
-        {
-            var s = element.style;
-            var oldBorderTopColor = s.borderTopColor;
-            var oldBorderBottomColor = s.borderBottomColor;
-            var oldBorderLeftColor = s.borderLeftColor;
-            var oldBorderRightColor = s.borderRightColor;
-            var oldBorderTopWidth = s.borderTopWidth;
-            var oldBorderBottomWidth = s.borderBottomWidth;
-            var oldBorderLeftWidth = s.borderLeftWidth;
-            var oldBorderRightWidth = s.borderRightWidth;
-
-            s.borderTopWidth = s.borderBottomWidth = s.borderLeftWidth = s.borderRightWidth = new StyleFloat(2);
-            s.borderTopColor = s.borderBottomColor = s.borderLeftColor = s.borderRightColor = new StyleColor(Color.cyan);
-
-            element.Focus();
-
-            DelayCall(1f, () =>
-            {
-                s.borderTopColor = oldBorderTopColor;
-                s.borderBottomColor = oldBorderBottomColor;
-                s.borderLeftColor = oldBorderLeftColor;
-                s.borderRightColor = oldBorderRightColor;
-                s.borderTopWidth = oldBorderTopWidth;
-                s.borderBottomWidth = oldBorderBottomWidth;
-                s.borderLeftWidth = oldBorderLeftWidth;
-                s.borderRightWidth = oldBorderRightWidth;
-
-                if (window)
-                    window.Repaint();
-            });
-        }
-        #endif
-
-        internal static void DelayCall(float seconds, System.Action callback)
-        {
-            DelayCall(EditorApplication.timeSinceStartup, seconds, callback);
-        }
-
-        internal static void DelayCall(double timeStart, float seconds, System.Action callback)
-        {
-            var dt = EditorApplication.timeSinceStartup - timeStart;
-            if (dt >= seconds)
-                callback();
-            else
-                EditorApplication.delayCall += () => DelayCall(timeStart, seconds, callback);
-        }
-
-        public static T ConvertValue<T>(string value)
+        internal static T ConvertValue<T>(string value)
         {
             var type = typeof(T);
             var converter = TypeDescriptor.GetConverter(type);
@@ -703,7 +645,7 @@ namespace Unity.QuickSearch
             return (T)Activator.CreateInstance(type);
         }
 
-        public static bool TryConvertValue<T>(string value, out T convertedValue)
+        internal static bool TryConvertValue<T>(string value, out T convertedValue)
         {
             var type = typeof(T);
             var converter = TypeDescriptor.GetConverter(type);
@@ -720,7 +662,6 @@ namespace Unity.QuickSearch
             }
         }
 
-        private static UnityEngine.Object[] s_LastDraggedObjects;
         internal static void StartDrag(UnityEngine.Object[] objects, string label = null)
         {
             s_LastDraggedObjects = objects;
@@ -742,79 +683,24 @@ namespace Unity.QuickSearch
             DragAndDrop.StartDrag(label);
         }
 
-        private static MethodInfo s_GetFieldInfoFromProperty;
-        internal static FieldInfo GetFieldInfoFromProperty(SerializedProperty property, out Type requiredType)
-        {
-            requiredType = null;
-            if (s_GetFieldInfoFromProperty == null)
-            {
-                Assembly assembly = typeof(UnityEditor.SerializedProperty).Assembly;
-                var type = assembly.GetTypes().First(t => t.FullName == "UnityEditor.ScriptAttributeUtility");
-                s_GetFieldInfoFromProperty = type.GetMethod("GetFieldInfoFromProperty", BindingFlags.NonPublic | BindingFlags.Static);
-                if (s_GetFieldInfoFromProperty == null)
-                    return null;
-            }
-            object[] parameters = new object[]{ property, null };
-            var fi = (FieldInfo)s_GetFieldInfoFromProperty.Invoke(null, parameters);
-            requiredType = parameters[1] as Type;
-            return fi;
-        }
-
-        private static MethodInfo s_GetSourceAssetFileHash;
-        internal static Hash128 GetSourceAssetFileHash(string guid)
-        {
-            if (s_GetSourceAssetFileHash == null)
-            {
-                var type = typeof(UnityEditor.AssetDatabase);
-                s_GetSourceAssetFileHash = type.GetMethod("GetSourceAssetFileHash", BindingFlags.NonPublic | BindingFlags.Static);
-                if (s_GetSourceAssetFileHash == null)
-                    return default;
-            }
-            object[] parameters = new object[] { guid };
-            return (Hash128)s_GetSourceAssetFileHash.Invoke(null, parameters);
-        }
-
-        public static void LogProperties(SerializedObject so, bool includeChildren = true)
-        {
-            so.Update();
-            SerializedProperty propertyLogger = so.GetIterator();
-            while (true)
-            {
-                Debug.LogFormat(LogType.Log, LogOption.NoStacktrace, so.targetObject, $"{propertyLogger.propertyPath} [{propertyLogger.type}]");
-                if (!propertyLogger.Next(includeChildren))
-                    break;
-            }
-        }
-
-        public static Type GetTypeFromName(string typeName)
+        internal static Type GetTypeFromName(string typeName)
         {
             return TypeCache.GetTypesDerivedFrom<UnityEngine.Object>().FirstOrDefault(t => t.Name == typeName) ?? typeof(UnityEngine.Object);
         }
 
-        public static string StripHTML(string input)
+        internal static string StripHTML(string input)
         {
             return Regex.Replace(input, "<.*?>", String.Empty);
         }
 
-        /// <summary>
-        /// Converts a search item into any valid UnityEngine.Object if possible.
-        /// </summary>
-        /// <param name="item">Item to be converted</param>
-        /// <param name="filterType">The object should be converted in this type if possible.</param>
-        /// <returns></returns>
-        public static UnityEngine.Object ToObject(SearchItem item, Type filterType)
+        internal static UnityEngine.Object ToObject(SearchItem item, Type filterType)
         {
             if (item == null || item.provider == null)
                 return null;
             return item.provider.toObject?.Invoke(item, filterType);
         }
 
-        /// <summary>
-        /// Checks if the previously focused window used to open quick search is of a given type.
-        /// </summary>
-        /// <param name="focusWindowName">Class name of the window to be verified.</param>
-        /// <returns>True if the class name matches the quick search opener window class name.</returns>
-        public static bool IsFocusedWindowTypeName(string focusWindowName)
+        internal static bool IsFocusedWindowTypeName(string focusWindowName)
         {
             return EditorWindow.focusedWindow != null && EditorWindow.focusedWindow.GetType().ToString().EndsWith("." + focusWindowName);
         }
@@ -831,12 +717,12 @@ namespace Unity.QuickSearch
             return new string(sb).ToLowerInvariant();
         }
 
-        public static string CleanPath(string path)
+        internal static string CleanPath(string path)
         {
             return path.Replace("\\", "/");
         }
 
-        public static bool IsPathUnderProject(string path)
+        internal static bool IsPathUnderProject(string path)
         {
             if (!Path.IsPathRooted(path))
             {
@@ -847,7 +733,7 @@ namespace Unity.QuickSearch
             return Application.dataPath == path || path.StartsWith(Application.dataPath + "/");
         }
 
-        public static string GetPathUnderProject(string path)
+        internal static string GetPathUnderProject(string path)
         {
             var cleanPath = CleanPath(path);
             if (!Path.IsPathRooted(cleanPath) || !path.StartsWith(Application.dataPath))
@@ -858,7 +744,7 @@ namespace Unity.QuickSearch
             return cleanPath.Substring(Application.dataPath.Length - 6);
         }
 
-        public static Texture2D GetSceneObjectPreview(GameObject obj, Vector2 previewSize, FetchPreviewOptions options, Texture2D defaultThumbnail)
+        internal static Texture2D GetSceneObjectPreview(GameObject obj, Vector2 previewSize, FetchPreviewOptions options, Texture2D defaultThumbnail)
         {
             var sr = obj.GetComponent<SpriteRenderer>();
             if (sr && sr.sprite && sr.sprite.texture)
@@ -883,39 +769,7 @@ namespace Unity.QuickSearch
             return GetAssetPreviewFromPath(assetPath, previewSize, options);
         }
 
-        private static object[] s_SearchFilterArgs;
-        private static MethodInfo s_FindAllAssetsMethod;
-        private static MethodInfo s_SearchFieldStringToFilterMethod;
-        public static IEnumerable<string> FindAssets(string searchQuery)
-        {
-            if (s_FindAllAssetsMethod == null)
-            {
-                var type = typeof(AssetDatabase);
-                s_FindAllAssetsMethod = type.GetMethod("FindAllAssets", BindingFlags.NonPublic | BindingFlags.Static);
-                Debug.Assert(s_FindAllAssetsMethod != null);
-
-                var searchFilterType = type.Assembly.GetTypes().First(t => t.Name == "SearchFilter");
-                s_SearchFilterArgs = new object[] { Activator.CreateInstance(searchFilterType) };
-
-                s_SearchFieldStringToFilterMethod = searchFilterType.GetMethod("SearchFieldStringToFilter", BindingFlags.NonPublic | BindingFlags.Instance);
-                Debug.Assert(s_SearchFieldStringToFilterMethod != null);
-            }
-
-            s_SearchFieldStringToFilterMethod.Invoke(s_SearchFilterArgs[0], new object[] { searchQuery });
-
-            IEnumerable<HierarchyProperty> properties = null;
-            try
-            {
-                properties = (IEnumerable<HierarchyProperty>)s_FindAllAssetsMethod.Invoke(null, s_SearchFilterArgs);
-            }
-            catch
-            {
-                // Ignore these errors.
-            }
-            return properties != null ? properties.Select(p => AssetDatabase.GUIDToAssetPath(p.guid)) : new string[0];
-        }
-
-        public static bool TryGetNumber(object value, out double number)
+        internal static bool TryGetNumber(object value, out double number)
         {
             if (value is sbyte
                 || value is byte
@@ -936,9 +790,231 @@ namespace Unity.QuickSearch
             return double.TryParse(Convert.ToString(value), out number);
         }
 
-        public static bool IsRunningTests()
+        internal static bool IsRunningTests()
         {
             return !InternalEditorUtility.isHumanControllingUs || InternalEditorUtility.inBatchMode;
+        }
+
+        internal static bool IsMainProcess()
+        {
+            if (AssetDatabaseAPI.IsAssetImportWorkerProcess())
+                return false;
+
+            #if USE_SEARCH_MODULE
+            if (EditorUtility.isInSafeMode)
+                return false;
+
+            if (MPE.ProcessService.level != MPE.ProcessLevel.Main)
+                return false;
+            #endif
+
+            return true;
+        }
+
+        internal static event EditorApplication.CallbackFunction tick
+        {
+            add
+            {
+                #if USE_SEARCH_MODULE
+                EditorApplication.tick -= value;
+                EditorApplication.tick += value;
+                #else
+                EditorApplication.update -= value;
+                EditorApplication.update += value;
+                #endif
+            }
+            remove
+            {
+                #if USE_SEARCH_MODULE
+                EditorApplication.tick -= value;
+                #else
+                EditorApplication.update -= value;
+                #endif
+            }
+        }
+
+        internal static void CallDelayed(EditorApplication.CallbackFunction callback, double seconds = 0)
+        {
+            #if USE_SEARCH_MODULE
+            EditorApplication.CallDelayed(callback, seconds);
+            #else
+            if (s_CallDelayed == null)
+            {
+                var type = typeof(EditorApplication);
+                s_CallDelayed = type.GetMethod("CallDelayed", BindingFlags.NonPublic | BindingFlags.Static);
+                if (s_CallDelayed == null)
+                    return;
+            }
+            object[] parameters = new object[] { callback, seconds };
+            s_CallDelayed.Invoke(null, parameters);
+            #endif
+        }
+
+        internal static void SetFirstInspectedEditor(Editor editor)
+        {
+            #if USE_SEARCH_MODULE
+            editor.firstInspectedEditor = true;
+            #else
+            var firstInspectedEditorProperty = editor.GetType().GetProperty("firstInspectedEditor", BindingFlags.NonPublic | BindingFlags.Instance);
+            firstInspectedEditorProperty.SetValue(editor, true);
+            #endif
+        }
+
+        internal static GUIStyle FromUSS(string name)
+        {
+            #if USE_SEARCH_MODULE
+            return GUIStyleExtensions.FromUSS(GUIStyle.none, name);
+            #else
+            return FromUSS(GUIStyle.none, name);
+            #endif
+        }
+
+        internal static GUIStyle FromUSS(GUIStyle @base, string name)
+        {
+            #if USE_SEARCH_MODULE
+            return GUIStyleExtensions.FromUSS(@base, name);
+            #else
+            if (s_FromUSSMethod == null)
+            {
+                Assembly assembly = typeof(UnityEditor.EditorStyles).Assembly;
+                var type = assembly.GetTypes().First(t => t.FullName == "UnityEditor.StyleSheets.GUIStyleExtensions");
+                s_FromUSSMethod = type.GetMethod("FromUSS", BindingFlags.NonPublic | BindingFlags.Static, null, new Type[] { typeof(GUIStyle), typeof(string), typeof(string), typeof(GUISkin) }, null);
+            }
+            string ussInPlaceStyleOverride = null;
+            GUISkin srcSkin = null;
+            return (GUIStyle)s_FromUSSMethod.Invoke(null, new object[] { @base, name, ussInPlaceStyleOverride, srcSkin });
+            #endif
+        }
+
+        internal static bool HasCurrentWindowKeyFocus()
+        {
+            #if USE_SEARCH_MODULE
+            return EditorGUIUtility.HasCurrentWindowKeyFocus();
+            #else
+            if (s_HasCurrentWindowKeyFocusMethod == null)
+            {
+                var type = typeof(EditorGUIUtility);
+                s_HasCurrentWindowKeyFocusMethod = type.GetMethod("HasCurrentWindowKeyFocus", BindingFlags.NonPublic | BindingFlags.Static);
+                UnityEngine.Debug.Assert(s_HasCurrentWindowKeyFocusMethod != null);
+            }
+            return (bool)s_HasCurrentWindowKeyFocusMethod.Invoke(null, null);
+            #endif
+        }
+
+        internal static void AddStyleSheet(VisualElement rootVisualElement, string ussFileName)
+        {
+            #if USE_SEARCH_MODULE
+            rootVisualElement.AddStyleSheetPath($"StyleSheets/QuickSearch/{ussFileName}");
+            #else
+            var styleSheet = AssetDatabase.LoadAssetAtPath<StyleSheet>(GetPackagePath($"Editor/StyleSheets/{ussFileName}"));
+            rootVisualElement.styleSheets.Add(styleSheet);
+            #endif
+        }
+
+        #if USE_SEARCH_MODULE
+        internal static InspectorWindowUtils.LayoutGroupChecker LayoutGroupChecker()
+        {
+            return new InspectorWindowUtils.LayoutGroupChecker();
+        }
+
+        #else
+        internal static InspectorWindowUtils_LayoutGroupChecker LayoutGroupChecker()
+        {
+            return new InspectorWindowUtils_LayoutGroupChecker();
+        }
+
+        #endif
+
+        #if !USE_SEARCH_MODULE
+        static object s_UnityConnectInstance = null;
+        static Type s_CloudConfigUrlEnum = null;
+        static object GetUnityConnectInstance()
+        {
+            if (s_UnityConnectInstance != null)
+                return s_UnityConnectInstance;
+            var assembly = typeof(Connect.UnityOAuth).Assembly;
+            var managerType = assembly.GetTypes().First(t => t.Name == "UnityConnect");
+            var instanceAccessor = managerType.GetProperty("instance", BindingFlags.Public | BindingFlags.Static);
+            s_UnityConnectInstance = instanceAccessor.GetValue(null);
+            s_CloudConfigUrlEnum = assembly.GetTypes().First(t => t.Name == "CloudConfigUrl");
+            return s_UnityConnectInstance;
+        }
+
+        #endif
+
+        internal static string GetConnectAccessToken()
+        {
+            #if USE_SEARCH_MODULE
+            return UnityConnect.instance.GetAccessToken();
+            #else
+            var instance = GetUnityConnectInstance();
+            var method = instance.GetType().GetMethod("GetAccessToken");
+            return (string)method.Invoke(instance, null);
+            #endif
+        }
+
+        internal static string GetPackagesKey()
+        {
+            #if USE_SEARCH_MODULE
+            return UnityConnect.instance.GetConfigurationURL(CloudConfigUrl.CloudPackagesKey);
+            #else
+            var instance = GetUnityConnectInstance();
+            var getConfigUrl = instance.GetType().GetMethod("GetConfigurationURL");
+            var packmanKey = s_CloudConfigUrlEnum.GetEnumValues().GetValue(12);
+            var packageKey = (string)getConfigUrl.Invoke(instance, new[] { packmanKey });
+            return packageKey;
+            #endif
+        }
+
+        internal static void OpenPackageManager(string packageName)
+        {
+            #if USE_SEARCH_MODULE
+            PackageManager.UI.PackageManagerWindow.SelectPackageAndFilterStatic(packageName, PackageManager.UI.Internal.PackageFilterTab.AssetStore);
+            #else
+            if (s_OpenPackageManager == null)
+            {
+                // UnityEditor.PackageManager.UI.PackageManagerWindow.SelectPackageAndFilter
+                var assembly = typeof(PackageManager.UI.Window).Assembly;
+                var managerType = assembly.GetTypes().First(t => t.Name == "PackageManagerWindow");
+                var methodInfo = managerType.GetMethod("SelectPackageAndFilter", BindingFlags.Static | BindingFlags.NonPublic);
+                var cloudConfigUrlEnum = assembly.GetTypes().First(t => t.Name == "PackageFilterTab");
+                var assetStoreTab = cloudConfigUrlEnum.GetEnumValues().GetValue(3);
+                s_OpenPackageManager = pkg => methodInfo.Invoke(null, new[] { pkg, assetStoreTab, false, "" });
+            }
+
+            s_OpenPackageManager(packageName);
+            #endif
+        }
+
+        internal static char FastToLower(char c)
+        {
+            // ASCII non-letter characters and
+            // lower case letters.
+            if (c < 'A' || (c > 'Z' && c <= 'z'))
+            {
+                return c;
+            }
+
+            if (c >= 'A' && c <= 'Z')
+            {
+                return (char)(c + 32);
+            }
+
+            return Char.ToLower(c, CultureInfo.InvariantCulture);
+        }
+
+        internal static string FastToLower(string str)
+        {
+            int length = str.Length;
+
+            var chars = new char[length];
+
+            for (int i = 0; i < length; ++i)
+            {
+                chars[i] = FastToLower(str[i]);
+            }
+
+            return new string(chars);
         }
     }
 }

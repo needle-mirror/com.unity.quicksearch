@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace Unity.QuickSearch
+namespace UnityEditor.Search
 {
     internal interface IFilterOperation
     {

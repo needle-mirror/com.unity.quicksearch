@@ -7,7 +7,7 @@ using Debug = UnityEngine.Debug;
 using Unity.PerformanceTracking;
 #endif
 
-namespace Unity.QuickSearch
+namespace UnityEditor.Search
 {
     internal struct DebugTimer : IDisposable
     {

@@ -1,8 +1,8 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Text.RegularExpressions;
 
-namespace Unity.QuickSearch
+namespace UnityEditor.Search
 {
     enum ParseState
     {
@@ -51,19 +51,31 @@ namespace Unity.QuickSearch
         protected delegate int TokenMatcher(string text, int startIndex, int endIndex, ICollection<QueryError> errors, out StringView sv, out Match match, out bool matched);
         protected delegate bool TokenConsumer(string text, int startIndex, int endIndex, StringView sv, Match match, ICollection<QueryError> errors, TUserData userData);
 
-        protected List<System.Tuple<TokenMatcher, TokenConsumer>> m_TokenConsumers;
+        protected struct QueryTokenHandler
+        {
+            public TokenMatcher matcher;
+            public TokenConsumer consumer;
+
+            public QueryTokenHandler(TokenMatcher matcher, TokenConsumer consumer)
+            {
+                this.matcher = matcher;
+                this.consumer = consumer;
+            }
+        }
+
+        protected List<QueryTokenHandler> m_TokenConsumers;
 
         protected QueryTokenizer()
         {
             // The order of regex in this list is important. Keep it like that unless you know what you are doing!
-            m_TokenConsumers = new List<Tuple<TokenMatcher, TokenConsumer>>
+            m_TokenConsumers = new List<QueryTokenHandler>
             {
-                new Tuple<TokenMatcher, TokenConsumer>(MatchEmpty, ConsumeEmpty),
-                new Tuple<TokenMatcher, TokenConsumer>(MatchGroup, ConsumeGroup),
-                new Tuple<TokenMatcher, TokenConsumer>(MatchCombiningToken, ConsumeCombiningToken),
-                new Tuple<TokenMatcher, TokenConsumer>(MatchNestedQuery, ConsumeNestedQuery),
-                new Tuple<TokenMatcher, TokenConsumer>(MatchFilter, ConsumeFilter),
-                new Tuple<TokenMatcher, TokenConsumer>(MatchWord, ConsumeWord)
+                new QueryTokenHandler(MatchEmpty, ConsumeEmpty),
+                new QueryTokenHandler(MatchGroup, ConsumeGroup),
+                new QueryTokenHandler(MatchCombiningToken, ConsumeCombiningToken),
+                new QueryTokenHandler(MatchNestedQuery, ConsumeNestedQuery),
+                new QueryTokenHandler(MatchFilter, ConsumeFilter),
+                new QueryTokenHandler(MatchWord, ConsumeWord)
             };
         }
 
@@ -82,12 +94,10 @@ namespace Unity.QuickSearch
                 var matched = false;
                 foreach (var t in m_TokenConsumers)
                 {
-                    var matcher = t.Item1;
-                    var consumer = t.Item2;
-                    var matchLength = matcher(text, index, endIndex, errors, out var sv, out var match, out var consumerMatched);
+                    var matchLength = t.matcher(text, index, endIndex, errors, out var sv, out var match, out var consumerMatched);
                     if (!consumerMatched)
                         continue;
-                    var consumed = consumer(text, index, index + matchLength, sv, match, errors, userData);
+                    var consumed = t.consumer(text, index, index + matchLength, sv, match, errors, userData);
                     if (!consumed)
                     {
                         return ParseState.ParseError;
@@ -163,7 +173,7 @@ namespace Unity.QuickSearch
             return match.Length;
         }
 
-        int MatchWord(string text, int startIndex, int endIndex, ICollection<QueryError> errors, out StringView sv, out Match match, out bool matched)
+        static int MatchWord(string text, int startIndex, int endIndex, ICollection<QueryError> errors, out StringView sv, out Match match, out bool matched)
         {
             sv = text.GetStringView();
             match = QueryRegexValues.k_PhraseRx.Match(text, startIndex, endIndex - startIndex);
@@ -179,7 +189,7 @@ namespace Unity.QuickSearch
             return match.Length;
         }
 
-        int MatchGroup(string text, int groupStartIndex, int endIndex, ICollection<QueryError> errors, out StringView sv, out Match match, out bool matched)
+        static int MatchGroup(string text, int groupStartIndex, int endIndex, ICollection<QueryError> errors, out StringView sv, out Match match, out bool matched)
         {
             sv = text.GetStringView();
             match = null;
@@ -196,8 +206,6 @@ namespace Unity.QuickSearch
                 return -1;
             }
 
-            var charConsumed = 0;
-
             var parenthesisCounter = 1;
             var groupEndIndex = groupStartIndex + 1;
             for (; groupEndIndex < text.Length && parenthesisCounter > 0; ++groupEndIndex)
@@ -211,18 +219,24 @@ namespace Unity.QuickSearch
             // Because of the final ++groupEndIndex, decrement the index
             --groupEndIndex;
 
+            var charConsumed = groupEndIndex - groupStartIndex + 1;
             if (parenthesisCounter != 0)
             {
-                errors.Add(new QueryError {index = groupStartIndex, reason = $"Unbalanced parenthesis"});
+                errors.Add(new QueryError { index = groupStartIndex, length = 1, reason = $"Unbalanced parentheses" });
                 return -1;
             }
 
-            charConsumed = groupEndIndex - groupStartIndex + 1;
             sv = text.GetStringView(groupStartIndex + 1, groupStartIndex + charConsumed - 1);
+            if (StringView.IsNullOrWhiteSpace(sv))
+            {
+                errors.Add(new QueryError { index = groupStartIndex, length = charConsumed, reason = $"Empty group" });
+                return -1;
+            }
+
             return charConsumed;
         }
 
-        int MatchNestedQuery(string text, int startIndex, int endIndex, ICollection<QueryError> errors, out StringView sv, out Match match, out bool matched)
+        static int MatchNestedQuery(string text, int startIndex, int endIndex, ICollection<QueryError> errors, out StringView sv, out Match match, out bool matched)
         {
             sv = text.GetStringView();
             match = QueryRegexValues.k_NestedQueryRx.Match(text, startIndex, endIndex - startIndex);

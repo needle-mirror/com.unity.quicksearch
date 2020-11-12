@@ -1,3 +1,4 @@
+// COM.UNITY.QUICKSEARCH 
 using System;
 using System.IO;
 using System.Text;
@@ -7,7 +8,7 @@ using UnityEditor;
 
 using JSONObject = System.Collections.IDictionary;
 
-namespace Unity.QuickSearch
+namespace UnityEditor.Search
 {
     static class SJSON
     {

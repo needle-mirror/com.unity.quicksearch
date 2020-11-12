@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 
-namespace Unity.QuickSearch
+namespace UnityEditor.Search
 {
     /// <summary>
     /// Enumeration representing the query node types.
@@ -200,7 +200,7 @@ namespace Unity.QuickSearch
             return identifier.GetHashCode();
         }
 
-        public IQueryNode Copy()
+        public virtual IQueryNode Copy()
         {
             return new FilterNode(filterId, operatorId, filterValue, paramValue, identifier)
             {
@@ -464,6 +464,25 @@ namespace Unity.QuickSearch
 
         public InFilterNode(IFilter filter, FilterOperator op, string filterValue, string paramValue, string filterString)
             : base(filter, op, filterValue, paramValue, filterString) {}
+
+        public override IQueryNode Copy()
+        {
+            var selfNode = new InFilterNode(filter, op, filterValue, paramValue, identifier);
+
+            selfNode.children.Clear();
+
+            foreach (var child in children)
+            {
+                var copyableChild = child as ICopyableNode;
+                if (copyableChild == null)
+                    return null;
+                var childCopy = copyableChild.Copy();
+                childCopy.parent = selfNode;
+                selfNode.children.Add(childCopy);
+            }
+
+            return selfNode;
+        }
     }
 
     class UnionNode : OrNode

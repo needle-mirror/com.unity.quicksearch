@@ -5,11 +5,10 @@ using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
 
-namespace Unity.QuickSearch
+namespace UnityEditor.Search
 {
     class ListView : ResultView
     {
-        private int m_FetchedPreview = 0;
         private float m_ItemRowHeight = Styles.itemRowHeight;
 
         public ListView(ISearchView hostView)
@@ -100,11 +99,6 @@ namespace Unity.QuickSearch
                     bgStyle = Styles.selectedItemBackground;
                 bgStyle.Draw(itemRect, itemRect.Contains(Event.current.mousePosition), false, false, false);
 
-                if (compactView)
-                    item.options |= SearchItemOptions.Compacted;
-                else
-                    item.options &= ~SearchItemOptions.Compacted;
-
                 // Draw thumbnail
                 var thumbnailRect = DrawListThumbnail(item, itemRect);
 
@@ -134,9 +128,10 @@ namespace Unity.QuickSearch
                 }
                 else
                 {
-                    // Draw label
+                    item.options |= SearchItemOptions.Compacted;
                     var labelContent = SearchContent.FormatDescription(item, context, maxWidth);
                     GUI.Label(labelRect, labelContent, labelStyle);
+                    item.options &= ~SearchItemOptions.Compacted;
                 }
             }
 
@@ -168,13 +163,8 @@ namespace Unity.QuickSearch
                 {
                     var previewSize = new Vector2(Styles.itemPreviewSize, Styles.itemPreviewSize);
                     thumbnail = item.provider.fetchPreview(item, context, previewSize, FetchPreviewOptions.Preview2D | FetchPreviewOptions.Normal);
-                    if (thumbnail)
-                    {
+                    if (thumbnail && !AssetPreview.IsLoadingAssetPreviews())
                         item.preview = thumbnail;
-                        m_FetchedPreview++;
-                        if (m_FetchedPreview > 25)
-                            m_FetchedPreview = 0;
-                    }
                 }
             }
 
@@ -184,7 +174,7 @@ namespace Unity.QuickSearch
                 if (!thumbnail && item.provider.fetchThumbnail != null)
                 {
                     thumbnail = item.provider.fetchThumbnail(item, context);
-                    if (thumbnail)
+                    if (thumbnail && !AssetPreview.IsLoadingAssetPreviews())
                         item.thumbnail = thumbnail;
                 }
             }
@@ -205,7 +195,7 @@ namespace Unity.QuickSearch
             if (AutoComplete.IsHovered(mousePosition))
                 return;
 
-            if (Event.current.type == EventType.MouseDown && Event.current.button == 0)
+            if (Event.current.type == EventType.MouseDown)
             {
                 var clickedItemIndex = (int)(mousePosition.y / m_ItemRowHeight);
                 if (clickedItemIndex >= 0 && clickedItemIndex < itemTotalCount)

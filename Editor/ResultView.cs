@@ -1,15 +1,23 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using UnityEditor;
 using UnityEngine;
 
-namespace Unity.QuickSearch
+namespace UnityEditor.Search
 {
+    [Serializable]
+    class ResultViewState
+    {
+        public bool isValid => displayMode != DisplayMode.None;
+        public float itemSize;
+        public DisplayMode displayMode;
+        public string group;
+    }
+
     /// <summary>
     /// A view able to display a <see cref="ISearchList"/> of <see cref="SearchItem"/>s.
     /// </summary>
-    interface IResultView
+    interface IResultView : IDisposable
     {
         ISearchList items { get; }
         float itemSize { get; }
@@ -24,6 +32,10 @@ namespace Unity.QuickSearch
         void Draw(ICollection<int> selection, float viewWidth);
         int GetDisplayItemCount();
         void HandleInputEvent(Event evt, List<int> selection);
+        void DrawControlLayout(float viewWidth);
+        void Refresh();
+        ResultViewState SaveViewState(string name);
+        void SetViewState(ResultViewState viewState);
     }
 
     abstract class ResultView : IResultView
@@ -64,6 +76,25 @@ namespace Unity.QuickSearch
             Draw(m_DrawItemsRect, selection);
         }
 
+        public virtual void DrawControlLayout(float viewWidth)
+        {
+            // Do nothing
+        }
+
+        public virtual ResultViewState SaveViewState(string name)
+        {
+            return new ResultViewState()
+            {
+                itemSize = itemSize,
+                displayMode = searchView.displayMode
+            };
+        }
+
+        public virtual void SetViewState(ResultViewState viewState)
+        {
+            // Do nothing
+        }
+
         protected bool IsDragClicked(Event evt)
         {
             if (evt.type != EventType.DragExited)
@@ -82,9 +113,20 @@ namespace Unity.QuickSearch
 
         protected void HandleMouseDown(int clickedItemIndex)
         {
+            var evt = Event.current;
             m_PrepareDrag = true;
             m_MouseDownItemIndex = clickedItemIndex;
-            m_DragStartPosition = Event.current.mousePosition;
+            m_DragStartPosition = evt.mousePosition;
+
+            if (AutoComplete.IsHovered(evt.mousePosition))
+                return;
+
+            if (evt.button == 1)
+            {
+                var item = items.ElementAt(clickedItemIndex);
+                if (!searchView.selection.Contains(item))
+                    searchView.SetSelection(clickedItemIndex);
+            }
         }
 
         protected void HandleMouseUp(int clickedItemIndex, int itemTotalCount)
@@ -168,11 +210,9 @@ namespace Unity.QuickSearch
                 {
                     var item = items.ElementAt(clickedItemIndex);
                     var contextRect = new Rect(evt.mousePosition, new Vector2(1, 1));
-                    if (item.provider.openContextual == null || !item.provider.openContextual(searchView.selection, contextRect))
-                    {
-                        if (searchView.selection.Count <= 1)
-                            searchView.ShowItemContextualMenu(item, contextRect);
-                    }
+                    var selection = searchView.selection;
+                    if (selection.Count <= 1)
+                        searchView.ShowItemContextualMenu(item, contextRect);
                 }
             }
 
@@ -222,8 +262,13 @@ namespace Unity.QuickSearch
                     else
                         selection.Remove(lastIndex);
                 }
-                else if (lastIndex < results.Count - 1)
-                    searchView.SetSelection(selectedIndex + 1);
+                else
+                {
+                    if (lastIndex < results.Count - 1)
+                        searchView.SetSelection(selectedIndex + 1);
+                    else
+                        searchView.SetSelection(0);
+                }
                 evt.Use();
             }
             else if (evt.keyCode == KeyCode.UpArrow)
@@ -238,9 +283,12 @@ namespace Unity.QuickSearch
                             searchView.AddSelection(lastIndex - 1);
                     }
                     else
-                        searchView.SetSelection(selectedIndex - 1);
-                    if (selectedIndex - 1 < 0)
-                        searchView.SelectSearch();
+                    {
+                        if (selectedIndex > 0)
+                            searchView.SetSelection(selectedIndex - 1);
+                        else
+                            searchView.SetSelection(results.Count - 1);
+                    }
                     evt.Use();
                 }
             }
@@ -251,16 +299,6 @@ namespace Unity.QuickSearch
             else if (ctrl && evt.keyCode == KeyCode.Home || evt.keyCode == KeyCode.PageUp)
             {
                 HandlePageUp(evt, selection);
-            }
-            else if (evt.keyCode == KeyCode.RightArrow && evt.modifiers.HasFlag(EventModifiers.Alt))
-            {
-                if (selectedIndex != -1 && selection.Count <= 1)
-                {
-                    var item = results.ElementAt(selectedIndex);
-                    var menuPositionY = (selectedIndex + 1) * Styles.itemRowHeight - scrollPosition.y + Styles.itemRowHeight / 2.0f;
-                    searchView.ShowItemContextualMenu(item, new Rect(rect.xMax - Styles.actionButtonSize, menuPositionY, 1, 1));
-                    evt.Use();
-                }
             }
             else if (evt.keyCode == KeyCode.KeypadEnter || evt.keyCode == KeyCode.Return)
             {
@@ -273,11 +311,7 @@ namespace Unity.QuickSearch
                     if (item.provider.actions.Count > 0)
                     {
                         SearchAction action = item.provider.actions[0];
-                        if (context.actionId != null)
-                        {
-                            action = SearchService.GetAction(item.provider, context.actionId);
-                        }
-                        else if (evt.modifiers.HasFlag(EventModifiers.Alt))
+                        if (evt.modifiers.HasFlag(EventModifiers.Alt))
                         {
                             var actionIndex = 1;
                             if (evt.modifiers.HasFlag(EventModifiers.Control))
@@ -315,7 +349,7 @@ namespace Unity.QuickSearch
             {
                 jumpAtIndex = GetLastVisibleItemIndex();
                 if (selection.Count > 0 && selection.Last() == jumpAtIndex)
-                    jumpAtIndex += GetVisibleItemCount();
+                    jumpAtIndex += GetDisplayItemCount();
                 jumpAtIndex = Math.Min(jumpAtIndex, searchView.results.Count - 1);
             }
             else if (ctrl && evt.keyCode == KeyCode.End)
@@ -344,7 +378,7 @@ namespace Unity.QuickSearch
             {
                 jumpAtIndex = GetFirstVisibleItemIndex();
                 if (selection.Count > 0 && selection.Last() == jumpAtIndex)
-                    jumpAtIndex -= GetVisibleItemCount();
+                    jumpAtIndex -= GetDisplayItemCount();
                 jumpAtIndex = Math.Max(0, jumpAtIndex);
             }
             else if (ctrl && evt.keyCode == KeyCode.Home)
@@ -396,22 +430,23 @@ namespace Unity.QuickSearch
         protected virtual int GetLastVisibleItemIndex()
         {
             var firstVisibleIndex = GetFirstVisibleItemIndex();
-            var itemVisibleCount = GetVisibleItemCount();
+            var itemVisibleCount = GetDisplayItemCount();
             return firstVisibleIndex + itemVisibleCount - 1;
-        }
-
-        protected virtual int GetVisibleItemCount()
-        {
-            var itemCount = items.Count;
-            var rowHeight = GetRowHeight();
-            var availableHeight = rect.height;
-            return Math.Max(0, Math.Min(itemCount, Mathf.FloorToInt(availableHeight / rowHeight)));
         }
 
         public void HandleInputEvent(Event evt, List<int> selection)
         {
             if (evt.type == EventType.KeyDown)
                 HandleKeyEvent(evt, selection);
+        }
+
+        public virtual void Refresh()
+        {
+            // Nothing to refresh by default
+        }
+
+        public virtual void Dispose()
+        {
         }
     }
 }

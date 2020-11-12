@@ -1,7 +1,7 @@
 using System.Collections;
 using System.Collections.Generic;
 
-namespace Unity.QuickSearch
+namespace UnityEditor.Search
 {
     class SearchResultCollection : ICollection<SearchResult>
     {

@@ -5,7 +5,7 @@ using UnityEditor;
 using UnityEditor.UIElements;
 using UnityEngine.UIElements;
 
-namespace Unity.QuickSearch
+namespace UnityEditor.Search
 {
     class TransactionViewer : EditorWindow
     {

@@ -1,8 +1,7 @@
 # Changelog
 
-## [3.0.0-preview.1] - 2020-09-23
-- [UX] Brand new UI
-- [API] Align with new API in Unity 2021.1
+## [3.0.0-preview.2] - 2020-11-12
+- [UX] Unity Search 2021.1.0a6 (10fd0d6f6164)
 
 ## [2.1.0] - 2020-08-25
 - [UX] Improve search database import pipeline by producing index artifacts per asset.

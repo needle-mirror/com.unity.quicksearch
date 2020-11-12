@@ -1,15 +1,14 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using UnityEditor;
 using UnityEditor.UIElements;
 using UnityEngine;
 using UnityEngine.UIElements;
 using UIToolkitListView = UnityEngine.UIElements.ListView;
 
-namespace Unity.QuickSearch
+namespace UnityEditor.Search
 {
     class IndexManager : EditorWindow
     {
@@ -90,11 +89,9 @@ namespace Unity.QuickSearch
             titleContent.image = Icons.quicksearch;
             titleContent.text = "Search Index Manager";
 
-        	rootVisualElement.styleSheets.Add(AssetDatabase.LoadAssetAtPath<StyleSheet>(Utils.GetPackagePath("Editor/StyleSheets/IndexManager.uss")));
-            if (EditorGUIUtility.isProSkin)
-            	rootVisualElement.styleSheets.Add(AssetDatabase.LoadAssetAtPath<StyleSheet>(Utils.GetPackagePath("Editor/StyleSheets/IndexManager_Dark.uss")));
-            else
-            	rootVisualElement.styleSheets.Add(AssetDatabase.LoadAssetAtPath<StyleSheet>(Utils.GetPackagePath("Editor/StyleSheets/IndexManager_Light.uss")));
+            Utils.AddStyleSheet(rootVisualElement, "IndexManager.uss");
+            Utils.AddStyleSheet(rootVisualElement, EditorGUIUtility.isProSkin ? "IndexManager_Dark.uss" : "IndexManager_Light.uss");
+
             rootVisualElement.AddToClassList("index-manager-variables");
             rootVisualElement.style.flexDirection = FlexDirection.Row;
 
@@ -113,7 +110,7 @@ namespace Unity.QuickSearch
             if (m_IndexSettings.Any())
                 CreateIndexDetailsElement();
 
-            var showPackagesToggle = new Toggle("Show package indexes") { value = SearchSettings.showPackageIndexes };
+            var showPackagesToggle = new Toggle("Show package indexes") { name = "show-package-indexes-toggle", value = SearchSettings.showPackageIndexes };
             showPackagesToggle.Q<Label>().style.marginRight = 10;
             showPackagesToggle.style.marginBottom = 6;
             showPackagesToggle.style.marginLeft = 8;
@@ -153,6 +150,8 @@ namespace Unity.QuickSearch
                 int addedItems = 0;
                 foreach (var searchDatabase in SearchDatabase.Enumerate(SearchDatabase.IndexLocation.packages))
                 {
+                    if (m_IndexSettingsFilePaths.Contains(searchDatabase.path))
+                        continue;
                     m_IndexSettingsAssets.Insert(m_IndexToInsertPackagesOnToggle, searchDatabase);
                     m_IndexSettings.Insert(m_IndexToInsertPackagesOnToggle, new IndexManagerViewModel(searchDatabase.settings, false));
                     m_IndexSettingsFilePaths.Insert(m_IndexToInsertPackagesOnToggle, searchDatabase.path);
@@ -208,11 +207,12 @@ namespace Unity.QuickSearch
 
         internal void OnDisable()
         {
-            #if !UNITY_2020_2_OR_NEWER
+            #if !USE_SEARCH_MODULE && !UNITY_2020_2_OR_NEWER
             if (hasUnsavedChanges && EditorUtility.DisplayDialog(L10n.Tr("Unsaved Changes Detected"),
-                    L10n.Tr("There are unsaved changes."), L10n.Tr("Save"), L10n.Tr("Discard")))
+                L10n.Tr("There are unsaved changes."), L10n.Tr("Save"), L10n.Tr("Discard")))
                 SaveChanges();
             #endif
+
             m_ListViewIndexSettings.ListView.onSelectionChange -= OnSelectedIndexChanged;
 
             SearchDatabase.indexLoaded -= OnIndexLoaded;
@@ -357,18 +357,9 @@ namespace Unity.QuickSearch
             var tabContainer = new VisualElement() { name = "IndexPreviewTabs" };
             m_SavedIndexData.Add(tabContainer);
 
-            m_DependenciesButton = new Button(() =>
-            {
-                SelectTab(0);
-            });
-            m_DocumentsButton = new Button(() =>
-            {
-                SelectTab(1);
-            });
-            m_KeywordsButton = new Button(() =>
-            {
-                SelectTab(2);
-            });
+            m_DependenciesButton = new Button(() => SelectTab(0));
+            m_DocumentsButton = new Button(() => SelectTab(1));
+            m_KeywordsButton = new Button(() => SelectTab(2));
             tabContainer.Add(m_DependenciesButton);
             tabContainer.Add(m_DocumentsButton);
             tabContainer.Add(m_KeywordsButton);
@@ -383,7 +374,7 @@ namespace Unity.QuickSearch
         private void OnIndexLoaded(SearchDatabase sb)
         {
             if (selectedItemAsset != null && sb.GetInstanceID() == selectedItemAsset.GetInstanceID())
-                UpdatePreview();
+                UpdatePreviewCheckIfNeedDelay();
             m_ListViewIndexSettings.ListView.Refresh();
         }
 
@@ -447,7 +438,7 @@ namespace Unity.QuickSearch
 
         private void UpdatePreviewCheckIfNeedDelay()
         {
-            if (selectedItemAsset.index != null) // index is initialized during OnEnable too so when this method is called during OnEnable we must do a delayCall
+            if (selectedItemAsset && selectedItemAsset.index != null) // index is initialized during OnEnable too so when this method is called during OnEnable we must do a delayCall
                 UpdatePreview();
             else
                 EditorApplication.delayCall += UpdatePreview;
@@ -455,7 +446,7 @@ namespace Unity.QuickSearch
 
         private void UpdatePreview()
         {
-            if (selectedItemExists)
+            if (selectedItemExists && selectedItemAsset)
             {
                 if (selectedItemAsset.index == null || !selectedItemAsset.index.IsReady())
                 {
@@ -670,7 +661,7 @@ namespace Unity.QuickSearch
             }
         }
 
-        #if UNITY_2020_2_OR_NEWER
+        #if USE_SEARCH_MODULE || UNITY_2020_2_OR_NEWER
         public override void SaveChanges()
         #else
         private bool hasUnsavedChanges;
@@ -716,17 +707,11 @@ namespace Unity.QuickSearch
             var evt = SearchAnalytics.GenericEvent.Create(m_WindowId, SearchAnalytics.GenericEventType.IndexManagerSaveModifiedIndex, model.type.ToString());
             evt.message = $"0x{model.options.GetHashCode():X}";
             if (model.roots.Count > 0)
-            {
-                evt.description = "roots:" + string.Join(",", model.includes);
-            }
+                evt.description = "roots:" + string.Join(",", model.roots);
             if (model.includes.Count > 0)
-            {
                 evt.stringPayload1 = "includes:" + string.Join(",", model.includes);
-            }
             if (model.excludes.Count > 0)
-            {
                 evt.stringPayload2 = "excludes:" + string.Join(",", model.excludes);
-            }
             SearchAnalytics.SendEvent(evt);
         }
 
@@ -810,7 +795,7 @@ namespace Unity.QuickSearch
 
         private void DeleteIndexSetting()
         {
-            if (selectedIndex >= 0)
+            if (selectedIndex >= 0 && EditorUtility.DisplayDialog("Delete selected index?", "You are about to delete this index, are you sure?", "Yes", "No"))
             {
                 SendIndexEvent(SearchAnalytics.GenericEventType.IndexManagerRemoveIndex, m_IndexSettings[selectedIndex]);
                 var deleteIndex = selectedIndex;
@@ -819,8 +804,16 @@ namespace Unity.QuickSearch
                 m_IndexSettingsAssets.RemoveAt(deleteIndex);
                 if (m_IndexSettingsExists[deleteIndex])
                 {
-                    File.Delete(path);
-                    AssetPostprocessorIndexer.RaiseContentRefreshed(new string[0], new string[] { path }, new string[0]);
+                    if (File.Exists(path + ".meta"))
+                    {
+                        AssetDatabase.DeleteAsset(path);
+                    }
+                    else
+                    {
+                        File.Delete(path);
+                        AssetPostprocessorIndexer.RaiseContentRefreshed(new string[0], new string[] { path }, new string[0]);
+                        AssetDatabase.Refresh();
+                    }
                 }
                 m_IndexSettingsFilePaths.RemoveAt(deleteIndex);
                 m_IndexSettingsExists.RemoveAt(deleteIndex);
@@ -863,17 +856,21 @@ namespace Unity.QuickSearch
             }
 
             var newItem = new IndexManagerViewModel(template, true);
-            m_IndexSettings.Add(newItem);
-            m_IndexSettingsFilePaths.Add("");
-            m_IndexSettingsExists.Add(false);
-            m_IndexSettingsAssets.Add(null);
-            SendIndexEvent(SearchAnalytics.GenericEventType.IndexManagerCreateIndex, newItem);
-            m_ListViewIndexSettings.UpdateListViewOnAdd();
+            if (newItem.type == SearchDatabase.IndexType.asset || EditorUtility.DisplayDialog("Create non asset index?", $"You are about to create a {template.type} index, this type of index will do a deep indexing that will be longer and take more space than a standard asset index, are you sure?", "Yes", "No"))
+            {
+                m_IndexSettings.Add(newItem);
+                m_IndexSettingsFilePaths.Add("");
+                m_IndexSettingsExists.Add(false);
+                m_IndexSettingsAssets.Add(null);
+                SendIndexEvent(SearchAnalytics.GenericEventType.IndexManagerCreateIndex, newItem);
+                m_ListViewIndexSettings.UpdateListViewOnAdd();
+            }
         }
 
         private VisualElement MakeIndexItem()
         {
             var container = new VisualElement();
+            container.AddToClassList("index-list-element");
             container.style.flexDirection = FlexDirection.Row;
 
             var icon = new VisualElement() { name = "IndexTypeIcon" };
@@ -962,7 +959,7 @@ namespace Unity.QuickSearch
 
         private void UpdateBasicPreview(VisualElement element, int index)
         {
-            if (m_IndexSettingsExists[index])
+            if (m_IndexSettingsExists[index] && m_IndexSettingsAssets[index])
             {
                 element.Q<Label>("IndexSize").text = "Size: " + EditorUtility.FormatBytes(m_IndexSettingsAssets[index].bytes?.Length ?? 0);
                 element.Q<Label>("IndexNumber").text = m_IndexSettingsAssets[index].index.indexCount.ToString() + " elements";
@@ -983,10 +980,10 @@ namespace Unity.QuickSearch
                 {
                     CreateIndexDetailsElement();
                 }
-            }
 
-            if (selectedItemExists)
-                EditorGUIUtility.PingObject(selectedItemAsset);
+                if (selectedItemExists)
+                    EditorGUIUtility.PingObject(selectedItemAsset);
+            }
 
             m_PreviousSelectedIndex = selectedIndex;
         }
@@ -1071,6 +1068,9 @@ namespace Unity.QuickSearch
 
                 style.flexGrow = 1.0f;
                 style.flexDirection = FlexDirection.Row;
+
+                var grip = new VisualElement() { name = "ReorderableListViewGrip" };
+                Add(grip);
 
                 Add(m_EnumField = new EnumField(FilePattern.File));
                 m_EnumField.RegisterValueChangedCallback(FilePatternChanged);

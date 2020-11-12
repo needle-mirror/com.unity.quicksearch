@@ -6,7 +6,7 @@ using UnityEngine;
 using UnityEngine.Assertions;
 using UnityEngine.Profiling;
 
-namespace Unity.QuickSearch
+namespace UnityEditor.Search
 {
     internal interface IInstruction<T>
     {

@@ -6,7 +6,7 @@ using UnityEditor;
 using UnityEditor.Experimental;
 using UnityEngine;
 
-namespace Unity.QuickSearch
+namespace UnityEditor.Search
 {
     readonly struct AssetIndexChangeSet
     {
@@ -44,7 +44,7 @@ namespace Unity.QuickSearch
         private static readonly HashSet<string> s_RemovedItems = new HashSet<string>();
         private static readonly HashSet<string> s_MovedItems = new HashSet<string>();
 
-        const string k_TransactionDatabasePath = "Library/QuickSearch/transactions.db";
+        const string k_TransactionDatabasePath = "Library/Search/transactions.db";
         private static TransactionManager transactionManager;
 
         private static readonly object s_ContentRefreshedLock = new object();
@@ -77,7 +77,7 @@ namespace Unity.QuickSearch
 
         static AssetPostprocessorIndexer()
         {
-            if (!IsMainProcess())
+            if (!Utils.IsMainProcess())
                 return;
 
             transactionManager = new TransactionManager(k_TransactionDatabasePath);
@@ -92,17 +92,9 @@ namespace Unity.QuickSearch
             transactionManager?.Shutdown();
         }
 
-        public static bool IsMainProcess()
-        {
-            if (AssetDatabaseAPI.IsAssetImportWorkerProcess())
-                return false;
-
-            return true;
-        }
-
         public static void Enable()
         {
-            if (!IsMainProcess())
+            if (!Utils.IsMainProcess())
                 return;
             s_Enabled = true;
         }
@@ -180,13 +172,13 @@ namespace Unity.QuickSearch
             if (s_UpdatedItems.Count > 0 || s_RemovedItems.Count > 0 || s_MovedItems.Count > 0)
             {
                 s_BatchStartTime = EditorApplication.timeSinceStartup;
-                EditorApplication.delayCall -= RaiseContentRefreshed;
-                EditorApplication.delayCall += RaiseContentRefreshed;
+                Utils.tick += RaiseContentRefreshed;
             }
         }
 
         private static void RaiseContentRefreshed()
         {
+            Utils.tick -= RaiseContentRefreshed;
             var currentTime = EditorApplication.timeSinceStartup;
             if (currentTime - s_BatchStartTime > 0.5)
             {
@@ -200,8 +192,7 @@ namespace Unity.QuickSearch
             }
             else
             {
-                EditorApplication.delayCall -= RaiseContentRefreshed;
-                EditorApplication.delayCall += RaiseContentRefreshed;
+                Utils.tick += RaiseContentRefreshed;
             }
         }
     }

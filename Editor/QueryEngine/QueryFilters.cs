@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 
-namespace Unity.QuickSearch
+namespace UnityEditor.Search
 {
     internal interface IFilter
     {

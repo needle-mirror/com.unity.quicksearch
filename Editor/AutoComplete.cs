@@ -4,9 +4,8 @@ using System.Linq;
 using UnityEngine;
 using System.Text;
 using System.Text.RegularExpressions;
-using UnityEditor;
 
-namespace Unity.QuickSearch
+namespace UnityEditor.Search
 {
     static class BuiltinPropositions
     {
@@ -144,6 +143,11 @@ namespace Unity.QuickSearch
             return GetTokenAtCursorPosition(txt, cursorIndex, out var _, out var _, ch => char.IsWhiteSpace(ch));
         }
 
+        internal static void GetTokenBoundariesAtCursorPosition(string txt, int cursorIndex, out int startPos, out int endPos)
+        {
+            GetTokenAtCursorPosition(txt, cursorIndex, out startPos, out endPos, ch => char.IsWhiteSpace(ch));
+        }
+
         private static string GetTokenAtCursorPosition(string txt, int cursorIndex, out int startPos, out int endPos, Func<char, bool> check)
         {
             if (txt.Length > 0 && (cursorIndex == txt.Length || char.IsWhiteSpace(txt[cursorIndex])))
@@ -231,6 +235,7 @@ namespace Unity.QuickSearch
             if (!enabled)
                 return false;
 
+            SearchAnalytics.SendEvent(null, SearchAnalytics.GenericEventType.QuickSearchAutoCompleteTab, options.token);
             UpdateCompleteList(te, options);
             return true;
         }
@@ -281,7 +286,9 @@ namespace Unity.QuickSearch
                     sb.Remove(replaceFrom, replaceTo - replaceFrom);
                     sb.Insert(replaceFrom, autoFill.replacement);
 
-                    view.SetSearchText(sb.ToString(), autoFill.moveCursor);
+                    var insertion = sb.ToString();
+                    SearchAnalytics.SendEvent(null, SearchAnalytics.GenericEventType.QuickSearchAutoCompleteInsertSuggestion, insertion);
+                    view.SetSearchText(insertion, autoFill.moveCursor);
                 }
                 Clear();
             }
@@ -365,7 +372,7 @@ namespace Unity.QuickSearch
             {
                 if (queryEmpty)
                 {
-                    propositions.Add(new SearchProposition($"{p.filterId} ({p.id})", $"{p.filterId} ", p.name, p.priority));
+                    propositions.Add(new SearchProposition($"{p.filterId}", $"{p.filterId} ", p.name, p.priority));
                 }
                 else
                 {
@@ -388,9 +395,9 @@ namespace Unity.QuickSearch
                 {
                     var helpText = sq.description;
                     if (string.IsNullOrEmpty(helpText))
-                        helpText = sq.searchQuery;
+                        helpText = sq.text;
                     helpText = $"<i>{helpText}</i> (Saved Query)";
-                    propositions.Add(new SearchProposition(item.GetLabel(context, true), sq.searchQuery, helpText, priority: builtPriority, moveCursor: TextCursorPlacement.MoveLineEnd));
+                    propositions.Add(new SearchProposition(item.GetLabel(context, true), sq.text, helpText, priority: builtPriority, moveCursor: TextCursorPlacement.MoveLineEnd));
                     builtPriority += 10;
                 }
             }

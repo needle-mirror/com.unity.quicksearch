@@ -2,7 +2,7 @@ using System.Linq;
 using UnityEditor;
 using UnityEngine;
 
-namespace Unity.QuickSearch
+namespace UnityEditor.Search
 {
     [CustomEditor(typeof(SearchDatabase))]
     class SearchDatabaseEditor : Editor
@@ -46,7 +46,7 @@ namespace Unity.QuickSearch
 
         public override void OnInspectorGUI()
         {
-            if (m_DB.index == null)
+            if (!m_DB || m_DB.index == null)
                 return;
 
             EditorGUILayout.PropertyField(m_Settings, title, true);

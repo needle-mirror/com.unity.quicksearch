@@ -1,15 +1,14 @@
 using System.Collections.Generic;
 using System.IO;
-using UnityEditor;
 using UnityEngine;
 
-#if UNITY_2020_2_OR_NEWER
-using UnityEditor.AssetImporters;
-#else
+#if UNITY_2020_1
 using UnityEditor.Experimental.AssetImporters;
+#else
+using UnityEditor.AssetImporters;
 #endif
 
-namespace Unity.QuickSearch
+namespace UnityEditor.Search
 {
     class SearchDatabaseTemplates
     {
@@ -50,7 +49,7 @@ namespace Unity.QuickSearch
         ""types"": true,
         ""properties"": true,
         ""extended"": false,
-        ""dependencies"": true
+        ""dependencies"": false
     },
     ""baseScore"": 150
 }";
@@ -61,7 +60,7 @@ namespace Unity.QuickSearch
     ""excludes"": [],
     ""options"": {
         ""types"": true,
-        ""properties"": true,
+        ""properties"": false,
         ""extended"": false,
         ""dependencies"": false
     },
@@ -86,7 +85,7 @@ namespace Unity.QuickSearch
             {
                 var db = ScriptableObject.CreateInstance<SearchDatabase>();
                 db.Import(ctx.assetPath);
-                ctx.AddObjectToAsset("index", db, Icons.quicksearch);
+                ctx.AddObjectToAsset("index", db);
                 ctx.SetMainObject(db);
 
                 ctx.DependsOnCustomDependency(nameof(CustomObjectIndexerAttribute));
@@ -120,9 +119,6 @@ namespace Unity.QuickSearch
             var indexFileName = string.IsNullOrEmpty(name) ? Path.GetFileNameWithoutExtension(path) : name;
             var indexPath = AssetDatabase.GenerateUniqueAssetPath(Path.Combine(dirPath, $"{indexFileName}.index")).Replace("\\", "/");
 
-            Debug.LogFormat(LogType.Log, LogOption.NoStacktrace, null,
-                $"Creating {template.Trim('_')} index at <a file=\"{indexPath}\">{indexPath}</a>");
-
             SearchAnalytics.SendEvent(null, SearchAnalytics.GenericEventType.CreateIndexFromTemplate, template);
 
             File.WriteAllText(indexPath, templateContent);
@@ -139,31 +135,32 @@ namespace Unity.QuickSearch
             return CreateIndexProjectValidation();
         }
 
-        [MenuItem("Assets/Create/Search/Project Index")]
-        internal static void CreateIndexProject()
+        private static string GetSelectionFolderPath()
         {
             var folderPath = "Assets";
             if (Selection.activeObject != null)
                 folderPath = AssetDatabase.GetAssetPath(Selection.activeObject);
-            CreateTemplateIndex("Assets", folderPath);
+            if (File.Exists(folderPath))
+                folderPath = Path.GetDirectoryName(folderPath);
+            return folderPath;
+        }
+
+        [MenuItem("Assets/Create/Search/Project Index")]
+        internal static void CreateIndexProject()
+        {
+            CreateTemplateIndex("Assets", GetSelectionFolderPath());
         }
 
         [MenuItem("Assets/Create/Search/Project Index", validate = true)]
         internal static bool CreateIndexProjectValidation()
         {
-            if (Selection.activeObject == null)
-                return true;
-            var folder = Selection.activeObject as DefaultAsset;
-            if (!folder)
-                return false;
-            return Directory.Exists(AssetDatabase.GetAssetPath(folder));
+            return Directory.Exists(GetSelectionFolderPath());
         }
 
         [MenuItem("Assets/Create/Search/Prefab Index")]
         internal static void CreateIndexPrefab()
         {
-            var assetPath = AssetDatabase.GetAssetPath(Selection.activeObject);
-            CreateTemplateIndex("Prefabs", assetPath);
+            CreateTemplateIndex("Prefabs", GetSelectionFolderPath());
         }
 
         [MenuItem("Assets/Create/Search/Prefab Index", validate = true)]
@@ -175,8 +172,7 @@ namespace Unity.QuickSearch
         [MenuItem("Assets/Create/Search/Scene Index")]
         internal static void CreateIndexScene()
         {
-            var assetPath = AssetDatabase.GetAssetPath(Selection.activeObject);
-            CreateTemplateIndex("Scenes", assetPath);
+            CreateTemplateIndex("Scenes", GetSelectionFolderPath());
         }
 
         [MenuItem("Assets/Create/Search/Scene Index", validate = true)]

@@ -1,0 +1,9 @@
+#results-label {
+    margin-top: 4px;
+    margin-left: 2px;
+}
+
+#providers-field > .unity-base-popup-field__label {
+    margin-left: 2px;
+    min-width: 120px;
+}

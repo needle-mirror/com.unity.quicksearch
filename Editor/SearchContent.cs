@@ -4,7 +4,7 @@ using System.Linq;
 using System.Text.RegularExpressions;
 using UnityEngine;
 
-namespace Unity.QuickSearch
+namespace UnityEditor.Search
 {
     static class SearchContent
     {
@@ -23,7 +23,7 @@ namespace Unity.QuickSearch
                 content.image = thumbnail;
             }
 
-            Utils.Wrap(s_GUIContentPoolIndex + 1, s_GUIContentPool.Length);
+            s_GUIContentPoolIndex = Utils.Wrap(s_GUIContentPoolIndex + 1, s_GUIContentPool.Length);
             return content;
         }
 

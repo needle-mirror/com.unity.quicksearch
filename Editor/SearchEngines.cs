@@ -1,5 +1,5 @@
-#if (UNITY_2020_2_OR_NEWER)
-//#define USE_SEARCH_ENGINE_API
+#if (USE_SEARCH_MODULE || UNITY_2020_2_OR_NEWER)
+#define USE_SEARCH_ENGINE_API
 #endif
 
 #if USE_SEARCH_ENGINE_API
@@ -11,7 +11,7 @@ using UnityEditor.SearchService;
 using UnityEngine;
 using Object = UnityEngine.Object;
 
-namespace Unity.QuickSearch
+namespace UnityEditor.Search
 {
     class SearchApiSession : IDisposable
     {
@@ -108,7 +108,11 @@ namespace Unity.QuickSearch
 
         public virtual void EndSearch(ISearchContext context) {}
 
+        #if !USE_SEARCH_MODULE
         public string name => "Quick Search";
+        #else
+        public string name => "Default";
+        #endif
 
         public abstract string providerId { get; }
 
@@ -224,7 +228,7 @@ namespace Unity.QuickSearch
         }
     }
 
-    [ObjectSelectorEngine]
+    //[ObjectSelectorEngine]
     class ObjectSelectorEngine : QuickSearchEngine, IObjectSelectorEngine
     {
         // Internal for tests purposes.

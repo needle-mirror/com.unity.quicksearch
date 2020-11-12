@@ -3,7 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 
-namespace Unity.QuickSearch
+namespace UnityEditor.Search
 {
     using ItemsById = SortedDictionary<string, SearchItem>;
     using ItemsByScore = SortedDictionary<int, SortedDictionary<string, SearchItem>>;
@@ -12,7 +12,7 @@ namespace Unity.QuickSearch
     /// <summary>
     /// A search list represents a collection of search results that is filled
     /// </summary>
-    public interface ISearchList : ICollection<SearchItem>, IDisposable
+    public interface ISearchList : IList<SearchItem>, IDisposable
     {
         /// <summary>
         /// Indicates if the search request is still running and might return more results asynchronously.
@@ -61,7 +61,7 @@ namespace Unity.QuickSearch
         IEnumerable<TResult> Select<TResult>(Func<SearchItem, TResult> selector);
     }
 
-    abstract class BaseSearchList : IDisposable
+    abstract class BaseSearchList : ISearchList
     {
         private bool m_Disposed = false;
 
@@ -76,6 +76,10 @@ namespace Unity.QuickSearch
                 return context.searchInProgress;
             }
         }
+
+        public abstract int Count { get; }
+        public virtual bool IsReadOnly => true;
+        public abstract SearchItem this[int index] { get; set; }
 
         public BaseSearchList()
         {
@@ -123,9 +127,26 @@ namespace Unity.QuickSearch
         {
             return Fetch().Where(item => item != null).Select(item => selector(item));
         }
+
+        public virtual void InsertRange(int index, IEnumerable<SearchItem> items) { throw new NotSupportedException(); }
+        public virtual IEnumerable<SearchItem> GetRange(int skipCount, int count) { throw new NotSupportedException(); }
+        public virtual int IndexOf(SearchItem item) { throw new NotImplementedException(); }
+        public virtual void Insert(int index, SearchItem item) { throw new NotSupportedException(); }
+        public virtual void RemoveAt(int index) { throw new NotSupportedException(); }
+        public virtual void Add(SearchItem item) { throw new NotSupportedException(); }
+        public virtual void Clear() { throw new NotSupportedException(); }
+        public virtual bool Contains(SearchItem item) { throw new NotSupportedException(); }
+        public virtual void CopyTo(SearchItem[] array, int arrayIndex) { throw new NotSupportedException(); }
+        public virtual bool Remove(SearchItem item) { throw new NotSupportedException(); }
+        public abstract IEnumerator<SearchItem> GetEnumerator();
+
+        IEnumerator IEnumerable.GetEnumerator()
+        {
+            return GetEnumerator();
+        }
     }
 
-    class SortedSearchList : BaseSearchList, ISearchList
+    class SortedSearchList : BaseSearchList
     {
         private class IdComparer : Comparer<string>
         {
@@ -139,10 +160,15 @@ namespace Unity.QuickSearch
         private Dictionary<string, Tuple<int, int>> m_LUT = new Dictionary<string, Tuple<int, int>>();
         private bool m_TemporaryUnordered = false;
         private List<SearchItem> m_UnorderedItems = new List<SearchItem>();
+        private int m_Count = 0;
 
-        public int Count { get; private set; }
-        public bool IsReadOnly => true;
-        public SearchItem this[int index] => this.ElementAt(index);
+        public override int Count => m_Count;
+
+        public override SearchItem this[int index]
+        {
+            get => ElementAt(index);
+            set => throw new NotImplementedException();
+        }
 
         public SortedSearchList(SearchContext searchContext) : base(searchContext)
         {
@@ -153,6 +179,17 @@ namespace Unity.QuickSearch
         {
             Clear();
             AddItems(items);
+        }
+
+        public SearchItem ElementAt(int index)
+        {
+            var it = GetEnumerator();
+            while (it.MoveNext() && index > 0)
+            {
+                index--;
+            }
+
+            return it.Current;
         }
 
         public override IEnumerable<SearchItem> Fetch()
@@ -173,6 +210,9 @@ namespace Unity.QuickSearch
 
         public override void AddItems(IEnumerable<SearchItem> items)
         {
+            if (context.subset != null)
+                items = items.Intersect(context.subset);
+
             foreach (var item in items)
             {
                 bool shouldAdd = true;
@@ -186,7 +226,7 @@ namespace Unity.QuickSearch
                     {
                         m_Data[alreadyContainedValues.Item1][alreadyContainedValues.Item2].Remove(item.id);
                         m_LUT.Remove(item.id);
-                        --Count;
+                        --m_Count;
                     }
                 }
 
@@ -207,20 +247,20 @@ namespace Unity.QuickSearch
 
                 itemsById.Add(item.id, item);
                 m_LUT.Add(item.id, new Tuple<int, int>(item.provider.priority, item.score));
-                ++Count;
+                ++m_Count;
             }
         }
 
-        public void Clear()
+        public override void Clear()
         {
             m_Data.Clear();
             m_LUT.Clear();
-            Count = 0;
+            m_Count = 0;
             m_TemporaryUnordered = false;
             m_UnorderedItems.Clear();
         }
 
-        public IEnumerator<SearchItem> GetEnumerator()
+        public override IEnumerator<SearchItem> GetEnumerator()
         {
             if (m_TemporaryUnordered)
             {
@@ -242,12 +282,7 @@ namespace Unity.QuickSearch
             }
         }
 
-        IEnumerator IEnumerable.GetEnumerator()
-        {
-            return GetEnumerator();
-        }
-
-        public IEnumerable<SearchItem> GetRange(int skipCount, int count)
+        public override IEnumerable<SearchItem> GetRange(int skipCount, int count)
         {
             int skipped = 0;
             int counted = 0;
@@ -267,7 +302,7 @@ namespace Unity.QuickSearch
             }
         }
 
-        public void InsertRange(int index, IEnumerable<SearchItem> items)
+        public override void InsertRange(int index, IEnumerable<SearchItem> items)
         {
             if (!m_TemporaryUnordered)
             {
@@ -277,15 +312,15 @@ namespace Unity.QuickSearch
 
             var tempList = items.ToList();
             m_UnorderedItems.InsertRange(index, tempList);
-            Count += tempList.Count;
+            m_Count += tempList.Count;
         }
 
-        public void Add(SearchItem item)
+        public override void Add(SearchItem item)
         {
             AddItems(new[] {item});
         }
 
-        public void CopyTo(SearchItem[] array, int arrayIndex)
+        public override void CopyTo(SearchItem[] array, int arrayIndex)
         {
             int i = arrayIndex;
             var it = GetEnumerator();
@@ -293,7 +328,7 @@ namespace Unity.QuickSearch
                 array[i++] = it.Current;
         }
 
-        public bool Contains(SearchItem item)
+        public override bool Contains(SearchItem item)
         {
             if (m_TemporaryUnordered)
             {
@@ -313,7 +348,7 @@ namespace Unity.QuickSearch
             return false;
         }
 
-        public bool Remove(SearchItem item)
+        public override bool Remove(SearchItem item)
         {
             bool removed = false;
             if (m_TemporaryUnordered)
@@ -337,9 +372,11 @@ namespace Unity.QuickSearch
         string id { get; }
         string name { get; }
         int count { get; }
+        int priority { get; }
         IEnumerable<SearchItem> items { get; }
 
         SearchItem ElementAt(int index);
+        int IndexOf(SearchItem item);
         bool Add(SearchItem item);
     }
 
@@ -352,13 +389,31 @@ namespace Unity.QuickSearch
             public IEnumerable<SearchItem> items => m_Items;
             public int count => m_Items.Count;
 
-            private List<SearchItem> m_Items;
+            class SortByScoreComparer : IComparer<SearchItem>
+            {
+                public int Compare(SearchItem x, SearchItem y)
+                {
+                    int c = x.score.CompareTo(y.score);
+                    if (c != 0)
+                        return c;
+                    return x.id.CompareTo(y.id);
+                }
+            }
 
-            public Group(string id, string name)
+            static readonly SortByScoreComparer sortByScoreComparer = new SortByScoreComparer();
+
+            public int priority { get; set; }
+
+            private List<SearchItem> m_Items;
+            private HashSet<int> m_IdHashes;
+
+            public Group(string id, string name, int priority = int.MaxValue)
             {
                 this.id = id;
                 this.name = name;
+                this.priority = priority;
                 m_Items = new List<SearchItem>();
+                m_IdHashes = new HashSet<int>();
             }
 
             public SearchItem ElementAt(int index)
@@ -368,17 +423,39 @@ namespace Unity.QuickSearch
 
             public bool Add(SearchItem item)
             {
-                int fIndex = m_Items.BinarySearch(item);
-                if (fIndex < 0)
+                bool added = true;
+                var itemHash = item.GetHashCode();
+                if (m_IdHashes.Contains(itemHash))
                 {
-                    m_Items.Insert(~fIndex, item);
-                    return true;
+                    var startIndex = m_Items.BinarySearch(item, sortByScoreComparer);
+                    if (startIndex < 0)
+                        startIndex = ~startIndex;
+                    var itemIndex = m_Items.IndexOf(item, Math.Max(startIndex - 1, 0));
+                    if (itemIndex >= 0 && item.score < m_Items[itemIndex].score)
+                    {
+                        m_Items.RemoveAt(itemIndex);
+                        m_IdHashes.Remove(itemHash);
+                        added = false;
+                    }
+                    else
+                        return false;
                 }
 
-                if (item.score > m_Items[fIndex].score)
-                    m_Items[fIndex] = item;
+                var insertAt = m_Items.BinarySearch(item, sortByScoreComparer);
+                if (insertAt < 0)
+                {
+                    insertAt = ~insertAt;
+                    m_Items.Insert(insertAt, item);
+                    m_IdHashes.Add(itemHash);
+                    return added;
+                }
 
                 return false;
+            }
+
+            public int IndexOf(SearchItem item)
+            {
+                return m_Items.IndexOf(item);
             }
         }
 
@@ -387,19 +464,39 @@ namespace Unity.QuickSearch
         private string m_CurrentGroupId;
         private readonly List<IGroup> m_Groups = new List<IGroup>();
 
-        public int Count => UseAll() ? m_TotalCount : m_Groups[m_CurrentGroupIndex].count;
-        public bool IsReadOnly => true;
+        public override int Count => UseAll() ? m_TotalCount : m_Groups[m_CurrentGroupIndex].count;
 
         string IGroup.id => "all";
         string IGroup.name => "All";
+        int IGroup.priority => int.MinValue + 1;
         int IGroup.count => m_TotalCount;
         IEnumerable<SearchItem> IGroup.items => GetAll();
 
-        public SearchItem this[int index] => ElementAt(index);
+        public override SearchItem this[int index]
+        {
+            get => ElementAt(index);
+            set => throw new NotImplementedException();
+        }
 
         private bool UseAll()
         {
             return m_CurrentGroupIndex == -1 || m_Groups.Count == 0;
+        }
+
+        public override int IndexOf(SearchItem item)
+        {
+            if (!UseAll())
+                return m_Groups[m_CurrentGroupIndex].IndexOf(item);
+
+            int index = 0;
+            foreach (var e in GetAll())
+            {
+                if (e == item)
+                    return index;
+                index++;
+            }
+
+            return -1;
         }
 
         public SearchItem ElementAt(int index)
@@ -418,20 +515,20 @@ namespace Unity.QuickSearch
                 }
             }
             else
-                m_Groups[m_CurrentGroupIndex].ElementAt(index);
+                return m_Groups[m_CurrentGroupIndex].ElementAt(index);
 
             return null;
         }
 
-        public GroupedSearchList(SearchContext searchContext) : base(searchContext, false)
+        public GroupedSearchList(SearchContext searchContext)
+            : base(searchContext, false)
         {
             Clear();
         }
 
-        public void FromEnumerable(IEnumerable<SearchItem> items)
+        protected override void Dispose(bool disposing)
         {
-            Clear();
-            AddItems(items);
+            base.Dispose(disposing);
         }
 
         public int GetGroupCount(bool showAll = true)
@@ -439,9 +536,14 @@ namespace Unity.QuickSearch
             return m_Groups.Count + (showAll ? 1 : 0);
         }
 
+        public IGroup GetGroupById(string groupId)
+        {
+            return m_Groups.Find(group => group.id == groupId);
+        }
+
         public IEnumerable<IGroup> EnumerateGroups(bool showAll = true)
         {
-            if (showAll)
+            if (showAll && m_Groups.Count > 1)
                 yield return this;
             foreach (var g in m_Groups)
                 yield return g;
@@ -478,13 +580,18 @@ namespace Unity.QuickSearch
 
         public override void AddItems(IEnumerable<SearchItem> items)
         {
+            // Initialize groups on first results
+            if (m_Groups.Count == 0 && context != null)
+                m_Groups.AddRange(context.providers.OrderBy(p => p.priority).Select(p => new Group(p.id, p.name, p.priority)));
+
             foreach (var item in items)
             {
                 var itemGroup = m_Groups.Find(g => g.id == item.provider.id);
                 if (itemGroup == null)
                 {
-                    itemGroup = new Group(item.provider.id, item.provider.name);
+                    itemGroup = new Group(item.provider.id, item.provider.name, item.provider.priority);
                     m_Groups.Add(itemGroup);
+                    m_Groups.Sort((lhs, rhs) => lhs.priority.CompareTo(rhs.priority));
                 }
 
                 if (itemGroup.Add(item))
@@ -496,14 +603,14 @@ namespace Unity.QuickSearch
                 RestoreCurrentGroup(m_CurrentGroupId);
         }
 
-        public void Clear()
+        public override void Clear()
         {
             m_CurrentGroupIndex = -1;
             m_TotalCount = 0;
             m_Groups.Clear();
         }
 
-        public IEnumerator<SearchItem> GetEnumerator()
+        public override IEnumerator<SearchItem> GetEnumerator()
         {
             if (UseAll())
                 return GetAll().GetEnumerator();
@@ -511,42 +618,17 @@ namespace Unity.QuickSearch
             return m_Groups[m_CurrentGroupIndex].items.GetEnumerator();
         }
 
-        IEnumerator IEnumerable.GetEnumerator()
-        {
-            return GetEnumerator();
-        }
-
-        public IEnumerable<SearchItem> GetRange(int skipCount, int count)
-        {
-            throw new NotSupportedException();
-        }
-
-        public void InsertRange(int index, IEnumerable<SearchItem> items)
-        {
-            throw new NotSupportedException();
-        }
-
-        public void Add(SearchItem item)
+        public override void Add(SearchItem item)
         {
             AddItems(new[] { item });
         }
 
-        public void CopyTo(SearchItem[] array, int arrayIndex)
+        public override void CopyTo(SearchItem[] array, int arrayIndex)
         {
             int i = arrayIndex;
             var it = GetEnumerator();
             while (it.MoveNext())
                 array[i++] = it.Current;
-        }
-
-        public bool Contains(SearchItem item)
-        {
-            throw new NotSupportedException();
-        }
-
-        public bool Remove(SearchItem item)
-        {
-            throw new NotSupportedException();
         }
 
         public string currentGroup
@@ -583,41 +665,51 @@ namespace Unity.QuickSearch
         {
             throw new NotSupportedException();
         }
+
+        int IGroup.IndexOf(SearchItem item)
+        {
+            throw new NotSupportedException();
+        }
     }
 
     class AsyncSearchList : BaseSearchList, ISearchList
     {
         private readonly List<SearchItem> m_UnorderedItems;
 
-        public int Count => m_UnorderedItems.Count;
-        public bool IsReadOnly => true;
+        public override int Count => m_UnorderedItems.Count;
+
+        public override SearchItem this[int index]
+        {
+            get => m_UnorderedItems[index];
+            set => m_UnorderedItems[index] = value;
+        }
 
         public AsyncSearchList(SearchContext searchContext) : base(searchContext)
         {
             m_UnorderedItems = new List<SearchItem>();
         }
 
-        public void Add(SearchItem item)
+        public override void Add(SearchItem item)
         {
             m_UnorderedItems.Add(item);
         }
 
         public override void AddItems(IEnumerable<SearchItem> items)
         {
-            m_UnorderedItems.AddRange(items);
+            m_UnorderedItems.AddRange(context.subset != null ? items.Intersect(context.subset) : items);
         }
 
-        public void Clear()
+        public override void Clear()
         {
             m_UnorderedItems.Clear();
         }
 
-        public bool Contains(SearchItem item)
+        public override bool Contains(SearchItem item)
         {
             return m_UnorderedItems.Contains(item);
         }
 
-        public void CopyTo(SearchItem[] array, int arrayIndex)
+        public override void CopyTo(SearchItem[] array, int arrayIndex)
         {
             m_UnorderedItems.CopyTo(array, arrayIndex);
         }
@@ -648,27 +740,23 @@ namespace Unity.QuickSearch
                 yield return m_UnorderedItems[i];
         }
 
-        public IEnumerator<SearchItem> GetEnumerator()
+        public override IEnumerator<SearchItem> GetEnumerator()
         {
             return Fetch().GetEnumerator();
         }
 
-        public void InsertRange(int index, IEnumerable<SearchItem> items)
+        public override void InsertRange(int index, IEnumerable<SearchItem> items)
         {
-            m_UnorderedItems.InsertRange(index, items);
+            foreach (var item in items.Where(e => e != null))
+                SearchItem.Insert(m_UnorderedItems, item, SearchItem.DefaultComparer);
         }
 
-        public bool Remove(SearchItem item)
+        public override bool Remove(SearchItem item)
         {
             return m_UnorderedItems.Remove(item);
         }
 
-        IEnumerator IEnumerable.GetEnumerator()
-        {
-            return GetEnumerator();
-        }
-
-        public IEnumerable<SearchItem> GetRange(int skipCount, int count)
+        public override IEnumerable<SearchItem> GetRange(int skipCount, int count)
         {
             return m_UnorderedItems.GetRange(skipCount, count);
         }

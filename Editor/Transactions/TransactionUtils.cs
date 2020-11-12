@@ -1,7 +1,7 @@
 using System;
 using System.Runtime.InteropServices;
 
-namespace Unity.QuickSearch
+namespace UnityEditor.Search
 {
     class TransactionUtils
     {
@@ -89,7 +89,7 @@ namespace Unity.QuickSearch
 
         public static DateTime TimeStampFromByte(byte[] bytes)
         {
-            var binaryTimeStamp = Deserialize<long>(bytes);
+            var binaryTimeStamp = BitConverter.ToInt64(bytes, 0);
             return DateTime.FromBinary(binaryTimeStamp);
         }
     }

@@ -4,15 +4,20 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using System.Text.RegularExpressions;
-using UnityEditor;
 using UnityEngine;
 
-namespace Unity.QuickSearch.Providers
+namespace UnityEditor.Search.Providers
 {
     static class StaticMethodProvider
     {
         private const string type = "static_methods";
         private const string displayName = "Static API";
+
+        private static readonly string[] _ignoredAssemblies =
+        {
+            "^UnityScript$", "^System$", "^mscorlib$", "^netstandard$",
+            "^System\\..*", "^nunit\\..*", "^Microsoft\\..*", "^Mono\\..*", "^SyntaxTree\\..*"
+        };
 
         private static MethodInfo[] methods;
 
@@ -25,7 +30,7 @@ namespace Unity.QuickSearch.Providers
                 filterId = "#",
                 isExplicitProvider = true,
                 fetchItems = (context, items, provider) => FetchItems(context, provider),
-                fetchThumbnail = (item, context) => Icons.shortcut
+                fetchThumbnail = (item, context) => Icons.staticAPI
             };
         }
 
@@ -52,18 +57,49 @@ namespace Unity.QuickSearch.Providers
 
         private static MethodInfo[] FetchStaticAPIMethodInfo()
         {
-            #if QUICKSEARCH_DEBUG
-            using (new DebugTimer("GetAllStaticMethods"))
-            #endif
-            {
-                bool isDevBuild = UnityEditor.Unsupported.IsDeveloperBuild();
-                var staticMethods = AppDomain.CurrentDomain.GetAllStaticMethods(isDevBuild);
-                #if QUICKSEARCH_DEBUG
-                Debug.Log($"Fetched {staticMethods.Length} APIs");
-                #endif
+            bool isDevBuild = Unsupported.IsDeveloperBuild();
+            return AppDomain.CurrentDomain.GetAllStaticMethods(isDevBuild);
+        }
 
-                return staticMethods;
+        private static MethodInfo[] GetAllStaticMethods(this AppDomain aAppDomain, bool showInternalAPIs)
+        {
+            var result = new List<MethodInfo>();
+            var assemblies = aAppDomain.GetAssemblies();
+            var bindingFlags = BindingFlags.Static | (showInternalAPIs ? BindingFlags.Public | BindingFlags.NonPublic : BindingFlags.Public) | BindingFlags.DeclaredOnly;
+            foreach (var assembly in assemblies)
+            {
+                if (IsIgnoredAssembly(assembly.GetName()))
+                    continue;
+                var types = assembly.GetLoadableTypes();
+                foreach (var type in types)
+                {
+                    var methods = type.GetMethods(bindingFlags);
+                    foreach (var m in methods)
+                    {
+                        if (m.IsPrivate)
+                            continue;
+
+                        if (m.IsGenericMethod)
+                            continue;
+
+                        if (m.GetCustomAttribute<ObsoleteAttribute>() != null)
+                            continue;
+
+                        if (m.Name.Contains("Begin") || m.Name.Contains("End"))
+                            continue;
+
+                        if (m.GetParameters().Length == 0)
+                            result.Add(m);
+                    }
+                }
             }
+            return result.ToArray();
+        }
+
+        private static bool IsIgnoredAssembly(AssemblyName assemblyName)
+        {
+            var name = assemblyName.Name;
+            return _ignoredAssemblies.Any(candidate => Regex.IsMatch(name, candidate));
         }
 
         private static void LogResult(object result)

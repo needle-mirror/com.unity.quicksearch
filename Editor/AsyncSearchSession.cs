@@ -2,9 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
-using UnityEditor;
 
-namespace Unity.QuickSearch
+namespace UnityEditor.Search
 {
     /// <summary>
     /// An async search session tracks all incoming items found by a search provider that weren't returned right away after the search was initiated.
@@ -84,7 +83,7 @@ namespace Unity.QuickSearch
             if (itemEnumerator != null)
             {
                 m_ItemsEnumerator = new StackedEnumerator<SearchItem>(itemEnumerator);
-                EditorApplication.update += OnUpdate;
+                Utils.tick += OnUpdate;
             }
         }
 
@@ -102,8 +101,8 @@ namespace Unity.QuickSearch
                 sessionEnded?.Invoke(m_Context);
 
             searchInProgress = false;
-            EditorApplication.update -= OnUpdate;
-            m_ItemsEnumerator.Clear();
+            Utils.tick -= OnUpdate;
+            m_ItemsEnumerator.Dispose();
         }
 
         /// <summary>
