@@ -120,8 +120,8 @@ namespace UnityEditor.Search
                     if (engine.searchDataOverridesStringComparison)
                         stringComparison = engine.searchDataStringComparison;
 
-                    if (engine.searchWordMatchFunction != null)
-                        matchWordFunc = s => engine.searchWordMatchFunction(searchNode.searchValue, searchNode.exact, stringComparison, s);
+                    if (engine.searchWordMatcher != null)
+                        matchWordFunc = s => engine.searchWordMatcher(searchNode.searchValue, searchNode.exact, stringComparison, s);
                     else
                     {
                         if (searchNode.exact)

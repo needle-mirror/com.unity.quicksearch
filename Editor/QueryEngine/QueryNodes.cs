@@ -312,11 +312,11 @@ namespace UnityEditor.Search
 
             foreach (var child in children)
             {
-                var copyableChild = child as ICopyableNode;
-                if (copyableChild == null)
+                if (!(child is ICopyableNode copyableChild))
                     return null;
                 var childCopy = copyableChild.Copy();
-                selfNode.AddNode(childCopy);
+                if (childCopy != null)
+                    selfNode.AddNode(childCopy);
             }
 
             return selfNode;
@@ -473,12 +473,14 @@ namespace UnityEditor.Search
 
             foreach (var child in children)
             {
-                var copyableChild = child as ICopyableNode;
-                if (copyableChild == null)
+                if (!(child is ICopyableNode copyableChild))
                     return null;
                 var childCopy = copyableChild.Copy();
-                childCopy.parent = selfNode;
-                selfNode.children.Add(childCopy);
+                if (childCopy != null)
+                {
+                    childCopy.parent = selfNode;
+                    selfNode.children.Add(childCopy);
+                }
             }
 
             return selfNode;

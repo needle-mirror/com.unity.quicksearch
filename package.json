@@ -1,9 +1,9 @@
 {
   "name": "com.unity.quicksearch",
   "displayName": "Quick Search",
-  "version": "3.0.0-preview.2",
-  "unity": "2020.1",
-  "description": "Search multiple areas of Unity: assets, scene objects, menu items, packages, APIs, settings, etc.\n\nOn Windows simply press Alt+' to find anything or Option+' on Mac.\nLook in the shortcut manager for additional Quick Search shortcut bindings.",
+  "version": "3.0.0-preview.3",
+  "unity": "2020.2",
+  "description": "Search multiple areas of Unity: assets, scene hierarchy, menu items, packages, APIs, settings, etc.\n\nLook in the shortcut manager to set your favorite Search All... shortcut.",
   "type": "tool",
   "keywords": [
     "unity",
@@ -11,6 +11,7 @@
     "omni",
     "tool",
     "quick",
+    "find",
     "search",
     "assets",
     "menu",
@@ -20,11 +21,11 @@
     "anything"
   ],
   "upmCi": {
-    "footprint": "f02bc509e064b46a81287e5e39e0458b1b98d388"
+    "footprint": "4170fe41b3d865b65f5d65236d72a8dec5e37ed3"
   },
   "repository": {
     "url": "https://github.cds.internal.unity3d.com/unity/com.unity.quicksearch.git",
     "type": "git",
-    "revision": "914508310bd226a2bb6ca6b478e05054e9891ac2"
+    "revision": "7c109f1086922a6d01a8d24c62270d71af465a3b"
   }
 }

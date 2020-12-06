@@ -186,7 +186,7 @@ namespace UnityEditor.Search
 
         public Func<TData, IEnumerable<string>> searchDataCallback { get; private set; }
         public Func<string, string> searchWordTransformerCallback { get; private set; }
-        public Func<string, bool, StringComparison, string, bool> searchWordMatchFunction { get; private set; }
+        public Func<string, bool, StringComparison, string, bool> searchWordMatcher { get; private set; }
 
         public QueryValidationOptions validationOptions { get; set; }
 
@@ -395,9 +395,9 @@ namespace UnityEditor.Search
             this.searchWordTransformerCallback = searchWordTransformerCallback;
         }
 
-        public void SetSearchWordMatchFunction(Func<string, bool, StringComparison, string, bool> wordMatchFunction)
+        public void SetsearchWordMatcher(Func<string, bool, StringComparison, string, bool> wordMatcher)
         {
-            searchWordMatchFunction = wordMatchFunction;
+            searchWordMatcher = wordMatcher;
         }
 
         public void AddTypeParser<TFilterConstant>(Func<string, ParseResult<TFilterConstant>> parser)
@@ -703,7 +703,7 @@ namespace UnityEditor.Search
                     return new FilterNode(filterType, filterOperator, filterValue, filterParam, token) {skipped = true};
                 }
 
-                if (m_DefaultFilterHandler == null && validationOptions.validateFilters)
+                if (!HasDefaultHandler(!string.IsNullOrEmpty(filterParam)) && validationOptions.validateFilters)
                 {
                     errors.Add(new QueryError(filterTypeIndex, filterType.Length, $"Unknown filter \"{filterType}\"."));
                     return null;
@@ -810,7 +810,7 @@ namespace UnityEditor.Search
                     return new FilterNode(filterType, filterOperator, filterValue, filterParam, token) { skipped = true };
                 }
 
-                if (m_DefaultFilterHandler == null && validationOptions.validateFilters)
+                if (!HasDefaultHandler(!string.IsNullOrEmpty(filterParam)) && validationOptions.validateFilters)
                 {
                     errors.Add(new QueryError(filterTypeIndex, filterType.Length, $"Unknown filter \"{filterType}\"."));
                     return null;
@@ -845,6 +845,11 @@ namespace UnityEditor.Search
             errors.Add(new QueryError(index, token.Length, $"The filter \"{filterType}\" is incomplete."));
 
             return filterNode;
+        }
+
+        private bool HasDefaultHandler(bool useParamFilter)
+        {
+            return useParamFilter ? m_DefaultParamFilterHandler != null : m_DefaultFilterHandler != null;
         }
 
         public IParseResult ParseFilterValue(string filterValue, IFilter filter, FilterOperator op, out Type filterValueType)
@@ -1605,7 +1610,7 @@ namespace UnityEditor.Search
         /// <summary>
         /// The function used to match the search data against the search words.
         /// </summary>
-        public Func<string, bool, StringComparison, string, bool> searchWordMatchFunction => m_Impl.searchWordMatchFunction;
+        public Func<string, bool, StringComparison, string, bool> searchWordMatcher => m_Impl.searchWordMatcher;
 
         /// <summary>
         /// Construct a new QueryEngine.
@@ -1884,10 +1889,10 @@ namespace UnityEditor.Search
         /// <summary>
         /// Set the search word matching function to be used instead of the default one. Set to null to use the default.
         /// </summary>
-        /// <param name="wordMatchFunc">The search word matching function. The first parameter is the search word. The second parameter is a boolean for exact match or not. The third parameter is the StringComparison options. The fourth parameter is an element of the array returned by the search data callback. The function returns true for a match or false for no match.</param>
-        public void SetSearchWordMatchFunction(Func<string, bool, StringComparison, string, bool> wordMatchFunc)
+        /// <param name="wordMatcher">The search word matching function. The first parameter is the search word. The second parameter is a boolean for exact match or not. The third parameter is the StringComparison options. The fourth parameter is an element of the array returned by the search data callback. The function returns true for a match or false for no match.</param>
+        public void SetSearchWordMatcher(Func<string, bool, StringComparison, string, bool> wordMatcher)
         {
-            m_Impl.SetSearchWordMatchFunction(wordMatchFunc);
+            m_Impl.SetsearchWordMatcher(wordMatcher);
         }
 
         /// <summary>

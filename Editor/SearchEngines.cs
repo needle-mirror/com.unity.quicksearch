@@ -1,6 +1,4 @@
-#if (USE_SEARCH_MODULE || UNITY_2020_2_OR_NEWER)
 #define USE_SEARCH_ENGINE_API
-#endif
 
 #if USE_SEARCH_ENGINE_API
 using System;

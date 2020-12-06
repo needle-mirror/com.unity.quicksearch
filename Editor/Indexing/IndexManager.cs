@@ -207,12 +207,6 @@ namespace UnityEditor.Search
 
         internal void OnDisable()
         {
-            #if !USE_SEARCH_MODULE && !UNITY_2020_2_OR_NEWER
-            if (hasUnsavedChanges && EditorUtility.DisplayDialog(L10n.Tr("Unsaved Changes Detected"),
-                L10n.Tr("There are unsaved changes."), L10n.Tr("Save"), L10n.Tr("Discard")))
-                SaveChanges();
-            #endif
-
             m_ListViewIndexSettings.ListView.onSelectionChange -= OnSelectedIndexChanged;
 
             SearchDatabase.indexLoaded -= OnIndexLoaded;
@@ -661,12 +655,7 @@ namespace UnityEditor.Search
             }
         }
 
-        #if USE_SEARCH_MODULE || UNITY_2020_2_OR_NEWER
         public override void SaveChanges()
-        #else
-        private bool hasUnsavedChanges;
-        private void SaveChanges()
-        #endif
         {
             if (hasUnsavedChanges)
             {

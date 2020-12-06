@@ -107,12 +107,10 @@ namespace UnityEditor.Search
                     IndexProperty(documentIndex, "t", at.Name, saveKeyword: true);
                 }
 
-                #if USE_SEARCH_MODULE
                 var guid = AssetDatabase.GUIDFromAssetPath(path);
                 var labels = AssetDatabase.GetLabels(guid);
                 foreach (var label in labels)
                     IndexProperty(documentIndex, "l", label, saveKeyword: true);
-                #endif
 
                 if (settings.options.properties || settings.options.extended)
                 {
@@ -122,17 +120,6 @@ namespace UnityEditor.Search
                     var mainAsset = isPrefab ? PrefabUtility.LoadPrefabContents(path) : AssetDatabase.LoadMainAssetAtPath(path);
                     if (!mainAsset)
                         return;
-
-                    #if !USE_SEARCH_MODULE
-                    #if !UNITY_2020_2_OR_NEWER
-                    var labels = AssetDatabase.GetLabels(mainAsset);
-                    #else
-                    var guid = AssetDatabase.GUIDFromAssetPath(path);
-                    var labels = AssetDatabase.GetLabels(guid);
-                    #endif
-                    foreach (var label in labels)
-                        IndexProperty(documentIndex, "l", label, saveKeyword: true);
-                    #endif
 
                     if (hasCustomIndexers)
                         IndexCustomProperties(path, documentIndex, mainAsset);

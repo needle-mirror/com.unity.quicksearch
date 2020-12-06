@@ -207,6 +207,7 @@ namespace UnityEditor.Search.Providers
         }
 
         #if USE_SEARCH_MODULE
+        #region DocumentationDeleteAssets
         private static void DeleteAssets(IEnumerable<SearchItem> items)
         {
             var oldSelection = Selection.objects;
@@ -215,6 +216,8 @@ namespace UnityEditor.Search.Providers
             ProjectBrowser.DeleteSelectedAssets(true);
             Selection.objects = oldSelection;
         }
+
+        #endregion
 
         // We have our own OpenPropertyEditorsOnSelection so we don't have to worry about global selection
         private static void OpenPropertyEditorsOnSelection(IEnumerable<SearchItem> items)

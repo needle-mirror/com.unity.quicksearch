@@ -1,12 +1,7 @@
 using System.Collections.Generic;
 using System.IO;
 using UnityEngine;
-
-#if UNITY_2020_1
-using UnityEditor.Experimental.AssetImporters;
-#else
 using UnityEditor.AssetImporters;
-#endif
 
 namespace UnityEditor.Search
 {

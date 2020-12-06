@@ -43,6 +43,7 @@ namespace UnityEditor.Search
             }
         }
 
+        #region ShaderIndexing
         [CustomObjectIndexer(typeof(Shader), version = 1)]
         internal static void ShaderIndexing(CustomObjectIndexerTarget context, ObjectIndexer indexer)
         {
@@ -72,6 +73,8 @@ namespace UnityEditor.Search
                 }
             }
         }
+
+        #endregion
 
         [CustomObjectIndexer(typeof(Material), version = 1)]
         internal static void MaterialShaderReferences(CustomObjectIndexerTarget context, ObjectIndexer indexer)

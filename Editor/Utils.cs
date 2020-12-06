@@ -1016,5 +1016,27 @@ namespace UnityEditor.Search
 
             return new string(chars);
         }
+
+        internal static string FormatCount(ulong count)
+        {
+            if (count < 1000U)
+                return count.ToString(CultureInfo.InvariantCulture.NumberFormat);
+            if (count < 1000000U)
+                return (count / 1000U).ToString(CultureInfo.InvariantCulture.NumberFormat) + "k";
+            if (count < 1000000000U)
+                return (count / 1000000U).ToString(CultureInfo.InvariantCulture.NumberFormat) + "M";
+            return (count / 1000000000U).ToString(CultureInfo.InvariantCulture.NumberFormat) + "G";
+        }
+
+        internal static bool TryAdd<K, V>(this Dictionary<K, V> dict, K key, V value)
+        {
+            if (!dict.ContainsKey(key))
+            {
+                dict.Add(key, value);
+                return true;
+            }
+
+            return false;
+        }
     }
 }

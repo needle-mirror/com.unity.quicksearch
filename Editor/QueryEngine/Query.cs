@@ -9,6 +9,7 @@ namespace UnityEditor.Search
     /// <typeparam name="TData">The filtered data type.</typeparam>
     /// <typeparam name="TPayload">The payload type.</typeparam>
     public interface IQueryHandler<TData, in TPayload>
+        where TPayload : class
     {
         /// <summary>
         /// Implement this function to evaluate the query on a payload.
@@ -33,6 +34,7 @@ namespace UnityEditor.Search
     /// <typeparam name="TPayload">The payload type.</typeparam>
     public interface IQueryHandlerFactory<TData, out TQueryHandler, TPayload>
         where TQueryHandler : IQueryHandler<TData, TPayload>
+        where TPayload : class
     {
         /// <summary>
         /// Implement this function to create a new query handler for a specific query graph.
