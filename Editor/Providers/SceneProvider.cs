@@ -2,7 +2,6 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
-using UnityEditor.Experimental.SceneManagement;
 using UnityEditor.SceneManagement;
 using UnityEditor.ShortcutManagement;
 using UnityEngine;
@@ -22,7 +21,7 @@ namespace UnityEditor.Search.Providers
             priority = 50;
             this.filterId = filterId;
             showDetails = true;
-            showDetailsOptions = ShowDetailsOptions.Inspector | ShowDetailsOptions.Actions | ShowDetailsOptions.Preview;
+            showDetailsOptions = ShowDetailsOptions.Inspector | ShowDetailsOptions.Actions | ShowDetailsOptions.Preview | ShowDetailsOptions.DefaultGroup;
 
             isEnabledForContextualSearch = () =>
                 Utils.IsFocusedWindowTypeName("SceneView") ||

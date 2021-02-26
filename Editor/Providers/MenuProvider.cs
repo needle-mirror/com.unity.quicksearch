@@ -16,8 +16,10 @@ namespace UnityEditor.Search.Providers
 
         private const string type = "menu";
         private const string displayName = "Menus";
+        private const string disabledMenuExecutionWarning = "The menu you are trying to execute is disabled. It will not be executed.";
 
         private static string[] shortcutIds;
+        private static readonly QueryValidationOptions k_QueryEngineOptions = new QueryValidationOptions { validateFilters = true, skipNestedQueries = true };
         private static QueryEngine<MenuData> queryEngine = null;
         private static List<MenuData> menus;
 
@@ -30,7 +32,7 @@ namespace UnityEditor.Search.Providers
 
             System.Threading.Tasks.Task.Run(() => BuildMenus(itemNames));
 
-            queryEngine = new QueryEngine<MenuData>();
+            queryEngine = new QueryEngine<MenuData>(k_QueryEngineOptions);
             queryEngine.AddFilter("id", m => m.path);
             queryEngine.SetSearchDataCallback(m => m.words, s => Utils.FastToLower(s), StringComparison.Ordinal);
 
@@ -48,7 +50,17 @@ namespace UnityEditor.Search.Providers
 
                 fetchItems = FetchItems,
 
-                fetchLabel = (item, context) => item.label ?? (item.label = Utils.GetNameFromPath(item.id)),
+                fetchLabel = (item, context) =>
+                {
+                    if (item.label == null)
+                    {
+                        var menuName = Utils.GetNameFromPath(item.id);
+                        var enabled = Menu.GetEnabled(item.id);
+                        var @checked = Menu.GetChecked(item.id);
+                        item.label = $"{menuName}{(enabled ? "" : " (disabled)")} {(@checked ? "\u2611" : "")}";
+                    }
+                    return item.label;
+                },
 
                 fetchDescription = (item, context) =>
                 {
@@ -67,7 +79,7 @@ namespace UnityEditor.Search.Providers
             for (int i = 0; i < itemNames.Count; ++i)
             {
                 var menuItem = itemNames[i];
-                localMenus.Add(new MenuData()
+                localMenus.Add(new MenuData
                 {
                     path = menuItem,
                     words = SplitMenuPath(menuItem).Select(w => Utils.FastToLower(w)).ToArray()
@@ -84,14 +96,14 @@ namespace UnityEditor.Search.Providers
             var query = queryEngine.Parse(context.searchQuery);
             if (!query.valid)
             {
-                context.AddSearchQueryErrors(query.errors.Select(e => new SearchQueryError(e.index, e.length, e.reason, context, provider)));
+                context.AddSearchQueryErrors(query.errors.Select(e => new SearchQueryError(e, context, provider)));
                 yield break;
             }
 
             while (menus == null)
                 yield return null;
 
-            foreach (var m in query.Apply(menus))
+            foreach (var m in query.Apply(menus, false))
                 yield return provider.CreateItem(context, m.path);
         }
 
@@ -132,6 +144,11 @@ namespace UnityEditor.Search.Providers
                     handler = (item) =>
                     {
                         var menuId = item.id;
+                        if (!Menu.GetEnabled(menuId))
+                        {
+                            Debug.LogFormat(LogType.Warning, LogOption.NoStacktrace, null, disabledMenuExecutionWarning);
+                            return;
+                        }
                         EditorApplication.delayCall += () => EditorApplication.ExecuteMenuItem(menuId);
                     }
                 }

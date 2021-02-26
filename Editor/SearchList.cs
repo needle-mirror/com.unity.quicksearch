@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -457,6 +458,11 @@ namespace UnityEditor.Search
             {
                 return m_Items.IndexOf(item);
             }
+
+            public override string ToString()
+            {
+                return $"{id} ({m_Items.Count})";
+            }
         }
 
         private int m_TotalCount = 0;
@@ -582,10 +588,10 @@ namespace UnityEditor.Search
         private void AddDefaultGroups()
         {
             var defaultGroups = context.providers
-                .Where(p => !p.isExplicitProvider)
-                .OrderBy(p => p.priority)
+                .Where(p => p.showDetailsOptions.HasFlag(ShowDetailsOptions.DefaultGroup))
                 .Select(p => new Group(p.id, p.name, p.priority));
             m_Groups.AddRange(defaultGroups);
+            m_Groups.Sort((lhs, rhs) => lhs.priority.CompareTo(rhs.priority));
         }
 
         public override void AddItems(IEnumerable<SearchItem> items)
@@ -769,6 +775,100 @@ namespace UnityEditor.Search
         public override IEnumerable<SearchItem> GetRange(int skipCount, int count)
         {
             return m_UnorderedItems.GetRange(skipCount, count);
+        }
+    }
+
+    class ConcurrentSearchList : BaseSearchList
+    {
+        readonly ConcurrentBag<SearchItem> m_UnorderedItems;
+
+        bool m_SearchStarted;
+        bool m_GetItemsDone;
+
+        public ConcurrentSearchList(SearchContext searchContext) : base(searchContext)
+        {
+            m_UnorderedItems = new ConcurrentBag<SearchItem>();
+            searchContext.sessionStarted += SearchContextOnsessionStarted;
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            context.sessionStarted -= SearchContextOnsessionStarted;
+            base.Dispose(disposing);
+        }
+
+        void SearchContextOnsessionStarted(SearchContext obj)
+        {
+            m_SearchStarted = true;
+        }
+
+        public void GetItemsDone()
+        {
+            m_GetItemsDone = true;
+        }
+
+        public override void Add(SearchItem item)
+        {
+            m_UnorderedItems.Add(item);
+        }
+
+        public override void AddItems(IEnumerable<SearchItem> items)
+        {
+            var addedItems = context.subset != null ? items.Intersect(context.subset) : items;
+            foreach (var searchItem in addedItems)
+            {
+                m_UnorderedItems.Add(searchItem);
+            }
+        }
+
+        public override bool Contains(SearchItem item)
+        {
+            return m_UnorderedItems.Contains(item);
+        }
+
+        public override void CopyTo(SearchItem[] array, int arrayIndex)
+        {
+            m_UnorderedItems.CopyTo(array, arrayIndex);
+        }
+
+        public override int Count => m_UnorderedItems.Count;
+
+        public override SearchItem this[int index]
+        {
+            get => throw new NotSupportedException();
+            set => throw new NotSupportedException();
+        }
+
+        public override IEnumerable<SearchItem> Fetch()
+        {
+            if (context == null)
+                throw new Exception("Fetch can only be used if the search list was created with a search context.");
+
+            while (!m_SearchStarted)
+            {
+                yield return null;
+            }
+
+            while (context.searchInProgress || !m_GetItemsDone)
+            {
+                if (m_UnorderedItems.TryTake(out var searchItem))
+                {
+                    yield return searchItem;
+                }
+                else
+                    yield return null; // Wait for more items...
+            }
+
+            while (!m_UnorderedItems.IsEmpty)
+            {
+                if (m_UnorderedItems.TryTake(out var searchItem))
+                    yield return searchItem;
+            }
+        }
+
+        public override IEnumerator<SearchItem> GetEnumerator()
+        {
+            return Fetch().GetEnumerator();
         }
     }
 }

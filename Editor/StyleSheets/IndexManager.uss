@@ -100,7 +100,7 @@ Foldout > Toggle > VisualElement > Label {
 #PathTextField {
     flex-grow: 1;
 }
-#RootObjectField {
+#RootTextField {
     flex-grow: 1;
 }
 #Splitter {

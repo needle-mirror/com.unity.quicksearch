@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using UnityEngine;
 
 namespace UnityEditor.Search
@@ -51,7 +50,7 @@ namespace UnityEditor.Search
         /// <summary>
         /// Show a large preview.
         /// </summary>
-        Preview = 1,
+        Preview = 1 << 0,
 
         /// <summary>
         /// Show an embedded inspector for the selected object.
@@ -72,6 +71,11 @@ namespace UnityEditor.Search
         /// If possible, default the list view to list view.
         /// </summary>
         ListView = 1 << 4,
+
+        /// <summary>
+        /// Show this provider as a default group (always visible even if no result)
+        /// </summary>
+        DefaultGroup = 1 << 5,
 
         /// <summary>
         /// Default set of options used when [[showDetails]] is set to true.
@@ -148,6 +152,7 @@ namespace UnityEditor.Search
                 throw new ArgumentException("provider id must be non-empty", nameof(id));
 
             this.id = id;
+            type = id;
             active = true;
             name = displayName;
             actions = new List<SearchAction>();
@@ -155,7 +160,7 @@ namespace UnityEditor.Search
             fetchThumbnail = (item, context) => item.thumbnail ?? Icons.quicksearch;
             fetchPreview = null;
             fetchLabel = (item, context) => item.label ?? item.id ?? String.Empty;
-            fetchDescription = (item, context) => item.description ?? String.Empty;
+            fetchDescription = null;
             priority = 100;
             showDetails = false;
             showDetailsOptions = ShowDetailsOptions.Default;
@@ -177,7 +182,7 @@ namespace UnityEditor.Search
         /// <returns>The newly created search item attached to the current search provider.</returns>
         public SearchItem CreateItem(SearchContext context, string id, int score, string label, string description, Texture2D thumbnail, object data)
         {
-            if (context.options.HasFlag(SearchFlags.Debug))
+            if (context.options.HasAny(SearchFlags.Debug))
             {
                 // Debug sorting
                 description = $"DEBUG: id={id} - label={label} - description={description} - thumbnail={thumbnail} - data={data}";
@@ -280,6 +285,7 @@ namespace UnityEditor.Search
 
         /// <summary>Unique id of the provider.</summary>
         public string id { get; private set; }
+        internal string type { get; set; }
 
         /// <summary>Display name of the provider.</summary>
         public string name { get; private set; }

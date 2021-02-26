@@ -29,6 +29,12 @@ namespace UnityEditor.Search.Providers
         AllFiles = 1 << 31
     }
 
+    static class FindOptionsExtensions
+    {
+        public static bool HasAny(this FindOptions flags, FindOptions f) => (flags & f) != 0;
+        public static bool HasAll(this FindOptions flags, FindOptions all) => (flags & all) == all;
+    }
+
     class FindFilesQueryFactory : SearchQueryEvaluatorFactory<SearchDocument>
     {
         public FindFilesQueryFactory(SearchQueryEvaluator<SearchDocument>.EvalHandler handler)
@@ -47,12 +53,10 @@ namespace UnityEditor.Search.Providers
     {
         public const string providerId = "find";
 
-        private static List<string> s_Roots;
-        private static readonly List<string> s_ProjectRoots = new List<string>() { "Assets" };
+        private static Dictionary<FindOptions, List<string>> s_Roots = new Dictionary<FindOptions, List<string>>();
         private static readonly ConcurrentDictionary<string, ConcurrentDictionary<string, byte>> s_RootFilePaths = new ConcurrentDictionary<string, ConcurrentDictionary<string, byte>>();
-
-        private static readonly string[] s_SubsetRoots = new string[] { "<subset>" };
-        private static readonly QueryEngine<SearchDocument> s_QueryEngine = new QueryEngine<SearchDocument>(validateFilters: false);
+        private static readonly QueryValidationOptions k_QueryEngineOptions = new QueryValidationOptions { validateFilters = false, skipNestedQueries = true };
+        private static readonly QueryEngine<SearchDocument> s_QueryEngine = new QueryEngine<SearchDocument>(k_QueryEngineOptions);
 
         static IEnumerable<SearchItem> FetchItems(SearchContext context, SearchProvider provider)
         {
@@ -61,15 +65,7 @@ namespace UnityEditor.Search.Providers
                 options |= FindOptions.Packages | FindOptions.Fuzzy;
 
             foreach (var e in Search(context, provider, options))
-            {
-                yield return provider.CreateItem(context, e.path, e.score,
-                    #if DEBUG_FIND_PROVIDER
-                    $"{e.path} ({(e.score & (int)FindOptions.CustomRange) >> 17}, {(FindOptions)(e.score & (int)FindOptions.All)})",
-                    #else
-                    null,
-                    #endif
-                    null, null, null);
-            }
+                yield return AssetProvider.CreateItem(context, provider, "Find", AssetProvider.GetGID(e.path), e.path, e.score, useGroupProvider: false);
         }
 
         public static IEnumerable<SearchDocument> Search(SearchContext context, SearchProvider provider, FindOptions options)
@@ -116,17 +112,9 @@ namespace UnityEditor.Search.Providers
                         options |= FindOptions.Exact;
                     }
 
-                    IEnumerable<SearchDocument> results = new List<SearchDocument>();
+                    IEnumerable<SearchDocument> results = Enumerable.Empty<SearchDocument>();
                     if (args.name == null && args.value is string word && word.Length > 0)
-                    {
-                        results = SearchWord(args.exclude, word, options, subset);
-                    }
-                    #if DEBUG_FIND_PROVIDER
-                    else
-                    {
-                        Debug.LogWarning($"Not supported {args.op}, name={args.name}, value={args.value}, exclude={args.exclude}, and={args.andSet?.Count()}, or={args.orSet?.Count()}");
-                    }
-                    #endif
+                        results = SearchWord(args.exclude, word, options, subset.ToList());
 
                     if (args.orSet != null)
                         results = results.Concat(args.orSet);
@@ -136,7 +124,7 @@ namespace UnityEditor.Search.Providers
 
                 if (!query.valid)
                 {
-                    context.AddSearchQueryErrors(query.errors.Select(e => new SearchQueryError(e.index, e.length, e.reason, context, provider)));
+                    context.AddSearchQueryErrors(query.errors.Select(e => new SearchQueryError(e, context, provider)));
                     return Enumerable.Empty<SearchDocument>();
                 }
                 return query.Apply(null).OrderBy(e => e.score).Distinct();
@@ -145,8 +133,8 @@ namespace UnityEditor.Search.Providers
 
         private static ConcurrentDictionary<string, byte> GetRootPaths(string root, FindOptions options)
         {
-            var isPackage = options.HasFlag(FindOptions.Packages) && root.StartsWith("Packages/", StringComparison.Ordinal);
-            if (!options.HasFlag(FindOptions.Packages) && isPackage)
+            var isPackage = options.HasAny(FindOptions.Packages) && root.StartsWith("Packages/", StringComparison.Ordinal);
+            if (!options.HasAny(FindOptions.Packages) && isPackage)
                 return new ConcurrentDictionary<string, byte>();
 
             if (!s_RootFilePaths.TryGetValue(root, out var files))
@@ -163,9 +151,9 @@ namespace UnityEditor.Search.Providers
         private static void SearchWord(bool exclude, string word, FindOptions options, IEnumerable<SearchDocument> documents, ConcurrentBag<SearchDocument> results)
         {
             Regex globRx = null, rxm = null;
-            if (options.HasFlag(FindOptions.Regex) && !ParseRx(word, options.HasFlag(FindOptions.Exact), out rxm))
+            if (options.HasAny(FindOptions.Regex) && !ParseRx(word, options.HasAny(FindOptions.Exact), out rxm))
                 options &= ~FindOptions.Regex;
-            if (options.HasFlag(FindOptions.Glob) && !ParseGlob(word, options.HasFlag(FindOptions.Exact), out globRx))
+            if (options.HasAny(FindOptions.Glob) && !ParseGlob(word, options.HasAny(FindOptions.Exact), out globRx))
                 options &= ~FindOptions.Glob;
             if (exclude)
                 options &= ~FindOptions.Fuzzy;
@@ -191,9 +179,9 @@ namespace UnityEditor.Search.Providers
         {
             score = 0;
 
-            if (options.HasFlag(FindOptions.Words))
+            if (options.HasAny(FindOptions.Words))
             {
-                if (options.HasFlag(FindOptions.Exact))
+                if (options.HasAny(FindOptions.Exact))
                 {
                     if (string.Equals(word, f))
                     {
@@ -208,20 +196,20 @@ namespace UnityEditor.Search.Providers
                 }
             }
 
-            if (options.HasFlag(FindOptions.Regex) && rxm.IsMatch(f))
+            if (options.HasAny(FindOptions.Regex) && rxm.IsMatch(f))
             {
                 score |= (int)FindOptions.Regex;
                 return true;
             }
 
-            if (options.HasFlag(FindOptions.Glob) && globRx.IsMatch(f))
+            if (options.HasAny(FindOptions.Glob) && globRx.IsMatch(f))
             {
                 score |= (int)FindOptions.Glob;
                 return true;
             }
 
             long fuzzyScore = 0;
-            if (options.HasFlag(FindOptions.Fuzzy) && FuzzySearch.FuzzyMatch(word, Path.GetFileName(f), ref fuzzyScore))
+            if (options.HasAny(FindOptions.Fuzzy) && FuzzySearch.FuzzyMatch(word, Path.GetFileName(f), ref fuzzyScore))
             {
                 score = ComputeFuzzyScore(score, fuzzyScore);
                 return true;
@@ -237,7 +225,7 @@ namespace UnityEditor.Search.Providers
 
             while (results.Count > 0 || !searchTask.Wait(1) || results.Count > 0)
             {
-                if (results.TryTake(out var e))
+                while (results.TryTake(out var e))
                     yield return e;
             }
         }
@@ -306,26 +294,31 @@ namespace UnityEditor.Search.Providers
 
         static IEnumerable<string> GetRoots(FindOptions options)
         {
-            var projectRoots = s_ProjectRoots;
-            if (options.HasFlag(FindOptions.AllFiles))
+            if (s_Roots.TryGetValue(options, out var roots))
+                return roots;
+
+            var projectRoots = new List<string>(Utils.GetAssetRootFolders().Where(r => FilterRoot(r, options)));
+            if (options.HasAny(FindOptions.AllFiles))
             {
                 var baseProjectRoot = new DirectoryInfo(Path.Combine(Application.dataPath, "..")).FullName.Replace("\\", "/");
-                projectRoots = Directory.EnumerateDirectories(baseProjectRoot, "*", SearchOption.TopDirectoryOnly)
+                projectRoots.AddRange(Directory.EnumerateDirectories(baseProjectRoot, "*", SearchOption.TopDirectoryOnly)
                     .Select(d => d.Replace(baseProjectRoot, "").Substring(1))
-                    .Where(d => d.Length > 0 && char.IsLetterOrDigit(d[0]))
-                    .ToList();
+                    .Where(d => d.Length > 0 && char.IsLetterOrDigit(d[0])));
             }
 
-            if (!options.HasFlag(FindOptions.Packages))
-                return projectRoots;
+            return (s_Roots[options] = projectRoots);
+        }
 
-            if (s_Roots != null)
-                return s_Roots;
+        public static void Reset()
+        {
+            s_Roots.Clear();
+        }
 
-            var listRequest = PackageManager.Client.List(offlineMode: true);
-            while (!listRequest.IsCompleted)
-                ;
-            return (s_Roots = projectRoots.Concat(listRequest.Result.Select(r => r.assetPath)).ToList());
+        private static bool FilterRoot(string root, FindOptions options)
+        {
+            if (!options.HasAny(FindOptions.Packages))
+                return !root.StartsWith("Packages/", StringComparison.Ordinal);
+            return true;
         }
 
         [SearchItemProvider]

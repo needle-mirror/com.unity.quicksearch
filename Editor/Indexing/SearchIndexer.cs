@@ -328,7 +328,8 @@ namespace UnityEditor.Search
         private volatile bool m_IndexReady = false;
         private long m_Timestamp;
 
-        private readonly QueryEngine<SearchResult> m_QueryEngine = new QueryEngine<SearchResult>(validateFilters: false);
+        private static readonly QueryValidationOptions k_QueryEngineOptions = new QueryValidationOptions {validateFilters = false, skipNestedQueries = true};
+        private readonly QueryEngine<SearchResult> m_QueryEngine = new QueryEngine<SearchResult>(k_QueryEngineOptions);
         private readonly Dictionary<string, Query<SearchResult, object>> m_QueryPool = new Dictionary<string, Query<SearchResult, object>>();
 
         private readonly Dictionary<RangeSet, IndexRange> m_FixedRanges;
@@ -556,7 +557,7 @@ namespace UnityEditor.Search
             if (!parsedQuery.valid)
             {
                 if (context != null && provider != null)
-                    context.AddSearchQueryErrors(parsedQuery.errors.Select(e => new SearchQueryError(e.index, e.length, e.reason, context, provider)));
+                    context.AddSearchQueryErrors(parsedQuery.errors.Select(e => new SearchQueryError(e, context, provider)));
                 return Enumerable.Empty<SearchResult>();
             }
             return parsedQuery.Apply(null).OrderBy(e => e.score).Distinct();
@@ -804,6 +805,11 @@ namespace UnityEditor.Search
             return m_Documents.FindIndex(d => d.valid && d.id.Equals(id, StringComparison.Ordinal));
         }
 
+        private int FindDocumentIndexByPath(string path)
+        {
+            return m_Documents.FindIndex(d => d.valid && d.path.Equals(path, StringComparison.Ordinal));
+        }
+
         internal void Merge(string[] removeDocuments, SearchIndexer si, int baseScore = 0,
             Action<int, SearchIndexer, int> documentIndexing = null)
         {
@@ -812,10 +818,10 @@ namespace UnityEditor.Search
             List<SearchIndexEntry> indexes = null;
             lock (this)
             {
-                removeDocIndexes = removeDocuments.Select(FindDocumentIndex).Where(i => i != -1).ToArray();
+                removeDocIndexes = removeDocuments.Select(FindDocumentIndexByPath).Where(i => i != -1).ToArray();
                 foreach (var idi in removeDocIndexes)
                     m_Documents[idi] = default;
-                updatedDocIndexes = si.m_Documents.Select(d => FindDocumentIndex(d.id)).ToArray();
+                updatedDocIndexes = si.m_Documents.Select(d => FindDocumentIndexByPath(d.id)).ToArray();
 
                 var ignoreDocuments = removeDocIndexes.Concat(updatedDocIndexes.Where(i => i != -1)).OrderBy(i => i).ToArray();
                 indexes = new List<SearchIndexEntry>(m_Indexes.Where(e => m_Documents[e.index].valid && Array.BinarySearch(ignoreDocuments, e.index) < 0));

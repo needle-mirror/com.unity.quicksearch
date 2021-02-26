@@ -3,7 +3,6 @@ using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using UnityEditor;
 using UnityEditorInternal;
 using UnityEngine;
 
@@ -86,12 +85,29 @@ namespace UnityEditor.Search
         public static bool onBoardingDoNotAskAgain { get; set; }
         public static bool showPackageIndexes { get; set; }
         public static bool showStatusBar { get; set; }
-        public static int debounceMs { get; set; }
+        public static bool useExpressions { get; set; }
         public static Dictionary<string, string> scopes { get; private set; }
         public static Dictionary<string, SearchProviderSettings> providers { get; private set; }
         public const int k_RecentSearchMaxCount = 20;
         public static List<string> recentSearches = new List<string>(k_RecentSearchMaxCount);
         public static SearchQuerySortOrder savedSearchesSortOrder { get; set; }
+
+        #if USE_SEARCH_MODULE
+        public static int debounceMs
+        {
+            get
+            {
+                return UnityEditor.SearchUtils.debounceThresholdMs;
+            }
+
+            set
+            {
+                UnityEditor.SearchUtils.debounceThresholdMs = value;
+            }
+        }
+        #else
+        public static int debounceMs { get; set; }
+        #endif
 
         static SearchSettings()
         {
@@ -126,8 +142,12 @@ namespace UnityEditor.Search
             onBoardingDoNotAskAgain = ReadSetting(settings, nameof(onBoardingDoNotAskAgain), false);
             showPackageIndexes = ReadSetting(settings, nameof(showPackageIndexes), false);
             showStatusBar = ReadSetting(settings, nameof(showStatusBar), false);
-            debounceMs = ReadSetting(settings, nameof(debounceMs), 250);
+            useExpressions = ReadSetting(settings, nameof(useExpressions), false);
             savedSearchesSortOrder = (SearchQuerySortOrder)ReadSetting(settings, nameof(savedSearchesSortOrder), 0);
+
+            #if !USE_SEARCH_MODULE
+            debounceMs = ReadSetting(settings, nameof(debounceMs), 250);
+            #endif
 
             var searches = ReadSetting<object[]>(settings, nameof(recentSearches));
             if (searches != null)
@@ -152,11 +172,15 @@ namespace UnityEditor.Search
                 [nameof(onBoardingDoNotAskAgain)] = onBoardingDoNotAskAgain,
                 [nameof(showPackageIndexes)] = showPackageIndexes,
                 [nameof(showStatusBar)] = showStatusBar,
-                [nameof(debounceMs)] = debounceMs,
+                [nameof(useExpressions)] = useExpressions,
                 [nameof(scopes)] = scopes,
                 [nameof(providers)] = providers,
                 [nameof(recentSearches)] = recentSearches,
                 [nameof(savedSearchesSortOrder)] = (int)savedSearchesSortOrder,
+
+                #if !USE_SEARCH_MODULE
+                [nameof(debounceMs)] = debounceMs,
+                #endif
             };
 
             SJSON.Save(settings, k_ProjectUserSettingsPath);
@@ -214,6 +238,9 @@ namespace UnityEditor.Search
         {
             if (wantsMore)
                 options |= SearchFlags.WantsMore;
+
+            if (useExpressions)
+                options |= SearchFlags.Expression;
 
             return options;
         }
@@ -314,9 +341,7 @@ namespace UnityEditor.Search
                         fetchPreview = Toggle(Styles.fetchPreviewContent, nameof(fetchPreview), fetchPreview);
                         var newDebounceMs = EditorGUILayout.IntSlider(Styles.debounceThreshold, debounceMs, 0, 1000);
                         if (newDebounceMs != debounceMs)
-                        {
                             debounceMs = newDebounceMs;
-                        }
 
                         GUILayout.Space(10);
                         DrawProviderSettings();

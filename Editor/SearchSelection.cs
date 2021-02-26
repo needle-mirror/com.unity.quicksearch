@@ -24,7 +24,7 @@ namespace UnityEditor.Search
             m_List = filteredItems;
         }
 
-        internal SearchSelection(IEnumerable<SearchItem> items)
+        public SearchSelection(IEnumerable<SearchItem> items)
         {
             m_Items = new List<SearchItem>(items);
             m_Selection = new List<int>();
@@ -44,7 +44,7 @@ namespace UnityEditor.Search
         /// <returns>Returns the lowest selected index.</returns>
         public int MinIndex()
         {
-            return m_Selection.Min();
+            return m_Selection.Count > 0 ? m_Selection.Min() : -1;
         }
 
         /// <summary>
@@ -53,7 +53,7 @@ namespace UnityEditor.Search
         /// <returns>Returns the highest selected index.</returns>
         public int MaxIndex()
         {
-            return m_Selection.Max();
+            return m_Selection.Count > 0 ? m_Selection.Max() : -1;
         }
 
         /// <summary>
@@ -111,7 +111,7 @@ namespace UnityEditor.Search
                 m_Items.Add(m_List.ElementAt(s));
         }
 
-        internal bool Contains(SearchItem item)
+        public bool Contains(SearchItem item)
         {
             if (m_Items == null)
                 return false;

@@ -3,6 +3,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using UnityEditor.Profiling;
 using UnityEditorInternal;
 using UnityEngine;
 using UnityEngine.Analytics;
@@ -281,7 +282,7 @@ namespace UnityEditor.Search
             };
 
 
-            EditorApplication.quitting += UnityQuit;
+            EditorApplication.wantsToQuit += UnityQuit;
             #if USE_SEARCH_MODULE
             m_Debouncer = Delayer.Debounce(SendEventFromEventCreator);
             #endif
@@ -344,8 +345,13 @@ namespace UnityEditor.Search
 
         public static void SendReportUsage()
         {
-            var report = CreateSearchUsageReport();
-            Send(EventName.quickSearchUsageReport, report);
+            #if USE_SEARCH_MODULE
+            using (new EditorPerformanceTracker("Quicksearch.Analytics.SendReportUsage"))
+            #endif
+            {
+                var report = CreateSearchUsageReport();
+                Send(EventName.quickSearchUsageReport, report);
+            }
         }
 
         #if USE_SEARCH_MODULE
@@ -382,9 +388,10 @@ namespace UnityEditor.Search
             Send(EventName.quickSearch, evt);
         }
 
-        private static void UnityQuit()
+        private static bool UnityQuit()
         {
             SendReportUsage();
+            return true;
         }
 
         private static SearchUsageReport CreateSearchUsageReport()
@@ -410,9 +417,13 @@ namespace UnityEditor.Search
 
             var allIndexes = SearchDatabase.Enumerate(SearchDatabase.IndexLocation.assets).ToArray();
             report.indexCount = allIndexes.Length;
-            var maxSize = allIndexes.Max(index => index.bytes?.Length ?? 0);
-            report.maxIndexSize = maxSize / 1048576f;
-
+            if (allIndexes.Length > 0)
+            {
+                var maxSize = allIndexes.Max(index => index.bytes?.Length ?? 0);
+                report.maxIndexSize = maxSize / 1048576f;
+            }
+            else
+                report.maxIndexSize = 0;
             return report;
         }
 

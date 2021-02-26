@@ -1,5 +1,35 @@
 # Changelog
 
+## [3.0.0-preview.5] - 2021-02-26
+- Sync with 2021.2.0a8 (6eb956596132)
+- Add new SearchService.ShowPicker API
+- Add search expression language to evaluate multiple search queries and apply set operations, transformation or other user defined operation.
+- Fix editor stall when the asset worker try to resolve a message log with an UnityEngine.Object in a non-main thread. (case 1316768)
+- Create default index when opening the index manager if it was never created before.
+- Do not save empty Roots/Includes/Excludes in the index settings file. (case 1307800)
+- Show disable index in the index manager. (case 1307781)
+- The Roots object field is changed for a TextField to allow selection of folders outside of Assets. (case 1307793)
+
+## [3.0.0-preview.4] - 2021-02-02
+- Sync with 2021.2.0a4 (864e4ed4e79c)
+- Add index types to the filter menu items
+- Display individual search indexes are the asset provider in the filter menu (case 1307787)
+- Do not clear providers when disposing of the search context
+- Do not close search window on ESC if it is docked (case 1311205)
+- Do not index assets with ~ in the their file path.
+- Do not index redundant Assets and Packages root words
+- Fix fbx and obj mesh type indexing (case 1305383)
+- Fix help provider using disposed search context (case 1309227)
+- Fix minor search tab styling issue
+- Fix package search provider Install, Update and Remove button availability (case 1309659)
+- Fix scene provider conversion test
+- Fix search view inspector wide mode issues (case 1299583)
+- Fix Search window appears with the clipped header when opened after reset (case 1306463)
+- Fix static API method name filtering
+- Fix updating default search database roots were not re-indexed
+- Ignore artifacts with an unresolved guid
+- Merge the object and asset search provider using GlobalObjectId as the search item key
+
 ## [3.0.0-preview.3] - 2020-12-06
 - Sync with 2021.1.0a10 (c69a17d70606)
 - Add support to update the search view context providers (case 1296559)

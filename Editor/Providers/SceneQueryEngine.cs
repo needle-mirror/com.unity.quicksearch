@@ -62,7 +62,8 @@ namespace UnityEditor.Search.Providers
     {
         private readonly List<GameObject> m_GameObjects;
         private readonly Dictionary<int, GOD> m_GODS = new Dictionary<int, GOD>();
-        private readonly QueryEngine<GameObject> m_QueryEngine = new QueryEngine<GameObject>(true);
+        private static readonly QueryValidationOptions k_QueryEngineOptions = new QueryValidationOptions { validateFilters = true, skipNestedQueries = true };
+        private readonly QueryEngine<GameObject> m_QueryEngine = new QueryEngine<GameObject>(k_QueryEngineOptions);
         private List<SearchProposition> m_PropertyPrositions;
         private HashSet<SearchProposition> m_TypePropositions;
 
@@ -486,10 +487,10 @@ namespace UnityEditor.Search.Providers
 
         internal IEnumerable<SearchProposition> FindPropositions(SearchContext context, SearchPropositionOptions options)
         {
-            if (options.token.StartsWith("p("))
-                return FetchPropertyPropositions(options.token.Substring(2));
+            if (options.tokens.Any(t => t.StartsWith("p(")))
+                return FetchPropertyPropositions(options.tokens.First().Substring(2));
 
-            if (options.token.StartsWith("t:", StringComparison.OrdinalIgnoreCase))
+            if (options.tokens.Any(t => t.StartsWith("t:", StringComparison.OrdinalIgnoreCase)))
                 return FetchTypePropositions();
 
             return s_FixedPropositions;
@@ -526,7 +527,7 @@ namespace UnityEditor.Search.Providers
                     for (int componentIndex = 1; componentIndex < gocs.Length; ++componentIndex)
                     {
                         var c = gocs[componentIndex];
-                        if (!c || c.hideFlags.HasFlag(HideFlags.HideInInspector))
+                        if (!c || (c.hideFlags & HideFlags.HideInInspector) == HideFlags.HideInInspector)
                             continue;
 
                         var cTypeName = c.GetType().Name;
@@ -561,12 +562,12 @@ namespace UnityEditor.Search.Providers
             var query = m_QueryEngine.Parse(context.searchQuery, true);
             if (!query.valid)
             {
-                context.AddSearchQueryErrors(query.errors.Select(e => new SearchQueryError(e.index, e.length, e.reason, context, provider)));
+                context.AddSearchQueryErrors(query.errors.Select(e => new SearchQueryError(e, context, provider)));
                 return new GameObject[] {};
             }
 
             IEnumerable<GameObject> gameObjects = subset ?? m_GameObjects;
-            return query.Apply(gameObjects);
+            return query.Apply(gameObjects, false);
         }
 
         #endregion
@@ -810,7 +811,7 @@ namespace UnityEditor.Search.Providers
             for (int componentIndex = 1; componentIndex < gocs.Length; ++componentIndex)
             {
                 var c = gocs[componentIndex];
-                if (!c || c.hideFlags.HasFlag(HideFlags.HideInInspector))
+                if (!c || (c.hideFlags & HideFlags.HideInInspector) == HideFlags.HideInInspector)
                     continue;
 
                 var property = FindPropertyValue(c, propertyName);
@@ -837,7 +838,7 @@ namespace UnityEditor.Search.Providers
                 for (int componentIndex = 1; componentIndex < gocs.Length; ++componentIndex)
                 {
                     var c = gocs[componentIndex];
-                    if (!c || c.hideFlags.HasFlag(HideFlags.HideInInspector))
+                    if (!c || (c.hideFlags & HideFlags.HideInInspector) == HideFlags.HideInInspector)
                         continue;
 
                     types.Add(c.GetType().Name.ToLowerInvariant());
@@ -861,7 +862,7 @@ namespace UnityEditor.Search.Providers
                 for (int componentIndex = 0; componentIndex < gocs.Length; ++componentIndex)
                 {
                     var c = gocs[componentIndex];
-                    if (!c || c.hideFlags.HasFlag(HideFlags.HideInInspector))
+                    if (!c || (c.hideFlags & HideFlags.HideInInspector) == HideFlags.HideInInspector)
                         continue;
 
                     attrs.AddRange(c.GetType().GetInterfaces().Select(t => t.Name.ToLowerInvariant()));
@@ -952,7 +953,7 @@ namespace UnityEditor.Search.Providers
                 for (int componentIndex = 1; componentIndex < gocs.Length; ++componentIndex)
                 {
                     var c = gocs[componentIndex];
-                    if (!c || c.hideFlags.HasFlag(HideFlags.HideInInspector))
+                    if (!c || (c.hideFlags & HideFlags.HideInInspector) == HideFlags.HideInInspector)
                         continue;
                     BuildReferences(c, refs, 1, maxReferenceDepth);
                 }

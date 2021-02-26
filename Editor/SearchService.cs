@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using UnityEditorInternal;
 using UnityEngine;
 
 namespace UnityEditor.Search
@@ -52,7 +53,7 @@ namespace UnityEditor.Search
             SetupSearchFirstUse();
         }
 
-        private static void SetupSearchFirstUse()
+        internal static void SetupSearchFirstUse()
         {
             if (EditorApplication.isPlayingOrWillChangePlaymode)
                 return;
@@ -63,14 +64,11 @@ namespace UnityEditor.Search
             if (!Utils.IsMainProcess())
                 return;
 
-            EditorApplication.delayCall += () =>
-            {
-                if (SearchDatabase.EnumeratePaths(SearchDatabase.IndexLocation.assets).Count() == 0)
-                    SearchDatabase.CreateDefaultIndex();
+            if (SearchDatabase.EnumeratePaths(SearchDatabase.IndexLocation.assets).Count() == 0)
+                SearchDatabase.CreateDefaultIndex();
 
-                SearchSettings.onBoardingDoNotAskAgain = true;
-                SearchSettings.Save();
-            };
+            SearchSettings.onBoardingDoNotAskAgain = true;
+            SearchSettings.Save();
         }
 
         /// <summary>
@@ -206,14 +204,14 @@ namespace UnityEditor.Search
         {
             // Stop all search sessions every time there is a new search.
             context.sessions.StopAllAsyncSearchSessions();
-            context.searchFinishTime = context.searchStartTime = EditorApplication.timeSinceStartup;
+            context.searchFinishTime = context.searchStartTime = DateTime.Now.Ticks;
             context.sessionEnded -= OnSearchEnded;
             context.sessionEnded += OnSearchEnded;
 
-            if (options.HasFlag(SearchFlags.WantsMore))
+            if (options.HasAny(SearchFlags.WantsMore))
                 context.wantsMore = true;
 
-            if (options.HasFlag(SearchFlags.Synchronous))
+            if (options.HasAny(SearchFlags.Synchronous))
                 context.options |= SearchFlags.Synchronous;
 
             int fetchProviderCount = 0;
@@ -226,9 +224,9 @@ namespace UnityEditor.Search
                     watch.Start();
                     fetchProviderCount++;
                     var iterator = provider.fetchItems(context, allItems, provider);
-                    if (iterator != null && options.HasFlag(SearchFlags.Synchronous))
+                    if (iterator != null && options.HasAny(SearchFlags.Synchronous))
                     {
-                        using (var stackedEnumerator = new StackedEnumerator<SearchItem>(iterator))
+                        using (var stackedEnumerator = new SearchEnumerator<SearchItem>(iterator))
                         {
                             while (stackedEnumerator.MoveNext())
                             {
@@ -243,7 +241,7 @@ namespace UnityEditor.Search
                         session.Reset(context, iterator, k_MaxFetchTimeMs);
                         session.Start();
                         var sessionEnded = !session.FetchSome(allItems, k_MaxFetchTimeMs);
-                        if (options.HasFlag(SearchFlags.FirstBatchAsync))
+                        if (options.HasAny(SearchFlags.FirstBatchAsync))
                             session.SendItems(context.subset != null ? allItems.Intersect(context.subset) : allItems);
                         if (sessionEnded)
                             session.Stop();
@@ -265,7 +263,7 @@ namespace UnityEditor.Search
             if (context.subset != null)
                 allItems = new List<SearchItem>(allItems.Intersect(context.subset));
 
-            if (!options.HasFlag(SearchFlags.Sorted))
+            if (!options.HasAny(SearchFlags.Sorted))
                 return allItems;
 
             allItems.Sort(SortItemComparer);
@@ -280,14 +278,27 @@ namespace UnityEditor.Search
         /// <returns>Asynchronous list of search items.</returns>
         public static ISearchList Request(SearchContext context, SearchFlags options = SearchFlags.None)
         {
-            if (options.HasFlag(SearchFlags.Synchronous))
+            if (options.HasAny(SearchFlags.Synchronous))
             {
                 throw new NotSupportedException($"Use {nameof(SearchService)}.{nameof(GetItems)}(context, " +
                     $"{nameof(SearchFlags)}.{nameof(SearchFlags.Synchronous)}) to fetch items synchronously.");
             }
 
             ISearchList results = null;
-            if (options.HasFlag(SearchFlags.Sorted))
+            if (!InternalEditorUtility.CurrentThreadIsMainThread())
+            {
+                results = new ConcurrentSearchList(context);
+
+                Dispatcher.Enqueue(() =>
+                {
+                    results.AddItems(GetItems(context, options));
+                    (results as ConcurrentSearchList)?.GetItemsDone();
+                });
+
+                return results;
+            }
+
+            if (options.HasAny(SearchFlags.Sorted))
                 results = new SortedSearchList(context);
             else
                 results = new AsyncSearchList(context);
@@ -375,7 +386,7 @@ namespace UnityEditor.Search
 
         private static void OnSearchEnded(SearchContext context)
         {
-            context.searchFinishTime = EditorApplication.timeSinceStartup;
+            context.searchFinishTime = DateTime.Now.Ticks;
         }
 
         private static int SortItemComparer(SearchItem item1, SearchItem item2)
@@ -495,6 +506,17 @@ namespace UnityEditor.Search
             float defaultWidth = 850, float defaultHeight = 539, SearchFlags flags = SearchFlags.OpenPicker)
         {
             return QuickSearch.ShowObjectPicker(selectHandler, trackingHandler, searchText, typeName, filterType, defaultWidth, defaultHeight, flags);
+        }
+
+        public static ISearchView ShowPicker(
+            SearchContext context,
+            Action<SearchItem, bool> selectHandler,
+            Action<SearchItem> trackingHandler = null,
+            Func<SearchItem, bool> filterHandler = null,
+            IEnumerable<SearchItem> subset = null,
+            string title = null, float itemSize = 64f, float defaultWidth = 850, float defaultHeight = 539, SearchFlags flags = SearchFlags.OpenPicker)
+        {
+            return QuickSearch.ShowPicker(context, selectHandler, trackingHandler, filterHandler, subset, title, itemSize, defaultWidth, defaultHeight, flags);
         }
     }
 }
