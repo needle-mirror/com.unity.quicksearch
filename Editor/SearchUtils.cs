@@ -4,12 +4,16 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
-using UnityEditor;
-using UnityEditor.Experimental.SceneManagement;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
-namespace Unity.QuickSearch
+#if USE_SEARCH_MODULE
+using UnityEditor.SceneManagement;
+#else
+using UnityEditor.Experimental.SceneManagement;
+#endif
+
+namespace UnityEditor.Search
 {
     /// <summary>
     /// Utilities used by multiple components of QuickSearch.
@@ -53,6 +57,31 @@ namespace Unity.QuickSearch
             return Regex.Split(source, @"(?<!^)(?=[A-Z0-9])");
         }
 
+        internal static string UppercaseFirst(string s)
+        {
+            // Check for empty string.
+            if (string.IsNullOrEmpty(s))
+            {
+                return string.Empty;
+            }
+            // Return char and concat substring.
+            return char.ToUpper(s[0]) + s.Substring(1);
+        }
+
+        internal static string ToPascalWithSpaces(string s)
+        {
+            // Check for empty string.
+            if (string.IsNullOrEmpty(s))
+            {
+                return string.Empty;
+            }
+
+            var tokens = Regex.Split(s, @"-+|_+|\s+|(?<!^)(?=[A-Z0-9])")
+                .Where(t => !string.IsNullOrWhiteSpace(t))
+                .Select(UppercaseFirst);
+            return string.Join(" ", tokens);
+        }
+
         /// <summary>
         /// Split an entry according to a specified list of separators.
         /// </summary>
@@ -64,10 +93,10 @@ namespace Unity.QuickSearch
             var nameTokens = entry.Split(entrySeparators).Distinct();
             var scc = nameTokens.SelectMany(s => SplitCamelCase(s)).Where(s => s.Length > 0);
             var fcc = scc.Aggregate("", (current, s) => current + s[0]);
-            return new []{ fcc, entry }.Concat(scc.Where(s => s.Length > 1))
-                                .Where(s => s.Length > 1)
-                                .Select(s => s.ToLowerInvariant())
-                                .Distinct();
+            return new[] { fcc, entry }.Concat(scc.Where(s => s.Length > 1))
+                .Where(s => s.Length > 1)
+                .Select(s => s.ToLowerInvariant())
+                .Distinct();
         }
 
         /// <summary>
@@ -194,10 +223,11 @@ namespace Unity.QuickSearch
         /// Select and ping multiple objects in the Project Browser.
         /// </summary>
         /// <param name="items">Search Items to select and ping.</param>
-        /// <param name="focusProjectBrowser">If true, will focus the project browser before pining the objects.</param>
-        public static void SelectMultipleItems(IEnumerable<SearchItem> items, bool focusProjectBrowser = false)
+        /// <param name="focusProjectBrowser">If true, will focus the project browser before pinging the objects.</param>
+        /// <param name="pingSelection">If true, will ping the selected objects.</param>
+        public static void SelectMultipleItems(IEnumerable<SearchItem> items, bool focusProjectBrowser = false, bool pingSelection = true)
         {
-            Selection.objects = items.Select(i => i.provider.toObject(i, typeof(UnityEngine.Object))).Where(o=>o).ToArray();
+            Selection.objects = items.Select(i => i.ToObject()).Where(o => o).ToArray();
             if (Selection.objects.Length == 0)
             {
                 var firstItem = items.FirstOrDefault();
@@ -207,9 +237,10 @@ namespace Unity.QuickSearch
             }
             EditorApplication.delayCall += () =>
             {
-                if(focusProjectBrowser)
+                if (focusProjectBrowser)
                     EditorWindow.FocusWindowIfItsOpen(Utils.GetProjectBrowserWindowType());
-                EditorApplication.delayCall += () => EditorGUIUtility.PingObject(Selection.objects.LastOrDefault());
+                if (pingSelection)
+                    EditorApplication.delayCall += () => EditorGUIUtility.PingObject(Selection.objects.LastOrDefault());
             };
         }
 
@@ -223,7 +254,7 @@ namespace Unity.QuickSearch
         public static bool MatchSearchGroups(SearchContext context, string content, bool ignoreCase = false)
         {
             return MatchSearchGroups(context.searchQuery, context.searchWords, content, out _, out _,
-                                     ignoreCase ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
+                ignoreCase ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
         }
 
         internal static bool MatchSearchGroups(string searchContext, string[] tokens, string content, out int startIndex, out int endIndex, StringComparison sc = StringComparison.OrdinalIgnoreCase)
@@ -288,14 +319,14 @@ namespace Unity.QuickSearch
                 goRoots.AddRange(sceneRootObjects);
 
             return SceneModeUtility.GetObjects(goRoots.ToArray(), true)
-                .Where(o => !o.hideFlags.HasFlag(HideFlags.HideInHierarchy)).ToArray();
+                .Where(o => (o.hideFlags & HideFlags.HideInHierarchy) != HideFlags.HideInHierarchy).ToArray();
         }
 
         /// <summary>
         /// Utility function to fetch all the game objects for the current stage (i.e. scene or prefab)
         /// </summary>
         /// <returns>The array of game objects in the current stage.</returns>
-        public static GameObject[] FetchGameObjects()
+        public static IEnumerable<GameObject> FetchGameObjects()
         {
             var prefabStage = PrefabStageUtility.GetCurrentPrefabStage();
             if (prefabStage != null)
@@ -314,7 +345,7 @@ namespace Unity.QuickSearch
             }
 
             return SceneModeUtility.GetObjects(goRoots.ToArray(), true)
-                .Where(o => !o.hideFlags.HasFlag(HideFlags.HideInHierarchy)).ToArray();
+                .Where(o => (o.hideFlags & HideFlags.HideInHierarchy) != HideFlags.HideInHierarchy);
         }
 
         internal static ISet<string> GetReferences(UnityEngine.Object obj, int level = 1)
@@ -364,6 +395,36 @@ namespace Unity.QuickSearch
             refs.Remove(objPath);
 
             return refs;
+        }
+
+        static readonly Dictionary<string, SearchProvider> s_GroupProviders = new Dictionary<string, SearchProvider>();
+        internal static SearchProvider CreateGroupProvider(SearchProvider templateProvider, string groupId, int groupPriority, bool cacheProvider = false)
+        {
+            if (cacheProvider && s_GroupProviders.TryGetValue(groupId, out var groupProvider))
+                return groupProvider;
+
+            groupProvider = new SearchProvider($"_group_provider_{groupId}", groupId)
+            {
+                type = templateProvider.id,
+                priority = groupPriority,
+                isExplicitProvider = true,
+                actions = templateProvider.actions,
+                showDetails = templateProvider.showDetails,
+                showDetailsOptions = templateProvider.showDetailsOptions,
+                fetchDescription = templateProvider.fetchDescription,
+                fetchItems = templateProvider.fetchItems,
+                fetchLabel = templateProvider.fetchLabel,
+                fetchPreview = templateProvider.fetchPreview,
+                fetchThumbnail = templateProvider.fetchThumbnail,
+                startDrag = templateProvider.startDrag,
+                toObject = templateProvider.toObject,
+                trackSelection = templateProvider.trackSelection
+            };
+
+            if (cacheProvider)
+                s_GroupProviders[groupId] = groupProvider;
+
+            return groupProvider;
         }
     }
 }

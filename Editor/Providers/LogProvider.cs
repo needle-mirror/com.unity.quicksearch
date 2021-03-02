@@ -1,11 +1,10 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Threading;
-using UnityEditor;
 using UnityEngine;
 
-namespace Unity.QuickSearch.Providers
+namespace UnityEditor.Search.Providers
 {
     static class LogProvider
     {
@@ -21,7 +20,7 @@ namespace Unity.QuickSearch.Providers
         private const string type = "log";
         private const string displayName = "Logs";
 
-        private static volatile int s_LogIndex = 0;
+        private static int s_LogIndex = 0;
         private static List<LogEntry> s_Logs = new List<LogEntry>();
         private static volatile bool s_Initialized = false;
 
@@ -67,16 +66,16 @@ namespace Unity.QuickSearch.Providers
                     var logEntry = (LogEntry)item.data;
                     switch (logEntry.logType)
                     {
-                    case LogType.Log:
-                        return (item.thumbnail = Icons.logInfo);
-                    case LogType.Warning:
-                        return (item.thumbnail = Icons.logWarning);
-                    case LogType.Error:
-                    case LogType.Assert:
-                    case LogType.Exception:
-                        return (item.thumbnail = Icons.logError);
-                    default:
-                        return null;
+                        case LogType.Log:
+                            return (item.thumbnail = Icons.logInfo);
+                        case LogType.Warning:
+                            return (item.thumbnail = Icons.logWarning);
+                        case LogType.Error:
+                        case LogType.Assert:
+                        case LogType.Exception:
+                            return (item.thumbnail = Icons.logError);
+                        default:
+                            return null;
                     }
                 }
             };
@@ -94,13 +93,14 @@ namespace Unity.QuickSearch.Providers
             return new LogEntry
             {
                 id = "__log_" + s_LogIndex,
-                lineNumber = ++s_LogIndex,
+                lineNumber = Interlocked.Increment(ref s_LogIndex),
                 msg = s,
                 msgLowerCased = s.ToLowerInvariant(),
                 logType = logType
             };
         }
 
+        #region SearchLogs
         private static IEnumerable<SearchItem> SearchLogs(SearchContext context, SearchProvider provider)
         {
             lock (s_Logs)
@@ -116,6 +116,9 @@ namespace Unity.QuickSearch.Providers
             }
         }
 
+        #endregion
+
+        #region SearchItemOptions
         private static SearchItem SearchLogEntry(SearchContext context, SearchProvider provider, LogEntry logEntry)
         {
             if (!SearchUtils.MatchSearchGroups(context, logEntry.msgLowerCased, true))
@@ -125,6 +128,8 @@ namespace Unity.QuickSearch.Providers
             logItem.options = SearchItemOptions.Ellipsis | SearchItemOptions.RightToLeft | SearchItemOptions.Highlight;
             return logItem;
         }
+
+        #endregion
 
         [SearchActionsProvider]
         internal static IEnumerable<SearchAction> ActionHandlers()

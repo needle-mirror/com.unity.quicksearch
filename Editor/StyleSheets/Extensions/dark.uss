@@ -1,0 +1,19 @@
+:root {
+    --theme-view-background-color-lighter: #333333;
+    --unity-theme-background-color-17: #383838;
+    --unity-theme-background-color-50: #2C5D87;
+    --unity-theme-background-color-53: #2A2A2A;
+    --unity-theme-background-color-54: #282828;
+    --unity-theme-background-color-58: #5F5F5F;
+    --unity-theme-background-color-80: #3F3F3F;
+    --unity-theme-border-color-1: #0D0D0D;
+    --unity-theme-border-color-23: #CCCCCC;
+    --unity-theme-border-color-7: #232323;
+    --unity-colors-alternated_rows-background: #3F3F3F;
+    --unity-colors-highlight-background-hover-lighter: #5F5F5F;
+    --unity-theme-border-color-13: #3A79BB;
+    --unity-theme-border-color-14: #636363;
+    --unity-colors-toolbar-border: #232323;
+    --unity-colors-window-background: #383838;
+    --unity-colors-toolbar-border: #232323;
+}

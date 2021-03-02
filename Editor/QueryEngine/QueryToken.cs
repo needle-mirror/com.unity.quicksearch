@@ -1,5 +1,4 @@
-
-namespace Unity.QuickSearch
+namespace UnityEditor.Search
 {
     /// <summary>
     /// Represents a token of a query string.
@@ -41,6 +40,12 @@ namespace Unity.QuickSearch
         /// <param name="length">The length of the token.</param>
         public QueryToken(string text, int position, int length)
             : this(text, position)
+        {
+            this.length = length;
+        }
+
+        internal QueryToken(int position, int length)
+            : this("", position)
         {
             this.length = length;
         }

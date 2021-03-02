@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 
-namespace Unity.QuickSearch
+namespace UnityEditor.Search
 {
     /// <summary>
     /// Enumeration representing the query node types.
@@ -200,7 +200,7 @@ namespace Unity.QuickSearch
             return identifier.GetHashCode();
         }
 
-        public IQueryNode Copy()
+        public virtual IQueryNode Copy()
         {
             return new FilterNode(filterId, operatorId, filterValue, paramValue, identifier)
             {
@@ -312,11 +312,11 @@ namespace Unity.QuickSearch
 
             foreach (var child in children)
             {
-                var copyableChild = child as ICopyableNode;
-                if (copyableChild == null)
+                if (!(child is ICopyableNode copyableChild))
                     return null;
                 var childCopy = copyableChild.Copy();
-                selfNode.AddNode(childCopy);
+                if (childCopy != null)
+                    selfNode.AddNode(childCopy);
             }
 
             return selfNode;
@@ -383,7 +383,7 @@ namespace Unity.QuickSearch
         public override string identifier => "-" + children[0].identifier;
 
         public override void SwapChildNodes()
-        { }
+        {}
 
         protected override IQueryNode CopySelf()
         {
@@ -443,7 +443,7 @@ namespace Unity.QuickSearch
         public override string identifier => children[0].identifier;
 
         public override void SwapChildNodes()
-        { }
+        {}
 
         protected override IQueryNode CopySelf()
         {
@@ -463,7 +463,28 @@ namespace Unity.QuickSearch
         public override bool leaf => children.Count == 0;
 
         public InFilterNode(IFilter filter, FilterOperator op, string filterValue, string paramValue, string filterString)
-            : base(filter, op, filterValue, paramValue, filterString) { }
+            : base(filter, op, filterValue, paramValue, filterString) {}
+
+        public override IQueryNode Copy()
+        {
+            var selfNode = new InFilterNode(filter, op, filterValue, paramValue, identifier);
+
+            selfNode.children.Clear();
+
+            foreach (var child in children)
+            {
+                if (!(child is ICopyableNode copyableChild))
+                    return null;
+                var childCopy = copyableChild.Copy();
+                if (childCopy != null)
+                {
+                    childCopy.parent = selfNode;
+                    selfNode.children.Add(childCopy);
+                }
+            }
+
+            return selfNode;
+        }
     }
 
     class UnionNode : OrNode
@@ -509,7 +530,7 @@ namespace Unity.QuickSearch
         }
 
         public override void SwapChildNodes()
-        { }
+        {}
 
         protected override IQueryNode CopySelf()
         {

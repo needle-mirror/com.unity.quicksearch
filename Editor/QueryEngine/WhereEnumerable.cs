@@ -5,16 +5,19 @@ using System.Linq;
 using System.Reflection;
 using UnityEngine.Assertions;
 
-namespace Unity.QuickSearch
+namespace UnityEditor.Search
 {
     class WhereEnumerable<T> : IQueryEnumerable<T>
     {
         IEnumerable<T> m_Payload;
-        Func<T, bool> m_Predicate;
 
-        public WhereEnumerable(Func<T, bool> predicate)
+        public Func<T, bool> predicate { get; }
+        public bool fastYielding { get; }
+
+        public WhereEnumerable(Func<T, bool> predicate, bool fastYielding)
         {
-            m_Predicate = predicate;
+            this.predicate = predicate;
+            this.fastYielding = fastYielding;
         }
 
         public void SetPayload(IEnumerable<T> payload)
@@ -24,7 +27,23 @@ namespace Unity.QuickSearch
 
         public IEnumerator<T> GetEnumerator()
         {
-            return m_Payload.Where(m_Predicate).GetEnumerator();
+            if (fastYielding)
+                return FastYieldingEnumerator();
+            return m_Payload.Where(e => e != null && predicate(e)).GetEnumerator();
+        }
+
+        public IEnumerator<T> FastYieldingEnumerator()
+        {
+            foreach (var element in m_Payload)
+            {
+                if (element == null)
+                    yield return default;
+
+                if (predicate(element))
+                    yield return element;
+                else
+                    yield return default;
+            }
         }
 
         IEnumerator IEnumerable.GetEnumerator()
@@ -36,22 +55,22 @@ namespace Unity.QuickSearch
     [EnumerableCreator(QueryNodeType.Where)]
     class WhereEnumerableFactory : IQueryEnumerableFactory
     {
-        public IQueryEnumerable<T> Create<T>(IQueryNode root, QueryEngine<T> engine, ICollection<QueryError> errors)
+        public IQueryEnumerable<T> Create<T>(IQueryNode root, QueryEngine<T> engine, ICollection<QueryError> errors, bool fastYielding)
         {
             if (root.leaf || root.children == null || root.children.Count != 1)
             {
-                errors.Add(new QueryError(root.token.position, "Where node must have a child."));
+                errors.Add(new QueryError(root.token.position, root.token.length, "Where node must have a child."));
                 return null;
             }
 
             var predicateGraphRoot = root.children[0];
 
-            var predicate = BuildFunctionFromNode(predicateGraphRoot, engine, errors);
-            var whereEnumerable = new WhereEnumerable<T>(predicate);
+            var predicate = BuildFunctionFromNode(predicateGraphRoot, engine, errors, fastYielding);
+            var whereEnumerable = new WhereEnumerable<T>(predicate, fastYielding);
             return whereEnumerable;
         }
 
-        private Func<T, bool> BuildFunctionFromNode<T>(IQueryNode node, QueryEngine<T> engine, ICollection<QueryError> errors)
+        private Func<T, bool> BuildFunctionFromNode<T>(IQueryNode node, QueryEngine<T> engine, ICollection<QueryError> errors, bool fastYielding)
         {
             Func<T, bool> noOp = o => false;
 
@@ -63,21 +82,21 @@ namespace Unity.QuickSearch
                 case QueryNodeType.And:
                 {
                     Assert.IsFalse(node.leaf, "And node cannot be leaf.");
-                    var leftFunc = BuildFunctionFromNode(node.children[0], engine, errors);
-                    var rightFunc = BuildFunctionFromNode(node.children[1], engine, errors);
+                    var leftFunc = BuildFunctionFromNode(node.children[0], engine, errors, fastYielding);
+                    var rightFunc = BuildFunctionFromNode(node.children[1], engine, errors, fastYielding);
                     return o => leftFunc(o) && rightFunc(o);
                 }
                 case QueryNodeType.Or:
                 {
                     Assert.IsFalse(node.leaf, "Or node cannot be leaf.");
-                    var leftFunc = BuildFunctionFromNode(node.children[0], engine, errors);
-                    var rightFunc = BuildFunctionFromNode(node.children[1], engine, errors);
+                    var leftFunc = BuildFunctionFromNode(node.children[0], engine, errors, fastYielding);
+                    var rightFunc = BuildFunctionFromNode(node.children[1], engine, errors, fastYielding);
                     return o => leftFunc(o) || rightFunc(o);
                 }
                 case QueryNodeType.Not:
                 {
                     Assert.IsFalse(node.leaf, "Not node cannot be leaf.");
-                    var childFunc = BuildFunctionFromNode(node.children[0], engine, errors);
+                    var childFunc = BuildFunctionFromNode(node.children[0], engine, errors, fastYielding);
                     return o => !childFunc(o);
                 }
                 case QueryNodeType.Filter:
@@ -100,10 +119,16 @@ namespace Unity.QuickSearch
                     var stringComparison = engine.globalStringComparison;
                     if (engine.searchDataOverridesStringComparison)
                         stringComparison = engine.searchDataStringComparison;
-                    if (searchNode.exact)
-                        matchWordFunc = s => s.Equals(searchNode.searchValue, stringComparison);
+
+                    if (engine.searchWordMatcher != null)
+                        matchWordFunc = s => engine.searchWordMatcher(searchNode.searchValue, searchNode.exact, stringComparison, s);
                     else
-                        matchWordFunc = s => s.IndexOf(searchNode.searchValue, stringComparison) >= 0;
+                    {
+                        if (searchNode.exact)
+                            matchWordFunc = s => s.Equals(searchNode.searchValue, stringComparison);
+                        else
+                            matchWordFunc = s => s.IndexOf(searchNode.searchValue, stringComparison) >= 0;
+                    }
                     return o => engine.searchDataCallback(o).Any(data => matchWordFunc(data));
                 }
                 case QueryNodeType.FilterIn:
@@ -114,7 +139,7 @@ namespace Unity.QuickSearch
                     var filterOperation = GenerateFilterOperation(filterNode, engine, errors);
                     if (filterOperation == null)
                         return noOp;
-                    var inFilterFunction = GenerateInFilterFunction(filterNode, filterOperation, engine, errors);
+                    var inFilterFunction = GenerateInFilterFunction(filterNode, filterOperation, engine, errors, fastYielding);
                     return inFilterFunction;
                 }
             }
@@ -122,7 +147,7 @@ namespace Unity.QuickSearch
             return noOp;
         }
 
-        private BaseFilterOperation<T> GenerateFilterOperation<T>(FilterNode node, QueryEngine<T> engine, ICollection<QueryError> errors)
+        private static BaseFilterOperation<T> GenerateFilterOperation<T>(FilterNode node, QueryEngine<T> engine, ICollection<QueryError> errors)
         {
             var operatorIndex = node.token.position + node.filter.token.Length + (string.IsNullOrEmpty(node.paramValue) ? 0 : node.paramValue.Length);
             var filterValueIndex = operatorIndex + node.op.token.Length;
@@ -133,7 +158,6 @@ namespace Unity.QuickSearch
             {
                 if (node.filter?.queryHandlerTransformer == null)
                 {
-
                     errors.Add(new QueryError(filterValueIndex, node.filterValue.Length, $"No nested query handler transformer set on filter \"{node.filter.token}\"."));
                     return null;
                 }
@@ -169,40 +193,40 @@ namespace Unity.QuickSearch
             return operation as BaseFilterOperation<T>;
         }
 
-        private Func<T, bool> GenerateInFilterFunction<T>(InFilterNode node, BaseFilterOperation<T> filterOperation, QueryEngine<T> engine, ICollection<QueryError> errors)
+        private Func<T, bool> GenerateInFilterFunction<T>(InFilterNode node, BaseFilterOperation<T> filterOperation, QueryEngine<T> engine, ICollection<QueryError> errors, bool fastYielding)
         {
             if (node.leaf || node.children == null || node.children.Count == 0)
             {
-                errors.Add(new QueryError(node.token.position, "InFilter node cannot be a leaf."));
+                errors.Add(new QueryError(node.token.position, node.token.length, "InFilter node cannot be a leaf."));
                 return null;
             }
 
             var nestedQueryType = GetNestedQueryType(node);
             if (nestedQueryType == null)
             {
-                errors.Add(new QueryError(node.token.position, "Could not deduce nested query type. Did you forget to set the nested query handler?"));
+                errors.Add(new QueryError(node.token.position, node.token.length, "Could not deduce nested query type. Did you forget to set the nested query handler?"));
                 return null;
             }
 
             var transformType = node.filter.queryHandlerTransformer.rightHandSideType;
 
             var inFilterFunc = typeof(WhereEnumerableFactory)
-                ?.GetMethod("GenerateInFilterFunctionWithTypes", BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance)
+                .GetMethod("GenerateInFilterFunctionWithTypes", BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance)
                 ?.MakeGenericMethod(typeof(T), nestedQueryType, transformType)
-                ?.Invoke(this, new object[] { node, filterOperation, engine, errors }) as Func<T, bool>;
+                ?.Invoke(this, new object[] { node, filterOperation, engine, errors, fastYielding }) as Func<T, bool>;
 
             if (inFilterFunc == null)
             {
-                errors.Add(new QueryError(node.token.position, "Could not create filter function with nested query."));
+                errors.Add(new QueryError(node.token.position, node.token.length, "Could not create filter function with nested query."));
                 return null;
             }
 
             return inFilterFunc;
         }
 
-        private Func<T, bool> GenerateInFilterFunctionWithTypes<T, TNested, TTransform>(InFilterNode node, BaseFilterOperation<T> filterOperation, QueryEngine<T> engine, ICollection<QueryError> errors)
+        private Func<T, bool> GenerateInFilterFunctionWithTypes<T, TNested, TTransform>(InFilterNode node, BaseFilterOperation<T> filterOperation, QueryEngine<T> engine, ICollection<QueryError> errors, bool fastYielding)
         {
-            var nestedQueryEnumerable = EnumerableCreator.Create<TNested>(node.children[0], null, errors);
+            var nestedQueryEnumerable = EnumerableCreator.Create<TNested>(node.children[0], null, errors, fastYielding);
             if (nestedQueryEnumerable == null)
                 return null;
             var nestedQueryTransformer = node.filter.queryHandlerTransformer as NestedQueryHandlerTransformer<TNested, TTransform>;

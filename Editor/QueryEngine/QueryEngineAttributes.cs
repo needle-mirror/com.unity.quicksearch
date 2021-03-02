@@ -1,11 +1,12 @@
 using System;
 
-namespace Unity.QuickSearch
+namespace UnityEditor.Search
 {
     /// <summary>
     /// Base attribute class used to define a custom filter on a QueryEngine.
     /// All filter types supported by QueryEngine.AddFilter are supported by this attribute.
     /// </summary>
+    [AttributeUsage(AttributeTargets.Method)]
     public class QueryEngineFilterAttribute : Attribute
     {
         /// <summary>
@@ -99,5 +100,6 @@ namespace Unity.QuickSearch
     /// <summary>
     /// Base attribute class that defines a custom parameter transformer function.
     /// </summary>
+    [AttributeUsage(AttributeTargets.Method)]
     public class QueryEngineParameterTransformerAttribute : Attribute {}
 }

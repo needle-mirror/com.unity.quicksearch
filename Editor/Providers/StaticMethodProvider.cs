@@ -1,17 +1,23 @@
-//#define QUICKSEARCH_DEBUG
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
-using UnityEditor;
+using System.Text.RegularExpressions;
 using UnityEngine;
 
-namespace Unity.QuickSearch.Providers
+namespace UnityEditor.Search.Providers
 {
     static class StaticMethodProvider
     {
         private const string type = "static_methods";
         private const string displayName = "Static API";
+
+        private static readonly string[] _ignoredAssemblies =
+        {
+            "^UnityScript$", "^System$", "^mscorlib$", "^netstandard$",
+            "^System\\..*", "^nunit\\..*", "^Microsoft\\..*", "^Mono\\..*", "^SyntaxTree\\..*"
+        };
 
         private static MethodInfo[] methods;
 
@@ -23,45 +29,78 @@ namespace Unity.QuickSearch.Providers
                 priority = 85,
                 filterId = "#",
                 isExplicitProvider = true,
-                fetchItems = (context, items, provider) =>
-                {
-                    if (!context.searchText.StartsWith(provider.filterId))
-                        return null;
-
-                    // Cache all available static APIs
-                    if (methods == null)
-                        methods = FetchStaticAPIMethodInfo();
-
-                    foreach (var m in methods)
-                    {
-                        if (!SearchUtils.MatchSearchGroups(context, m.Name))
-                            continue;
-
-                        var visibilityString = !m.IsPublic ? "<i>Internal</i> - " : String.Empty;
-                        items.Add(provider.CreateItem(context, m.Name, m.IsPublic ? 0 : 1, m.Name, $"{visibilityString}{m.DeclaringType} - {m}" , null, m));
-                    }
-
-                    return null;
-                },
-
-                fetchThumbnail = (item, context) => Icons.shortcut
+                fetchItems = (context, items, provider) => FetchItems(context, provider),
+                fetchThumbnail = (item, context) => Icons.staticAPI
             };
+        }
+
+        private static IEnumerable<SearchItem> FetchItems(SearchContext context, SearchProvider provider)
+        {
+            // Cache all available static APIs
+            if (methods == null)
+                methods = FetchStaticAPIMethodInfo();
+
+            var lowerCasePattern = context.searchQuery.ToLowerInvariant().Replace(" ", "");
+            var matches = new List<int>();
+            foreach (var m in methods)
+            {
+                if (!m.IsPublic && !context.options.HasFlag(SearchFlags.WantsMore))
+                    continue;
+                long score = 0;
+                var fullName = $"{m.DeclaringType.FullName}.{m.Name}";
+                var fullNameLower = fullName.ToLowerInvariant();
+                if (FuzzySearch.FuzzyMatch(lowerCasePattern, fullNameLower, ref score, matches) && score > 300)
+                {
+                    var visibilityString = m.IsPublic ? string.Empty : "(Non Public)";
+                    yield return provider.CreateItem(context, m.Name, m.IsPublic ? ~(int)score - 999 : ~(int)score, m.Name, $"{fullName} {visibilityString}", null, m);
+                }
+                else
+                    yield return null;
+            }
         }
 
         private static MethodInfo[] FetchStaticAPIMethodInfo()
         {
-            #if QUICKSEARCH_DEBUG
-            using (new DebugTimer("GetAllStaticMethods"))
-            #endif
-            {
-                bool isDevBuild = UnityEditor.Unsupported.IsDeveloperBuild();
-                var staticMethods = AppDomain.CurrentDomain.GetAllStaticMethods(isDevBuild);
-                #if QUICKSEARCH_DEBUG
-                Debug.Log($"Fetched {staticMethods.Length} APIs");
-                #endif
+            bool isDevBuild = Unsupported.IsDeveloperBuild();
+            return AppDomain.CurrentDomain.GetAllStaticMethods(isDevBuild);
+        }
 
-                return staticMethods;
+        private static MethodInfo[] GetAllStaticMethods(this AppDomain aAppDomain, bool showInternalAPIs)
+        {
+            var result = new List<MethodInfo>();
+            var assemblies = aAppDomain.GetAssemblies();
+            var bindingFlags = BindingFlags.Static | (showInternalAPIs ? BindingFlags.Public | BindingFlags.NonPublic : BindingFlags.Public) | BindingFlags.DeclaredOnly;
+            foreach (var assembly in assemblies)
+            {
+                if (IsIgnoredAssembly(assembly.GetName()))
+                    continue;
+                var types = assembly.GetLoadableTypes();
+                foreach (var type in types)
+                {
+                    var methods = type.GetMethods(bindingFlags);
+                    foreach (var m in methods)
+                    {
+                        if (m.IsGenericMethod)
+                            continue;
+
+                        if (m.GetCustomAttribute<ObsoleteAttribute>() != null)
+                            continue;
+
+                        if (m.Name.Contains("Begin") || m.Name.Contains("End"))
+                            continue;
+
+                        if (m.GetParameters().Length == 0)
+                            result.Add(m);
+                    }
+                }
             }
+            return result.ToArray();
+        }
+
+        private static bool IsIgnoredAssembly(AssemblyName assemblyName)
+        {
+            var name = assemblyName.Name;
+            return _ignoredAssemblies.Any(candidate => Regex.IsMatch(name, candidate));
         }
 
         private static void LogResult(object result)
@@ -87,8 +126,7 @@ namespace Unity.QuickSearch.Providers
                         var result = m.Invoke(null, null);
                         if (result == null)
                             return;
-                        var list = result as IEnumerable;
-                        if (result is string || list == null)
+                        if (result is string || !(result is IEnumerable list))
                         {
                             LogResult(result);
                             EditorGUIUtility.systemCopyBuffer = result.ToString();

@@ -1,20 +1,14 @@
-﻿#if UNITY_2020_1_OR_NEWER
-#define USE_ASSET_STORE_PROVIDER
-#endif
-// #define QUICKSEARCH_DEBUG
+#if UNITY_2020_2_OR_NEWER
 using System.Collections.Generic;
 using UnityEngine;
 using System;
 using UnityEngine.Networking;
 using System.Text;
 using System.Linq;
-using System.Reflection;
-using UnityEditor;
 using Debug = UnityEngine.Debug;
+using UnityEditor.Connect;
 
-#if USE_ASSET_STORE_PROVIDER
-
-namespace Unity.QuickSearch.Providers
+namespace UnityEditor.Search.Providers
 {
     static class AssetStoreProvider
     {
@@ -113,7 +107,6 @@ namespace Unity.QuickSearch.Providers
             // public string scopes;
             // public string client_id;
             // public string ip_address;
-
         }
 
         [Serializable]
@@ -200,7 +193,6 @@ namespace Unity.QuickSearch.Providers
             // public string slug;
             public PurchaseDetailMainImage mainImage;
             public ImageDesc[] images;
-
         }
         #pragma warning restore CS0649
 
@@ -238,17 +230,16 @@ namespace Unity.QuickSearch.Providers
 
         private const string kSearchEndPoint = "https://assetstore.unity.com/api/search";
         private const string kProductDetailsEndPoint = "https://api.unity.com/v1/products/list";
-        private static Dictionary<string, PreviewData> s_Previews = new Dictionary<string, PreviewData>();
+        private static readonly Dictionary<string, PreviewData> s_Previews = new Dictionary<string, PreviewData>();
         private static bool s_RequestCheckPurchases;
         private static bool s_StartPurchaseRequest;
-        private static List<PurchaseInfo> s_Purchases = new List<PurchaseInfo>();
-        internal static HashSet<string> purchasePackageIds;
+        private static readonly List<PurchaseInfo> s_Purchases = new List<PurchaseInfo>();
+        private static HashSet<string> purchasePackageIds;
         private static string s_PackagesKey;
         private static string s_AuthCode;
         private static AccessToken s_AccessTokenData;
         private static TokenInfo s_TokenInfo;
         private static UserInfo s_UserInfo;
-        private static Action<string> s_OpenPackageManager;
 
         private static readonly List<QueryParam> k_QueryParams = new List<QueryParam>
         {
@@ -283,35 +274,37 @@ namespace Unity.QuickSearch.Providers
             ProcessFilter(context, requestQuery);
 
             var requestStr = Utils.JsonSerialize(requestQuery);
-            var webRequest = Post(kSearchEndPoint, requestStr);
-            var rao = webRequest.SendWebRequest();
-            while (!rao.isDone)
-                yield return null;
-
-            if (webRequest.result != UnityWebRequest.Result.Success)
+            using (var webRequest = Post(kSearchEndPoint, requestStr))
             {
-                Debug.Log($"Asset store request error: {webRequest.error}");
-            }
-            else
-            {
-                StoreSearchResponse response;
-                // using (new DebugTimer("Parse response"))
-                {
-                    var saneJsonStr = webRequest.downloadHandler.text.Replace("name_en-US\"", "name_en_US\"");
-                    response = JsonUtility.FromJson<StoreSearchResponse>(saneJsonStr);
-                }
+                var rao = webRequest.SendWebRequest();
+                while (!rao.isDone)
+                    yield return null;
 
-                if (response.responseHeader.status != 0)
+                if (webRequest.result != UnityWebRequest.Result.Success)
                 {
-                    if (response.error != null)
-                        Debug.LogError($"Error: {response.error.msg}");
+                    Debug.Log($"Asset store request error: {webRequest.error}");
                 }
                 else
                 {
-                    var scoreIndex = 1;
-                    foreach (var doc in response.response.docs)
+                    StoreSearchResponse response;
+                    // using (new DebugTimer("Parse response"))
                     {
-                        yield return CreateItem(context, provider, doc, scoreIndex++);
+                        var saneJsonStr = webRequest.downloadHandler.text.Replace("name_en-US\"", "name_en_US\"");
+                        response = JsonUtility.FromJson<StoreSearchResponse>(saneJsonStr);
+                    }
+
+                    if (response.responseHeader.status != 0)
+                    {
+                        if (response.error != null)
+                            Debug.LogError($"Error: {response.error.msg}");
+                    }
+                    else
+                    {
+                        var scoreIndex = 1;
+                        foreach (var doc in response.response.docs)
+                        {
+                            yield return CreateItem(context, provider, doc, scoreIndex++);
+                        }
                     }
                 }
             }
@@ -369,21 +362,20 @@ namespace Unity.QuickSearch.Providers
 
         static SearchItem CreateItem(SearchContext context, SearchProvider provider, AssetDocument doc, int score)
         {
-            var priceStr = "";
-            if (purchasePackageIds!= null && purchasePackageIds.Contains(doc.id))
+            var label = doc.name_en_US;
+            if (purchasePackageIds != null && purchasePackageIds.Contains(doc.id))
             {
-                priceStr = "Owned";
+                label += " (Owned)";
             }
-            else
+            else if (doc.price_USD == 0)
             {
-                priceStr = doc.price_USD == 0 ? "Free" : $"{doc.price_USD:0.00}$";
+                label += " (Free)";
             }
 
-            var description = $"{doc.publisher} - {doc.category_slug} - <color=#F6B93F>{priceStr}</color>";
-            #if QUICKSEARCH_DEBUG
-            description += $" id: {doc.id}";
-            #endif
-            var item = provider.CreateItem(context, doc.id, score, doc.name_en_US, description, null, doc);
+            var description = $"{doc.publisher} - {doc.category_slug}";
+            var item = provider.CreateItem(context, doc.id, score, label, description, null, doc);
+            item.options &= ~SearchItemOptions.FuzzyHighlight;
+            item.options &= ~SearchItemOptions.Highlight;
 
             doc.productDetail = null;
             doc.url = $"https://assetstore.unity.com/packages/{doc.category_slug}/{doc.id}";
@@ -405,30 +397,9 @@ namespace Unity.QuickSearch.Providers
             s_RequestCheckPurchases = true;
         }
 
-        static object s_UnityConnectInstance = null;
-        static Type s_CloudConfigUrlEnum = null;
-        static object GetUnityConnectInstance()
-        {
-            if (s_UnityConnectInstance != null)
-                return s_UnityConnectInstance;
-            var assembly = typeof(UnityEditor.Connect.UnityOAuth).Assembly;
-            var managerType = assembly.GetTypes().First(t => t.Name == "UnityConnect");
-            var instanceAccessor = managerType.GetProperty("instance", BindingFlags.Public | BindingFlags.Static);
-            s_UnityConnectInstance = instanceAccessor.GetValue(null);
-            s_CloudConfigUrlEnum = assembly.GetTypes().First(t => t.Name == "CloudConfigUrl");
-            return s_UnityConnectInstance;
-        }
-
         static bool HasAccessToken()
         {
-            return !string.IsNullOrEmpty(GetConnectAccessToken());
-        }
-
-        static string GetConnectAccessToken()
-        {
-            var instance = GetUnityConnectInstance();
-            var method = instance.GetType().GetMethod("GetAccessToken");
-            return (string)method.Invoke(instance, null);
+            return !string.IsNullOrEmpty(Utils.GetConnectAccessToken());
         }
 
         static void CheckPurchases()
@@ -437,7 +408,7 @@ namespace Unity.QuickSearch.Providers
                 return;
 
             if (s_PackagesKey == null)
-                s_PackagesKey = GetPackagesKey();
+                s_PackagesKey = Utils.GetPackagesKey();
 
             s_RequestCheckPurchases = false;
             if (s_StartPurchaseRequest)
@@ -454,7 +425,6 @@ namespace Unity.QuickSearch.Providers
                     return;
                 }
                 startRequest.Stop();
-                // Debug.Log($"Fetch purchases in {startRequest.ElapsedMilliseconds}ms");
 
                 purchasePackageIds = new HashSet<string>();
                 foreach (var purchaseInfo in purchases)
@@ -471,51 +441,47 @@ namespace Unity.QuickSearch.Providers
         {
             return new SearchProvider(k_ProviderId, "Asset Store")
             {
-                #if UNITY_2020_1_OR_NEWER
                 active = true,
                 isExplicitProvider = true,
-                #else
-                active = false,
-                #endif
                 filterId = "store:",
                 onEnable = OnEnable,
                 showDetails = true,
                 fetchItems = (context, items, provider) => SearchStore(context, provider),
-                fetchThumbnail = (item, context) => FetchImage(((AssetDocument)item.data).icon, false, s_Previews),
-                fetchPreview = (item, context, size, options) =>
-                {
-                    if (!options.HasFlag(FetchPreviewOptions.Large))
-                        return null;
-
-                    var doc = (AssetDocument)item.data;
-                    if (s_PackagesKey != null)
-                    {
-                        if (doc.productDetail == null)
-                        {
-                            var productId = Convert.ToInt32(doc.id);
-                            RequestProductDetailsInfo(new [] { productId }, (detail, error) =>
-                            {
-                                if (error != null || detail.results.Length == 0)
-                                {
-                                    return;
-                                }
-                                doc.productDetail = detail.results[0];
-                                doc.images = new [] {doc.productDetail.mainImage.big}.Concat(
-                                    doc.productDetail.images.Where(img => img.type == "screenshot").Select(imgDesc => imgDesc.imageUrl)).ToArray();
-                            });
-                            return null;
-                        }
-                    }
-
-                    if (doc.productDetail?.images.Length > 0)
-                        return FetchImage(doc.images, true, s_Previews);
-
-                    if (doc.key_images.Length > 0)
-                        return FetchImage(doc.key_images, true, s_Previews);
-
-                    return FetchImage(doc.icon, true, s_Previews);
-                }
+                fetchThumbnail = (item, context) => FetchImage(((AssetDocument)item.data).icon, false, s_Previews) ?? Icons.store,
+                fetchPreview = FetchPreview
             };
+        }
+
+        private static Texture2D FetchPreview(SearchItem item, SearchContext context, Vector2 size, FetchPreviewOptions options)
+        {
+            if (!options.HasFlag(FetchPreviewOptions.Large))
+                return null;
+
+            var doc = (AssetDocument)item.data;
+            if (s_PackagesKey != null)
+            {
+                if (doc.productDetail == null)
+                {
+                    var productId = Convert.ToInt32(doc.id);
+                    RequestProductDetailsInfo(new[] { productId }, (detail, error) =>
+                    {
+                        if (error != null || detail.results.Length == 0)
+                            return;
+                        doc.productDetail = detail.results[0];
+                        doc.images = new[] { doc.productDetail.mainImage.big }.Concat(
+                            doc.productDetail.images.Where(img => img.type == "screenshot").Select(imgDesc => imgDesc.imageUrl)).ToArray();
+                    });
+                    //return null;
+                }
+            }
+
+            if (doc.productDetail?.images.Length > 0)
+                return FetchImage(doc.images, true, s_Previews);
+
+            if (doc.key_images.Length > 0)
+                return FetchImage(doc.key_images, true, s_Previews);
+
+            return FetchImage(doc.icon, true, s_Previews);
         }
 
         static Texture2D FetchImage(string[] imageUrls, bool animateCarrousel, Dictionary<string, PreviewData> imageDb)
@@ -526,7 +492,7 @@ namespace Unity.QuickSearch.Providers
             var keyImage = imageUrls[0];
             if (animateCarrousel)
             {
-                var imageIndex = Mathf.FloorToInt(Mathf.Repeat((float)UnityEditor.EditorApplication.timeSinceStartup, imageUrls.Length));
+                var imageIndex = Mathf.FloorToInt(Mathf.Repeat((float)EditorApplication.timeSinceStartup, imageUrls.Length));
                 keyImage = imageUrls[imageIndex];
             }
 
@@ -557,22 +523,22 @@ namespace Unity.QuickSearch.Providers
         {
             return new[]
             {
-                new SearchAction(k_ProviderId, "open", null, "Open item")
+                new SearchAction(k_ProviderId, "open", new GUIContent("Show in Package Manager"))
                 {
                     handler = (item) =>
                     {
                         var doc = (AssetDocument)item.data;
-                        if (AssetStoreProvider.purchasePackageIds != null && AssetStoreProvider.purchasePackageIds.Contains(doc.id))
-                        {
-                            OpenPackageManager(doc.name_en_US);
-                        }
-                        else
-                        {
-                            BrowseAssetStoreItem(item);
-                        }
+                        Utils.OpenPackageManager(doc.name_en_US);
+                    },
+                    enabled = items =>
+                    {
+                        if (items.Count > 1)
+                            return false;
+                        var doc = (AssetDocument)items.First().data;
+                        return purchasePackageIds != null && purchasePackageIds.Contains(doc.id);
                     }
                 },
-                new SearchAction(k_ProviderId, "browse", null, "Browse item(s)")
+                new SearchAction(k_ProviderId, "browse", new GUIContent("Open Unity Asset Store..."))
                 {
                     execute = (items) =>
                     {
@@ -590,35 +556,6 @@ namespace Unity.QuickSearch.Providers
             CheckPurchases();
         }
 
-        static string GetPackagesKey()
-        {
-            // We want to do this:
-            // UnityEditor.Connect.UnityConnect.instance.GetConfigurationURL(CloudConfigUrl.CloudPackagesKey);
-            var instance = GetUnityConnectInstance();
-            var getConfigUrl = instance.GetType().GetMethod("GetConfigurationURL");
-            var packmanKey = s_CloudConfigUrlEnum.GetEnumValues().GetValue(12);
-            var packageKey = (string)getConfigUrl.Invoke(instance, new[] { packmanKey });
-            return packageKey;
-        }
-
-        static void OpenPackageManager(string packageName)
-        {
-            if (s_OpenPackageManager == null)
-            {
-                // We want to do this:
-                // UnityEditor.PackageManager.UI.PackageManagerWindow.SelectPackageAndFilter
-
-                var assembly = typeof(UnityEditor.PackageManager.UI.Window).Assembly;
-                var managerType = assembly.GetTypes().First(t => t.Name == "PackageManagerWindow");
-                var methodInfo = managerType.GetMethod("SelectPackageAndFilter", BindingFlags.Static | BindingFlags.NonPublic);
-                var cloudConfigUrlEnum = assembly.GetTypes().First(t => t.Name == "PackageFilterTab");
-                var assetStoreTab = cloudConfigUrlEnum.GetEnumValues().GetValue(3);
-                s_OpenPackageManager = pkg => methodInfo.Invoke(null, new[] { pkg, assetStoreTab, false, "" });
-            }
-
-            s_OpenPackageManager(packageName);
-        }
-
         static void GetAuthCode(Action<string, Exception> done)
         {
             if (s_AuthCode != null)
@@ -627,7 +564,7 @@ namespace Unity.QuickSearch.Providers
                 return;
             }
 
-            UnityEditor.Connect.UnityOAuth.GetAuthorizationCodeAsync("packman", response =>
+            UnityOAuth.GetAuthorizationCodeAsync("packman", response =>
             {
                 if (response.Exception != null)
                 {
@@ -782,28 +719,6 @@ namespace Unity.QuickSearch.Providers
             });
         }
 
-        static void GetPurchaseInfo(int productId, Action<PurchaseDetail, string> done)
-        {
-            GetUserInfo((userInfo, userInfoError) =>
-            {
-                if (userInfoError != null)
-                {
-                    done(null, userInfoError);
-                    return;
-                }
-
-                RequestPurchaseInfo(s_TokenInfo.access_token, productId, (detail, error) =>
-                {
-                    if (error != null)
-                    {
-                        done(null, error);
-                    }
-
-                    done(detail, null);
-                });
-            });
-        }
-
         #region Requests
         static void RequestUserInfo(string accessToken, string userId, Action<UserInfo, string> done)
         {
@@ -869,6 +784,7 @@ namespace Unity.QuickSearch.Providers
                     s_AccessTokenData = JsonUtility.FromJson<AccessToken>(text);
                     done(s_AccessTokenData, null);
                 }
+                request.Dispose();
             };
         }
 
@@ -889,6 +805,7 @@ namespace Unity.QuickSearch.Providers
                     var result = JsonUtility.FromJson<ProductListResponse>(text);
                     done(result, null);
                 }
+                request.Dispose();
             };
         }
 
@@ -914,126 +831,18 @@ namespace Unity.QuickSearch.Providers
             };
         }
 
-        static void RequestPurchaseInfo(string accessToken, int productId, Action<PurchaseDetail, string> done)
-        {
-            var url = $"https://packages-v2.unity.com/-/api/product/{productId}";
-            var request = UnityWebRequest.Get(url);
-            request.SetRequestHeader("Content-Type", "application/json");
-            request.SetRequestHeader("Authorization", $"Bearer {accessToken}");
-            var asyncOp = request.SendWebRequest();
-            asyncOp.completed += op =>
-            {
-                if (request.result != UnityWebRequest.Result.Success)
-                {
-                    done(null, request.error);
-                }
-                else
-                {
-                    var text = request.downloadHandler.text;
-                    var detail = JsonUtility.FromJson<PurchaseDetail>(text);
-                    done(detail, null);
-                }
-            };
-        }
         #endregion
 
-        [MenuItem("Help/Search Asset Store", priority = 270)]
+        [MenuItem("Window/Search/Asset Store", priority = 1270)]
         internal static void SearchAssetStoreMenu()
         {
             SearchAnalytics.SendEvent(null, SearchAnalytics.GenericEventType.QuickSearchOpen, "SearchAssetStore");
             var storeContext = SearchService.CreateContext(SearchService.GetProvider(k_ProviderId));
-            var qs = QuickSearch.Create(storeContext, topic: "asset store", saveFilters: false, multiselect: false);
-            qs.itemIconSize = 128;
-            qs.SetSearchText(String.Empty);
+            var qs = QuickSearch.Create(storeContext, topic: "asset store");
+            qs.itemIconSize = (int)DisplayMode.Limit;
+            qs.SetSearchText(string.Empty);
             qs.ShowWindow();
         }
-
-        #if QUICKSEARCH_DEBUG
-        // GetAuthCode -> GetAccessToken -> GetTokenInfo -> GetUserInfo
-        [MenuItem("Tools/GetSecret")]
-        static void GetSecret()
-        {
-            Debug.Log($"Secret: {GetPackagesKey()}");
-        }
-
-        [MenuItem("Tools/GetAuthCode")]
-        static void GetAuthCode()
-        {
-            GetAuthCode((authCode, ex) =>
-            {
-                Debug.Log($"GetAuthCode: authcode {authCode}");
-            });
-        }
-
-        [MenuItem("Tools/GetAccessToken")]
-        static void GetAccessToken()
-        {
-            GetAccessToken((token, err) =>
-            {
-                Debug.Log($"GetAccessToken: {token.access_token}");
-            });
-        }
-
-        [MenuItem("Tools/GetTokenInfo")]
-        static void GetAccessTokenInfo()
-        {
-            GetAccessTokenInfo((tokenInfo, err) =>
-            {
-                Debug.Log($"GetAccessTokenInfo : {tokenInfo.sub}");
-            });
-        }
-
-        [MenuItem("Tools/GetUserInfo")]
-        static void GetUserInfo()
-        {
-            GetUserInfo((userInfo, err) =>
-            {
-                Debug.Log($"GetUserInfo: {userInfo.id} {userInfo.username}");
-            });
-        }
-
-        [MenuItem("Tools/GetPurchaseInfo")]
-        static void GetPurchaseInfo()
-        {
-            GetPurchaseInfo(90173, (detail, err) =>
-            {
-                Debug.Log($"GetUserInfo: {detail.displayName} {detail.mainImage.big}");
-            });
-        }
-
-        [MenuItem("Tools/GetDetailsInfo")]
-        static void GetDetailsInfo()
-        {
-            RequestProductDetailsInfo(new []{ 116455 }, (detail, err) =>
-            {
-                Debug.Log($"GetDetailsInfo: nb images {detail.results[0].images.Length} {detail.results[0].images[0].imageUrl}");
-            });
-        }
-
-        [MenuItem("Tools/PrintAllPurchases")]
-        static void PrintAllPurchases()
-        {
-            var startRequest = System.Diagnostics.Stopwatch.StartNew();
-            GetAllPurchases((purchaseList, err) =>
-            {
-                if (err != null)
-                {
-                    Debug.Log($"GetAllPurchases error {err}");
-                    return;
-                }
-                startRequest.Stop();
-                var sb = new StringBuilder();
-                sb.AppendLine($"Purchases: {purchaseList.Count} in {startRequest.ElapsedMilliseconds}ms");
-                foreach(var info in purchaseList)
-                {
-                    sb.AppendLine(info.packageId.ToString());
-                }
-                Debug.Log(sb.ToString());
-
-            });
-        }
-        #endif
     }
 }
-
 #endif

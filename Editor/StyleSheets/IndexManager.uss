@@ -17,11 +17,13 @@
     margin: 1px 6px 3px 6px;
     width: 16px;
     height: 16px;
+    background-image: var(--button-add-image);
 }
 #AddRemoveButtons > #RemoveButton {
     margin: 1px 4px 3px 6px;
     width: 16px;
     height: 16px;
+    background-image: var(--button-remove-image);
 }
 #ListViewIndexSettingsContent {
     background-color: var(--unity-colors-tab-background-checked);
@@ -38,6 +40,9 @@
 }
 #ListViewIndexSettingsContent > Label {
     padding: 6px 0 5px 20px;
+}
+#show-package-indexes-toggle {
+    width: 170px;
 }
 #IndexListView {
     width: 250px;
@@ -95,7 +100,7 @@ Foldout > Toggle > VisualElement > Label {
 #PathTextField {
     flex-grow: 1;
 }
-#RootObjectField {
+#RootTextField {
     flex-grow: 1;
 }
 #Splitter {
@@ -111,14 +116,16 @@ Foldout > Toggle > VisualElement > Label {
     margin-top: 2px;
     margin-bottom: 4px;
 }
-#AddRemoveButtons > #AddButton {
-    background-image: var(--button-add-image);
-}
-#AddRemoveButtons > #RemoveButton {
-    background-image: var(--button-remove-image);
-}
 #RootButton {
     background-image: var(--folder-icon);
+}
+#ReorderableListViewGrip {
+    height: 6px;
+    width: 10px;
+    margin-left: 6px;
+    margin-right: 4px;
+    margin-top: 8px;
+    background-image: var(--reorderable-list-grip-icon);
 }
 #SavedIndexDataNotLoadedYet {
     margin: 10px;

@@ -5,7 +5,7 @@ using UnityEditor;
 using UnityEditor.UIElements;
 using UnityEngine.UIElements;
 
-namespace Unity.QuickSearch
+namespace UnityEditor.Search
 {
     class TransactionViewer : EditorWindow
     {
@@ -22,7 +22,7 @@ namespace Unity.QuickSearch
 
         // Add menu named "My Window" to the Window menu
         #if USE_TRANSACTION_VIEWER
-        [MenuItem("Window/Quick Search/Transaction Viewer")]
+        [MenuItem("Window/Search/Transaction Viewer")]
         #endif
         static void Init()
         {

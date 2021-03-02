@@ -1,7 +1,9 @@
+using System.Linq;
 using UnityEditor;
+using UnityEditor.Search.Providers;
 using UnityEngine;
 
-namespace Unity.QuickSearch
+namespace UnityEditor.Search
 {
     static class IndexerExtensions
     {
@@ -41,11 +43,12 @@ namespace Unity.QuickSearch
             }
         }
 
+        #region ShaderIndexing
         [CustomObjectIndexer(typeof(Shader), version = 1)]
         internal static void ShaderIndexing(CustomObjectIndexerTarget context, ObjectIndexer indexer)
         {
-            if (!(context.target is Shader shader) || 
-                !indexer.settings.options.properties || 
+            if (!(context.target is Shader shader) ||
+                !indexer.settings.options.properties ||
                 !indexer.settings.type.Equals("asset", System.StringComparison.Ordinal))
                 return;
 
@@ -70,6 +73,8 @@ namespace Unity.QuickSearch
                 }
             }
         }
+
+        #endregion
 
         [CustomObjectIndexer(typeof(Material), version = 1)]
         internal static void MaterialShaderReferences(CustomObjectIndexerTarget context, ObjectIndexer indexer)
@@ -143,13 +148,13 @@ namespace Unity.QuickSearch
         internal static void IndexColor(string propertyName, Color c, ObjectIndexer indexer, int documentIndex)
         {
             var colorHex = c.a < 1f ? ColorUtility.ToHtmlStringRGBA(c) : ColorUtility.ToHtmlStringRGB(c);
-            indexer.AddProperty(propertyName, colorHex.ToLowerInvariant(), documentIndex, exact: true, saveKeyword: false);
+            indexer.AddProperty(propertyName, "#" + colorHex.ToLowerInvariant(), documentIndex, exact: true, saveKeyword: false);
         }
 
         internal static void IndexVector(string propertyName, Vector2 v, ObjectIndexer indexer, int documentIndex)
         {
-            indexer.AddNumber(propertyName+".x", v.x, indexer.settings.baseScore, documentIndex);
-            indexer.AddNumber(propertyName+".y", v.y, indexer.settings.baseScore, documentIndex);
+            indexer.AddNumber(propertyName + ".x", v.x, indexer.settings.baseScore, documentIndex);
+            indexer.AddNumber(propertyName + ".y", v.y, indexer.settings.baseScore, documentIndex);
         }
 
         internal static void IndexVector(string propertyName, Vector3 v, ObjectIndexer indexer, int documentIndex)
@@ -165,6 +170,21 @@ namespace Unity.QuickSearch
             indexer.AddNumber(propertyName + ".y", v.y, indexer.settings.baseScore, documentIndex);
             indexer.AddNumber(propertyName + ".z", v.z, indexer.settings.baseScore, documentIndex);
             indexer.AddNumber(propertyName + ".w", v.w, indexer.settings.baseScore, documentIndex);
+        }
+
+        [SceneQueryEngineFilter("material", supportedOperators = new[] { ":" })]
+        internal static bool FilterMeshRendererMaterials(GameObject go, string op, string value)
+        {
+            if (!go.TryGetComponent<MeshRenderer>(out var c))
+                return false;
+            foreach (var m in c.sharedMaterials)
+            {
+                var mname = m.name.Replace(" (Instance)", "");
+                if (mname.IndexOf(value, System.StringComparison.OrdinalIgnoreCase) != -1)
+                    return true;
+            }
+
+            return false;
         }
     }
 }

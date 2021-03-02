@@ -2,7 +2,7 @@ using System.Collections.Generic;
 using System.Linq;
 using UnityEngine.Assertions;
 
-namespace Unity.QuickSearch
+namespace UnityEditor.Search
 {
     enum Combine
     {
@@ -11,26 +11,33 @@ namespace Unity.QuickSearch
         Union
     }
 
-    class SearchIndexerQueryFactory : SearchIndexerQueryFactory<SearchResult>
+    class SearchIndexerQueryFactory : SearchQueryEvaluatorFactory<SearchResult>
     {
-        public SearchIndexerQueryFactory(SearchIndexerQuery<SearchResult>.EvalHandler handler)
+        public SearchIndexerQueryFactory(SearchQueryEvaluator<SearchResult>.EvalHandler handler)
             : base(handler)
-        { }
+        {}
     }
 
-    class SearchIndexerQueryFactory<T> : IQueryHandlerFactory<T, SearchIndexerQuery<T>, object>
+    class SearchIndexerQuery : SearchQueryEvaluator<SearchResult>
     {
-        SearchIndexerQuery<T>.EvalHandler m_Handler;
+        public SearchIndexerQuery(QueryGraph graph, EvalHandler handler)
+            : base(graph, handler)
+        {}
+    }
 
-        public SearchIndexerQueryFactory(SearchIndexerQuery<T>.EvalHandler handler)
+    class SearchQueryEvaluatorFactory<T> : IQueryHandlerFactory<T, SearchQueryEvaluator<T>, object>
+    {
+        SearchQueryEvaluator<T>.EvalHandler m_Handler;
+
+        public SearchQueryEvaluatorFactory(SearchQueryEvaluator<T>.EvalHandler handler)
         {
             m_Handler = handler;
         }
 
-        public SearchIndexerQuery<T> Create(QueryGraph graph, ICollection<QueryError> errors)
+        public SearchQueryEvaluator<T> Create(QueryGraph graph, ICollection<QueryError> errors)
         {
             ValidateGraph(graph.root, errors);
-            return new SearchIndexerQuery<T>(graph, m_Handler);
+            return new SearchQueryEvaluator<T>(graph, m_Handler);
         }
 
         private static void ValidateGraph(IQueryNode root, ICollection<QueryError> errors)
@@ -58,21 +65,14 @@ namespace Unity.QuickSearch
                 case QueryNodeType.Union:
                 case QueryNodeType.NestedQuery:
                 {
-                    errors.Add(new QueryError(node.token.position, "Nested queries are not supported."));
+                    errors.Add(new QueryError(node.token.position, node.token.length, "Nested queries are not supported.", SearchQueryErrorType.Warning));
                     break;
                 }
             }
         }
     }
 
-    class SearchIndexerQuery : SearchIndexerQuery<SearchResult>
-    {
-        public SearchIndexerQuery(QueryGraph graph, EvalHandler handler)
-        : base(graph, handler)
-        { }
-    }
-
-    class SearchIndexerQuery<T> : IQueryHandler<T, object>
+    class SearchQueryEvaluator<T> : IQueryHandler<T, object>
     {
         private QueryGraph graph { get; set; }
         private EvalHandler m_Handler;
@@ -92,7 +92,7 @@ namespace Unity.QuickSearch
             public readonly object payload;
 
             public EvalHandlerArgs(string name, object value, SearchIndexOperator op, bool exclude,
-                IEnumerable<T> andSet, IEnumerable<T> orSet, object payload)
+                                   IEnumerable<T> andSet, IEnumerable<T> orSet, object payload)
             {
                 this.name = name;
                 this.value = value;
@@ -168,7 +168,7 @@ namespace Unity.QuickSearch
             }
         }
 
-        public SearchIndexerQuery(QueryGraph graph, EvalHandler handler)
+        public SearchQueryEvaluator(QueryGraph graph, EvalHandler handler)
         {
             this.graph = graph;
             graph.Optimize(true, true);
@@ -186,6 +186,11 @@ namespace Unity.QuickSearch
                 return new List<T>();
             else
                 return root.results.Distinct();
+        }
+
+        public bool Eval(T element)
+        {
+            throw new System.NotSupportedException();
         }
 
         internal static Instruction BuildInstruction(IQueryNode node, EvalHandler eval, object payload, bool not)

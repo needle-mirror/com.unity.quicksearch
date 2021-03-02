@@ -1,9 +1,8 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using UnityEngine;
 
-namespace Unity.QuickSearch
+namespace UnityEditor.Search
 {
     /// <summary>
     /// Defines at set of options that indicates to the search provider how the preview should be fetched.
@@ -51,7 +50,7 @@ namespace Unity.QuickSearch
         /// <summary>
         /// Show a large preview.
         /// </summary>
-        Preview = 1,
+        Preview = 1 << 0,
 
         /// <summary>
         /// Show an embedded inspector for the selected object.
@@ -69,44 +68,24 @@ namespace Unity.QuickSearch
         Description = 1 << 3,
 
         /// <summary>
+        /// If possible, default the list view to list view.
+        /// </summary>
+        ListView = 1 << 4,
+
+        /// <summary>
+        /// Show this provider as a default group (always visible even if no result)
+        /// </summary>
+        DefaultGroup = 1 << 5,
+
+        /// <summary>
         /// Default set of options used when [[showDetails]] is set to true.
         /// </summary>
         Default = Preview | Actions | Description
     }
 
     /// <summary>
-    /// The name entry holds a name and an identifier at once.
-    /// </summary>
-    [DebuggerDisplay("{displayName} ({id})")]
-    public class NameEntry
-    {
-        /// <summary>
-        /// Construct a new name identifier
-        /// </summary>
-        /// <param name="id">Unique id of the Entry.</param>
-        /// <param name="displayName">Name to display in UI.</param>
-        /// <param name="enabled">Is the component enabled.</param>
-        public NameEntry(string id, string displayName = null, bool enabled = true)
-        {
-            this.id = id;
-            this.displayName = displayName ?? id;
-            this.isEnabled = enabled;
-        }
-
-        /// <summary> Unique name for an object </summary>
-        public string id;
-
-        /// <summary> Display name (use by UI) </summary>
-        public string displayName;
-
-        /// <summary>Indicates if the entry is enabled</summary>
-        public bool isEnabled;
-    }
-
-    /// <summary>
     /// SearchProvider manages search for specific type of items and manages thumbnails, description and subfilters, etc.
     /// </summary>
-    [DebuggerDisplay("{name.id}")]
     public class SearchProvider
     {
         internal SearchContext defaultContext;
@@ -172,14 +151,16 @@ namespace Unity.QuickSearch
             if (String.IsNullOrEmpty(id))
                 throw new ArgumentException("provider id must be non-empty", nameof(id));
 
+            this.id = id;
+            type = id;
             active = true;
-            name = new NameEntry(id, displayName);
+            name = displayName;
             actions = new List<SearchAction>();
             fetchItems = fetchItemsHandler ?? ((context, items, provider) => null);
             fetchThumbnail = (item, context) => item.thumbnail ?? Icons.quicksearch;
             fetchPreview = null;
             fetchLabel = (item, context) => item.label ?? item.id ?? String.Empty;
-            fetchDescription = (item, context) => item.description ?? String.Empty;
+            fetchDescription = null;
             priority = 100;
             showDetails = false;
             showDetailsOptions = ShowDetailsOptions.Default;
@@ -201,10 +182,12 @@ namespace Unity.QuickSearch
         /// <returns>The newly created search item attached to the current search provider.</returns>
         public SearchItem CreateItem(SearchContext context, string id, int score, string label, string description, Texture2D thumbnail, object data)
         {
-            #if false // Debug sorting
-            description = $"DEBUG: id={id} - label={label} - description={description} - thumbnail={thumbnail} - data={data}";
-            label = $"{label ?? id} ({score})";
-            #endif
+            if (context.options.HasAny(SearchFlags.Debug))
+            {
+                // Debug sorting
+                description = $"DEBUG: id={id} - label={label} - description={description} - thumbnail={thumbnail} - data={data}";
+                label = $"{label ?? id} ({score})";
+            }
 
             return new SearchItem(id)
             {
@@ -300,8 +283,12 @@ namespace Unity.QuickSearch
             fetchTime  = t;
         }
 
-        /// <summary> Unique id of the provider.</summary>
-        public NameEntry name;
+        /// <summary>Unique id of the provider.</summary>
+        public string id { get; private set; }
+        internal string type { get; set; }
+
+        /// <summary>Display name of the provider.</summary>
+        public string name { get; private set; }
 
         /// <summary>
         /// Indicates if the provider is active or not. Inactive providers are completely ignored by the search service. The active state can be toggled in the search settings.
@@ -313,6 +300,9 @@ namespace Unity.QuickSearch
 
         /// <summary> This provider is only active when specified explicitly using his filterId</summary>
         public bool isExplicitProvider;
+
+        /// <summary> Does this provider supports synchronized view searches (ex: Scene provider can be synchronized with Hierarchy view).</summary>
+        internal bool supportsSyncViewSearch;
 
         /// <summary> Indicates if the provider can show additional details or not.</summary>
         public bool showDetails;
@@ -359,17 +349,6 @@ namespace Unity.QuickSearch
         public Func<SearchItem, Type, UnityEngine.Object> toObject;
 
         /// <summary>
-        /// This callback is used to open additional context for a given item.
-        /// </summary>
-        public Func<SearchSelection, Rect, bool> openContextual;
-
-        /// <summary>
-        /// Provider can return a list of words that will help the user complete his search query
-        /// </summary>
-        [Obsolete("GetKeywords is deprecated. Define fetchPropositions on your provider instead.")]
-        public Action<SearchContext, string, List<string>> fetchKeywords;
-
-        /// <summary>
         /// Provider can return a list of words that will help the user complete his search query.
         /// </summary>
         internal Func<SearchContext, SearchPropositionOptions, IEnumerable<SearchProposition>> fetchPropositions;
@@ -385,7 +364,7 @@ namespace Unity.QuickSearch
         public Action onDisable;
 
         /// <summary>
-        /// Hint to sort the Provider. Affect the order of search results and the order in which provider are shown in the FilterWindow.
+        /// Hint to sort the provider. Affect the order of search results.
         /// </summary>
         public int priority;
 
@@ -436,6 +415,15 @@ namespace Unity.QuickSearch
                     UnityEngine.Debug.LogException(ex);
                 }
             }
+        }
+
+        /// <summary>
+        /// Returns a short description of the SearchProvider.
+        /// </summary>
+        /// <returns>Returns a short description of the SearchProvider.</returns>
+        public override string ToString()
+        {
+            return $"[{id}] {name} active={active}";
         }
     }
 }

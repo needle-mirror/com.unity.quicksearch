@@ -6,7 +6,7 @@ using UnityEditor;
 using UnityEditor.Experimental;
 using UnityEngine;
 
-namespace Unity.QuickSearch
+namespace UnityEditor.Search
 {
     readonly struct AssetIndexChangeSet
     {
@@ -44,7 +44,7 @@ namespace Unity.QuickSearch
         private static readonly HashSet<string> s_RemovedItems = new HashSet<string>();
         private static readonly HashSet<string> s_MovedItems = new HashSet<string>();
 
-        const string k_TransactionDatabasePath = "Library/QuickSearch/transactions.db";
+        const string k_TransactionDatabasePath = "Library/Search/transactions.db";
         private static TransactionManager transactionManager;
 
         private static readonly object s_ContentRefreshedLock = new object();
@@ -77,7 +77,7 @@ namespace Unity.QuickSearch
 
         static AssetPostprocessorIndexer()
         {
-            if (AssetDatabaseAPI.IsAssetImportWorkerProcess())
+            if (!Utils.IsMainProcess())
                 return;
 
             transactionManager = new TransactionManager(k_TransactionDatabasePath);
@@ -94,7 +94,7 @@ namespace Unity.QuickSearch
 
         public static void Enable()
         {
-            if (AssetDatabaseAPI.IsAssetImportWorkerProcess())
+            if (!Utils.IsMainProcess())
                 return;
             s_Enabled = true;
         }
@@ -112,18 +112,12 @@ namespace Unity.QuickSearch
             {
                 var state = (AssetModification)t.state;
                 var assetPath = AssetDatabase.GUIDToAssetPath(t.guid.ToString());
-                if (state.HasFlag(AssetModification.Updated))
-                {
+                if ((state & AssetModification.Updated) == AssetModification.Updated)
                     updated.Add(assetPath);
-                }
-                else if (state.HasFlag(AssetModification.Moved))
-                {
+                else if ((state & AssetModification.Moved) == AssetModification.Moved)
                     moved.Add(assetPath);
-                }
-                else if (state.HasFlag(AssetModification.Removed))
-                {
+                else if ((state & AssetModification.Removed) == AssetModification.Removed)
                     removed.Add(assetPath);
-                }
             }
             return new AssetIndexChangeSet(updated, removed, moved, predicate);
         }
@@ -147,7 +141,7 @@ namespace Unity.QuickSearch
             RaiseContentRefreshed(imported, deleted.Concat(movedFrom).Distinct().ToArray(), movedTo);
         }
 
-        private static void RaiseContentRefreshed(IEnumerable<string> updated, IEnumerable<string> removed, IEnumerable<string> moved)
+        internal static void RaiseContentRefreshed(IEnumerable<string> updated, IEnumerable<string> removed, IEnumerable<string> moved)
         {
             if (transactionManager != null && transactionManager.Initialized)
             {
@@ -172,13 +166,13 @@ namespace Unity.QuickSearch
             if (s_UpdatedItems.Count > 0 || s_RemovedItems.Count > 0 || s_MovedItems.Count > 0)
             {
                 s_BatchStartTime = EditorApplication.timeSinceStartup;
-                EditorApplication.delayCall -= RaiseContentRefreshed;
-                EditorApplication.delayCall += RaiseContentRefreshed;
+                Utils.tick += RaiseContentRefreshed;
             }
         }
 
         private static void RaiseContentRefreshed()
         {
+            Utils.tick -= RaiseContentRefreshed;
             var currentTime = EditorApplication.timeSinceStartup;
             if (currentTime - s_BatchStartTime > 0.5)
             {
@@ -192,8 +186,7 @@ namespace Unity.QuickSearch
             }
             else
             {
-                EditorApplication.delayCall -= RaiseContentRefreshed;
-                EditorApplication.delayCall += RaiseContentRefreshed;
+                Utils.tick += RaiseContentRefreshed;
             }
         }
     }

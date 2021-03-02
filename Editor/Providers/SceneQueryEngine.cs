@@ -1,16 +1,15 @@
-//#define QUICKSEARCH_DEBUG
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.RegularExpressions;
-using UnityEditor;
 using UnityEngine;
 
-namespace Unity.QuickSearch.Providers
+namespace UnityEditor.Search.Providers
 {
     /// <summary>
     /// This is a <see cref="QueryEngineFilterAttribute"/> use for query in a scene provider.
     /// </summary>
+    [AttributeUsage(AttributeTargets.Method)]
     public class SceneQueryEngineFilterAttribute : QueryEngineFilterAttribute
     {
         /// <summary>
@@ -19,7 +18,7 @@ namespace Unity.QuickSearch.Providers
         /// <param name="token">The identifier of the filter. Typically what precedes the operator in a filter (i.e. "id" in "id>=2").</param>
         /// <param name="supportedOperators">List of supported operator tokens. Null for all operators.</param>
         public SceneQueryEngineFilterAttribute(string token, string[] supportedOperators = null)
-            : base(token, supportedOperators) { }
+            : base(token, supportedOperators) {}
 
         /// <summary>
         /// Create a filter with the corresponding token, string comparison options and supported operators.
@@ -29,7 +28,7 @@ namespace Unity.QuickSearch.Providers
         /// <param name="supportedOperators">List of supported operator tokens. Null for all operators.</param>
         /// <remarks>This sets the flag overridesStringComparison to true.</remarks>
         public SceneQueryEngineFilterAttribute(string token, StringComparison options, string[] supportedOperators = null)
-            : base(token, options, supportedOperators) { }
+            : base(token, options, supportedOperators) {}
 
         /// <summary>
         /// Create a filter with the corresponding token, parameter transformer function and supported operators.
@@ -39,7 +38,7 @@ namespace Unity.QuickSearch.Providers
         /// <param name="supportedOperators">List of supported operator tokens. Null for all operators.</param>
         /// <remarks>Sets the flag useParamTransformer to true.</remarks>
         public SceneQueryEngineFilterAttribute(string token, string paramTransformerFunction, string[] supportedOperators = null)
-            : base(token, paramTransformerFunction, supportedOperators) { }
+            : base(token, paramTransformerFunction, supportedOperators) {}
 
         /// <summary>
         /// Create a filter with the corresponding token, parameter transformer function, string comparison options and supported operators.
@@ -50,25 +49,26 @@ namespace Unity.QuickSearch.Providers
         /// <param name="supportedOperators">List of supported operator tokens. Null for all operators.</param>
         /// <remarks>Sets both overridesStringComparison and useParamTransformer flags to true.</remarks>
         public SceneQueryEngineFilterAttribute(string token, string paramTransformerFunction, StringComparison options, string[] supportedOperators = null)
-            : base(token, paramTransformerFunction, options, supportedOperators) { }
+            : base(token, paramTransformerFunction, options, supportedOperators) {}
     }
 
     /// <summary>
     /// Attribute class that defines a custom parameter transformer function applied for query running in a scene provider.
     /// </summary>
-    public class SceneQueryEngineParameterTransformerAttribute : QueryEngineParameterTransformerAttribute { }
+    [AttributeUsage(AttributeTargets.Method)]
+    public class SceneQueryEngineParameterTransformerAttribute : QueryEngineParameterTransformerAttribute {}
 
     class SceneQueryEngine
     {
-        private readonly GameObject[] m_GameObjects;
+        private readonly List<GameObject> m_GameObjects;
         private readonly Dictionary<int, GOD> m_GODS = new Dictionary<int, GOD>();
-        private readonly QueryEngine<GameObject> m_QueryEngine = new QueryEngine<GameObject>(true);
+        private static readonly QueryValidationOptions k_QueryEngineOptions = new QueryValidationOptions { validateFilters = true, skipNestedQueries = true };
+        private readonly QueryEngine<GameObject> m_QueryEngine = new QueryEngine<GameObject>(k_QueryEngineOptions);
         private List<SearchProposition> m_PropertyPrositions;
         private HashSet<SearchProposition> m_TypePropositions;
 
-        private static readonly string[] none = new string[0];
-        private static readonly char[] entrySeparators = { '/', ' ', '_', '-', '.' };
-        private static readonly SearchProposition[] fixedPropositions = new SearchProposition[] 
+        private static readonly char[] s_EntrySeparators = { '/', ' ', '_', '-', '.' };
+        private static readonly SearchProposition[] s_FixedPropositions = new SearchProposition[]
         {
             new SearchProposition("id:", null, "Search object by id"),
             new SearchProposition("path:", null, "Search object by transform path"),
@@ -94,14 +94,12 @@ namespace Unity.QuickSearch.Providers
             new SearchProposition("prefab:variant", null, "Search variant prefab objects"),
             new SearchProposition("prefab:modified", null, "Search modified prefab assets"),
             new SearchProposition("prefab:altered", null, "Search modified prefab instances"),
-            new SearchProposition("t:", null, "Search object by type"),
+            new SearchProposition("t:", null, "Search object by type", priority: -1),
             new SearchProposition("ref:", null, "Search object references"),
             new SearchProposition("p", "p(", "Search object's properties"),
         };
 
         private static readonly Regex s_RangeRx = new Regex(@"\[(-?[\d\.]+)[,](-?[\d\.]+)\s*\]");
-
-        public Func<GameObject, string[]> buildKeywordComponents { get; set; }
 
         class PropertyRange
         {
@@ -130,6 +128,7 @@ namespace Unity.QuickSearch.Providers
             public string[] types;
             public string[] words;
             public string[] refs;
+            public string[] attrs;
 
             public int? layer;
             public float size = float.MaxValue;
@@ -140,6 +139,104 @@ namespace Unity.QuickSearch.Providers
             public Dictionary<string, GOP> properties;
         }
 
+        readonly struct IntegerColor : IEquatable<IntegerColor>, IComparable<IntegerColor>
+        {
+            public readonly int r;
+            public readonly int g;
+            public readonly int b;
+            public readonly int a;
+
+            public IntegerColor(Color c)
+            {
+                r = Mathf.RoundToInt(c.r * 255f);
+                g = Mathf.RoundToInt(c.g * 255f);
+                b = Mathf.RoundToInt(c.b * 255f);
+                a = Mathf.RoundToInt(c.a * 255f);
+            }
+
+            public int this[int index]
+            {
+                get
+                {
+                    switch (index)
+                    {
+                        case 0: return r;
+                        case 1: return g;
+                        case 2: return b;
+                        case 3: return a;
+                        default:
+                            throw new IndexOutOfRangeException("Invalid Color index(" + index + ")!");
+                    }
+                }
+            }
+
+            public bool Equals(IntegerColor other)
+            {
+                for (var i = 0; i < 4; ++i)
+                {
+                    if (this[i] != other[i])
+                        return false;
+                }
+
+                return true;
+            }
+
+            public override bool Equals(object obj)
+            {
+                if (obj is IntegerColor ic)
+                    return base.Equals(ic);
+                return false;
+            }
+
+            public override int GetHashCode()
+            {
+                return r.GetHashCode() ^ (g.GetHashCode() << 2) ^ (b.GetHashCode() >> 2) ^ (a.GetHashCode() >> 1);
+            }
+
+            public int CompareTo(IntegerColor other)
+            {
+                for (var i = 0; i < 4; ++i)
+                {
+                    if (this[i] > other[i])
+                        return 1;
+                    if (this[i] < other[i])
+                        return -1;
+                }
+
+                return 0;
+            }
+
+            public static bool operator==(IntegerColor lhs, IntegerColor rhs)
+            {
+                return lhs.Equals(rhs);
+            }
+
+            public static bool operator!=(IntegerColor lhs, IntegerColor rhs)
+            {
+                return !lhs.Equals(rhs);
+            }
+
+            public static bool operator>(IntegerColor lhs, IntegerColor rhs)
+            {
+                return lhs.CompareTo(rhs) > 0;
+            }
+
+            public static bool operator<(IntegerColor lhs, IntegerColor rhs)
+            {
+                return lhs.CompareTo(rhs) < 0;
+            }
+
+            public static bool operator>=(IntegerColor lhs, IntegerColor rhs)
+            {
+                return lhs.CompareTo(rhs) >= 0;
+            }
+
+            public static bool operator<=(IntegerColor lhs, IntegerColor rhs)
+            {
+                return lhs.CompareTo(rhs) <= 0;
+            }
+        }
+
         readonly struct GOP
         {
             public enum ValueType
@@ -147,13 +244,15 @@ namespace Unity.QuickSearch.Providers
                 Nil = 0,
                 Bool,
                 Number,
-                Text
+                Text,
+                Color
             }
 
             public readonly ValueType type;
             public readonly bool b;
             public readonly float number;
             public readonly string text;
+            public readonly IntegerColor? color;
 
             public bool valid => type != ValueType.Nil;
 
@@ -165,6 +264,7 @@ namespace Unity.QuickSearch.Providers
                 this.number = float.NaN;
                 this.text = null;
                 this.b = v;
+                this.color = null;
             }
 
             public GOP(float number)
@@ -173,6 +273,7 @@ namespace Unity.QuickSearch.Providers
                 this.number = number;
                 this.text = null;
                 this.b = false;
+                this.color = null;
             }
 
             public GOP(string text)
@@ -181,10 +282,25 @@ namespace Unity.QuickSearch.Providers
                 this.number = float.NaN;
                 this.text = text;
                 this.b = false;
+                this.color = null;
+            }
+
+            public GOP(Color color)
+            {
+                this.type = ValueType.Color;
+                this.number = float.NaN;
+                this.text = null;
+                this.b = false;
+                this.color = new IntegerColor(color);
             }
         }
 
-        public SceneQueryEngine(GameObject[] gameObjects)
+        public bool InvalidateObject(int instanceId)
+        {
+            return m_GODS.Remove(instanceId);
+        }
+
+        public SceneQueryEngine(List<GameObject> gameObjects)
         {
             m_GameObjects = gameObjects;
             m_QueryEngine.AddFilter("id", GetId);
@@ -193,10 +309,11 @@ namespace Unity.QuickSearch.Providers
             m_QueryEngine.AddFilter("layer", GetLayer);
             m_QueryEngine.AddFilter("size", GetSize);
             m_QueryEngine.AddFilter("overlap", GetOverlapCount);
-            m_QueryEngine.AddFilter<string>("is", OnIsFilter, new []{":"});
+            m_QueryEngine.AddFilter<string>("is", OnIsFilter, new[] {":"});
             m_QueryEngine.AddFilter<string>("prefab", OnPrefabFilter, new[] { ":" });
-            m_QueryEngine.AddFilter<string>("t", OnTypeFilter, new []{"=", ":"});
-            m_QueryEngine.AddFilter<string>("ref", GetReferences, new []{"=", ":"});
+            m_QueryEngine.AddFilter<string>("t", OnTypeFilter, new[] {"=", ":"});
+            m_QueryEngine.AddFilter<string>("i", OnAttributeFilter, new[] {"=", ":"});
+            m_QueryEngine.AddFilter<string>("ref", GetReferences, new[] {"=", ":"});
 
             m_QueryEngine.AddFilter("p", OnPropertyFilter, s => s, StringComparison.OrdinalIgnoreCase);
 
@@ -226,6 +343,14 @@ namespace Unity.QuickSearch.Providers
             m_QueryEngine.AddOperatorHandler("<", (GOP v, string s, StringComparison sc) => PropertyStringCompare(v, s, (f, r) => string.Compare(f, r, sc) < 0));
             m_QueryEngine.AddOperatorHandler(">", (GOP v, string s, StringComparison sc) => PropertyStringCompare(v, s, (f, r) => string.Compare(f, r, sc) > 0));
             m_QueryEngine.AddOperatorHandler(">=", (GOP v, string s, StringComparison sc) => PropertyStringCompare(v, s, (f, r) => string.Compare(f, r, sc) >= 0));
+
+            m_QueryEngine.AddOperatorHandler(":", (GOP v, IntegerColor c) => PropertyColorCompare(v, c, (f, r) => f == r));
+            m_QueryEngine.AddOperatorHandler("=", (GOP v, IntegerColor c) => PropertyColorCompare(v, c, (f, r) => f == r));
+            m_QueryEngine.AddOperatorHandler("!=", (GOP v, IntegerColor c) => PropertyColorCompare(v, c, (f, r) => f != r));
+            m_QueryEngine.AddOperatorHandler("<=", (GOP v, IntegerColor c) => PropertyColorCompare(v, c, (f, r) => f <= r));
+            m_QueryEngine.AddOperatorHandler("<", (GOP v, IntegerColor c) => PropertyColorCompare(v, c, (f, r) => f < r));
+            m_QueryEngine.AddOperatorHandler(">", (GOP v, IntegerColor c) => PropertyColorCompare(v, c, (f, r) => f > r));
+            m_QueryEngine.AddOperatorHandler(">=", (GOP v, IntegerColor c) => PropertyColorCompare(v, c, (f, r) => f >= r));
 
             m_QueryEngine.AddOperatorHandler("=", (int? ev, int fv) => ev.HasValue && ev == fv);
             m_QueryEngine.AddOperatorHandler("!=", (int? ev, int fv) => ev.HasValue && ev != fv);
@@ -264,6 +389,15 @@ namespace Unity.QuickSearch.Providers
                 if (s == "off")
                     return new ParseResult<bool>(true, false);
                 return new ParseResult<bool>(false, false);
+            });
+
+            m_QueryEngine.AddTypeParser(s =>
+            {
+                if (!s.StartsWith("#"))
+                    return new ParseResult<IntegerColor?>(false, null);
+                if (ColorUtility.TryParseHtmlString(s, out var color))
+                    return new ParseResult<IntegerColor?>(true, new IntegerColor(color));
+                return new ParseResult<IntegerColor?>(false, null);
             });
 
             m_QueryEngine.SetSearchDataCallback(OnSearchData, s => s.ToLowerInvariant(), StringComparison.Ordinal);
@@ -344,28 +478,39 @@ namespace Unity.QuickSearch.Providers
             return comparer(v.text, s);
         }
 
+        private static bool PropertyColorCompare(GOP v, IntegerColor value, Func<IntegerColor, IntegerColor, bool> comparer)
+        {
+            if (v.type != GOP.ValueType.Color || !v.color.HasValue)
+                return false;
+            return comparer(v.color.Value, value);
+        }
+
         internal IEnumerable<SearchProposition> FindPropositions(SearchContext context, SearchPropositionOptions options)
         {
-            if (options.token.StartsWith("p("))
-                return FetchPropertyPropositions(options.token.Substring(2));
+            if (options.tokens.Any(t => t.StartsWith("p(")))
+                return FetchPropertyPropositions(options.tokens.First().Substring(2));
 
-            if (options.token.StartsWith("t:", StringComparison.OrdinalIgnoreCase))
+            if (options.tokens.Any(t => t.StartsWith("t:", StringComparison.OrdinalIgnoreCase)))
                 return FetchTypePropositions();
 
-            return fixedPropositions;
+            return s_FixedPropositions;
         }
 
         private IEnumerable<SearchProposition> FetchTypePropositions()
         {
-            if (m_TypePropositions == null)
+            if (m_TypePropositions == null && m_GameObjects != null)
             {
-                var types = m_GameObjects.SelectMany(go => go.GetComponents<Component>().Select(c => c.GetType())).Distinct();
+                var types = m_GameObjects
+                    .Where(go => go)
+                    .SelectMany(go => go.GetComponents<Component>()
+                        .Where(c => c)
+                        .Select(c => c.GetType())).Distinct();
 
                 m_TypePropositions = new HashSet<SearchProposition>(
                     types.Select(t => new SearchProposition($"t:{t.Name.ToLowerInvariant()}", null, $"Search {t.Name} components")));
             }
 
-            return m_TypePropositions;
+            return m_TypePropositions ?? Enumerable.Empty<SearchProposition>();
         }
 
         private IEnumerable<SearchProposition> FetchPropertyPropositions(string input)
@@ -382,7 +527,7 @@ namespace Unity.QuickSearch.Providers
                     for (int componentIndex = 1; componentIndex < gocs.Length; ++componentIndex)
                     {
                         var c = gocs[componentIndex];
-                        if (!c || c.hideFlags.HasFlag(HideFlags.HideInInspector))
+                        if (!c || (c.hideFlags & HideFlags.HideInInspector) == HideFlags.HideInInspector)
                             continue;
 
                         var cTypeName = c.GetType().Name;
@@ -411,34 +556,21 @@ namespace Unity.QuickSearch.Providers
             return m_PropertyPrositions;
         }
 
-        public IEnumerable<GameObject> Search(SearchContext context)
+        #region search_query_error_example
+        public IEnumerable<GameObject> Search(SearchContext context, SearchProvider provider, IEnumerable<GameObject> subset)
         {
-            var query = m_QueryEngine.Parse(context.searchQuery);
+            var query = m_QueryEngine.Parse(context.searchQuery, true);
             if (!query.valid)
             {
-                #if QUICKSEARCH_DEBUG
-                foreach (var err in query.errors)
-                    Debug.LogWarning($"Invalid search query. {err.reason} ({err.index},{err.length})");
-                #endif
-                yield break;
+                context.AddSearchQueryErrors(query.errors.Select(e => new SearchQueryError(e, context, provider)));
+                return new GameObject[] {};
             }
 
-            var progress = 0f;
-            var step = 1f / m_GameObjects.Length;
-            var goa = new GameObject[1];
-            foreach (var go in m_GameObjects)
-            {
-                goa[0] = go;
-                progress += step;
-                context.ReportProgress(progress, go.name);
-                yield return query.Apply(goa).FirstOrDefault();
-            }
+            IEnumerable<GameObject> gameObjects = subset ?? m_GameObjects;
+            return query.Apply(gameObjects, false);
         }
 
-        public static string[] BuildKeywordComponents(GameObject go)
-        {
-            return null;
-        }
+        #endregion
 
         public string GetId(GameObject go)
         {
@@ -501,7 +633,7 @@ namespace Unity.QuickSearch.Providers
         {
             int overlapCount = -1;
 
-            if(go.TryGetComponent<Renderer>(out var renderer))
+            if (go.TryGetComponent<Renderer>(out var renderer))
             {
                 overlapCount = 0;
 
@@ -575,7 +707,6 @@ namespace Unity.QuickSearch.Providers
         {
             using (var so = new SerializedObject(obj))
             {
-                //Utils.LogProperties(so);
                 var property = so.FindProperty(propertyName) ?? so.FindProperty($"m_{propertyName}");
                 if (property != null)
                     return ConvertPropertyValue(property);
@@ -593,11 +724,6 @@ namespace Unity.QuickSearch.Providers
             return GOP.invalid;
         }
 
-        private static string HexConverter(Color c)
-        {
-            return Mathf.RoundToInt(c.r * 255f).ToString("X2") + Mathf.RoundToInt(c.g * 255f).ToString("X2") + Mathf.RoundToInt(c.b * 255f).ToString("X2");
-        }
-
         private GOP ConvertPropertyValue(SerializedProperty sp)
         {
             switch (sp.propertyType)
@@ -611,7 +737,7 @@ namespace Unity.QuickSearch.Providers
                 case SerializedPropertyType.Bounds: return new GOP(sp.boundsValue.size.magnitude);
                 case SerializedPropertyType.BoundsInt: return new GOP(sp.boundsIntValue.size.magnitude);
                 case SerializedPropertyType.Rect: return new GOP(sp.rectValue.size.magnitude);
-                case SerializedPropertyType.Color: return new GOP(HexConverter(sp.colorValue));
+                case SerializedPropertyType.Color: return new GOP(sp.colorValue);
                 case SerializedPropertyType.Generic: break;
                 case SerializedPropertyType.LayerMask: break;
                 case SerializedPropertyType.Vector2: break;
@@ -637,17 +763,17 @@ namespace Unity.QuickSearch.Providers
         {
             switch (sp.propertyType)
             {
-                case SerializedPropertyType.Integer: return replacement+">0";
-                case SerializedPropertyType.Boolean: return replacement+"=true";
-                case SerializedPropertyType.Float: return replacement+">=0.0";
-                case SerializedPropertyType.String: return replacement+":\"\"";
-                case SerializedPropertyType.Enum: return replacement+":";
-                case SerializedPropertyType.ObjectReference: return replacement+":";
-                case SerializedPropertyType.Color: return replacement + "=FFFFBB"; ;
+                case SerializedPropertyType.Integer: return replacement + ">0";
+                case SerializedPropertyType.Boolean: return replacement + "=true";
+                case SerializedPropertyType.Float: return replacement + ">=0.0";
+                case SerializedPropertyType.String: return replacement + ":\"\"";
+                case SerializedPropertyType.Enum: return replacement + ":";
+                case SerializedPropertyType.ObjectReference: return replacement + ":";
+                case SerializedPropertyType.Color: return replacement + "=#FFFFBB";
                 case SerializedPropertyType.Bounds:
                 case SerializedPropertyType.BoundsInt:
                 case SerializedPropertyType.Rect:
-                    return replacement+">0";
+                    return replacement + ">0";
 
                 case SerializedPropertyType.Generic:
                 case SerializedPropertyType.LayerMask:
@@ -685,7 +811,7 @@ namespace Unity.QuickSearch.Providers
             for (int componentIndex = 1; componentIndex < gocs.Length; ++componentIndex)
             {
                 var c = gocs[componentIndex];
-                if (!c || c.hideFlags.HasFlag(HideFlags.HideInInspector))
+                if (!c || (c.hideFlags & HideFlags.HideInInspector) == HideFlags.HideInInspector)
                     continue;
 
                 var property = FindPropertyValue(c, propertyName);
@@ -712,7 +838,7 @@ namespace Unity.QuickSearch.Providers
                 for (int componentIndex = 1; componentIndex < gocs.Length; ++componentIndex)
                 {
                     var c = gocs[componentIndex];
-                    if (!c || c.hideFlags.HasFlag(HideFlags.HideInInspector))
+                    if (!c || (c.hideFlags & HideFlags.HideInInspector) == HideFlags.HideInInspector)
                         continue;
 
                     types.Add(c.GetType().Name.ToLowerInvariant());
@@ -722,6 +848,30 @@ namespace Unity.QuickSearch.Providers
             }
 
             return CompareWords(op, value.ToLowerInvariant(), god.types);
+        }
+
+        bool OnAttributeFilter(GameObject go, string op, string value)
+        {
+            var god = GetGOD(go);
+
+            if (god.attrs == null)
+            {
+                var attrs = new List<string>();
+
+                var gocs = go.GetComponents<MonoBehaviour>();
+                for (int componentIndex = 0; componentIndex < gocs.Length; ++componentIndex)
+                {
+                    var c = gocs[componentIndex];
+                    if (!c || (c.hideFlags & HideFlags.HideInInspector) == HideFlags.HideInInspector)
+                        continue;
+
+                    attrs.AddRange(c.GetType().GetInterfaces().Select(t => t.Name.ToLowerInvariant()));
+                }
+
+                god.attrs = attrs.ToArray();
+            }
+
+            return CompareWords(op, value.ToLowerInvariant(), god.attrs);
         }
 
         private void BuildReferences(UnityEngine.Object obj, ICollection<string> refs, int depth, int maxDepth)
@@ -803,7 +953,7 @@ namespace Unity.QuickSearch.Providers
                 for (int componentIndex = 1; componentIndex < gocs.Length; ++componentIndex)
                 {
                     var c = gocs[componentIndex];
-                    if (!c || c.hideFlags.HasFlag(HideFlags.HideInInspector))
+                    if (!c || (c.hideFlags & HideFlags.HideInInspector) == HideFlags.HideInInspector)
                         continue;
                     BuildReferences(c, refs, 1, maxReferenceDepth);
                 }
@@ -827,8 +977,7 @@ namespace Unity.QuickSearch.Providers
 
             if (god.words == null)
             {
-                god.words = SplitWords(go.name, entrySeparators)
-                    .Concat(buildKeywordComponents?.Invoke(go) ?? none)
+                god.words = SplitWords(go.name, s_EntrySeparators)
                     .Select(w => w.ToLowerInvariant())
                     .ToArray();
             }
@@ -842,8 +991,8 @@ namespace Unity.QuickSearch.Providers
             var scc = nameTokens.SelectMany(s => SearchUtils.SplitCamelCase(s)).Where(s => s.Length > 0);
             var fcc = scc.Aggregate("", (current, s) => current + s[0]);
             return new[] { fcc, entry }.Concat(scc.Where(s => s.Length > 1))
-                                .Where(s => s.Length > 0)
-                                .Distinct();
+                .Where(s => s.Length > 0)
+                .Distinct();
         }
 
         private static string CleanName(string s)
@@ -868,7 +1017,7 @@ namespace Unity.QuickSearch.Providers
 
             // Is in FOV
             if ((pointOnScreen.x < 0) || (pointOnScreen.x > Screen.width) ||
-                    (pointOnScreen.y < 0) || (pointOnScreen.y > Screen.height))
+                (pointOnScreen.y < 0) || (pointOnScreen.y > Screen.height))
                 return false;
 
             if (Physics.Linecast(cam.transform.position, renderer.bounds.center, out var hit))

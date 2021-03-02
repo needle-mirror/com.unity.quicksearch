@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 
-namespace Unity.QuickSearch
+namespace UnityEditor.Search
 {
     internal interface IFilter
     {
@@ -39,7 +39,7 @@ namespace Unity.QuickSearch
         protected BaseFilter(string token, IEnumerable<string> supportedOperatorTypes, bool resolver)
         {
             this.token = token;
-            supportedFilters = supportedOperatorTypes ?? new string[] { };
+            supportedFilters = supportedOperatorTypes ?? new string[] {};
             this.resolver = resolver;
             overrideStringComparison = false;
         }
@@ -47,7 +47,7 @@ namespace Unity.QuickSearch
         protected BaseFilter(string token, IEnumerable<string> supportedOperatorTypes, bool resolver, StringComparison stringComparison)
         {
             this.token = token;
-            supportedFilters = supportedOperatorTypes ?? new string[] { };
+            supportedFilters = supportedOperatorTypes ?? new string[] {};
             this.resolver = resolver;
             this.stringComparison = stringComparison;
             overrideStringComparison = true;
@@ -209,13 +209,13 @@ namespace Unity.QuickSearch
     {
         public DefaultFilter(string token, Func<TData, string, string, string, bool> handler)
             : base(token, null, (o, op, value) => handler(o, token, op, value))
-        { }
+        {}
     }
 
     internal class DefaultParamFilter<TData> : Filter<TData, string, string>
     {
         public DefaultParamFilter(string token, Func<TData, string, string, string, string, bool> handler)
             : base(token, null, (o, param, op, value) => handler(o, token, param, op, value))
-        { }
+        {}
     }
 }

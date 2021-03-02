@@ -19,4 +19,4 @@ The manual can be found [here](Documentation~/QuickSearch.md).
 
 This version of Quick Search is compatible with the following versions of the Unity Editor:
 
-* 2019.4 and later
+* 2020.2 and later

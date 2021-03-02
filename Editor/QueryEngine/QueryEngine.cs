@@ -5,9 +5,9 @@ using System.Linq;
 using System.Reflection;
 using System.Text.RegularExpressions;
 using UnityEngine;
-using NodesToStringPosition = System.Collections.Generic.Dictionary<Unity.QuickSearch.IQueryNode, System.Tuple<int,int>>;
+using NodesToStringPosition = System.Collections.Generic.Dictionary<UnityEditor.Search.IQueryNode, UnityEditor.Search.QueryToken>;
 
-namespace Unity.QuickSearch
+namespace UnityEditor.Search
 {
     interface IParseResult
     {
@@ -63,6 +63,7 @@ namespace Unity.QuickSearch
             this.success = success;
             this.parsedValue = value;
         }
+
         /// <summary>
         /// Default value when no ParsetResult are available.
         /// </summary>
@@ -96,6 +97,8 @@ namespace Unity.QuickSearch
         /// If skipIncompleteFilters is false, incomplete filters will generate errors when parsed.
         /// </summary>
         public bool skipIncompleteFilters;
+
+        internal bool skipNestedQueries;
     }
 
     class QueryEngineParserData
@@ -112,6 +115,18 @@ namespace Unity.QuickSearch
         }
     }
 
+    struct BuildGraphResult
+    {
+        public QueryGraph evaluationGraph;
+        public QueryGraph queryGraph;
+
+        public BuildGraphResult(QueryGraph evaluationGraph, QueryGraph queryGraph)
+        {
+            this.evaluationGraph = evaluationGraph;
+            this.queryGraph = queryGraph;
+        }
+    }
+
     sealed class QueryEngineImpl<TData> : QueryTokenizer<QueryEngineParserData>, IQueryEngineImplementation
     {
         Dictionary<string, IFilter> m_Filters = new Dictionary<string, IFilter>();
@@ -123,9 +138,9 @@ namespace Unity.QuickSearch
         Dictionary<Type, IFilterOperationGenerator> m_FilterOperationGenerators = new Dictionary<Type, IFilterOperationGenerator>();
 
         Regex m_PartialFilterRx = new Regex(QueryRegexValues.k_PartialFilterNamePattern +
-                                            QueryRegexValues.k_PartialFilterFunctionPattern +
-                                            QueryRegexValues.k_PartialFilterOperatorsPattern +
-                                            QueryRegexValues.k_PartialFilterValuePattern, RegexOptions.Compiled);
+            QueryRegexValues.k_PartialFilterFunctionPattern +
+            QueryRegexValues.k_PartialFilterOperatorsPattern +
+            QueryRegexValues.k_PartialFilterValuePattern, RegexOptions.Compiled);
 
         static readonly Dictionary<string, Func<IQueryNode>> k_CombiningTokenGenerators = new Dictionary<string, Func<IQueryNode>>
         {
@@ -173,6 +188,7 @@ namespace Unity.QuickSearch
 
         public Func<TData, IEnumerable<string>> searchDataCallback { get; private set; }
         public Func<string, string> searchWordTransformerCallback { get; private set; }
+        public Func<string, bool, StringComparison, string, bool> searchWordMatcher { get; private set; }
 
         public QueryValidationOptions validationOptions { get; set; }
 
@@ -185,7 +201,7 @@ namespace Unity.QuickSearch
 
         public QueryEngineImpl()
             : this(new QueryValidationOptions())
-        { }
+        {}
 
         public QueryEngineImpl(QueryValidationOptions validationOptions)
         {
@@ -241,7 +257,7 @@ namespace Unity.QuickSearch
             BuildDefaultTypeParsers();
 
             // Insert consumer before the word consumer
-            m_TokenConsumers.Insert(m_TokenConsumers.Count - 1, new Tuple<TokenMatcher, TokenConsumer>(MatchPartialFilter, ConsumePartialFilter));
+            m_TokenConsumers.Insert(m_TokenConsumers.Count - 1, new QueryTokenHandler(MatchPartialFilter, ConsumePartialFilter));
         }
 
         bool CompareObjects(object ev, object fv, StringComparison sc, DefaultOperator op, string opToken)
@@ -280,9 +296,9 @@ namespace Unity.QuickSearch
 
             switch (op)
             {
-                case DefaultOperator.Contains: return ev?.ToString().IndexOf(fv?.ToString(), sc) >= 0;
-                case DefaultOperator.Equal: return ev?.Equals(fv) ?? false;
-                case DefaultOperator.NotEqual: return !ev?.Equals(fv) ?? false;
+                case DefaultOperator.Contains: return ev.ToString().IndexOf(fv.ToString(), sc) >= 0;
+                case DefaultOperator.Equal: return ev.Equals(fv);
+                case DefaultOperator.NotEqual: return !ev.Equals(fv);
                 case DefaultOperator.Greater: return Comparer<object>.Default.Compare(ev, fv) > 0;
                 case DefaultOperator.GreaterOrEqual: return Comparer<object>.Default.Compare(ev, fv) >= 0;
                 case DefaultOperator.Less: return Comparer<object>.Default.Compare(ev, fv) < 0;
@@ -381,6 +397,11 @@ namespace Unity.QuickSearch
             this.searchWordTransformerCallback = searchWordTransformerCallback;
         }
 
+        public void SetsearchWordMatcher(Func<string, bool, StringComparison, string, bool> wordMatcher)
+        {
+            searchWordMatcher = wordMatcher;
+        }
+
         public void AddTypeParser<TFilterConstant>(Func<string, ParseResult<TFilterConstant>> parser)
         {
             m_TypeParsers.Add(new TypeParser<TFilterConstant>(parser));
@@ -453,10 +474,10 @@ namespace Unity.QuickSearch
             return rootNode;
         }
 
-        internal Tuple<QueryGraph, QueryGraph> BuildGraph(string text, ICollection<QueryError> errors, ICollection<string> tokens)
+        internal BuildGraphResult BuildGraph(string text, ICollection<QueryError> errors, ICollection<string> tokens)
         {
             if (text == null)
-                return Tuple.Create(new QueryGraph(null), new QueryGraph(null));
+                return new BuildGraphResult(new QueryGraph(null), new QueryGraph(null));
 
             var nodesToStringPosition = new NodesToStringPosition();
             var evaluationRootNode = BuildGraphRecursively(text, 0, text.Length, errors, tokens, nodesToStringPosition);
@@ -483,11 +504,11 @@ namespace Unity.QuickSearch
 
             if (evaluationRootNode != null && !IsEnumerableNode(evaluationRootNode))
             {
-                errors.Add(new QueryError(evaluationRootNode.token.position, "Only enumerable nodes can be at the root level"));
+                errors.Add(new QueryError(evaluationRootNode.token.position, evaluationRootNode.token.length, "Only enumerable nodes can be at the root level"));
                 evaluationRootNode.skipped = false;
             }
 
-            return Tuple.Create(new QueryGraph(evaluationRootNode), new QueryGraph(queryRootNode));
+            return new BuildGraphResult(new QueryGraph(evaluationRootNode), new QueryGraph(queryRootNode));
         }
 
         protected override bool ConsumeEmpty(string text, int startIndex, int endIndex, StringView sv, Match match, ICollection<QueryError> errors, QueryEngineParserData userData)
@@ -502,7 +523,7 @@ namespace Unity.QuickSearch
                 return false;
             var newNode = generator();
             newNode.token = new QueryToken(token, startIndex);
-            userData.nodesToStringPosition.Add(newNode, new Tuple<int, int>(startIndex, sv.Length));
+            userData.nodesToStringPosition.Add(newNode, new QueryToken(startIndex, sv.Length));
             userData.expressionNodes.Add(newNode);
             userData.tokens.Add(token);
             return true;
@@ -515,7 +536,7 @@ namespace Unity.QuickSearch
                 return false;
 
             node.token = new QueryToken(match.Value, startIndex);
-            userData.nodesToStringPosition.Add(node, new Tuple<int, int>(startIndex, match.Length));
+            userData.nodesToStringPosition.Add(node, new QueryToken(startIndex, match.Length));
             userData.expressionNodes.Add(node);
             userData.tokens.Add(match.Value);
             return true;
@@ -543,7 +564,7 @@ namespace Unity.QuickSearch
                 return false;
 
             node.token = new QueryToken(match.Value, startIndex);
-            userData.nodesToStringPosition.Add(node, new Tuple<int, int>(startIndex, match.Length));
+            userData.nodesToStringPosition.Add(node, new QueryToken(startIndex, match.Length));
             userData.expressionNodes.Add(node);
             userData.tokens.Add(match.Value);
             return true;
@@ -562,7 +583,7 @@ namespace Unity.QuickSearch
                 return false;
 
             node.token = new QueryToken(match.Value, startIndex);
-            userData.nodesToStringPosition.Add(node, new Tuple<int, int>(startIndex, match.Length));
+            userData.nodesToStringPosition.Add(node, new QueryToken(startIndex, match.Length));
             userData.expressionNodes.Add(node);
             if (!node.skipped)
                 userData.tokens.Add(match.Value);
@@ -581,7 +602,7 @@ namespace Unity.QuickSearch
 
         protected override bool ConsumeNestedQuery(string text, int startIndex, int endIndex, StringView sv, Match match, ICollection<QueryError> errors, QueryEngineParserData userData)
         {
-            if (validationOptions.validateFilters)
+            if (validationOptions.validateFilters && !validationOptions.skipNestedQueries)
             {
                 if (m_NestedQueryHandler == null)
                 {
@@ -602,8 +623,15 @@ namespace Unity.QuickSearch
             var nestedQueryString = queryString.Substring(1, queryString.Length - 2);
             nestedQueryString = nestedQueryString.Trim();
             var nestedQueryNode = new NestedQueryNode(nestedQueryString, m_NestedQueryHandler);
-            nestedQueryNode.token = new QueryToken(match.Value, startIndex);
-            userData.nodesToStringPosition.Add(nestedQueryNode, new Tuple<int, int>(startIndex + (string.IsNullOrEmpty(nestedQueryAggregator) ? 0 : nestedQueryAggregator.Length), queryString.Length));
+            nestedQueryNode.token = new QueryToken(startIndex + (string.IsNullOrEmpty(nestedQueryAggregator) ? 0 : nestedQueryAggregator.Length), queryString.Length);
+            userData.nodesToStringPosition.Add(nestedQueryNode, nestedQueryNode.token);
+            if (validationOptions.skipNestedQueries)
+            {
+                nestedQueryNode.skipped = true;
+                userData.expressionNodes.Add(nestedQueryNode);
+                return true;
+            }
+
             userData.tokens.Add(match.Value);
 
             if (string.IsNullOrEmpty(nestedQueryAggregator))
@@ -618,7 +646,8 @@ namespace Unity.QuickSearch
                 }
 
                 var aggregatorNode = new AggregatorNode(nestedQueryAggregator, aggregator);
-                userData.nodesToStringPosition.Add(aggregatorNode, new Tuple<int, int>(startIndex, nestedQueryAggregator.Length));
+                aggregatorNode.token = new QueryToken(startIndex, nestedQueryAggregator.Length + nestedQueryNode.token.length);
+                userData.nodesToStringPosition.Add(aggregatorNode, aggregatorNode.token);
                 aggregatorNode.children.Add(nestedQueryNode);
                 nestedQueryNode.parent = aggregatorNode;
                 userData.expressionNodes.Add(aggregatorNode);
@@ -642,9 +671,9 @@ namespace Unity.QuickSearch
                 var andNode = new AndNode();
                 var previousNodePosition = nodesToStringPosition[nodes[i]];
                 var nextNodePosition = nodesToStringPosition[nodes[i + 1]];
-                var startPosition = previousNodePosition.Item1 + previousNodePosition.Item2;
-                var length = nextNodePosition.Item1 - startPosition;
-                nodesToStringPosition.Add(andNode, new Tuple<int, int>(startPosition, length));
+                var startPosition = previousNodePosition.position + previousNodePosition.length;
+                var length = nextNodePosition.position - startPosition;
+                nodesToStringPosition.Add(andNode, new QueryToken(startPosition, length));
                 nodes.Insert(i + 1, andNode);
                 andNode.token = new QueryToken("", startPosition, length);
                 // Skip this new node
@@ -666,9 +695,9 @@ namespace Unity.QuickSearch
             var filterValue = match.Groups[4].Value;
             var nestedQueryAggregator = match.Groups[5].Value;
 
-            var filterTypeIndex = index + match.Groups[1].Index;
-            var filterOperatorIndex = index + match.Groups[3].Index;
-            var filterValueIndex = index + match.Groups[4].Index;
+            var filterTypeIndex = match.Groups[1].Index;
+            var filterOperatorIndex = match.Groups[3].Index;
+            var filterValueIndex = match.Groups[4].Index;
 
             if (!string.IsNullOrEmpty(filterParam))
             {
@@ -684,13 +713,13 @@ namespace Unity.QuickSearch
                     return new FilterNode(filterType, filterOperator, filterValue, filterParam, token) {skipped = true};
                 }
 
-                if (m_DefaultFilterHandler == null && validationOptions.validateFilters)
+                if (!HasDefaultHandler(!string.IsNullOrEmpty(filterParam)) && validationOptions.validateFilters)
                 {
-                    errors.Add(new QueryError(filterTypeIndex, filterType.Length, $"Unknown filter type \"{filterType}\"."));
+                    errors.Add(new QueryError(filterTypeIndex, filterType.Length, $"Unknown filter \"{filterType}\"."));
                     return null;
                 }
                 if (string.IsNullOrEmpty(filterParam))
-                    filter = new DefaultFilter<TData>(filterType, m_DefaultFilterHandler ?? ((o, s, fo, value) => false) );
+                    filter = new DefaultFilter<TData>(filterType, m_DefaultFilterHandler ?? ((o, s, fo, value) => false));
                 else
                     filter = new DefaultParamFilter<TData>(filterType, m_DefaultParamFilterHandler ?? ((o, s, param, fo, value) => false));
             }
@@ -704,7 +733,7 @@ namespace Unity.QuickSearch
 
             if (filter.supportedFilters.Any() && !filter.supportedFilters.Any(filterOp => filterOp.Equals(op.token)))
             {
-                errors.Add(new QueryError(filterOperatorIndex, filterOperator.Length, $"The filter \"{op.token}\" is not supported for this filter."));
+                errors.Add(new QueryError(filterOperatorIndex, filterOperator.Length, $"The operator \"{op.token}\" is not supported for this filter."));
                 return null;
             }
 
@@ -715,6 +744,11 @@ namespace Unity.QuickSearch
 
             if (QueryEngineUtils.IsNestedQueryToken(filterValue))
             {
+                if (validationOptions.skipNestedQueries)
+                {
+                    return new InFilterNode(filter, op, filterValue, filterParam, token) {skipped = true};
+                }
+
                 if (validationOptions.validateFilters && m_NestedQueryHandler == null)
                 {
                     errors.Add(new QueryError(filterValueIndex, filterValue.Length, $"Cannot use a nested query without setting the handler first."));
@@ -769,8 +803,8 @@ namespace Unity.QuickSearch
             var filterOperator = match.Groups["op"].Value;
             var filterValue = match.Groups["value"].Value;
 
-            var filterTypeIndex = index + match.Groups["name"].Index;
-            var filterOperatorIndex = index + match.Groups["op"].Index;
+            var filterTypeIndex = match.Groups["name"].Index;
+            var filterOperatorIndex = match.Groups["op"].Index;
 
             if (!string.IsNullOrEmpty(filterParam))
             {
@@ -791,9 +825,9 @@ namespace Unity.QuickSearch
                     return new FilterNode(filterType, filterOperator, filterValue, filterParam, token) { skipped = true };
                 }
 
-                if (m_DefaultFilterHandler == null && validationOptions.validateFilters)
+                if (!HasDefaultHandler(!string.IsNullOrEmpty(filterParam)) && validationOptions.validateFilters)
                 {
-                    errors.Add(new QueryError(filterTypeIndex, filterType.Length, $"Unknown filter type \"{filterType}\"."));
+                    errors.Add(new QueryError(filterTypeIndex, filterType.Length, $"Unknown filter \"{filterType}\"."));
                     return null;
                 }
                 if (string.IsNullOrEmpty(filterParam))
@@ -814,7 +848,7 @@ namespace Unity.QuickSearch
 
                 if (filter.supportedFilters.Any() && !filter.supportedFilters.Any(filterOp => filterOp.Equals(op.token)))
                 {
-                    errors.Add(new QueryError(filterOperatorIndex, filterOperator.Length, $"The filter \"{op.token}\" is not supported for this filter."));
+                    errors.Add(new QueryError(filterOperatorIndex, filterOperator.Length, $"The operator \"{op.token}\" is not supported for this filter."));
                     return null;
                 }
             }
@@ -826,6 +860,11 @@ namespace Unity.QuickSearch
             errors.Add(new QueryError(index, token.Length, $"The filter \"{filterType}\" is incomplete."));
 
             return filterNode;
+        }
+
+        private bool HasDefaultHandler(bool useParamFilter)
+        {
+            return useParamFilter ? m_DefaultParamFilterHandler != null : m_DefaultFilterHandler != null;
         }
 
         public IParseResult ParseFilterValue(string filterValue, IFilter filter, FilterOperator op, out Type filterValueType)
@@ -951,7 +990,7 @@ namespace Unity.QuickSearch
             return searchNode;
         }
 
-        static IQueryNode CombineNodesToTree(List<IQueryNode> expressionNodes, ICollection<QueryError> errors, NodesToStringPosition nodesToStringPosition)
+        IQueryNode CombineNodesToTree(List<IQueryNode> expressionNodes, ICollection<QueryError> errors, NodesToStringPosition nodesToStringPosition)
         {
             var count = expressionNodes.Count;
             if (count == 0)
@@ -984,10 +1023,10 @@ namespace Unity.QuickSearch
                 if (!combinedNode.leaf)
                     continue;
 
-                var (startIndex, length) = nodesToStringPosition[currentNode];
+                var t = nodesToStringPosition[currentNode];
                 if (nextNode == null)
                 {
-                    errors.Add(new QueryError(startIndex + length, $"Missing operand to combine with node {currentNode.type}."));
+                    errors.Add(new QueryError(t.position + t.length, $"Missing operand to combine with node {currentNode.type}."));
                 }
                 else
                 {
@@ -1015,10 +1054,10 @@ namespace Unity.QuickSearch
                 if (!combinedNode.leaf)
                     continue;
 
-                var (startIndex, length) = nodesToStringPosition[currentNode];
+                var t = nodesToStringPosition[currentNode];
                 if (previousNode == null)
                 {
-                    errors.Add(new QueryError(startIndex + length, $"Missing left-hand operand to combine with node {currentNode.type}."));
+                    errors.Add(new QueryError(t.position, t.length, $"Missing left-hand operand to combine with node {currentNode.type}."));
                 }
                 else
                 {
@@ -1030,7 +1069,7 @@ namespace Unity.QuickSearch
 
                 if (nextNode == null)
                 {
-                    errors.Add(new QueryError(startIndex + length, $"Missing right-hand operand to combine with node {currentNode.type}."));
+                    errors.Add(new QueryError(t.position, t.length, $"Missing right-hand operand to combine with node {currentNode.type}."));
                 }
                 else
                 {
@@ -1040,9 +1079,9 @@ namespace Unity.QuickSearch
             }
         }
 
-        static void TransformAndOrToIntersectUnion(ref IQueryNode root, ICollection<QueryError> errors, NodesToStringPosition nodesToStringPosition)
+        void TransformAndOrToIntersectUnion(ref IQueryNode root, ICollection<QueryError> errors, NodesToStringPosition nodesToStringPosition)
         {
-            if (root.type != QueryNodeType.And && root.type != QueryNodeType.Or)
+            if ((root.type != QueryNodeType.And && root.type != QueryNodeType.Or) || validationOptions.skipNestedQueries)
                 return;
 
             var children = root.children.ToArray();
@@ -1071,8 +1110,8 @@ namespace Unity.QuickSearch
 
             if (nestedQueriesCount != root.children.Count)
             {
-                var (startIndex, length) = nodesToStringPosition[root];
-                errors.Add(new QueryError(startIndex, length, $"Cannot mix root level nested query operations with regular operations."));
+                var t = nodesToStringPosition[root];
+                errors.Add(new QueryError(t.position, t.length, $"Cannot mix root level nested query operations with regular operations."));
                 return;
             }
 
@@ -1165,8 +1204,8 @@ namespace Unity.QuickSearch
                 var index = combinedNode.parent.children.IndexOf(combinedNode);
                 if (index == -1)
                 {
-                    var (nodeStringIndex, _) = nodesToStringPosition[node];
-                    errors.Add(new QueryError(nodeStringIndex, $"Node {combinedNode.type} not found in its parent's children list."));
+                    var t = nodesToStringPosition[node];
+                    errors.Add(new QueryError(t.position, $"Node {combinedNode.type} not found in its parent's children list."));
                     return;
                 }
 
@@ -1181,7 +1220,9 @@ namespace Unity.QuickSearch
                 errors.Add(new QueryError(0, "Encountered a null node."));
                 return;
             }
-            var (position, length) = nodesToStringPosition[root];
+            var t = nodesToStringPosition[root];
+            var position = t.position;
+            var length = t.length;
             if (root is CombinedNode cn)
             {
                 if (root.leaf)
@@ -1299,7 +1340,7 @@ namespace Unity.QuickSearch
             where TFilterAttribute : QueryEngineFilterAttribute
             where TTransformerAttribute : QueryEngineParameterTransformerAttribute
         {
-            var filters = Utils.GetAllMethodsWithAttribute<TFilterAttribute>()
+            var filters = TypeCache.GetMethodsWithAttribute<TFilterAttribute>()
                 .Select(CreateFilterFromFilterAttribute<TFilterAttribute, TTransformerAttribute>)
                 .Where(filter => filter != null);
             foreach (var filter in filters)
@@ -1324,7 +1365,7 @@ namespace Unity.QuickSearch
                 attr.useParamTransformer,
                 attr.paramTransformerFunction,
                 typeof(TTransformerAttribute)
-                );
+            );
 
             try
             {
@@ -1461,7 +1502,7 @@ namespace Unity.QuickSearch
 
         static Func<string, TParam> GetParameterTransformerFunction<TParam>(MethodInfo mi, string functionName, Type transformerAttributeType)
         {
-            var transformerMethod = Utils.GetAllMethodsWithAttribute(transformerAttributeType)
+            var transformerMethod = TypeCache.GetMethodsWithAttribute(transformerAttributeType)
                 .Where(transformerMethodInfo =>
                 {
                     var sameType = transformerMethodInfo.ReturnType == typeof(TParam);
@@ -1501,7 +1542,7 @@ namespace Unity.QuickSearch
                 return rootNode;
 
             var whereNode = new WhereNode();
-            nodesToStringPosition.Add(whereNode, new Tuple<int, int>(0, 0));
+            nodesToStringPosition.Add(whereNode, new QueryToken(0, 0));
             whereNode.children.Add(rootNode);
             rootNode.parent = whereNode;
             return whereNode;
@@ -1561,6 +1602,17 @@ namespace Unity.QuickSearch
             }
         }
 
+        internal bool skipNestedQueries
+        {
+            get => m_Impl.validationOptions.skipNestedQueries;
+            set
+            {
+                var options = m_Impl.validationOptions;
+                options.skipNestedQueries = value;
+                m_Impl.validationOptions = options;
+            }
+        }
+
         /// <summary>
         /// Global string comparison options for word matching and filter handling (if not overridden).
         /// </summary>
@@ -1582,11 +1634,16 @@ namespace Unity.QuickSearch
         public Func<TData, IEnumerable<string>> searchDataCallback => m_Impl.searchDataCallback;
 
         /// <summary>
+        /// The function used to match the search data against the search words.
+        /// </summary>
+        public Func<string, bool, StringComparison, string, bool> searchWordMatcher => m_Impl.searchWordMatcher;
+
+        /// <summary>
         /// Construct a new QueryEngine.
         /// </summary>
         public QueryEngine()
         {
-            m_Impl = new QueryEngineImpl<TData>(new QueryValidationOptions{ validateFilters = true });
+            m_Impl = new QueryEngineImpl<TData>(new QueryValidationOptions { validateFilters = true });
         }
 
         /// <summary>
@@ -1856,6 +1913,15 @@ namespace Unity.QuickSearch
         }
 
         /// <summary>
+        /// Set the search word matching function to be used instead of the default one. Set to null to use the default.
+        /// </summary>
+        /// <param name="wordMatcher">The search word matching function. The first parameter is the search word. The second parameter is a boolean for exact match or not. The third parameter is the StringComparison options. The fourth parameter is an element of the array returned by the search data callback. The function returns true for a match or false for no match.</param>
+        public void SetSearchWordMatcher(Func<string, bool, StringComparison, string, bool> wordMatcher)
+        {
+            m_Impl.SetsearchWordMatcher(wordMatcher);
+        }
+
+        /// <summary>
         /// Set global string comparison options. Used for word matching and filter handling (unless overridden by filter).
         /// </summary>
         /// <param name="stringComparison">String comparison options.</param>
@@ -1868,29 +1934,38 @@ namespace Unity.QuickSearch
         /// Parse a query string into a Query operation. This Query operation can then be used to filter any data set of type TData.
         /// </summary>
         /// <param name="text">The query input string.</param>
+        /// <param name="useFastYieldingQueryHandler">Set to true to get a query that will yield null results for elements that don't pass the query, instead of only the elements that pass the query.</param>
         /// <returns>Query operation of type TData.</returns>
-        public Query<TData> Parse(string text)
+        public Query<TData> Parse(string text, bool useFastYieldingQueryHandler = false)
         {
-            var handlerFactory = new DefaultQueryHandlerFactory<TData>(this);
+            var handlerFactory = new DefaultQueryHandlerFactory<TData>(this, useFastYieldingQueryHandler);
             return BuildQuery(text, handlerFactory, (evalGraph, queryGraph, errors, tokens, handler) => new Query<TData>(text, evalGraph, queryGraph, errors, tokens, handler));
         }
 
-        internal Query<TData, TPayload> Parse<TQueryHandler, TPayload>(string text, IQueryHandlerFactory<TData, TQueryHandler, TPayload> queryHandlerFactory)
+        /// <summary>
+        /// Parse a query string into a Query operation. This Query operation can then be used to filter any data set of type TData.
+        /// </summary>
+        /// <typeparam name="TQueryHandler">Type of the underlying query handler. See IQueryHandler.</typeparam>
+        /// <typeparam name="TPayload">Type of the payload that the query handler receives.</typeparam>
+        /// <param name="text">The query input string.</param>
+        /// <param name="queryHandlerFactory">A factory object that creates query handlers of type TQueryHandler. See IQueryHandlerFactory.</param>
+        /// <returns>Query operation of type TData and TPayload.</returns>
+        public Query<TData, TPayload> Parse<TQueryHandler, TPayload>(string text, IQueryHandlerFactory<TData, TQueryHandler, TPayload> queryHandlerFactory)
             where TQueryHandler : IQueryHandler<TData, TPayload>
             where TPayload : class
         {
             return BuildQuery(text, queryHandlerFactory, (evalGraph, queryGraph, errors, tokens, handler) => new Query<TData, TPayload>(text, evalGraph, queryGraph, errors, tokens, handler));
         }
 
-        QueryType BuildQuery<QueryType, TQueryHandler, TPayload>(string text, IQueryHandlerFactory<TData, TQueryHandler, TPayload> queryHandlerFactory, Func<QueryGraph, QueryGraph, ICollection<QueryError>, ICollection<string>, TQueryHandler, QueryType> queryCreator)
+        TQuery BuildQuery<TQuery, TQueryHandler, TPayload>(string text, IQueryHandlerFactory<TData, TQueryHandler, TPayload> queryHandlerFactory, Func<QueryGraph, QueryGraph, ICollection<QueryError>, ICollection<string>, TQueryHandler, TQuery> queryCreator)
             where TQueryHandler : IQueryHandler<TData, TPayload>
             where TPayload : class
-            where QueryType : Query<TData, TPayload>
+            where TQuery : Query<TData, TPayload>
         {
             var errors = new List<QueryError>();
             var tokens = new List<string>();
-            var (evalGraph, queryGraph) = m_Impl.BuildGraph(text, errors, tokens);
-            return queryCreator(evalGraph, queryGraph, errors, tokens, queryHandlerFactory.Create(evalGraph, errors));
+            var result = m_Impl.BuildGraph(text, errors, tokens);
+            return queryCreator(result.evaluationGraph, result.queryGraph, errors, tokens, queryHandlerFactory.Create(result.evaluationGraph, errors));
         }
 
         /// <summary>
@@ -1948,7 +2023,7 @@ namespace Unity.QuickSearch
         /// Construct a new QueryEngine.
         /// </summary>
         public QueryEngine()
-        { }
+        {}
 
         /// <summary>
         /// Construct a new QueryEngine.
@@ -1956,7 +2031,7 @@ namespace Unity.QuickSearch
         /// <param name="validateFilters">Indicates if the engine must validate filters when parsing the query.</param>
         public QueryEngine(bool validateFilters)
             : base(validateFilters)
-        { }
+        {}
 
         /// <summary>
         /// Construct a new QueryEngine with the specified validation options.
@@ -1964,6 +2039,6 @@ namespace Unity.QuickSearch
         /// <param name="validationOptions">The validation options to use in this engine.</param>
         public QueryEngine(QueryValidationOptions validationOptions)
             : base(validationOptions)
-        { }
+        {}
     }
 }

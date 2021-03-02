@@ -1,23 +1,19 @@
-﻿//#define QUICKSEARCH_DEBUG
+//#define QUICKSEARCH_DEBUG
 using System;
 using System.Collections.Generic;
-using UnityEditor;
 
 #if QUICKSEARCH_DEBUG
+using UnityEditor;
 using UnityEngine.Profiling;
 #endif
 
-namespace Unity.QuickSearch
+namespace UnityEditor.Search
 {
     /// <summary>
     /// Utility class to perform matching against query text using a fuzzy search algorithm.
     /// </summary>
     public static class FuzzySearch
     {
-        [Obsolete("Not supported anymore")] public static string HighlightColorTag = null;
-
-        [Obsolete("Not supported anymore")] public static string HighlightColorTagSpecial = null;
-
         struct ScoreIndx
         {
             public int i;
@@ -56,14 +52,14 @@ namespace Unity.QuickSearch
             public ScopedProfiler(string name)
             {
                 #if QUICKSERACH_DEBUG
-                Profiler.BeginSample( name );
+                Profiler.BeginSample(name);
                 #endif
             }
 
             public ScopedProfiler(string name, UnityEngine.Object targetObject)
             {
                 #if QUICKSERACH_DEBUG
-                Profiler.BeginSample( name, targetObject );
+                Profiler.BeginSample(name, targetObject);
                 #endif
             }
 
@@ -76,7 +72,7 @@ namespace Unity.QuickSearch
         }
 
         /// <summary>
-        /// Performs a fuzzy search on a string to see if it matches a pattern. 
+        /// Performs a fuzzy search on a string to see if it matches a pattern.
         /// </summary>
         /// <param name="pattern">Pattern that we try to match the source string</param>
         /// <param name="origin">String we are looking into for a match</param>
@@ -101,13 +97,6 @@ namespace Unity.QuickSearch
 
                 str = origin.ToLowerInvariant();
                 pattern_n = pattern.Length;
-
-                var allowEmptyQuery = false; //filter.HasFilters();
-                if (allowEmptyQuery && string.IsNullOrEmpty(pattern))
-                {
-                    outScore = 10;
-                    return true;
-                }
 
                 // find [str_start..str_end) that contains pattern's first and last letter
                 str_start = 0;
@@ -172,49 +161,10 @@ namespace Unity.QuickSearch
 
                             var si = i + str_start;
 
-                            var inQuoteExpectEquality = false; //i > 0 && j > 0 && filter.indexesAreInSameQuotes(j, j - 1);
-
                             var match = false;
-                            var cancel = false;
 
                             if (pattern[j] == str[si])
-                            {
-                                if (inQuoteExpectEquality)
-                                {
-                                    if (d.matchData[i - 1, j - 1])
-                                    {
-                                        match = true;
-                                    }
-                                    else
-                                    {
-                                        cancel = true;
-                                    }
-                                }
-                                else
-                                    match = true;
-                            }
-                            else
-                            {
-                                if (inQuoteExpectEquality && d.matchData[i - 1, j - 1])
-                                {
-                                    cancel = true;
-                                }
-                            }
-
-                            if (cancel)
-                            {
-                                // cancel quote
-                                var j_start = 0; //filter.indexOfQuoteStart(j);
-
-                                var n = j - j_start;
-                                for (var k = 1; k <= n; k++)
-                                {
-                                    //Assert.IsTrue(matchData[i - k, j - k]);
-                                    if (i < k || j < k)
-                                        break;
-                                    d.matchData[i - k, j - k] = false;
-                                }
-                            }
+                                match = true;
 
                             if (i >= d.matchData.GetLength(0) || j >= d.matchData.GetLength(1))
                                 return false;
@@ -265,7 +215,6 @@ namespace Unity.QuickSearch
                         {
                             s += first_letter_bonus;
                         }
-
                         else
                         {
                             var currOrigI = origin[si];
@@ -373,7 +322,7 @@ namespace Unity.QuickSearch
         /// Color for matching text when using fuzzy search.
         /// </summary>
         public static string HighlightColorTag = EditorGUIUtility.isProSkin ? "<color=#FF6100>" : "<color=#EE4400>";
-        
+
         /// <summary>
         /// Color for special tags when using fuzzy search.
         /// </summary>
@@ -430,7 +379,7 @@ namespace Unity.QuickSearch
                 }
                 else
                 {
-                    result[guard] = title[Math.Min(t_i++, title.Length-1)];
+                    result[guard] = title[Math.Min(t_i++, title.Length - 1)];
 
                     if (needToClose)
                     {

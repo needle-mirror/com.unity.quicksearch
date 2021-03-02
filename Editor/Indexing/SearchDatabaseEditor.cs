@@ -2,7 +2,7 @@ using System.Linq;
 using UnityEditor;
 using UnityEngine;
 
-namespace Unity.QuickSearch
+namespace UnityEditor.Search
 {
     [CustomEditor(typeof(SearchDatabase))]
     class SearchDatabaseEditor : Editor
@@ -14,7 +14,6 @@ namespace Unity.QuickSearch
         [SerializeField] private bool m_KeywordsFoldout;
         [SerializeField] private bool m_DocumentsFoldout;
         [SerializeField] private bool m_DependenciesFoldout;
-        [SerializeField] private bool m_IndexesFoldout;
 
         private GUIContent title
         {
@@ -47,7 +46,7 @@ namespace Unity.QuickSearch
 
         public override void OnInspectorGUI()
         {
-            if (m_DB.index == null)
+            if (!m_DB || m_DB.index == null)
                 return;
 
             EditorGUILayout.PropertyField(m_Settings, title, true);
@@ -69,7 +68,7 @@ namespace Unity.QuickSearch
             m_DocumentsFoldout = EditorGUILayout.Foldout(m_DocumentsFoldout, $"{documentTitle} (Count={m_DB.index.documentCount})", true);
             if (m_DocumentsFoldout)
             {
-                foreach (var documentEntry in m_DB.index.GetDocuments(true).OrderBy(p=>p.id))
+                foreach (var documentEntry in m_DB.index.GetDocuments(true).OrderBy(p => p.id))
                 {
                     m_DB.index.TryGetHash(documentEntry.id, out var hash);
                     EditorGUILayout.LabelField($"{documentEntry.id} ({hash})");

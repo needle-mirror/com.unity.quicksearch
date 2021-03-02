@@ -1,8 +1,8 @@
 using System;
 
-namespace Unity.QuickSearch
+namespace UnityEditor.Search
 {
-    public class SearchDatabaseException : Exception
+    class SearchDatabaseException : Exception
     {
         public readonly string guid;
 

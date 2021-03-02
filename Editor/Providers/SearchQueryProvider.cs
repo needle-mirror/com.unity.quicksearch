@@ -1,11 +1,11 @@
 using System.Collections.Generic;
 
-namespace Unity.QuickSearch.Providers
+namespace UnityEditor.Search.Providers
 {
     static class Query
     {
         internal const string type = "query";
-        private const string displayName = "Queries";
+        private const string displayName = "Saved Queries";
 
         [SearchItemProvider]
         internal static SearchProvider CreateProvider()
@@ -14,28 +14,29 @@ namespace Unity.QuickSearch.Providers
             {
                 filterId = "q:",
                 isExplicitProvider = true,
-                isEnabledForContextualSearch = () => true,
-                fetchItems = (context, items, provider) =>
-                {
-                    var queryItems = SearchQuery.GetAllSearchQueryItems(context);
-                    if (string.IsNullOrEmpty(context.searchQuery))
-                    {
-                        items.AddRange(queryItems);
-                    }
-                    else
-                    {
-                        foreach (var qi in queryItems)
-                        {
-                            if (SearchUtils.MatchSearchGroups(context, qi.label, true) ||
-                                SearchUtils.MatchSearchGroups(context, ((SearchQuery)qi.data).searchQuery, true))
-                            {
-                                items.Add(qi);
-                            }
-                        }
-                    }
-                    return null;
-                }
+                fetchItems = (context, items, provider) => Search(context)
             };
+        }
+
+        private static IEnumerable<SearchItem> Search(SearchContext context)
+        {
+            var queryItems = SearchQuery.GetAllSearchQueryItems(context);
+            if (string.IsNullOrEmpty(context.searchQuery))
+            {
+                foreach (var qi in queryItems)
+                    yield return qi;
+            }
+            else
+            {
+                foreach (var qi in queryItems)
+                {
+                    if (SearchUtils.MatchSearchGroups(context, qi.label, true) ||
+                        SearchUtils.MatchSearchGroups(context, ((SearchQuery)qi.data).text, true))
+                    {
+                        yield return qi;
+                    }
+                }
+            }
         }
 
         [SearchActionsProvider]
@@ -46,10 +47,21 @@ namespace Unity.QuickSearch.Providers
                 new SearchAction(type, "exec", null, "Execute search query")
                 {
                     closeWindowAfterExecution = false,
-                    handler = (item) => SearchQuery.ExecuteQuery(item?.context.searchView, (SearchQuery)item.data)
+                    handler = ExecuteQuery
                 },
-                new SearchAction(type, "select", null, "Select search query", (item) => Utils.FrameAssetFromPath(item.id))
+                new SearchAction(type, "select", null, "Select search query", (item) =>
+                {
+                    var queryPath = AssetDatabase.GetAssetPath((SearchQuery)item.data);
+                    if (!string.IsNullOrEmpty(queryPath))
+                        Utils.FrameAssetFromPath(queryPath);
+                })
             };
+        }
+
+        private static void ExecuteQuery(SearchItem item)
+        {
+            if (item.context.searchView is QuickSearch qs && item.data is SearchQuery query)
+                qs.ExecuteSearchQuery(query);
         }
     }
 }

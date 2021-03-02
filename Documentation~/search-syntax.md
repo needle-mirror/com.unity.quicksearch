@@ -115,6 +115,18 @@ The Asset provider uses an **Asset** index to search efficiently. When creating 
 |**Age**   | `age:<number of days since last modification>`  | `age<3 texture`<br/>Searches all textures that were modified in the last 3 days. |
 -------------------------------
 
+### Find Filters
+
+The Asset provider will use the [Find provider](#find) to run a multithreaded search directly on the file system (note that this search doesn't use indexed data). The `Find` search is done only on file path (and not on their content) and allows to search using [Regex](https://docs.microsoft.com/en-us/dotnet/standard/base-types/regular-expression-language-quick-reference) or [Glob patterns](https://en.wikipedia.org/wiki/Glob_(programming)). 
+
+
+|Filter| Search <br/>token|Description|
+|-|-|-|
+|**Glob**   | `p:<glob query>`  | `p:Assets/*/*.png`<br/>Searches for all assets paths under the `Assets` folder and ending in `.png`. Note that it is equivalent to running `find:Assets/**/*.png` since it uses the [Find provider](#find) under the hood. |
+|**Regex**   | `p:<C# regex pattern>`  | `p:(.*\/)+.+\s.+`<br/>Find all paths with a space in their name. Note that it is equivalent to running `find:(.*\/)+.+\s.+` since it uses the [Find provider](#find) under the hood. |
+
+See the [Find provider](#find) for more information.
+
 ### Type Filters
 These filters are available if the index uses the **Types** Indexing option (See IndexManager).
 
@@ -237,6 +249,64 @@ Note that to query this provider you need to explicitly add `=` to the query.
 |Filter| Search <br/>token|Description|
 |-|-|-|
 |**Supported operators**   | `+ - * / % ^ ( )` | `=42/34 + (56 % 6)`<br/><br/>`=23 * 9 ^ 3` |
+-------------------------------
+
+## Find
+
+The `find` provider runs a multithread asynchronous search on the filesystem to find files that match a specific pattern. The `find` provider doesn't rely on an actual index (contrary to the [Asset Provider](#asset-provider)) which means you can use it even if your project has no indexes setup.
+
+Note that to query this provider explicitly by adding `find:` to the query. Alternatively, all queries processed by the [Asset provider](#asset-provider) will also try to run a `find` query.
+
+`Find` does multiple searches at the same time:
+
+- Your search query can contain a [C# Regex](https://docs.microsoft.com/en-us/dotnet/standard/base-types/regular-expression-language-quick-reference), it will be used to perform matching.
+- Your search query can contain glob expression with the following wildcards. Note that a glob expression is converted to a normal regex using the equivalency described in the table below:
+
+|Glob Wildcards| Description|Example|Matches|Does not match|Equivalent Regex|
+|-|-|-|-|-|-|
+|`*`| matches *any number* of any characters including none  |Law*|Law,Laws, Lawyer|Groklaw, La, aw|`.*`|
+|`.`| matches *any single* of any characters including none  |Law*|Law,Laws, Lawyer|Groklaw, La, aw|`.`|
+-------------------------------
+
+|Filter| Search <br/>token|Description|
+|-|-|-|
+|**Word search**   | `find:<query>`  | `find:Paint Mat`<br/>Searches for all assets paths containing the words `paint` AND the word `mat` (ex: `PaintBrush_Mat.mat`, `DryWallPainted_Mat.mat`)
+|**Glob**   | `find:<glob query>`  | `find:Assets/*/*.png`<br/>Searches for all assets paths under the `Assets` folder and ending in `.png`.<br/><br/>`find:Editor/*.cs`<br/>Searches for all C# files under any `Editor` folder. |
+|**Regex**   | `find:<C# regex pattern>`  | `find:(.*\/)+.+\s.+`<br/>Find all paths with a space in their name. |
+|**Fuzzy**   | `find:<search expresion>`  | `find:raed`<br/> Find all paths that *fuzzy* matches `raed` (ex: `readme.txt`). If the `Show all results` option is toggled in Quicksearch `find` performs a fuzzy search. |
+-------------------------------
+
+## Dependencies provider
+
+This specialized provider will analyze all the assets in a project and create a dependency index. This index allows more complex queries than what you can do with the [Asset Provider](#dependency-filters). Since the content of the asset files is parsed and analyzed you can even get information on broken references (as opposed to [AsssetDatabase.GetDependencies](https://docs.unity3d.com/ScriptReference/AssetDatabase.GetDependencies.html)).
+
+Note that this provider is currently a Samples. Go to the QuickSearch section of the Package Manager and install the Samples to benefit from this provider.
+
+Selecting a *dependency item* in QuickSearch will show in the Details panel all *Dependency information* for the *dependency item*:
+|Information| Description|
+|-|-|
+|**Broken**| `guid` of all *using* assets not part of the project anymore.|
+|**Using**| List of all assets referenced by the *dependency item*. Similar to [AsssetDatabase.GetDependencies](https://docs.unity3d.com/ScriptReference/AssetDatabase.GetDependencies.html). These are all the *outgoing* references of *dependency item*. |
+|**Used By**| List of all assets that are referencing the *dependency item*. These are all the *incoming* references of *dependency item*. |
+|**Untracked**| List of all paths that cannot be loaded as an asset that are referenced by the *dependency item* . |
+-------------------------------
+
+Note that to query this provider you need to explicitly add `dep:` to the query.
+
+|Filter| Search <br/>token|Description|
+|-|-|-|
+|**Partial asset path**   | `dep:<partial path>`  | `dep: Materials`<br/>Display dependency information relative to all assets with the word `materials` in their path.|
+|**!all**   | `dep:!all`  | `dep:!all`<br/>List all `guids` and assets indexed by the provider. This can include `guids` to broken assets.|
+|**Guid**   | `dep:<guid>`  | `dep:595da1eac225fa84fb9c2d465cc69e8b`<br/>Display information relative to the asset having the `595da1eac225fa84fb9c2d465cc69e8b` guid. This is equivalent to using the `id:` filter below.|
+|**Id**   | `dep: id:<guid>`  | `dep: id595da1eac225fa84fb9c2d465cc69e8b`<br/>Display dependency information relative to the asset having the `595da1eac225fa84fb9c2d465cc69e8b` guid.|
+|**Path**   | `dep: path:<exact path>`  | `dep: path:Assets/Materials/Skybox_Mat.mat`<br/>Display dependency information relative to the asset with path `path:Assets/Materials/Skybox_Mat.mat`.|
+|**Type**   | `dep: t:<file extension>`  | `dep: t:cs`<br/>Display dependency information relative to all assets with the `.cs` extension.|
+|**Broken**   | `dep: is:broken`  | `dep: is:broken`<br/>Display dependency information for all assets that are referencing a *missing* asset.|
+|**Missing**   | `dep: is:missing`  | `dep: is:missing`<br/>Display dependency information for all `guids` that are not in the project anymore.|
+|**Count**   | `dep: count:<number>`  | `dep: count>2`<br/>Display dependency information for all assets that are referencing (i.e. using) more than 2 other assets.|
+|**In**   | `dep: in:<number>`  | `dep: in>2`<br/>Display dependency information for all assets that are being used by more than 2 other assets.|
+|**To**   | `dep: to:<guid>`  | `dep: to:595da1eac225fa84fb9c2d465cc69e8b`<br/>Display dependency information for all assets that are referencing (*using*) the `595da1eac225fa84fb9c2d465cc69e8b` guid. These are the *incoming* references of the `595da1eac225fa84fb9c2d465cc69e8b` guid. This corresponds to the **Used By** section of the Details Panel for the guid `595da1eac225fa84fb9c2d465cc69e8b`. |
+|**From**   | `dep: from:<guid>`  | `dep: from:595da1eac225fa84fb9c2d465cc69e8b`<br/>Display dependency information for all assets that are referenced by the `595da1eac225fa84fb9c2d465cc69e8b` guid. These are all the *outgoing* references of the `595da1eac225fa84fb9c2d465cc69e8b` guid. This corresponds to the **Using** section of the Details Panel for the guid `595da1eac225fa84fb9c2d465cc69e8b`. |
 -------------------------------
 
 ## Complex Queries examples

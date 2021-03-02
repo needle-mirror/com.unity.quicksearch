@@ -2,7 +2,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 
-namespace Unity.QuickSearch
+namespace UnityEditor.Search
 {
     /// <summary>
     /// Class giving readonly access to the current list of selected items in QuickSearch.
@@ -24,6 +24,15 @@ namespace Unity.QuickSearch
             m_List = filteredItems;
         }
 
+        public SearchSelection(IEnumerable<SearchItem> items)
+        {
+            m_Items = new List<SearchItem>(items);
+            m_Selection = new List<int>();
+            for (int i = 0; i < m_Items.Count; ++i)
+                m_Selection.Add(i);
+            m_List = null;
+        }
+
         /// <summary>
         /// How many items are selected.
         /// </summary>
@@ -35,7 +44,7 @@ namespace Unity.QuickSearch
         /// <returns>Returns the lowest selected index.</returns>
         public int MinIndex()
         {
-            return m_Selection.Min();
+            return m_Selection.Count > 0 ? m_Selection.Min() : -1;
         }
 
         /// <summary>
@@ -44,7 +53,7 @@ namespace Unity.QuickSearch
         /// <returns>Returns the highest selected index.</returns>
         public int MaxIndex()
         {
-            return m_Selection.Max();
+            return m_Selection.Count > 0 ? m_Selection.Max() : -1;
         }
 
         /// <summary>
@@ -96,8 +105,23 @@ namespace Unity.QuickSearch
         private void BuildSelection()
         {
             m_Items = new List<SearchItem>(m_Selection.Count);
+            if (m_List == null)
+                return;
             foreach (var s in m_Selection)
                 m_Items.Add(m_List.ElementAt(s));
+        }
+
+        public bool Contains(SearchItem item)
+        {
+            if (m_Items == null)
+                return false;
+            foreach (var e in m_Items)
+            {
+                if (string.Equals(e.id, item.id, System.StringComparison.Ordinal))
+                    return true;
+            }
+
+            return false;
         }
     }
 }

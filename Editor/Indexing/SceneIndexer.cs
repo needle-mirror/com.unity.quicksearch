@@ -1,19 +1,16 @@
-//#define DEBUG_INDEXING
-
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 
-namespace Unity.QuickSearch
+namespace UnityEditor.Search
 {
     class SceneIndexer : ObjectIndexer
     {
         public SceneIndexer(SearchDatabase.Settings settings)
-            : base(String.IsNullOrEmpty(settings.name) ? "objects" : settings.name, settings)
+            : base(string.IsNullOrEmpty(settings.name) ? "objects" : settings.name, settings)
         {
         }
 
@@ -22,12 +19,6 @@ namespace Unity.QuickSearch
             if (checkRoots && !GetRoots().Any(p => p == path))
                 return true;
             return base.SkipEntry(path, false);
-        }
-
-        [Obsolete("Async index builds are not supported anymore.")]
-        protected override System.Collections.IEnumerator BuildAsync(int progressId, object userData = null)
-        {
-            throw new NotSupportedException();
         }
 
         private string ConvertTypeToFilePattern(string type)
@@ -46,7 +37,7 @@ namespace Unity.QuickSearch
                 .Select(path => path.Replace("\\", "/"));
         }
 
-        public override IEnumerable<string> GetRoots()
+        internal override IEnumerable<string> GetRoots()
         {
             var scenePaths = new List<string>();
             var searchFilePattern = ConvertTypeToFilePattern(settings.type);
@@ -71,13 +62,13 @@ namespace Unity.QuickSearch
             return scenePaths;
         }
 
-        public override List<string> GetDependencies()
+        internal override List<string> GetDependencies()
         {
             return GetRoots()
                 .Where(path => !base.SkipEntry(path, false)).ToList();
         }
 
-        public override Hash128 GetDocumentHash(string path)
+        internal override Hash128 GetDocumentHash(string path)
         {
             return AssetDatabase.GetAssetDependencyHash(path);
         }
@@ -88,7 +79,7 @@ namespace Unity.QuickSearch
                 IndexScene(scenePath, checkIfDocumentExists);
             else if (scenePath.EndsWith(".prefab", StringComparison.OrdinalIgnoreCase))
                 IndexPrefab(scenePath, checkIfDocumentExists);
-            AddDocumentHash(scenePath, GetDocumentHash(scenePath));
+            AddSourceDocument(scenePath, GetDocumentHash(scenePath));
         }
 
         private void IndexObjects(GameObject[] objects, string type, string containerName, bool checkIfDocumentExists)
@@ -114,13 +105,8 @@ namespace Unity.QuickSearch
                 var path = SearchUtils.GetTransformPath(obj.transform);
                 var documentIndex = AddDocument(id, path, checkIfDocumentExists);
 
-                if (!String.IsNullOrEmpty(name))
-                    IndexProperty(documentIndex, "a", name, saveKeyword: true);
-
-                var depth = GetObjectDepth(obj);
-                IndexNumber(documentIndex, "depth", depth);
-
-                IndexWordComponents(documentIndex, path);
+                IndexNumber(documentIndex, "depth", GetObjectDepth(obj));
+                IndexWordComponents(documentIndex, Path.GetFileName(path));
                 IndexProperty(documentIndex, "from", type, saveKeyword: true, exact: true);
                 IndexProperty(documentIndex, type, containerName, saveKeyword: true);
                 IndexGameObject(documentIndex, obj, options);

@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using UnityEngine;
 
-namespace Unity.QuickSearch
+namespace UnityEditor.Search
 {
     /// <summary>
     /// Define an action that can be applied on SearchItem of a specific provider type.
@@ -15,10 +15,12 @@ namespace Unity.QuickSearch
         /// Default constructor to build a search action.
         /// </summary>
         /// <param name="providerId">Provider Id that supports this action.</param>
+        /// <param name="id">Action unique id.</param>
         /// <param name="content">Display information when displaying the action in the Action Menu</param>
-        public SearchAction(string providerId, GUIContent content)
+        public SearchAction(string providerId, string id, GUIContent content)
         {
             this.providerId = providerId;
+            this.id = id;
             this.content = content;
             handler = null;
             execute = null;
@@ -29,10 +31,11 @@ namespace Unity.QuickSearch
         /// Default constructor to build a search action.
         /// </summary>
         /// <param name="providerId">Provider Id that supports this action.</param>
+        /// <param name="id">Action unique id.</param>
         /// <param name="content">Display information when displaying the action in the Action Menu</param>
         /// <param name="handler">Handler that will execute the action.</param>
-        public SearchAction(string providerId, GUIContent content, Action<SearchItem[]> handler)
-            : this(providerId, content)
+        public SearchAction(string providerId, string id, GUIContent content, Action<SearchItem[]> handler)
+            : this(providerId, id, content)
         {
             execute = handler;
         }
@@ -41,10 +44,11 @@ namespace Unity.QuickSearch
         /// Default constructor to build a search action.
         /// </summary>
         /// <param name="providerId">Provider Id that supports this action.</param>
+        /// <param name="id">Action unique id.</param>
         /// <param name="content">Display information when displaying the action in the Action Menu</param>
         /// <param name="handler">Handler that will execute the action.</param>
-        public SearchAction(string providerId, GUIContent content, Action<SearchItem> handler)
-            : this(providerId, content)
+        public SearchAction(string providerId, string id, GUIContent content, Action<SearchItem> handler)
+            : this(providerId, id, content)
         {
             this.handler = handler;
         }
@@ -58,7 +62,7 @@ namespace Unity.QuickSearch
         /// <param name="tooltip">Tooltip assocoated with the when displayed in the Action Menu</param>
         /// <param name="handler">Handler that will execute the action.</param>
         public SearchAction(string providerId, string name, Texture2D icon, string tooltip, Action<SearchItem[]> handler)
-            : this(providerId, new GUIContent(name, icon, tooltip ?? name), handler)
+            : this(providerId, name, new GUIContent(SearchUtils.ToPascalWithSpaces(name), icon, tooltip ?? name), handler)
         {
         }
 
@@ -71,8 +75,14 @@ namespace Unity.QuickSearch
         /// <param name="tooltip">Tooltip assocoated with the when displayed in the Action Menu</param>
         /// <param name="handler">Handler that will execute the action.</param>
         public SearchAction(string providerId, string name, Texture2D icon, string tooltip, Action<SearchItem> handler)
-            : this(providerId, new GUIContent(name, icon, tooltip ?? name), handler)
+            : this(providerId, name, new GUIContent(SearchUtils.ToPascalWithSpaces(name), icon, tooltip ?? name), handler)
         {
+        }
+
+        internal SearchAction(string providerId, string name, Texture2D icon, string tooltip, Action<SearchItem> handler, Func<IReadOnlyCollection<SearchItem>, bool> enabledHandler)
+            : this(providerId, name, icon, tooltip, handler)
+        {
+            enabled = enabledHandler;
         }
 
         /// <summary>
@@ -81,16 +91,16 @@ namespace Unity.QuickSearch
         /// <param name="providerId">Provider Id that supports this action.</param>
         /// <param name="name">Label name when displaying the action in the Action Menu</param>
         /// <param name="icon">Icon when displaying the action in the Action Menu</param>
-        /// <param name="tooltip">Tooltip assocoated with the when displayed in the Action Menu</param>
+        /// <param name="tooltip">Tooltip associated with the when displayed in the Action Menu</param>
         public SearchAction(string providerId, string name, Texture2D icon = null, string tooltip = null)
-            : this(providerId, new GUIContent(name, icon, tooltip ?? name))
+            : this(providerId, name, new GUIContent(SearchUtils.ToPascalWithSpaces(name), icon, tooltip ?? name))
         {
         }
 
         /// <summary>
         /// Action unique identifier.
         /// </summary>
-        public string id => content.text;
+        public string id { get; private set; }
 
         /// <summary>
         /// Name used to display

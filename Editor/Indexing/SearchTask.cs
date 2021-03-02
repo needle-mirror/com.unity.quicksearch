@@ -3,7 +3,7 @@ using System.Threading;
 using UnityEditor;
 using UnityEngine;
 
-namespace Unity.QuickSearch
+namespace UnityEditor.Search
 {
     interface ITaskReporter
     {
@@ -20,19 +20,19 @@ namespace Unity.QuickSearch
 
         private readonly string name;
         private readonly string title;
-        private readonly int progressId = k_NoProgress;
+        private int progressId = k_NoProgress;
         private EventWaitHandle cancelEvent;
-        private readonly ResolveHandler finished;
+        private readonly ResolveHandler resolver;
         private readonly System.Diagnostics.Stopwatch sw;
         private string status = null;
-        private bool disposed = false;
+        private volatile bool disposed = false;
         private readonly ITaskReporter reporter;
 
         public int total { get; set; }
         public bool canceled { get; private set; }
         public Exception error { get; private set; }
 
-        public bool async => finished != null;
+        public bool async => resolver != null;
         public long elapsedTime => sw.ElapsedMilliseconds;
 
         private SearchTask(string name, string title, ITaskReporter reporter)
@@ -57,20 +57,22 @@ namespace Unity.QuickSearch
         /// <summary>
         /// Create async or threaded task
         /// </summary>
-        public SearchTask(string name, string title, ResolveHandler finished, int total, ITaskReporter reporter)
+        public SearchTask(string name, string title, ResolveHandler resolver, int total, ITaskReporter reporter)
             : this(name, title, reporter)
         {
             this.total = total;
-            this.finished = finished;
+            this.resolver = resolver;
             progressId = StartReport(title);
             cancelEvent = new EventWaitHandle(false, EventResetMode.ManualReset);
 
+            #if UNITY_2020_2_OR_NEWER
             if (IsProgressRunning(progressId))
                 Progress.RegisterCancelCallback(progressId, () => cancelEvent.Set());
+            #endif
         }
 
-        public SearchTask(string name, string title, ResolveHandler finished, ITaskReporter reporter)
-            : this(name, title, finished, 1, reporter)
+        public SearchTask(string name, string title, ResolveHandler resolver, ITaskReporter reporter)
+            : this(name, title, resolver, 1, reporter)
         {
         }
 
@@ -81,6 +83,13 @@ namespace Unity.QuickSearch
                 if (disposing)
                     Resolve();
 
+                cancelEvent?.Dispose();
+                cancelEvent = null;
+                #if UNITY_2020_2_OR_NEWER
+                if (Progress.Exists(progressId))
+                    Progress.Remove(progressId);
+                #endif
+                progressId = k_NoProgress;
                 disposed = true;
             }
         }
@@ -88,9 +97,10 @@ namespace Unity.QuickSearch
         public void Dispose()
         {
             Dispose(true);
-            cancelEvent?.Dispose();
-            cancelEvent = null;
+            GC.SuppressFinalize(this);
         }
+
+        ~SearchTask() => Dispose(false);
 
         public bool RunThread(Action routine, Action finalize = null)
         {
@@ -120,7 +130,7 @@ namespace Unity.QuickSearch
 
         public void Report(string status)
         {
-            if (progressId == k_NoProgress)
+            if (!IsValid())
                 return;
 
             this.status = status;
@@ -131,7 +141,9 @@ namespace Unity.QuickSearch
                 return;
             }
 
+            #if UNITY_2020_2_OR_NEWER
             Progress.SetDescription(progressId, status);
+            #endif
         }
 
         public void Report(int current)
@@ -143,7 +155,7 @@ namespace Unity.QuickSearch
 
         public void Report(int current, int total)
         {
-            if (progressId == k_NoProgress)
+            if (!IsValid())
                 return;
 
             if (progressId == k_BlockingProgress)
@@ -158,7 +170,9 @@ namespace Unity.QuickSearch
             }
             else
             {
+                #if UNITY_2020_2_OR_NEWER
                 Progress.Report(progressId, current / (float)total);
+                #endif
             }
         }
 
@@ -169,6 +183,9 @@ namespace Unity.QuickSearch
 
         public bool Canceled()
         {
+            if (!IsValid())
+                return true;
+
             if (cancelEvent == null)
                 return false;
 
@@ -176,38 +193,48 @@ namespace Unity.QuickSearch
                 return false;
 
             canceled = true;
-            ClearReport(progressId);
+            ClearReport();
 
-            if (finished != null)
-                Dispatcher.Enqueue(() => finished.Invoke(this, null));
+            if (resolver != null)
+                Dispatcher.Enqueue(() => resolver.Invoke(this, null));
             return true;
         }
 
-        public void Resolve(T data)
+        public void Resolve(T data, bool completed = true)
         {
+            if (!IsValid())
+                return;
+
             if (Canceled())
                 return;
-            finished?.Invoke(this, data);
-            FinishReport(progressId);
+            resolver?.Invoke(this, data);
+            if (completed)
+                Dispose();
         }
 
-        public void Resolve()
+        private void Resolve()
         {
-            FinishReport(progressId);
+            FinishReport();
         }
 
-        internal void Resolve(Exception err)
+        public void Resolve(Exception err)
         {
+            Console.WriteLine($"Search task exception: {err}");
+
+            if (!IsValid())
+                return;
+
             error = err;
             canceled = true;
 
             if (err != null)
-                ReportError(progressId, err);
+            {
+                ReportError(err);
+                if (resolver == null)
+                    Debug.LogException(err);
+            }
 
-            if (finished == null)
-                Debug.LogException(err);
-            else
-                finished?.Invoke(this, null);
+            resolver?.Invoke(this, null);
         }
 
         private int StartBlockingReport(string title)
@@ -217,69 +244,101 @@ namespace Unity.QuickSearch
             return k_BlockingProgress;
         }
 
+        static int n_NextProgressID = 1;
         private int StartReport(string title)
         {
+            #if UNITY_2020_2_OR_NEWER
             var progressId = Progress.Start(title);
+            Progress.SetPriority(progressId, (int)Progress.Priority.Low);
             status = title;
             return progressId;
+            #else
+            return n_NextProgressID++;
+            #endif
         }
 
-        private void ReportError(int progressId, Exception err)
+        private void ReportError(Exception err)
         {
-            if (progressId == k_NoProgress)
+            if (!IsValid())
                 return;
 
             if (progressId == k_BlockingProgress)
             {
                 Debug.LogException(err);
                 EditorUtility.ClearProgressBar();
-                return;
             }
-
-            if (IsProgressRunning(progressId))
+            else if (IsProgressRunning(progressId))
             {
+                #if UNITY_2020_2_OR_NEWER
                 Progress.SetDescription(progressId, err.Message);
                 Progress.Finish(progressId, Progress.Status.Failed);
+                #endif
             }
 
+            progressId = k_NoProgress;
             status = null;
         }
 
-        private void FinishReport(int progressId)
+        private bool IsValid()
         {
+            if (disposed)
+                return false;
+
+            if (progressId == k_NoProgress)
+                return false;
+
+            return true;
+        }
+
+        private void FinishReport()
+        {
+            error = null;
             status = null;
+            canceled = false;
+
+            if (!IsValid())
+                return;
 
             reporter?.Report(name, $"took {elapsedTime} ms");
 
             if (progressId == k_BlockingProgress)
-            {
                 EditorUtility.ClearProgressBar();
-                return;
-            }
-
-            if (IsProgressRunning(progressId))
+#if UNITY_2020_2_OR_NEWER
+            else if (IsProgressRunning(progressId))
                 Progress.Finish(progressId, Progress.Status.Succeeded);
+#endif
+
+            progressId = k_NoProgress;
         }
 
-        private void ClearReport(int progressId)
+        private void ClearReport()
         {
             status = null;
 
-            if (progressId == k_BlockingProgress)
-            {
-                EditorUtility.ClearProgressBar();
+            if (!IsValid())
                 return;
-            }
 
-            if (IsProgressRunning(progressId))
+            if (progressId == k_BlockingProgress)
+                EditorUtility.ClearProgressBar();
+            #if UNITY_2020_2_OR_NEWER
+            else if (IsProgressRunning(progressId))
                 Progress.Remove(progressId);
+            #endif
+
+            progressId = k_NoProgress;
         }
 
         private static bool IsProgressRunning(int progressId)
         {
             if (progressId == k_NoProgress)
                 return false;
-            return Progress.Exists(progressId) && Progress.GetStatus(progressId) == Progress.Status.Running;
+            #if UNITY_2020_2_OR_NEWER
+            if (!Progress.Exists(progressId))
+                return false;
+            return Progress.GetStatus(progressId) == Progress.Status.Running;
+            #else
+            return false;
+            #endif
         }
     }
 }

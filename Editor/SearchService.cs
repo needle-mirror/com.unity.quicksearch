@@ -1,29 +1,27 @@
-//#define QUICKSEARCH_DEBUG
-
-#if UNITY_2020_1_OR_NEWER
-//#define SHOW_SEARCH_PROGRESS
-#endif
-
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
-using UnityEditor;
+using UnityEditorInternal;
+using UnityEngine;
 
-namespace Unity.QuickSearch
+namespace UnityEditor.Search
 {
     /// <summary>
     /// Attribute used to declare a static method that will create a new search provider at load time.
     /// </summary>
+    [AttributeUsage(AttributeTargets.Method)]
     public class SearchItemProviderAttribute : Attribute
     {
+        [RequiredSignature] internal static SearchProvider CreateProvider() { return null; }
     }
 
     /// <summary>
     /// Attribute used to declare a static method that define new actions for specific search providers.
     /// </summary>
+    [AttributeUsage(AttributeTargets.Method)]
     public class SearchActionsProviderAttribute : Attribute
     {
+        [RequiredSignature] internal static IEnumerable<SearchAction> CreateActionHandlers() { return null; }
     }
 
     /// <summary>
@@ -31,13 +29,7 @@ namespace Unity.QuickSearch
     /// </summary>
     public static class SearchService
     {
-        internal const string prefKey = "quicksearch";
-
-        const string k_ActionQueryToken = ">";
-
         private const int k_MaxFetchTimeMs = 50;
-
-        internal static Dictionary<string, List<string>> ActionIdToProviders { get; private set; }
 
         /// <summary>
         /// Returns the list of all providers (active or not)
@@ -58,6 +50,25 @@ namespace Unity.QuickSearch
         static SearchService()
         {
             Refresh();
+            SetupSearchFirstUse();
+        }
+
+        internal static void SetupSearchFirstUse()
+        {
+            if (EditorApplication.isPlayingOrWillChangePlaymode)
+                return;
+
+            if (SearchSettings.onBoardingDoNotAskAgain || Utils.IsRunningTests())
+                return;
+
+            if (!Utils.IsMainProcess())
+                return;
+
+            if (SearchDatabase.EnumeratePaths(SearchDatabase.IndexLocation.assets).Count() == 0)
+                SearchDatabase.CreateDefaultIndex();
+
+            SearchSettings.onBoardingDoNotAskAgain = true;
+            SearchSettings.Save();
         }
 
         /// <summary>
@@ -67,7 +78,7 @@ namespace Unity.QuickSearch
         /// <returns>The matching provider</returns>
         public static SearchProvider GetProvider(string providerId)
         {
-            return Providers.Find(p => p.name.id == providerId);
+            return Providers.Find(p => p.id == providerId);
         }
 
         /// <summary>
@@ -91,7 +102,7 @@ namespace Unity.QuickSearch
         /// <param name="active">Activation state</param>
         public static void SetActive(string providerId, bool active = true)
         {
-            var provider = Providers.FirstOrDefault(p => p.name.id == providerId);
+            var provider = Providers.FirstOrDefault(p => p.id == providerId);
             if (provider == null)
                 return;
             SearchSettings.GetProviderSettings(providerId).active = active;
@@ -109,15 +120,17 @@ namespace Unity.QuickSearch
         }
 
         /// <summary>
-        /// Returns a list of keywords used by auto-completion for the active providers.
+        /// Refreshes all open windows.
         /// </summary>
-        /// <param name="context">Current search context</param>
-        /// <param name="lastToken">Search token currently being typed.</param>
-        /// <returns>A list of keywords that can be shown in an auto-complete dropdown.</returns>
-        [Obsolete("GetKeywords is deprecated. Define fetchPropositions on your provider instead.")]
-        public static string[] GetKeywords(SearchContext context, string lastToken)
+        public static void RefreshWindows()
         {
-            throw new NotSupportedException();
+            var windows = Resources.FindObjectsOfTypeAll<QuickSearch>();
+            if (windows == null)
+                return;
+            foreach (var win in windows)
+            {
+                win.Refresh();
+            }
         }
 
         /// <summary>
@@ -145,6 +158,43 @@ namespace Unity.QuickSearch
         }
 
         /// <summary>
+        /// Create a search context with a single search provider.
+        /// </summary>
+        /// <param name="provider"></param>
+        /// <param name="searchText"></param>
+        /// <returns></returns>
+        public static SearchContext CreateContext(SearchProvider provider, string searchText = "")
+        {
+            return CreateContext(new[] { provider }, searchText);
+        }
+
+        /// <summary>
+        /// Create a search context for a single search provider.
+        /// </summary>
+        /// <param name="providerId">Search provider ID string (such as asset, scene, find, etc.)</param>
+        /// <param name="searchText">Initial search text to be used to evaluate the query.</param>
+        /// <param name="flags">Additional search options to be used for the query evaluation.</param>
+        /// <returns>The newly created search context. You need to call Dispose on the SearchContext when you are done using it for queries.</returns>
+        public static SearchContext CreateContext(string providerId, string searchText = "", SearchFlags flags = SearchFlags.Default)
+        {
+            return CreateContext(new[] { providerId }, searchText, flags);
+        }
+
+        /// <summary>
+        /// Create a search context with all active providers.
+        /// </summary>
+        /// <returns></returns>
+        public static SearchContext CreateContext(string searchText, SearchFlags flags)
+        {
+            return CreateContext(Providers.Where(p => p.active).ToList(), searchText, flags);
+        }
+
+        public static SearchContext CreateContext(string searchText)
+        {
+            return CreateContext(searchText, SearchFlags.Default);
+        }
+
+        /// <summary>
         /// Initiate a search and return all search items matching the search context. Other items can be found later using the asynchronous searches.
         /// </summary>
         /// <param name="context">The current search context</param>
@@ -152,32 +202,20 @@ namespace Unity.QuickSearch
         /// <returns>A list of search items matching the search query.</returns>
         public static List<SearchItem> GetItems(SearchContext context, SearchFlags options = SearchFlags.Default)
         {
-            DebugInfo.gcFetch = GC.GetTotalMemory(false);
-
             // Stop all search sessions every time there is a new search.
             context.sessions.StopAllAsyncSearchSessions();
-            context.searchFinishTime = context.searchStartTime = EditorApplication.timeSinceStartup;
+            context.searchFinishTime = context.searchStartTime = DateTime.Now.Ticks;
             context.sessionEnded -= OnSearchEnded;
             context.sessionEnded += OnSearchEnded;
 
-            #if SHOW_SEARCH_PROGRESS
-            if (Progress.Exists(context.progressId))
-                Progress.Finish(context.progressId, Progress.Status.Succeeded);
-            context.progressId = Progress.Start($"Searching...", options: Progress.Options.Indefinite);
-            #endif
-
-            if (options.HasFlag(SearchFlags.WantsMore))
+            if (options.HasAny(SearchFlags.WantsMore))
                 context.wantsMore = true;
 
-            if (options.HasFlag(SearchFlags.Synchronous))
+            if (options.HasAny(SearchFlags.Synchronous))
                 context.options |= SearchFlags.Synchronous;
 
             int fetchProviderCount = 0;
             var allItems = new List<SearchItem>(3);
-            #if QUICKSEARCH_DEBUG
-            var debugProviderList = context.providers.ToList();
-            using (new DebugTimer($"Search get items {String.Join(", ", debugProviderList.Select(p=>p.name.id))} -> {context.searchQuery}"));
-            #endif
             foreach (var provider in context.providers)
             {
                 try
@@ -186,23 +224,25 @@ namespace Unity.QuickSearch
                     watch.Start();
                     fetchProviderCount++;
                     var iterator = provider.fetchItems(context, allItems, provider);
-                    if (iterator != null && options.HasFlag(SearchFlags.Synchronous))
+                    if (iterator != null && options.HasAny(SearchFlags.Synchronous))
                     {
-                        var stackedEnumerator = new StackedEnumerator<SearchItem>(iterator);
-                        while (stackedEnumerator.MoveNext())
+                        using (var stackedEnumerator = new SearchEnumerator<SearchItem>(iterator))
                         {
-                            if (stackedEnumerator.Current != null)
-                                allItems.Add(stackedEnumerator.Current);
+                            while (stackedEnumerator.MoveNext())
+                            {
+                                if (stackedEnumerator.Current != null)
+                                    allItems.Add(stackedEnumerator.Current);
+                            }
                         }
                     }
                     else
                     {
-                        var session = context.sessions.GetProviderSession(context, provider.name.id);
+                        var session = context.sessions.GetProviderSession(context, provider.id);
                         session.Reset(context, iterator, k_MaxFetchTimeMs);
                         session.Start();
                         var sessionEnded = !session.FetchSome(allItems, k_MaxFetchTimeMs);
-                        if (options.HasFlag(SearchFlags.FirstBatchAsync))
-                            session.SendItems(allItems);
+                        if (options.HasAny(SearchFlags.FirstBatchAsync))
+                            session.SendItems(context.subset != null ? allItems.Intersect(context.subset) : allItems);
                         if (sessionEnded)
                             session.Stop();
                     }
@@ -210,7 +250,7 @@ namespace Unity.QuickSearch
                 }
                 catch (Exception ex)
                 {
-                    UnityEngine.Debug.LogException(new Exception($"Failed to get fetch {provider.name.displayName} provider items.", ex));
+                    Debug.LogException(new Exception($"Failed to get fetch {provider.name} provider items.", ex));
                 }
             }
 
@@ -220,9 +260,10 @@ namespace Unity.QuickSearch
                 context.sessions.StopAllAsyncSearchSessions();
             }
 
-            DebugInfo.gcFetch = GC.GetTotalMemory(false) - DebugInfo.gcFetch;
+            if (context.subset != null)
+                allItems = new List<SearchItem>(allItems.Intersect(context.subset));
 
-            if (!options.HasFlag(SearchFlags.Sorted))
+            if (!options.HasAny(SearchFlags.Sorted))
                 return allItems;
 
             allItems.Sort(SortItemComparer);
@@ -237,14 +278,27 @@ namespace Unity.QuickSearch
         /// <returns>Asynchronous list of search items.</returns>
         public static ISearchList Request(SearchContext context, SearchFlags options = SearchFlags.None)
         {
-            if (options.HasFlag(SearchFlags.Synchronous))
+            if (options.HasAny(SearchFlags.Synchronous))
             {
                 throw new NotSupportedException($"Use {nameof(SearchService)}.{nameof(GetItems)}(context, " +
-                                    $"{nameof(SearchFlags)}.{nameof(SearchFlags.Synchronous)}) to fetch items synchronously.");
+                    $"{nameof(SearchFlags)}.{nameof(SearchFlags.Synchronous)}) to fetch items synchronously.");
             }
 
             ISearchList results = null;
-            if (options.HasFlag(SearchFlags.Sorted))
+            if (!InternalEditorUtility.CurrentThreadIsMainThread())
+            {
+                results = new ConcurrentSearchList(context);
+
+                Dispatcher.Enqueue(() =>
+                {
+                    results.AddItems(GetItems(context, options));
+                    (results as ConcurrentSearchList)?.GetItemsDone();
+                });
+
+                return results;
+            }
+
+            if (options.HasAny(SearchFlags.Sorted))
                 results = new SortedSearchList(context);
             else
                 results = new AsyncSearchList(context);
@@ -254,73 +308,85 @@ namespace Unity.QuickSearch
         }
 
         /// <summary>
-        /// Load a search expression asset.
+        /// Run a query on all active providers.
         /// </summary>
-        /// <param name="expressionPath">Asset path of the search expression</param>
-        /// <param name="options">Options defining how the query will be performed</param>
-        /// <returns>Returns a SearchExpression ready to be evaluated.</returns>
-        public static ISearchExpression LoadExpression(string expressionPath, SearchFlags options = SearchFlags.Default)
+        /// <param name="searchText">Search query to execute.</param>
+        /// <returns></returns>
+        public static ISearchList Request(string searchText, SearchFlags options = SearchFlags.None)
         {
-            if (!File.Exists(expressionPath))
-                throw new ArgumentException($"Cannot find expression {expressionPath}", nameof(expressionPath));
-
-            var se = new SearchExpression(options);
-            se.Load(expressionPath);
-            return se;
+            var activeProviders = Providers.Where(p => p.active).ToList();
+            var context = CreateContext(activeProviders, searchText, options);
+            return Request(context, options);
         }
 
         /// <summary>
-        /// Parse a simple json document string as a SearchExpression.
+        /// Execute a search request and callback when the search is completed.
+        /// This will create a new search context that will be Disposed when the request is finished.
         /// </summary>
-        /// <param name="sjson">Simple Json string defining a SearchExpression</param>
-        /// <param name="options">Options defining how the query will be performed</param>
-        /// <returns>Returns a SearchExpression ready to be evaluated.</returns>
-        public static ISearchExpression ParseExpression(string sjson, SearchFlags options = SearchFlags.Default)
+        public static void Request(string searchText, Action<SearchContext, IList<SearchItem>> onSearchCompleted, SearchFlags options = SearchFlags.None)
         {
-            var se = new SearchExpression(options);
-            se.Parse(sjson);
-            return se;
-        }
-
-        internal static SearchContext CreateContext(SearchProvider provider, string searchText = "")
-        {
-            return CreateContext(new[] { provider }, searchText);
+            var context = CreateContext(searchText, options);
+            Request(context, (c, items) =>
+            {
+                onSearchCompleted?.Invoke(c, items);
+                c.Dispose();
+            }, options);
         }
 
         /// <summary>
-        /// Create a search context for a single provider.
+        /// Execute a search request and callback for every incoming items and when the search is completed.
+        /// This will create a new search context that will be Disposed when the request is finished.
         /// </summary>
-        /// <param name="providerId">Unique provider id string (i.e. asset, scene, find, etc.)</param>
-        /// <param name="searchText">Initial search text to be used to evaluate the query.</param>
-        /// <param name="flags">Additional search options to be used for the query evaluation.</param>
-        /// <returns>The newly created search context. Remember to dispose it when you do not need it anymore.</returns>
-        public static SearchContext CreateContext(string providerId, string searchText = "", SearchFlags flags = SearchFlags.Default)
+        public static void Request(string searchText,
+            Action<SearchContext, IEnumerable<SearchItem>> onIncomingItems,
+            Action<SearchContext> onSearchCompleted,
+            SearchFlags options = SearchFlags.None)
         {
-            return CreateContext(new[] { providerId }, searchText, flags);
+            var context = CreateContext(searchText, options);
+            Request(context, onIncomingItems, (c) =>
+            {
+                onSearchCompleted?.Invoke(c);
+                c.Dispose();
+            }, options);
         }
 
-        internal static SearchContext CreateContext(string searchText)
+        /// <summary>
+        /// Execute a search request and callback when the search is completed.
+        /// The user is responsible for disposing of the search context.
+        /// </summary>
+        public static void Request(SearchContext context, Action<SearchContext, IList<SearchItem>> onSearchCompleted, SearchFlags options = SearchFlags.None)
         {
-            return CreateContext(Providers.Where(p => p.active), searchText);
+            var results = new List<SearchItem>();
+            Request(context,
+                (c, items) => results.AddRange(items),
+                (c) => onSearchCompleted?.Invoke(c, results),
+                options);
+        }
+
+        // <summary>
+        /// Execute a search request and callback for every incoming items and when the search is completed.
+        /// The user is responsible for disposing of the search context.
+        /// </summary>
+        public static void Request(SearchContext context,
+            Action<SearchContext, IEnumerable<SearchItem>> onIncomingItems,
+            Action<SearchContext> onSearchCompleted,
+            SearchFlags options = SearchFlags.None)
+        {
+            var sessionCount = 0;
+            context.asyncItemReceived += (c, items) => onIncomingItems?.Invoke(c, items.Where(e => e != null));
+            context.sessionStarted += c => ++ sessionCount;
+            context.sessionEnded += c =>
+            {
+                --sessionCount;
+                if (sessionCount == 0)
+                    onSearchCompleted?.Invoke(c);
+            };
+            GetItems(context, options | SearchFlags.FirstBatchAsync);
         }
 
         private static void OnSearchEnded(SearchContext context)
         {
-            context.searchFinishTime = EditorApplication.timeSinceStartup;
-
-            #if SHOW_SEARCH_PROGRESS
-            if (context.progressId != -1 && Progress.Exists(context.progressId))
-                Progress.Finish(context.progressId, Progress.Status.Succeeded);
-            context.progressId = -1;
-            #endif
-        }
-
-        internal static void ReportProgress(SearchContext context, float progress = 0f, string status = null)
-        {
-            #if SHOW_SEARCH_PROGRESS
-            if (context.progressId != -1 && Progress.Exists(context.progressId))
-                Progress.Report(context.progressId, progress, status);
-            #endif
+            context.searchFinishTime = DateTime.Now.Ticks;
         }
 
         private static int SortItemComparer(SearchItem item1, SearchItem item2)
@@ -331,60 +397,126 @@ namespace Unity.QuickSearch
             po = item1.score.CompareTo(item2.score);
             if (po != 0)
                 return po;
-            return String.Compare(item1.id, item2.id, StringComparison.Ordinal);
+            return string.Compare(item1.id, item2.id, StringComparison.Ordinal);
         }
 
         private static void RefreshProviders()
         {
-            Providers = Utils.GetAllMethodsWithAttribute<SearchItemProviderAttribute>().Select(methodInfo =>
+            Providers = TypeCache.GetMethodsWithAttribute<SearchItemProviderAttribute>()
+                .Select(LoadProvider)
+                .Where(provider => provider != null)
+                .ToList();
+        }
+
+        private static SearchProvider LoadProvider(System.Reflection.MethodInfo methodInfo)
+        {
+            try
             {
-                try
+                SearchProvider fetchedProvider = null;
+                using (var fetchLoadTimer = new DebugTimer(null))
                 {
-                    SearchProvider fetchedProvider = null;
-                    using (var fetchLoadTimer = new DebugTimer(null))
+                    fetchedProvider = methodInfo.Invoke(null, null) as SearchProvider;
+                    if (fetchedProvider == null)
+                        return null;
+
+                    fetchedProvider.loadTime = fetchLoadTimer.timeMs;
+
+                    // Load per provider user settings
+                    if (SearchSettings.TryGetProviderSettings(fetchedProvider.id, out var providerSettings))
                     {
-                        fetchedProvider = methodInfo.Invoke(null, null) as SearchProvider;
-                        if (fetchedProvider == null)
-                            return null;
-
-                        fetchedProvider.loadTime = fetchLoadTimer.timeMs;
-
-                        // Load per provider user settings
-                        if (SearchSettings.TryGetProviderSettings(fetchedProvider.name.id, out var providerSettings))
-                        {
-                            fetchedProvider.active = providerSettings.active;
-                            fetchedProvider.priority = providerSettings.priority;
-                        }
+                        fetchedProvider.active = providerSettings.active;
+                        fetchedProvider.priority = providerSettings.priority;
                     }
-                    return fetchedProvider;
                 }
-                catch (Exception ex)
-                {
-                    UnityEngine.Debug.LogException(ex);
-                    return null;
-                }
-            }).Where(provider => provider != null).ToList();
+                return fetchedProvider;
+            }
+            catch (Exception ex)
+            {
+                Debug.LogException(ex);
+                return null;
+            }
         }
 
         private static void RefreshProviderActions()
         {
-            ActionIdToProviders = new Dictionary<string, List<string>>();
-            foreach (var action in Utils.GetAllMethodsWithAttribute<SearchActionsProviderAttribute>()
-                                        .SelectMany(methodInfo => methodInfo.Invoke(null, null) as IEnumerable<object>)
-                                        .Where(a => a != null).Cast<SearchAction>())
+            foreach (var action in TypeCache.GetMethodsWithAttribute<SearchActionsProviderAttribute>()
+                     .SelectMany(methodInfo => methodInfo.Invoke(null, null) as IEnumerable<object>)
+                     .Where(a => a != null).Cast<SearchAction>())
             {
-                var provider = Providers.Find(p => p.name.id == action.providerId);
+                var provider = Providers.Find(p => p.id == action.providerId);
                 if (provider == null)
                     continue;
                 provider.actions.Add(action);
-                if (!ActionIdToProviders.TryGetValue(action.id, out var providerIds))
-                {
-                    providerIds = new List<string>();
-                    ActionIdToProviders[action.id] = providerIds;
-                }
-                providerIds.Add(provider.name.id);
             }
             SearchSettings.SortActionsPriority();
+        }
+
+        /// <summary>
+        /// Creates and open a new instance of Quick Search
+        /// </summary>
+        /// <param name="context">Initial search context of QuickSearch</param>
+        /// <param name="topic">QuickSearch search topic</param>
+        /// <param name="defaultWidth">Initial width of the window.</param>
+        /// <param name="defaultHeight">Initial height of the window.</param>
+        /// <param name="multiselect">True if the search support multi-selection or not.</param>
+        /// <param name="dockable">If true, creates a dockable QuickSearch Window (that will be closed when an item is activated). If false, it will create a DropDown (borderless, undockable and unmovable) version of QuickSearch.</param>
+        /// <param name="saveFilters">True if user provider filters should be saved for next search session</param>
+        /// <param name="reuseExisting">If true, try to reuse an already existing instance of QuickSearch. If false will create a new QuickSearch window.</param>
+        /// <returns>Returns the Quick Search editor window instance.</returns>
+        public static ISearchView ShowWindow(SearchContext context = null, string topic = "Unity", float defaultWidth = 850, float defaultHeight = 539,
+            bool saveFilters = true, bool reuseExisting = false, bool multiselect = true, bool dockable = true)
+        {
+            var flags = SearchFlags.None;
+            if (saveFilters) flags |= SearchFlags.SaveFilters;
+            if (reuseExisting) flags |= SearchFlags.ReuseExistingWindow;
+            if (multiselect) flags |= SearchFlags.Multiselect;
+            if (dockable) flags |= SearchFlags.Dockable;
+            var view = QuickSearch.Create(context, topic, flags).ShowWindow(defaultWidth, defaultHeight, flags);
+            if (context != null && !string.IsNullOrEmpty(context.searchText))
+                view.Refresh();
+            return view;
+        }
+
+        /// <summary>
+        /// Open QuickSearch in contextual mode enabling only the providers specified.
+        /// </summary>
+        /// <param name="providerIds">List of provider ids to enabled for QuickSearch</param>
+        /// <returns>Returns the QuickSearch window.</returns>
+        public static ISearchView ShowContextual(params string[] providerIds)
+        {
+            return QuickSearch.OpenWithContextualProvider(null, providerIds, SearchFlags.OpenContextual);
+        }
+
+        /// <summary>
+        /// Use Quick Search to as an object picker to select any object based on the specified filter type.
+        /// </summary>
+        /// <param name="selectHandler">Callback to trigger when a user selects an item.</param>
+        /// <param name="trackingHandler">Callback to trigger when the user is modifying QuickSearch selection (i.e. tracking the currently selected item)</param>
+        /// <param name="searchText">Initial search text for QuickSearch.</param>
+        /// <param name="typeName">Type name of the object to select. Can be used to replace filterType.</param>
+        /// <param name="filterType">Type of the object to select.</param>
+        /// <param name="defaultWidth">Initial width of the window.</param>
+        /// <param name="defaultHeight">Initial height of the window.</param>
+        /// <param name="flags">Options flags modifying how the Search window will be opened.</param>
+        /// <returns>Returns the QuickSearch window.</returns>
+        public static ISearchView ShowObjectPicker(
+            Action<UnityEngine.Object, bool> selectHandler,
+            Action<UnityEngine.Object> trackingHandler,
+            string searchText, string typeName, Type filterType,
+            float defaultWidth = 850, float defaultHeight = 539, SearchFlags flags = SearchFlags.OpenPicker)
+        {
+            return QuickSearch.ShowObjectPicker(selectHandler, trackingHandler, searchText, typeName, filterType, defaultWidth, defaultHeight, flags);
+        }
+
+        public static ISearchView ShowPicker(
+            SearchContext context,
+            Action<SearchItem, bool> selectHandler,
+            Action<SearchItem> trackingHandler = null,
+            Func<SearchItem, bool> filterHandler = null,
+            IEnumerable<SearchItem> subset = null,
+            string title = null, float itemSize = 64f, float defaultWidth = 850, float defaultHeight = 539, SearchFlags flags = SearchFlags.OpenPicker)
+        {
+            return QuickSearch.ShowPicker(context, selectHandler, trackingHandler, filterHandler, subset, title, itemSize, defaultWidth, defaultHeight, flags);
         }
     }
 }

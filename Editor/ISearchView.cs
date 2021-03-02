@@ -1,7 +1,8 @@
 using System;
 using UnityEngine;
+using UnityEngine.Internal;
 
-namespace Unity.QuickSearch
+namespace UnityEditor.Search
 {
     /// <summary>
     /// DisplayMode for a <see cref="ISearchView"/>
@@ -9,11 +10,15 @@ namespace Unity.QuickSearch
     public enum DisplayMode
     {
         /// <summary>Unspecified ISearchView display mode</summary>
-        None,
+        None = 0,
         /// <summary>Display as a list view</summary>
-        List,
+        List = 32,
         /// <summary>Display as a Grid of icons of various size.</summary>
-        Grid
+        Grid = 96,
+
+        [ExcludeFromDocs]
+        /// <summary>Maximum grid size</summary>
+        Limit = 128
     }
 
     /// <summary>
@@ -41,10 +46,31 @@ namespace Unity.QuickSearch
         Default = MoveLineEnd
     }
 
+    [Flags]
+    public enum RefreshFlags
+    {
+        None = 0,
+
+        // Normal refresh
+        Default = 1 << 0,
+
+        // The structure of the current selection data has changed
+        StructureChanged = 1 << 1,
+
+        // The display mode or item size has changed
+        DisplayModeChanged = 1 << 2,
+
+        // The search item list has been updated
+        ItemsChanged = 1 << 3,
+
+        // The current item group has changed.
+        GroupChanged = 1 << 4
+    }
+
     /// <summary>
     /// Search view interface used by the search context to execute a few UI operations.
     /// </summary>
-    public interface ISearchView
+    public interface ISearchView : IDisposable
     {
         /// <summary>
         /// Returns the selected item in the view
@@ -109,11 +135,7 @@ namespace Unity.QuickSearch
         /// <param name="searchText">Text to be displayed in the search view.</param>
         /// <param name="moveCursor">Where to place the cursor after having set the search text</param>
         void SetSearchText(string searchText, TextCursorPlacement moveCursor = TextCursorPlacement.Default);
-
-        /// <summary>
-        /// Open the associated filter window.
-        /// </summary>
-        void PopFilterWindow();
+        void SetSearchText(string searchText, TextCursorPlacement moveCursor, int cursorInsertPosition);
 
         /// <summary>
         /// Make sure the search is now focused.
@@ -123,7 +145,7 @@ namespace Unity.QuickSearch
         /// <summary>
         /// Triggers a refresh of the search view, re-fetching all the search items from enabled search providers.
         /// </summary>
-        void Refresh();
+        void Refresh(RefreshFlags reason = RefreshFlags.Default);
 
         /// <summary>
         /// Request the search view to repaint itself

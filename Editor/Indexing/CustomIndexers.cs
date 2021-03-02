@@ -7,7 +7,7 @@ using UnityEditor;
 using UnityEngine;
 using Object = UnityEngine.Object;
 
-namespace Unity.QuickSearch
+namespace UnityEditor.Search
 {
     delegate void CustomIndexerHandler(CustomObjectIndexerTarget context, ObjectIndexer indexer);
 
@@ -123,7 +123,7 @@ namespace Unity.QuickSearch
         static void LoadCustomObjectIndexers()
         {
             Hash128 globalIndexersHash = default;
-            foreach (var customIndexerMethodInfo in Utils.GetAllMethodsWithAttribute<CustomObjectIndexerAttribute>())
+            foreach (var customIndexerMethodInfo in TypeCache.GetMethodsWithAttribute<CustomObjectIndexerAttribute>())
             {
                 var customIndexerAttribute = customIndexerMethodInfo.GetCustomAttribute<CustomObjectIndexerAttribute>();
                 var indexerType = customIndexerAttribute.type;
@@ -147,10 +147,8 @@ namespace Unity.QuickSearch
                 HashUtilities.AppendHash(ref customIndexerHash, ref globalIndexersHash);
             }
 
-            #if UNITY_2020_1_OR_NEWER
             if (!AssetDatabaseAPI.IsAssetImportWorkerProcess())
                 EditorApplication.delayCall += () => AssetDatabaseAPI.RegisterCustomDependency(nameof(CustomObjectIndexerAttribute), globalIndexersHash);
-            #endif
         }
 
         static bool ValidateCustomIndexerMethodSignature(MethodInfo methodInfo)
@@ -191,6 +189,5 @@ namespace Unity.QuickSearch
             HashUtilities.ComputeHash128(System.Text.Encoding.ASCII.GetBytes(id), ref dataHash);
             return dataHash;
         }
-
     }
 }

@@ -1,54 +1,42 @@
-//#define DEBUG_TIMING
 using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
-using UnityEditor;
+using UnityEditor.SceneManagement;
 using UnityEditor.ShortcutManagement;
 using UnityEngine;
 
-namespace Unity.QuickSearch.Providers
+namespace UnityEditor.Search.Providers
 {
-    /// <summary>
-    /// Scene provider. Can be used as a base class if you want to enhance the scene searching capabilities of QuickSearch.
-    /// </summary>
-    public class SceneProvider : SearchProvider
+    class SceneProvider : SearchProvider
     {
-        /// <summary>
-        /// Fetch all the scene GameObjects.
-        /// </summary>
-        protected Func<GameObject[]> fetchGameObjects { get; set; }
-        /// <summary>
-        /// Build a list of keywords for all of the different components found in the scene.
-        /// </summary>
-        protected Func<GameObject, string[]> buildKeywordComponents { get; set; }
-        /// <summary>
-        /// Has the hierarchy since last search.
-        /// </summary>
-        protected bool m_HierarchyChanged = true;
-
-        private GameObject[] m_GameObjects = null;
+        private bool m_HierarchyChanged = true;
+        private List<GameObject> m_GameObjects = null;
         private SceneQueryEngine m_SceneQueryEngine;
+        private ISearchView m_LastSearchView;
 
-        /// <summary>
-        /// Create a new SceneProvider.
-        /// </summary>
-        /// <param name="providerId">Unique Id for the scene provider.</param>
-        /// <param name="filterId">Filter token id use to search only with this provider.</param>
-        /// <param name="displayName">Provider display name used in UI.</param>
         public SceneProvider(string providerId, string filterId, string displayName)
             : base(providerId, displayName)
         {
             priority = 50;
             this.filterId = filterId;
             showDetails = true;
-            showDetailsOptions = ShowDetailsOptions.Inspector | ShowDetailsOptions.Actions;
+            showDetailsOptions = ShowDetailsOptions.Inspector | ShowDetailsOptions.Actions | ShowDetailsOptions.Preview | ShowDetailsOptions.DefaultGroup;
 
             isEnabledForContextualSearch = () =>
                 Utils.IsFocusedWindowTypeName("SceneView") ||
                 Utils.IsFocusedWindowTypeName("SceneHierarchyWindow");
 
+            #if USE_SEARCH_MODULE
+            EditorSceneManager.activeSceneChangedInEditMode += (_, __) => InvalidateScene();
+            PrefabStage.prefabStageOpened += _ => InvalidateScene();
+            PrefabStage.prefabStageClosing += _ => InvalidateScene();
+            ObjectChangeEvents.changesPublished += OnObjectChanged;
+            #else
             EditorApplication.hierarchyChanged += () => m_HierarchyChanged = true;
+            #endif
+
+            supportsSyncViewSearch = true;
 
             toObject = (item, type) => ObjectFromItem(item, type);
 
@@ -111,7 +99,7 @@ namespace Unity.QuickSearch.Providers
                 var obj = ObjectFromItem(item);
                 if (obj == null)
                     return item.thumbnail;
-                return Utils.GetSceneObjectPreview(obj, options, item.thumbnail);
+                return Utils.GetSceneObjectPreview(obj, size, options, item.thumbnail);
             };
 
             startDrag = (item, context) =>
@@ -119,7 +107,7 @@ namespace Unity.QuickSearch.Providers
                 if (context.selection.Count > 1)
                     Utils.StartDrag(context.selection.Select(i => ObjectFromItem(i)).ToArray(), item.GetLabel(context, true));
                 else
-                    Utils.StartDrag(new [] { ObjectFromItem(item) }, item.GetLabel(context, true));
+                    Utils.StartDrag(new[] { ObjectFromItem(item) }, item.GetLabel(context, true));
             };
 
             fetchPropositions = (context, options) =>
@@ -128,16 +116,82 @@ namespace Unity.QuickSearch.Providers
             };
 
             trackSelection = (item, context) => PingItem(item);
-
-            fetchGameObjects = SearchUtils.FetchGameObjects;
-            buildKeywordComponents = SceneQueryEngine.BuildKeywordComponents;
         }
 
-        /// <summary>
-        /// Create default action handles for scene SearchItem. See <see cref="SearchAction"/>.
-        /// </summary>
-        /// <param name="providerId">Provider Id registered for the action.</param>
-        /// <returns>A collection of SearchActions working for a Scene SearchItem.</returns>
+        #if USE_SEARCH_MODULE
+        private void InvalidateScene()
+        {
+            m_HierarchyChanged = true;
+            m_LastSearchView?.Refresh();
+        }
+
+        private void InvalidateObject(int instanceId, RefreshFlags flags = RefreshFlags.Default)
+        {
+            if (m_SceneQueryEngine.InvalidateObject(instanceId))
+                m_LastSearchView?.Refresh(flags);
+            else if (UnityEngine.Object.FindObjectFromInstanceID(instanceId) is Component c)
+                InvalidateObject(c.gameObject.GetInstanceID());
+        }
+
+        private void OnObjectChanged(ref ObjectChangeEventStream stream)
+        {
+            if (m_SceneQueryEngine == null)
+                return;
+
+            for (int i = 0; i < stream.length; ++i)
+            {
+                var eventType = stream.GetEventType(i);
+                switch (eventType)
+                {
+                    case ObjectChangeKind.None:
+                    case ObjectChangeKind.CreateAssetObject:
+                    case ObjectChangeKind.DestroyAssetObject:
+                    case ObjectChangeKind.ChangeAssetObjectProperties:
+                        break;
+
+                    case ObjectChangeKind.ChangeScene:
+                    case ObjectChangeKind.CreateGameObjectHierarchy:
+                    case ObjectChangeKind.DestroyGameObjectHierarchy:
+                        InvalidateScene();
+                        break;
+
+                    case ObjectChangeKind.ChangeGameObjectStructureHierarchy:
+                    {
+                        stream.GetChangeGameObjectStructureHierarchyEvent(i, out var e);
+                        InvalidateObject(e.instanceId, RefreshFlags.StructureChanged);
+                    }
+                    break;
+                    case ObjectChangeKind.ChangeGameObjectStructure:
+                    {
+                        stream.GetChangeGameObjectStructureEvent(i, out var e);
+                        InvalidateObject(e.instanceId, RefreshFlags.StructureChanged);
+                    }
+                    break;
+                    case ObjectChangeKind.ChangeGameObjectParent:
+                    {
+                        stream.GetChangeGameObjectParentEvent(i, out var e);
+                        InvalidateObject(e.instanceId);
+                    }
+                    break;
+                    case ObjectChangeKind.ChangeGameObjectOrComponentProperties:
+                    {
+                        stream.GetChangeGameObjectOrComponentPropertiesEvent(i, out var e);
+                        InvalidateObject(e.instanceId);
+                    }
+                    break;
+                    case ObjectChangeKind.UpdatePrefabInstances:
+                    {
+                        stream.GetUpdatePrefabInstancesEvent(i, out var e);
+                        for (int idIndex = 0; idIndex < e.instanceIds.Length; ++idIndex)
+                            InvalidateObject(e.instanceIds[idIndex]);
+                    }
+                    break;
+                }
+            }
+        }
+
+        #endif
+
         public static IEnumerable<SearchAction> CreateActionHandlers(string providerId)
         {
             return new SearchAction[]
@@ -146,7 +200,7 @@ namespace Unity.QuickSearch.Providers
                 {
                     execute = (items) =>
                     {
-                        FrameObjects(items.Select(i => i.provider.toObject(i, typeof(GameObject))).Where(i=>i).ToArray());
+                        FrameObjects(items.Select(i => i.provider.toObject(i, typeof(GameObject))).Where(i => i).ToArray());
                     }
                 },
 
@@ -165,29 +219,51 @@ namespace Unity.QuickSearch.Providers
                                 FrameObject(go);
                         }
                     }
-                }
+                },
+
+                new SearchAction(providerId, "show", null, "Show selected object(s)")
+                {
+                    enabled = (items) => SceneVisibilityManager.instance.IsHidden(items.First().ToObject<GameObject>()),
+                    execute = (items) => SceneVisibilityManager.instance.Show(items.Select(i => i.ToObject<GameObject>()).Where(i => i).ToArray(), true)
+                },
+
+                new SearchAction(providerId, "hide", null, "Hide selected object(s)")
+                {
+                    enabled = (items) => !SceneVisibilityManager.instance.IsHidden(items.First().ToObject<GameObject>()),
+                    execute = (items) => SceneVisibilityManager.instance.Hide(items.Select(i => i.ToObject<GameObject>()).Where(i => i).ToArray(), true)
+                },
             };
         }
 
         private IEnumerator SearchItems(SearchContext context, SearchProvider provider)
         {
-            if (!String.IsNullOrEmpty(context.searchQuery))
+            m_LastSearchView = context.searchView;
+            if (!string.IsNullOrEmpty(context.searchQuery))
             {
                 if (m_HierarchyChanged)
                 {
-                    m_GameObjects = fetchGameObjects();
+                    m_GameObjects = new List<GameObject>(SearchUtils.FetchGameObjects());
                     m_SceneQueryEngine = new SceneQueryEngine(m_GameObjects);
                     m_HierarchyChanged = false;
                 }
 
-                yield return m_SceneQueryEngine.Search(context).Select(gameObject =>
+                IEnumerable<GameObject> subset = null;
+                if (context.subset != null)
+                {
+                    subset = context.subset
+                        .Where(item => item.provider.id == "scene")
+                        .Select(item => ObjectFromItem(item))
+                        .Where(obj => obj != null);
+                }
+
+                yield return m_SceneQueryEngine.Search(context, provider, subset).Select(gameObject =>
                 {
                     if (!gameObject)
                         return null;
                     return AddResult(context, provider, gameObject.GetInstanceID().ToString(), 0, false);
                 });
             }
-            else if (context.wantsMore && context.filterType != null && String.IsNullOrEmpty(context.searchQuery))
+            else if (context.wantsMore && context.filterType != null && string.IsNullOrEmpty(context.searchQuery))
             {
                 yield return GameObject.FindObjectsOfType(context.filterType)
                     .Select(obj =>
@@ -269,7 +345,7 @@ namespace Unity.QuickSearch.Providers
         [SearchItemProvider]
         internal static SearchProvider CreateProvider()
         {
-            return new SceneProvider(k_DefaultProviderId, "h:", "Scene");
+            return new SceneProvider(k_DefaultProviderId, "h:", "Hierarchy");
         }
 
         [SearchActionsProvider]
@@ -278,7 +354,7 @@ namespace Unity.QuickSearch.Providers
             return SceneProvider.CreateActionHandlers(k_DefaultProviderId);
         }
 
-        [Shortcut("Help/Quick Search/Scene")]
+        [Shortcut("Help/Search/Hierarchy")]
         internal static void OpenQuickSearch()
         {
             QuickSearch.OpenWithContextualProvider(k_DefaultProviderId, Query.type);

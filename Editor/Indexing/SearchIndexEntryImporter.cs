@@ -1,15 +1,8 @@
 using System;
 using System.IO;
-using UnityEditor;
-using UnityEngine;
-
-#if UNITY_2020_2_OR_NEWER
-using UnityEditor.AssetImporters;
-#else
 using UnityEditor.Experimental.AssetImporters;
-#endif
 
-namespace Unity.QuickSearch
+namespace UnityEditor.Search
 {
     [Flags]
     enum IndexingOptions : byte
@@ -22,9 +15,13 @@ namespace Unity.QuickSearch
 
     abstract class SearchIndexEntryImporter : ScriptedImporter
     {
-        // 14- Add extended options to index as many properties as possible
-        // 15- Add a dependency on the container folder of the asset so it gets re-indexed when the folder gets renamed
-        public const int version = (15 << 18) ^ SearchIndexEntry.version;
+        // 1- Add extended options to index as many properties as possible
+        // 2- Add a dependency on the container folder of the asset so it gets re-indexed when the folder gets renamed
+        // 3- Index colors with a # sign instead of just the hexadecimal value.
+        // 4- Optimize the scene indexing content
+        // 5- Fix indexing error reporting
+        // 6- Fix LoadAllAssetRepresentationsAtPath sub asset validation
+        public const int version = (6 << 18) ^ SearchIndexEntry.version;
 
         protected abstract string type { get; }
         protected abstract IndexingOptions options { get; }
@@ -55,37 +52,33 @@ namespace Unity.QuickSearch
 
                 type = type,
                 options = GetOptions(),
-
             };
 
-            EditorApplication.LockReloadAssemblies();
             try
             {
                 var indexer = SearchDatabase.CreateIndexer(settings);
-                indexer.IndexDocument(ctx.assetPath, false);
+                try
+                {
+                    indexer.IndexDocument(ctx.assetPath, false);
+                }
+                catch (Exception ex)
+                {
+                    ctx.LogImportWarning($"Failed to build search index for {ctx.assetPath}\n{ex}");
+                }
+
                 indexer.ApplyUnsorted();
 
                 var indexArtifactPath = ctx.GetResultPath($"{type}.{(int)options:X}.index".ToLowerInvariant());
                 using (var fileStream = new FileStream(indexArtifactPath, FileMode.CreateNew, FileAccess.Write, FileShare.Read))
                     indexer.Write(fileStream);
 
-                Debug.LogFormat(LogType.Log, LogOption.NoStacktrace, null, $"\nGenerated {type} ({GetType().Name}) {indexArtifactPath} for {ctx.assetPath} with {options}");
-
                 ctx.DependsOnSourceAsset(Path.GetDirectoryName(ctx.assetPath).Replace("\\", "/"));
                 ctx.DependsOnCustomDependency(GetType().GUID.ToString("N"));
-
-                #if UNITY_2020_1_OR_NEWER
                 ctx.DependsOnCustomDependency(nameof(CustomObjectIndexerAttribute));
-                #endif
             }
             catch (Exception ex)
             {
-                Debug.LogException(ex);
                 ctx.LogImportError(ex.Message);
-            }
-            finally
-            {
-                EditorApplication.UnlockReloadAssemblies();
             }
         }
 
