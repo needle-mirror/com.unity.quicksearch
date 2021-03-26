@@ -21,6 +21,7 @@ namespace UnityEditor.Search
         private readonly string name;
         private readonly string title;
         private int progressId = k_NoProgress;
+        private volatile float lastProgress = -1f;
         private EventWaitHandle cancelEvent;
         private readonly ResolveHandler resolver;
         private readonly System.Diagnostics.Stopwatch sw;
@@ -76,18 +77,18 @@ namespace UnityEditor.Search
 
         protected virtual void Dispose(bool disposing)
         {
-            if (!disposed)
-            {
-                if (disposing)
-                    Resolve();
+            if (disposed)
+                return;
 
-                cancelEvent?.Dispose();
-                cancelEvent = null;
-                if (Progress.Exists(progressId))
-                    Progress.Remove(progressId);
-                progressId = k_NoProgress;
-                disposed = true;
-            }
+            if (disposing)
+                Resolve();
+
+            cancelEvent?.Dispose();
+            cancelEvent = null;
+            if (Progress.Exists(progressId))
+                Progress.Remove(progressId);
+            progressId = k_NoProgress;
+            disposed = true;
         }
 
         public void Dispose()
@@ -126,6 +127,11 @@ namespace UnityEditor.Search
 
         public void Report(string status)
         {
+            Report(status, lastProgress);
+        }
+
+        public void Report(string status, float progress)
+        {
             if (!IsValid())
                 return;
 
@@ -137,7 +143,7 @@ namespace UnityEditor.Search
                 return;
             }
 
-            Progress.SetDescription(progressId, status);
+            Progress.Report(progressId, progress, status);
         }
 
         public void Report(int current)
@@ -164,7 +170,8 @@ namespace UnityEditor.Search
             }
             else
             {
-                Progress.Report(progressId, current / (float)total);
+                lastProgress = current / (float)total;
+                Progress.Report(progressId, current, total, status);
             }
         }
 

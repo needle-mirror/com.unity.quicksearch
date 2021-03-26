@@ -130,7 +130,7 @@
     color: --unity-theme-text-color-3;
     border: 0px solid red;
 
-    font-size: --unity-font-size-big;
+    font-size: 12px;
 }
 
 .quick-search-tab:hover {
@@ -172,4 +172,25 @@
 
 .quick-search-saved-search-item-selected:hover {
     background-color: --unity-theme-background-color-16;
+}
+
+.quick-search-dropdown-item {
+    -unity-enable-hovering: --enable-style-hovering;
+    color: --unity-text-color;
+    margin: 0 1px 0 0;
+    padding: 1px 2px 1px 2px;
+    font-size: --unity-font-size;
+    height: --window-toolbar-button-height;
+    -unity-text-align: middle-left;
+}
+
+.quick-search-dropdown-item:hover {
+    background-color: --theme-header-bar-background-color-hover;
+}
+
+.quick-search-tips-section {
+    background-color: --theme-input-background-color;
+    border: 0px solid #313131;
+    border-radius: 10px;
+    padding: 15px;
 }

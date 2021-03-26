@@ -21,7 +21,7 @@ namespace UnityEditor.Search
         public static void OpenWindow(int instanceID)
         {
             s_SelectedAssetOnOpen = instanceID;
-            var window = CreateWindow<IndexManager>();
+            var window = GetWindow<IndexManager>();
             window.m_WindowId = GUID.Generate().ToString();
             window.position = Utils.GetMainWindowCenteredPosition(new Vector2(760f, 500f));
             window.minSize = new Vector2(510f, 200f);
@@ -424,9 +424,6 @@ namespace UnityEditor.Search
                         toggle.tooltip = "Toggles this index off so search does not use it";
                         toggle.RegisterValueChangedCallback(evt => m_ListViewIndexSettings.ListView.Refresh());
                         break;
-                    case "files":
-                        toggle.tooltip = "Include file paths in this index";
-                        break;
                     case "types":
                         toggle.tooltip = "Include object type information in this index";
                         break;
@@ -434,7 +431,8 @@ namespace UnityEditor.Search
                         toggle.tooltip = "Include objects' serialized properties in this index";
                         break;
                     case "extended":
-                        toggle.tooltip = "Include as many properties as possible";
+                        toggle.label = "Sub objects";
+                        toggle.tooltip = "Include all sub objects (i.e. all scene objects for a unity scene, and all sub-assets for an FXB)";
                         break;
                     case "dependencies":
                         toggle.tooltip = "Include information about objects' direct dependencies in this index";
@@ -485,11 +483,11 @@ namespace UnityEditor.Search
                     m_DependenciesButton.style.display = DisplayStyle.Flex;
 
                     var dependencies = selectedItemAsset.index.GetDependencies();
+                    m_DependenciesButton.text = $"{dependencies.Count} Assets";
                     UpdateIndexPreviewListView(dependencies, m_DependenciesListView);
-                    m_DependenciesButton.text = $"{dependencies.Count} Documents";
 
-                    UpdateIndexPreviewListView(selectedItemAsset.index.GetDocuments(true).OrderBy(p => p.id).Select(d => d.id).ToList(), m_DocumentsListView);
                     m_DocumentsButton.text = $"{selectedItemAsset.index.documentCount} Objects";
+                    UpdateIndexPreviewListView(selectedItemAsset.index.GetDocuments(true).Select(d => $"{d.name} {{{d.id}}}").ToList(), m_DocumentsListView);
 
                     UpdateIndexPreviewListView(selectedItemAsset.index.GetKeywords().OrderBy(p => p).ToList(), m_KeywordsListView);
                     m_KeywordsButton.text = $"{selectedItemAsset.index.keywordCount} Keywords";
@@ -761,7 +759,8 @@ namespace UnityEditor.Search
 
         private void AddListElement(List<string> list, ListViewIndexSettings listView)
         {
-            list.Add("");
+            // set up include path to null instead of "" because "" is a valid default value for File
+            list.Add(null);
 
             listView.UpdateListViewOnAdd();
         }
@@ -801,7 +800,7 @@ namespace UnityEditor.Search
                 else
                 {
                     File.Delete(path);
-                    AssetPostprocessorIndexer.RaiseContentRefreshed(new string[0], new string[] { path }, new string[0]);
+                    SearchMonitor.RaiseContentRefreshed(new string[0], new string[] { path }, new string[0]);
                     AssetDatabase.Refresh();
                 }
             }
@@ -932,7 +931,7 @@ namespace UnityEditor.Search
                         menu.AddItem(new GUIContent("Force rebuild"), false, () =>
                         {
                             var settings = m_IndexSettingsAssets[index].settings;
-                            var indexImporterType = SearchIndexEntryImporter.GetIndexImporterType(settings.type, settings.options.GetHashCode());
+                            var indexImporterType = SearchIndexEntryImporter.GetIndexImporterType(settings.options.GetHashCode());
                             AssetDatabaseAPI.RegisterCustomDependency(indexImporterType.GUID.ToString("N"), Hash128.Parse(Guid.NewGuid().ToString("N")));
                             SearchDatabase.ImportAsset(m_IndexSettingsFilePaths[index]);
                         });
@@ -1090,6 +1089,7 @@ namespace UnityEditor.Search
 
             FilePattern m_Pattern;
             EnumField m_EnumField;
+            static FilePattern m_LastFilePattern = FilePattern.File;
             TextField m_PrefixTextField;
             TextField m_PathTextField;
             TextField m_SuffixTextField;
@@ -1106,7 +1106,8 @@ namespace UnityEditor.Search
                 var grip = new VisualElement() { name = "ReorderableListViewGrip" };
                 Add(grip);
 
-                Add(m_EnumField = new EnumField(FilePattern.File));
+                m_Pattern = m_LastFilePattern;
+                Add(m_EnumField = new EnumField(m_Pattern));
                 m_EnumField.RegisterValueChangedCallback(FilePatternChanged);
 
                 Add(m_PrefixTextField = new TextField() { name = "Prefix", value = "." });
@@ -1123,6 +1124,7 @@ namespace UnityEditor.Search
                 });
                 Add(m_SuffixTextField = new TextField() { name = "Suffix", value = "/" });
                 Add(m_ExplorerButton = new Button(ChooseFolder));
+                FilePatternChanged();
             }
 
             private class IncludeExcludeDraggableTextField : DraggableTextField
@@ -1154,6 +1156,7 @@ namespace UnityEditor.Search
             private void FilePatternChanged(ChangeEvent<Enum> evt)
             {
                 m_Pattern = (FilePattern)evt.newValue;
+                m_LastFilePattern = m_Pattern;
                 FilePatternChanged();
                 m_PathsListView.itemsSource[(int)userData] = m_Path;
                 m_Window.UpdateUnsavedChanges(true);
@@ -1202,7 +1205,18 @@ namespace UnityEditor.Search
             internal void UpdateValues(string path, int index)
             {
                 userData = index;
-                UpdateValues(path);
+
+                if (path != null)
+                {
+                    if (path != m_Path)
+                        UpdateValues(path);
+                }
+                // new items have null path, in that case we need to setup the field with the m_Path that was computed in the constructor from the previous file pattern
+                else
+                {
+                    m_PathsListView.itemsSource[(int)userData] = m_Path;
+                    UpdateValues(m_Path);
+                }
             }
 
             internal void UpdateValues(string path)
@@ -1233,7 +1247,7 @@ namespace UnityEditor.Search
                     if (!string.IsNullOrEmpty(result))
                     {
                         result = Utils.CleanPath(result);
-                        if (File.Exists(result) && Utils.IsPathUnderProject(result))
+                        if (File.Exists(result) && result.StartsWith(k_ProjectPath))
                         {
                             fileName = result.Substring(k_ProjectPath.Length + 1); // Only the project part
                         }
@@ -1250,7 +1264,7 @@ namespace UnityEditor.Search
             if (!string.IsNullOrEmpty(result))
             {
                 result = Utils.CleanPath(result);
-                if (Directory.Exists(result) && Utils.IsPathUnderProject(result))
+                if (Directory.Exists(result) && result.StartsWith(k_ProjectPath))
                 {
                     folderName = result.Substring(k_ProjectPath.Length + 1); // Only the project part
                 }
@@ -1324,8 +1338,8 @@ namespace UnityEditor.Search
                 searchDatabase.settings.type = Enum.GetName(typeof(SearchDatabase.IndexType), type);
                 searchDatabase.settings.baseScore = score;
                 searchDatabase.settings.roots = GetRoots().Where(e => !string.IsNullOrEmpty(e)).ToArray();
-                searchDatabase.settings.includes = includes.Where(e => !string.IsNullOrEmpty(e)).ToArray();
-                searchDatabase.settings.excludes = excludes.Where(e => !string.IsNullOrEmpty(e)).ToArray();
+                searchDatabase.settings.includes = includes.Where(e => !string.IsNullOrEmpty(e) && e != "." && e != "/").ToArray();
+                searchDatabase.settings.excludes = excludes.Where(e => !string.IsNullOrEmpty(e) && e != "." && e != "/").ToArray();
                 SetOptions(searchDatabase.settings.options, this.options);
             }
 

@@ -397,7 +397,7 @@ namespace UnityEditor.Search
                     int c = x.score.CompareTo(y.score);
                     if (c != 0)
                         return c;
-                    return x.id.CompareTo(y.id);
+                    return string.CompareOrdinal(x.id, y.id);
                 }
             }
 
@@ -608,6 +608,8 @@ namespace UnityEditor.Search
                     itemGroup = new Group(item.provider.id, item.provider.name, item.provider.priority);
                     m_Groups.Add(itemGroup);
                     m_Groups.Sort((lhs, rhs) => lhs.priority.CompareTo(rhs.priority));
+                    if (!string.IsNullOrEmpty(m_CurrentGroupId))
+                        m_CurrentGroupIndex = m_Groups.FindIndex(g => g.id == m_CurrentGroupId);
                 }
 
                 if (itemGroup.Add(item))

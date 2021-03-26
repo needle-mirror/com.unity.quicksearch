@@ -12,7 +12,8 @@ namespace UnityEditor.Search
         Less,
         LessOrEqual,
 
-        Document,
+        DoNotCompareScore,
+
         None
     }
 
@@ -47,15 +48,8 @@ namespace UnityEditor.Search
             }
             else
                 c = item1.key.CompareTo(item2.key);
-            if (c != 0)
+            if (c != 0 || op == SearchIndexOperator.DoNotCompareScore)
                 return c;
-
-            if (op == SearchIndexOperator.Document)
-            {
-                c = item1.index.CompareTo(item2.index);
-                if (c != 0)
-                    return c;
-            }
 
             if (item2.score == int.MaxValue)
                 return 0;

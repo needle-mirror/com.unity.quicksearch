@@ -32,7 +32,6 @@ namespace UnityEditor.Search
             var index = 0;
             var selectionIndex = selection.Count == 0 ? -1 : selection.Last();
             var eventType = evt.type;
-            var mouseButton = evt.button;
             var mousePosition = evt.mousePosition;
             var isHoverGrid = !AutoComplete.IsHovered(evt.mousePosition) & gridRect.Contains(mousePosition);
 

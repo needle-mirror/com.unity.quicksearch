@@ -18,6 +18,7 @@ namespace UnityEditor.Search
         public static Texture2D store = EditorGUIUtility.FindTexture("AssetStore Icon");
         public static Texture2D help = EditorGUIUtility.LoadIcon($"Icons/_Help.png");
         public static Texture2D clear = EditorGUIUtility.LoadIcon("StyleSheets/Northstar/Images/clear.png");
+        public static Texture2D quickSearchWindow = EditorGUIUtility.LoadIcon($"{iconFolder}/SearchWindow.png");
         public static Texture2D more = EditorGUIUtility.LoadIcon($"{iconFolder}/more.png");
         public static Texture2D logInfo = EditorGUIUtility.LoadIcon("UIPackageResources/Images/console.infoicon.png");
         public static Texture2D logWarning = EditorGUIUtility.LoadIcon("UIPackageResources/Images/cconsole.warnicon.png");
@@ -37,6 +38,7 @@ namespace UnityEditor.Search
         public static Texture2D help = EditorGUIUtility.FindTexture($"Icons/_Help.png");
         public static Texture2D search = LoadIcon($"{iconFolder}/search.png");
         public static Texture2D clear = LoadIcon($"{iconFolder}/clear.png");
+        public static Texture2D quickSearchWindow = quicksearch;
         public static Texture2D more = LoadIcon($"{iconFolder}/more.png");
         public static Texture2D store = LoadIcon($"{iconFolder}/store.png");
         public static Texture2D logInfo = LoadIcon($"{iconFolder}/log_info.png");

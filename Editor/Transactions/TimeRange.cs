@@ -102,7 +102,7 @@ namespace UnityEditor.Search
         }
     }
 
-    struct TimeRange
+    struct TimeRange : IBinarySearchRange<DateTime>
     {
         public TimeRangeLimit first;
         public TimeRangeLimit last;
@@ -151,6 +151,16 @@ namespace UnityEditor.Search
         public override string ToString()
         {
             return $"{(first.exclusive ? "]" : "[")}{first.timeStamp:u}, {last.timeStamp:u}{(last.exclusive ? "[" : "]")}";
+        }
+
+        public bool StartIsInRange(DateTime start)
+        {
+            return first.InRange(start);
+        }
+
+        public bool EndIsInRange(DateTime end)
+        {
+            return last.InRange(end);
         }
     }
 }

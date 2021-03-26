@@ -1,5 +1,6 @@
 {
     "name": "com.unity.quicksearch",
+    "rootNamespace": "",
     "references": [
         "GUID:343deaaf83e0cee4ca978e7df0b80d21",
         "GUID:ee25bd4c5770f7147b2e7abfba78d26e"
@@ -8,7 +9,7 @@
         "Editor"
     ],
     "excludePlatforms": [],
-    "allowUnsafeCode": false,
+    "allowUnsafeCode": true,
     "overrideReferences": false,
     "precompiledReferences": [],
     "autoReferenced": true,

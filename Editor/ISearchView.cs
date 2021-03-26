@@ -18,7 +18,11 @@ namespace UnityEditor.Search
 
         [ExcludeFromDocs]
         /// <summary>Maximum grid size</summary>
-        Limit = 128
+        Limit = 128,
+        #if USE_SEARCH_MODULE
+        /// <summary>Table view used to bulk edit search results.</summary>
+        Table = 129,
+        #endif
     }
 
     /// <summary>

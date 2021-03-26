@@ -41,7 +41,7 @@ namespace UnityEditor.Search
         {
             return new SearchFilter
             {
-                searchArea = SearchFilter.SearchArea.InAssetsOnly,
+                searchArea = SearchFilter.SearchArea.AllAssets,
                 classNames = new[] { nameof(SearchQuery) },
                 showAllHits = false
             };
@@ -191,8 +191,17 @@ namespace UnityEditor.Search
             }
 
             var searchWindow = QuickSearch.OpenWithContextualProvider(query.text, query.providerIds.ToArray(), SearchFlags.ReuseExistingWindow, "Unity");
+            searchWindow.activeSearchQuery = query;
             searchWindow.SetViewState(query.viewState);
+            AddToRecentSearch(query);
             return searchWindow;
+        }
+
+        public static void AddToRecentSearch(SearchQuery query)
+        {
+            SearchSettings.AddRecentSearch(query.text);
+            if (SearchSettings.savedSearchesSortOrder == SearchQuerySortOrder.RecentlyUsed)
+                SortQueries();
         }
 
         [OnOpenAsset]
@@ -224,6 +233,8 @@ namespace UnityEditor.Search
 
         public List<string> providerIds;
         public ResultViewState viewState;
+
+        public Texture2D icon;
 
         public string displayName { get { return string.IsNullOrEmpty(name) ? Path.GetFileNameWithoutExtension(AssetDatabase.GetAssetPath(this)) : name; } }
 

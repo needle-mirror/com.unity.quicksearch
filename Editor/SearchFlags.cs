@@ -44,9 +44,14 @@ namespace UnityEditor.Search
         NoIndexing = 1 << 5,
 
         /// <summary>
-        /// Evaluate the current search context as an expression.
+        /// Process the current query as an expression
         /// </summary>
         Expression = 1 << 6,
+
+        /// <summary>
+        /// Evaluate the search text as a pure query string (prevent the text to be evaluated as an search expression)
+        /// </summary>
+        QueryString = 1 << 7,
 
         /// <summary>
         /// Default Search Flag

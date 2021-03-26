@@ -6,26 +6,35 @@ using System.Reflection;
 
 namespace UnityEditor.Search
 {
-    delegate object SearchExpressionSelectorHandler(SearchExpressionSelectorArgs args);
-    delegate object SearchExpressionSelectorHandler1(SearchItem item);
-    delegate string SearchExpressionSelectorHandler2(SearchItem item);
+    delegate object SearchSelectorHandler(SearchSelectorArgs args);
+    delegate object SearchSelectorHandler1(SearchItem item);
+    delegate string SearchSelectorHandler2(SearchItem item);
 
     [AttributeUsage(AttributeTargets.Method, AllowMultiple = true)]
-    class SearchExpressionSelectorAttribute : Attribute
+    class SearchSelectorAttribute : Attribute
     {
-        public SearchExpressionSelectorAttribute(string pattern, int priority = 100, string provider = null)
+        public SearchSelectorAttribute(string pattern, int priority = 100, string provider = null, bool printable = true)
         {
+            if (string.IsNullOrEmpty(pattern))
+                throw new ArgumentException("Empty selector pattern", nameof(pattern));
+
+            if (pattern[0] != '^')
+                pattern = "^" + pattern;
+            if (pattern[pattern.Length - 1] != '$')
+                pattern += "$";
             this.pattern = new Regex(pattern,
                 RegexOptions.IgnoreCase | RegexOptions.Singleline |
                 RegexOptions.Compiled | RegexOptions.CultureInvariant,
                 TimeSpan.FromMilliseconds(25));
             this.priority = priority;
             this.provider = provider;
+            this.printable = printable;
         }
 
         public Regex pattern { get; private set; }
         public int priority { get; private set; }
         public string provider { get; private set; }
+        public bool printable { get; private set; }
     }
 
     readonly struct SelectorGroup
@@ -47,10 +56,10 @@ namespace UnityEditor.Search
 
     readonly struct SelectorMatch
     {
-        public readonly SearchExpressionSelector selector;
+        public readonly SearchSelector selector;
         public readonly SelectorGroup[] groups;
 
-        public SelectorMatch(SearchExpressionSelector selector, IEnumerable<SelectorGroup> groups)
+        public SelectorMatch(SearchSelector selector, IEnumerable<SelectorGroup> groups)
         {
             this.selector = selector;
             this.groups = groups.ToArray();
@@ -62,7 +71,7 @@ namespace UnityEditor.Search
         }
     }
 
-    readonly struct SearchExpressionSelectorArgs
+    readonly struct SearchSelectorArgs
     {
         public readonly SelectorGroup[] groups;
         public readonly SearchItem current;
@@ -73,39 +82,48 @@ namespace UnityEditor.Search
         public string this[int index] => groups[index + 1].value;
         public string this[string captureName] => groups.FirstOrDefault(g => string.Equals(captureName, g.name, StringComparison.OrdinalIgnoreCase)).value;
 
-        public SearchExpressionSelectorArgs(SelectorMatch match, SearchItem current)
+        public SearchSelectorArgs(SelectorMatch match, SearchItem current)
         {
             groups = match.groups;
             this.current = current;
         }
     }
 
-    readonly struct SearchExpressionSelector
+    readonly struct SearchSelector
     {
         public readonly Regex pattern;
         public readonly int priority;
         public readonly string provider;
-        public readonly SearchExpressionSelectorHandler select;
+        public readonly bool printable;
+        public readonly SearchSelectorHandler select;
 
         public bool valid => pattern != null && select != null;
 
-        public SearchExpressionSelector(Regex pattern, int priority, string provider, SearchExpressionSelectorHandler select)
+        public string label => Regex.Replace(pattern.ToString(), @"[\^\$\?\<\>\+\.\(\)\[\]\p{C}]+", string.Empty);
+
+        internal SearchSelector(SearchSelectorAttribute attr, SearchSelectorHandler select)
+            : this(attr.pattern, attr.priority, attr.provider, attr.printable, select)
+        {
+        }
+
+        public SearchSelector(Regex pattern, int priority, string provider, bool printable, SearchSelectorHandler select)
         {
             this.pattern = pattern;
             this.priority = priority;
             this.provider = provider;
+            this.printable = printable;
             this.select = select;
         }
 
         public override string ToString()
         {
-            return $"{pattern} | {select.Method.DeclaringType.FullName}.{select.Method.Name}";
+            return $"[{priority}, {provider}] {pattern} ({printable}) | {select.Method.DeclaringType.FullName}.{select.Method.Name}";
         }
     }
 
     static class SelectorManager
     {
-        public static List<SearchExpressionSelector> selectors { get; private set; }
+        public static List<SearchSelector> selectors { get; private set; }
 
         static SelectorManager()
         {
@@ -128,27 +146,35 @@ namespace UnityEditor.Search
 
         private static void RefreshSelectors()
         {
-            Func<MethodInfo, SearchExpressionSelectorAttribute, Delegate, SearchExpressionSelector> generator = (mi, attribute, handler) =>
+            Func<MethodInfo, SearchSelectorAttribute, Delegate, SearchSelector> generator = (mi, attribute, handler) =>
             {
-                if (handler is SearchExpressionSelectorHandler handlerWithStruct)
-                    return new SearchExpressionSelector(attribute.pattern, attribute.priority, attribute.provider, handlerWithStruct);
-                if (handler is SearchExpressionSelectorHandler1 handler1)
-                    return new SearchExpressionSelector(attribute.pattern, attribute.priority, attribute.provider, args => handler1(args.current));
-                if (handler is SearchExpressionSelectorHandler2 handler2)
-                    return new SearchExpressionSelector(attribute.pattern, attribute.priority, attribute.provider, args => handler2(args.current));
+                if (handler is SearchSelectorHandler handlerWithStruct)
+                    return new SearchSelector(attribute, handlerWithStruct);
+                if (handler is SearchSelectorHandler1 handler1)
+                    return new SearchSelector(attribute, args => handler1(args.current));
+                if (handler is SearchSelectorHandler2 handler2)
+                    return new SearchSelector(attribute, args => handler2(args.current));
                 throw new CustomAttributeFormatException($"Invalid selector handler {mi.DeclaringType.FullName}.{mi.Name}");
             };
 
             var supportedSignatures = new[]
             {
-                MethodSignature.FromDelegate<SearchExpressionSelectorHandler>(),
-                MethodSignature.FromDelegate<SearchExpressionSelectorHandler1>(),
-                MethodSignature.FromDelegate<SearchExpressionSelectorHandler2>()
+                MethodSignature.FromDelegate<SearchSelectorHandler>(),
+                MethodSignature.FromDelegate<SearchSelectorHandler1>(),
+                MethodSignature.FromDelegate<SearchSelectorHandler2>()
             };
             selectors = ReflectionUtils.LoadAllMethodsWithAttribute(generator, supportedSignatures)
                 .Where(s => s.valid)
                 .OrderBy(s => s.priority)
+                .OrderBy(s => string.IsNullOrEmpty(s.provider))
                 .ToList();
+        }
+
+        //[MenuItem("Window/Search/Print Selectors")]
+        internal static void PrintSelectors()
+        {
+            foreach (var s in selectors)
+                UnityEngine.Debug.Log(s);
         }
 
         public static object SelectValue(SearchExpressionContext context, string selectorName)
@@ -177,38 +203,52 @@ namespace UnityEditor.Search
         public static object SelectValue(SearchItem item, SearchContext context, string selectorName, out string suggestedSelectorName)
         {
             suggestedSelectorName = selectorName;
-            var itemValue = item.GetValue(selectorName, context);
-            if (itemValue != null)
-                return itemValue;
+            if (item.TryGetValue(selectorName, context, out var field))
+                return field.value;
 
-            if (selectorName == null)
+            if (string.IsNullOrEmpty(selectorName))
                 return null;
 
-            string providerType = item.provider.type;
-            string localSuggestedSelectorName = null;
-            itemValue = TaskEvaluatorManager.EvaluateMainThread(() =>
+            #if USE_SEARCH_MODULE
+            using (var view = SearchMonitor.GetView())
+            #endif
             {
-                foreach (var m in Match(selectorName, providerType))
+                #if USE_SEARCH_MODULE
+                if (view.TryLoadProperty(item.key, selectorName, out var recordKey, out var cv, out suggestedSelectorName))
+                    return cv;
+                #endif
+
+                string localSuggestedSelectorName = null;
+                string providerType = item.provider.type;
+                var itemValue = TaskEvaluatorManager.EvaluateMainThread(() =>
                 {
-                    var selectorArgs = new SearchExpressionSelectorArgs(m, item);
-                    var selectedValue = m.selector.select(selectorArgs);
-                    if (selectedValue != null)
+                    foreach (var m in Match(selectorName, providerType))
                     {
-                        if (selectorArgs.name != null)
-                            localSuggestedSelectorName = selectorArgs.name;
-                        return selectedValue;
+                        var selectorArgs = new SearchSelectorArgs(m, item);
+                        var selectedValue = m.selector.select(selectorArgs);
+                        if (selectedValue != null)
+                        {
+                            if (selectorArgs.name != null)
+                                localSuggestedSelectorName = selectorArgs.name;
+                            return selectedValue;
+                        }
                     }
-                }
 
-                return null;
-            });
+                    return null;
+                });
 
-            if (itemValue == null)
-                return null;
+                if (itemValue == null)
+                    return null;
 
-            if (localSuggestedSelectorName != null)
-                suggestedSelectorName = localSuggestedSelectorName;
-            return itemValue;
+                if (!string.IsNullOrEmpty(localSuggestedSelectorName))
+                    suggestedSelectorName = localSuggestedSelectorName;
+
+                #if USE_SEARCH_MODULE
+                view.StoreProperty(recordKey, itemValue, suggestedSelectorName);
+                #endif
+
+                return itemValue;
+            }
         }
 
         public static IEnumerable<SearchItem> SelectValues(SearchContext context, IEnumerable<SearchItem> items, string selector, string setFieldName)

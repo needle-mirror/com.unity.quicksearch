@@ -231,7 +231,26 @@ namespace UnityEditor.Search
 
             QuickSearchJumpToSearch,
             QuickSearchSyncViewButton,
-            QuickSearchSwitchTab
+            QuickSearchSwitchTab,
+
+            QuickSearchRemoveFavoriteItem,
+            QuickSearchRemoveFavoriteQuery,
+            QuickSearchAddFavoriteItem,
+            QuickSearchAddFavoriteQuery,
+            QuickSearchSizeRadioButton,
+
+            QuickSearchTableAddColumn,
+            QuickSearchTableReset,
+            QuickSearchTableRemoveColumn,
+            QuickSearchTableEditColumn,
+            QuickSearchTableChangeColumnFormat,
+            QuickSearchTableToggleColumnVisibility,
+
+            QuickSearchQueryChange,
+
+            QuickSearchExportReport,
+            QuickSearchImportReport,
+            ReportViewOpen
         }
 
         public static readonly string Package = "com.unity.quicksearch";
@@ -345,13 +364,8 @@ namespace UnityEditor.Search
 
         public static void SendReportUsage()
         {
-            #if USE_SEARCH_MODULE
-            using (new EditorPerformanceTracker("Quicksearch.Analytics.SendReportUsage"))
-            #endif
-            {
-                var report = CreateSearchUsageReport();
-                Send(EventName.quickSearchUsageReport, report);
-            }
+            var report = CreateSearchUsageReport();
+            Send(EventName.quickSearchUsageReport, report);
         }
 
         #if USE_SEARCH_MODULE

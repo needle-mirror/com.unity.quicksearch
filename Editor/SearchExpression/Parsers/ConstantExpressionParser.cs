@@ -1,10 +1,8 @@
-using System.Linq;
-
 namespace UnityEditor.Search
 {
     static partial class Parsers
     {
-        static readonly SearchExpressionEvaluator ConstantEvaluator = EvaluatorManager.GetConstantEvaluatorByName("constant");
+        public static readonly SearchExpressionEvaluator ConstantEvaluator = EvaluatorManager.GetConstantEvaluatorByName("constant");
 
         [SearchExpressionParser("bool", BuiltinParserPriority.Bool)]
         internal static SearchExpression BooleanParser(StringView text)
@@ -19,7 +17,7 @@ namespace UnityEditor.Search
         internal static SearchExpression NumberParser(StringView outerText)
         {
             var trimmedText = ParserUtils.SimplifyExpression(outerText);
-            if (!double.TryParse(trimmedText.ToString(), out _))
+            if (!Utils.TryParse(trimmedText.ToString(), out double _))
                 return null;
 
             SearchExpressionType types = SearchExpressionType.Number;
@@ -62,6 +60,18 @@ namespace UnityEditor.Search
                 if (ParserUtils.IsQuote(text[i]))
                     return null;
             return new SearchExpression(SearchExpressionType.Text, outerText, text.Substring(1, text.Length - 2), ConstantEvaluator);
+        }
+
+        [SearchExpressionParser("keyword", BuiltinParserPriority.Keyword)]
+        internal static SearchExpression KeywordParser(SearchExpressionParserArgs args)
+        {
+            if (args.text.Equals(nameof(SearchExpressionKeyword.asc), System.StringComparison.OrdinalIgnoreCase) ||
+                args.text.Equals(nameof(SearchExpressionKeyword.desc), System.StringComparison.OrdinalIgnoreCase))
+            {
+                return new SearchExpression(SearchExpressionType.Keyword, args.text, ConstantEvaluator);
+            }
+
+            return null;
         }
     }
 }

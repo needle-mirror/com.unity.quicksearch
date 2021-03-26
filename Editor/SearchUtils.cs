@@ -148,6 +148,23 @@ namespace UnityEditor.Search
         }
 
         /// <summary>
+        /// Return a unique document key owning the object
+        /// </summary>
+        internal static ulong GetDocumentKey(UnityEngine.Object obj)
+        {
+            if (!obj)
+                return ulong.MaxValue;
+            if (obj is GameObject go)
+                return GetTransformPath(go.transform).GetHashCode64();
+            if (obj is Component c)
+                return GetTransformPath(c.gameObject.transform).GetHashCode64();
+            var assetPath = AssetDatabase.GetAssetPath(obj);
+            if (string.IsNullOrEmpty(assetPath))
+                return ulong.MaxValue;
+            return AssetDatabase.AssetPathToGUID(assetPath).GetHashCode64();
+        }
+
+        /// <summary>
         /// Get the hierarchy path of a GameObject possibly including the scene name.
         /// </summary>
         /// <param name="gameObject">GameObject to extract a path from.</param>

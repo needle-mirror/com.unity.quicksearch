@@ -45,6 +45,30 @@ namespace UnityEditor.Search
 
         internal static readonly bool isDeveloperBuild = false;
 
+        struct RootDescriptor
+        {
+            public RootDescriptor(string root)
+            {
+                this.root = root;
+                absPath = CleanPath(new FileInfo(root).FullName);
+            }
+
+            public string root;
+            public string absPath;
+
+            public override string ToString()
+            {
+                return $"{root} -> {absPath}";
+            }
+        }
+
+        static RootDescriptor[] s_RootDescriptors;
+
+        static RootDescriptor[] rootDescriptors
+        {
+            get { return s_RootDescriptors ?? (s_RootDescriptors = GetAssetRootFolders().Select(root => new RootDescriptor(root)).OrderByDescending(desc => desc.absPath.Length).ToArray()); }
+        }
+
         private static UnityEngine.Object[] s_LastDraggedObjects;
 
         #if !USE_SEARCH_MODULE
@@ -220,6 +244,33 @@ namespace UnityEditor.Search
             }
             object[] parameters = new object[] { assetPath };
             return (int)s_GetMainAssetInstanceID.Invoke(null, parameters);
+            #endif
+        }
+
+        internal static GUIContent GUIContentTemp(string text, string tooltip)
+        {
+            #if USE_SEARCH_MODULE
+            return GUIContent.Temp(text, tooltip);
+            #else
+            return new GUIContent(text, tooltip);
+            #endif
+        }
+
+        internal static GUIContent GUIContentTemp(string text, Texture2D image)
+        {
+            #if USE_SEARCH_MODULE
+            return GUIContent.Temp(text, image);
+            #else
+            return new GUIContent(text, image);
+            #endif
+        }
+
+        internal static GUIContent GUIContentTemp(string text)
+        {
+            #if USE_SEARCH_MODULE
+            return GUIContent.Temp(text);
+            #else
+            return new GUIContent(text);
             #endif
         }
 
@@ -736,20 +787,28 @@ namespace UnityEditor.Search
             {
                 path = new FileInfo(path).FullName;
             }
-
             path = CleanPath(path);
-            return Application.dataPath == path || path.StartsWith(Application.dataPath + "/");
+            return rootDescriptors.Any(desc => path.StartsWith(desc.absPath));
         }
 
         internal static string GetPathUnderProject(string path)
         {
-            var cleanPath = CleanPath(path);
-            if (!Path.IsPathRooted(cleanPath) || !path.StartsWith(Application.dataPath))
+            path = CleanPath(path);
+            if (!Path.IsPathRooted(path))
             {
-                return cleanPath;
+                return path;
             }
 
-            return cleanPath.Substring(Application.dataPath.Length - 6);
+            foreach (var desc in rootDescriptors)
+            {
+                if (path.StartsWith(desc.absPath))
+                {
+                    var relativePath = path.Substring(desc.absPath.Length);
+                    return desc.root + relativePath;
+                }
+            }
+
+            return path;
         }
 
         internal static Texture2D GetSceneObjectPreview(GameObject obj, Vector2 previewSize, FetchPreviewOptions options, Texture2D defaultThumbnail)
@@ -779,23 +838,30 @@ namespace UnityEditor.Search
 
         internal static bool TryGetNumber(object value, out double number)
         {
-            if (value is sbyte
-                || value is byte
-                || value is short
-                || value is ushort
-                || value is int
-                || value is uint
-                || value is long
-                || value is ulong
-                || value is float
-                || value is double
-                || value is decimal)
+            if (value == null)
+            {
+                number = double.NaN;
+                return false;
+            }
+
+            if (value is string s)
+            {
+                if (TryParse(s, out number))
+                    return true;
+                else
+                {
+                    number = double.NaN;
+                    return false;
+                }
+            }
+
+            if (value.GetType().IsPrimitive || value is decimal)
             {
                 number = Convert.ToDouble(value);
                 return true;
             }
 
-            return double.TryParse(Convert.ToString(value), out number);
+            return TryParse(Convert.ToString(value), out number);
         }
 
         internal static bool IsRunningTests()
@@ -1055,5 +1121,137 @@ namespace UnityEditor.Search
             return new[] { "Assets" };
             #endif
         }
+
+        public static bool TryParse<T>(string expression, out T result)
+        {
+            expression = expression.Replace(',', '.');
+            expression = expression.TrimEnd('f');
+            expression = expression.ToLowerInvariant();
+
+            bool success = false;
+            result = default;
+            if (typeof(T) == typeof(float))
+            {
+                if (expression == "pi")
+                {
+                    success = true;
+                    result = (T)(object)(float)Math.PI;
+                }
+                else
+                {
+                    success = float.TryParse(expression, NumberStyles.Float, CultureInfo.InvariantCulture.NumberFormat, out var temp);
+                    result = (T)(object)temp;
+                }
+            }
+            else if (typeof(T) == typeof(int))
+            {
+                success = int.TryParse(expression, NumberStyles.Integer, CultureInfo.InvariantCulture.NumberFormat, out var temp);
+                result = (T)(object)temp;
+            }
+            else if (typeof(T) == typeof(double))
+            {
+                if (expression == "pi")
+                {
+                    success = true;
+                    result = (T)(object)Math.PI;
+                }
+                else
+                {
+                    success = double.TryParse(expression, NumberStyles.Float, CultureInfo.InvariantCulture.NumberFormat, out var temp);
+                    result = (T)(object)temp;
+                }
+            }
+            else if (typeof(T) == typeof(long))
+            {
+                success = long.TryParse(expression, NumberStyles.Integer, CultureInfo.InvariantCulture.NumberFormat, out var temp);
+                result = (T)(object)temp;
+            }
+            return success;
+        }
+
+        #if UNITY_EDITOR_WIN
+        private const string k_RevealInFinderLabel = "Show in Explorer";
+        #elif UNITY_EDITOR_OSX
+        private const string k_RevealInFinderLabel = "Reveal in Finder";
+        #else
+        private const string k_RevealInFinderLabel = "Open Containing Folder";
+        #endif
+        internal static string GetRevealInFinderLabel() { return k_RevealInFinderLabel; }
+
+        public static string TrimText(string text)
+        {
+            return text.Trim().Replace("\n", " ");
+        }
+
+        public static string TrimText(string text, int maxLength)
+        {
+            text = TrimText(text);
+            if (text.Length > maxLength)
+            {
+                text = Utils.StripHTML(text);
+                text = text.Substring(0, Math.Min(text.Length, maxLength) - 1) + "\u2026";
+            }
+            return text;
+        }
+
+        static readonly GUILayoutOption[] s_PanelViewLayoutOptions = new[] { GUILayout.ExpandHeight(true), GUILayout.ExpandWidth(false) };
+        public static Vector2 BeginPanelView(Vector2 scrollPosition, GUIStyle panelStyle)
+        {
+            #if USE_SEARCH_MODULE
+            var verticalScrollbar = Styles.scrollbar;
+            GUIScrollGroup g = (GUIScrollGroup)GUILayoutUtility.BeginLayoutGroup(panelStyle, null, typeof(GUIScrollGroup));
+            if (Event.current.type == EventType.Layout)
+            {
+                g.resetCoords = true;
+                g.isVertical = true;
+                g.stretchWidth = 0;
+                g.stretchHeight = 1;
+                g.consideredForMargin = false;
+                g.verticalScrollbar = verticalScrollbar;
+                g.horizontalScrollbar = GUIStyle.none;
+                g.ApplyOptions(s_PanelViewLayoutOptions);
+            }
+            return EditorGUIInternal.DoBeginScrollViewForward(g.rect, scrollPosition,
+                new Rect(0, 0, g.clientWidth - Styles.scrollbarWidth, g.clientHeight), false, false,
+                GUIStyle.none, verticalScrollbar, panelStyle);
+            #else
+            return GUILayout.BeginScrollView(scrollPosition, false, false, GUIStyle.none, Styles.scrollbar, panelStyle, s_PanelViewLayoutOptions);
+            #endif
+        }
+
+        public static void EndPanelView()
+        {
+            EditorGUILayout.EndScrollView();
+        }
+
+        public static ulong GetHashCode64(this string strText)
+        {
+            if (string.IsNullOrEmpty(strText))
+                return 0;
+            var byteContents = System.Text.Encoding.Unicode.GetBytes(strText);
+            var hash = new System.Security.Cryptography.SHA256CryptoServiceProvider();
+            var hashText = hash.ComputeHash(byteContents);
+            ulong hashCodeStart = BitConverter.ToUInt64(hashText, 0);
+            ulong hashCodeMedium = BitConverter.ToUInt64(hashText, 8);
+            ulong hashCodeEnd = BitConverter.ToUInt64(hashText, 24);
+            return hashCodeStart ^ hashCodeMedium ^ hashCodeEnd;
+        }
     }
+
+    #if !USE_SEARCH_MODULE
+    static class Hash128Ex
+    {
+        static PropertyInfo s_Property_u64_0;
+        static PropertyInfo s_Property_u64_1;
+
+        static Hash128Ex()
+        {
+            s_Property_u64_0 = typeof(Hash128).GetProperty("u64_0", BindingFlags.NonPublic | BindingFlags.Instance);
+            s_Property_u64_1 = typeof(Hash128).GetProperty("u64_1", BindingFlags.NonPublic | BindingFlags.Instance);
+        }
+
+        public static ulong Getu64_0(this Hash128 h) => (ulong)s_Property_u64_0.GetValue(h);
+        public static ulong Getu64_1(this Hash128 h) => (ulong)s_Property_u64_1.GetValue(h);
+    }
+    #endif
 }

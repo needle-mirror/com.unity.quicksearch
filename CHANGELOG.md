@@ -1,5 +1,45 @@
 # Changelog
 
+## [3.0.0-preview.6] - 2021-03-26
+- Sync with 2021.2.0a12 (499bc7b9a4c9)
+- Add [] to selector regex
+- Add basic search expression keyword support (i.e. ASC, DESC, etc.)
+- Add material texture property name indexation
+- Add range{} evaluator
+- Add support for item favorites
+- Add support for synchronous resolution when using SearchService.Request
+- Auto expansion of sample expression values
+- Check for search query in package. Allow search extensions internal access
+- Compress search indexes by ~60%
+- Do not save search query if file path is not valid for asset db (case 1317448)
+- Don't open multiple windows of Index Manager
+- Enable boolean filters without operators.
+- Fix asset store search provider carrousel
+- Fix error reporting triggered by avg in main thread
+- Fix floating number parsing with dots and comma
+- Fix multiple incremental incoming updates
+- Fix seach field text selection when executing a saved query
+- Fix search index incremental update merge issue
+- Fix search service request using FirstBatchAsync
+- Fix SearchService loading itself too soon
+- Fix sidebar horizontale scrollbar and splitter popping
+- Fix slow find: ** globbing pattern using regex (case 1323783)
+- Fix status error false positive
+- Fix the 2999 limit with multiple AND nodes
+- Improve active search view query workflow
+- Improve support for nested assets search indexing
+- Keep track of the last selected search query to later save over it
+- More compact syntax error message. ensure params numbering makes sense
+- Optimize asset provider GID resolution
+- Optimize AssetProvider.Search by ~4x
+- Optimize search indexes merge
+- Optimize search result path comparison
+- Remove existing documents from index before merging new content
+- Save all index strings in a table to save space
+- Save item size as a global editor preference
+- Support saving query in packages
+- Update the search provider active state when toggled in the search view (case 1318459)
+
 ## [3.0.0-preview.5] - 2021-02-26
 - Sync with 2021.2.0a8 (6eb956596132)
 - Add new SearchService.ShowPicker API
