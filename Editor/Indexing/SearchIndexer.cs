@@ -43,7 +43,7 @@ namespace UnityEditor.Search
         public readonly long key;      // Value hash
         public readonly int crc;       // Value correction code (can be length, property key hash, etc.)
         public readonly Type type;     // Type of the index entry
-        public readonly int score;     // Score of the entry us
+        public readonly int score;     // Score of the entry (used for sorting)
 
         public readonly double number;
         public readonly HashSet<int> docs; // Document indexes
@@ -216,7 +216,7 @@ namespace UnityEditor.Search
         internal readonly string m_Name;
         internal readonly string m_Source;
 
-        [Obsolete("Search document index is not used anymore and will be removed.")]
+        [Obsolete("Search document index is no longer used and will be removed.")]
         public readonly int index;
 
         [Obsolete("Use name to get the document name and source to get the document source path.")]
@@ -252,7 +252,7 @@ namespace UnityEditor.Search
         {
         }
 
-        [Obsolete("Search document index is not used anymore and will be removed.")]
+        [Obsolete("Search document index is no longer used and will be removed.")]
         public SearchDocument(int index, string id, string path = null, int score = int.MaxValue)
             : this(id, path, path, score)
         {

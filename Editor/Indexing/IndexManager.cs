@@ -432,7 +432,7 @@ namespace UnityEditor.Search
                         break;
                     case "extended":
                         toggle.label = "Sub objects";
-                        toggle.tooltip = "Include all sub objects (i.e. all scene objects for a unity scene, and all sub-assets for an FXB)";
+                        toggle.tooltip = "Include all sub objects (all Scene objects for a Unity scene, and all sub-assets for an FBX)";
                         break;
                     case "dependencies":
                         toggle.tooltip = "Include information about objects' direct dependencies in this index";

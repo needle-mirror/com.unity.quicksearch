@@ -17,6 +17,7 @@ using UnityEditor.StyleSheets;
 #endif
 
 [assembly: System.Runtime.CompilerServices.InternalsVisibleTo("com.unity.quicksearch.tests")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("com.unity.search.extensions.editor")]
 
 namespace UnityEditor.Search
 {
@@ -1235,6 +1236,14 @@ namespace UnityEditor.Search
             ulong hashCodeMedium = BitConverter.ToUInt64(hashText, 8);
             ulong hashCodeEnd = BitConverter.ToUInt64(hashText, 24);
             return hashCodeStart ^ hashCodeMedium ^ hashCodeEnd;
+        }
+
+        public static string RemoveInvalidCharsFromPath(string path, char repl = '/')
+        {
+            var invalidChars = Path.GetInvalidPathChars();
+            foreach (var c in invalidChars)
+                path = path.Replace(c, repl);
+            return path;
         }
     }
 

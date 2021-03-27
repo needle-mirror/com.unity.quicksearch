@@ -83,7 +83,9 @@ namespace UnityEditor.Search
         {
             var gid = GlobalObjectId.GetGlobalObjectIdSlow(subObj);
             var id = gid.ToString();
-            var subObjDocumentIndex = AddDocument(id, $"{subObj.name} ({subObj.GetType().Name})", containerPath, checkIfDocumentExists);
+            var containerName = Path.GetFileNameWithoutExtension(containerPath);
+            var objPathName = Utils.RemoveInvalidCharsFromPath($"{containerName}/{subObj.name}", ' ');
+            var subObjDocumentIndex = AddDocument(id, objPathName, containerPath, checkIfDocumentExists);
 
             IndexTypes(subObj.GetType(), subObjDocumentIndex);
             IndexProperty(subObjDocumentIndex, "is", "nested", saveKeyword: true, exact: true);

@@ -107,6 +107,7 @@ namespace UnityEditor.Search
         /// <returns>Returns list of tokens and variations in lowercase</returns>
         public static IEnumerable<string> SplitFileEntryComponents(string path, char[] entrySeparators)
         {
+            path = Utils.RemoveInvalidCharsFromPath(path, '_');
             var name = Path.GetFileName(path);
             var nameTokens = name.Split(entrySeparators).Distinct().ToArray();
             var scc = nameTokens.SelectMany(s => SplitCamelCase(s)).Where(s => s.Length > 0).ToArray();

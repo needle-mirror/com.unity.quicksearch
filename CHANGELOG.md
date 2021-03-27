@@ -1,5 +1,8 @@
 # Changelog
 
+## [3.0.0-preview.7] - 2021-03-27
+- Minor UI tweaks
+
 ## [3.0.0-preview.6] - 2021-03-26
 - Sync with 2021.2.0a12 (499bc7b9a4c9)
 - Add [] to selector regex

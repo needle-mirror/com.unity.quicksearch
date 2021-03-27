@@ -49,7 +49,7 @@ namespace UnityEditor.Search
         Expression = 1 << 6,
 
         /// <summary>
-        /// Evaluate the search text as a pure query string (prevent the text to be evaluated as an search expression)
+        /// Evaluate the search text as a pure query string (do not evaluate the text as a search expression).
         /// </summary>
         QueryString = 1 << 7,
 

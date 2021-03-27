@@ -46,6 +46,8 @@ namespace UnityEditor.Search
         public static Texture2D logError = LoadIcon($"{iconFolder}/log_error.png");
         public static Texture2D packageInstalled = LoadIcon($"{iconFolder}/package_installed.png");
         public static Texture2D packageUpdate = LoadIcon($"{iconFolder}/package_update.png");
+        public static Texture2D quicksearchHelp = LoadIcon($"{iconFolder}/Help.png");
+        public static Texture2D dragArrow = LoadIcon($"{iconFolder}/DragArrow.png");
 
         static Icons()
         {
@@ -61,6 +63,8 @@ namespace UnityEditor.Search
                 store = LightenTexture(store);
                 packageInstalled = LightenTexture(packageInstalled);
                 packageUpdate = LightenTexture(packageUpdate);
+                quicksearchHelp = LightenTexture(quicksearchHelp);
+                dragArrow = LightenTexture(dragArrow);
             }
         }
 

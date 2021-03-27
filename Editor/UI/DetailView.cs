@@ -230,9 +230,9 @@ namespace UnityEditor.Search
                         }
                     }
                 }
-                catch (Exception ex)
+                catch
                 {
-                    EditorGUILayout.HelpBox(new GUIContent($"Failed to display inspector for {e.GetType().Name}", ex.Message));
+                    // Skip item
                 }
             }
         }

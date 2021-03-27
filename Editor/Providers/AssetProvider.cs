@@ -238,12 +238,19 @@ namespace UnityEditor.Search.Providers
             return null;
         }
 
+        static char[] s_KeywordsValueDelimiters = new[] { ':', '=', '<', '>', '!' };
         private static IEnumerable<SearchProposition> FetchPropositions(SearchContext context, SearchPropositionOptions options)
         {
             if (context.options.HasAny(SearchFlags.NoIndexing))
                 return null;
 
-            return assetIndexes.SelectMany(db => db.index.GetKeywords().Select(kw => new SearchProposition(kw)));
+            var token = options.tokens[0];
+            var ft = token.LastIndexOfAny(s_KeywordsValueDelimiters);
+            if (ft >= 0)
+                token = token.Substring(0, ft);
+            return assetIndexes.SelectMany(db => db.index.GetKeywords()
+                .Where(kw => kw.StartsWith(token, StringComparison.OrdinalIgnoreCase)))
+                .Select(kw => new SearchProposition(kw));
         }
 
         private static IEnumerable<string> FilterIndexes(IEnumerable<string> paths)

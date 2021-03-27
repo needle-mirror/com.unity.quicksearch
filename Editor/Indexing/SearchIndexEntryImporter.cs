@@ -9,7 +9,7 @@ namespace UnityEditor.Search
     {
         Types        = 1 << 0,      // Index type information about objects
         Properties   = 1 << 1,      // Index serialized properties of objects
-        Extended     = 1 << 2,      // Index all sub assets and object as new documents
+        Extended     = 1 << 2,      // Index all sub-assets and objects as new documents
         Dependencies = 1 << 3,      // Index object dependencies (i.e. ref:<name>)
     }
 
@@ -21,10 +21,11 @@ namespace UnityEditor.Search
         // 4- Optimize the scene indexing content
         // 5- Fix indexing error reporting
         // 6- Fix LoadAllAssetRepresentationsAtPath sub asset validation
-        // 7- Index all sub assets and objects when using extended=true
-        // 8- Index sub assets using types=true
+        // 7- Index all sub-assets and objects when using extended=true
+        // 8- Index sub-assets using types=true
         // 9- Fix sub objects dependencies indexation
-        public const int version = (9 << 18) ^ SearchIndexEntry.version;
+        // 10- Fix sub asset document name (could be an invalid path)
+        public const int version = (10 << 18) ^ SearchIndexEntry.version;
 
         protected abstract IndexingOptions options { get; }
 

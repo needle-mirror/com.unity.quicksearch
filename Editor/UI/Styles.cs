@@ -103,7 +103,7 @@ namespace UnityEditor.Search
             fixedHeight = 0,
             alignment = TextAnchor.MiddleCenter,
             imagePosition = ImagePosition.ImageOnly,
-            margin = new RectOffset(4, 2, 2, 2),
+            margin = new RectOffset(8, 2, 2, 2),
             padding = paddingNone
         };
 
@@ -124,7 +124,7 @@ namespace UnityEditor.Search
             name = "quick-search-item-label",
             richText = true,
             wordWrap = false,
-            margin = new RectOffset(4, 4, 4, 2),
+            margin = new RectOffset(8, 4, 4, 2),
             padding = paddingNone
         };
 
@@ -138,7 +138,8 @@ namespace UnityEditor.Search
 
         public static readonly GUIStyle itemLabelCompact = new GUIStyle(itemLabel)
         {
-            margin = new RectOffset(4, 4, 2, 2)
+            name = "quick-search-item-compact-label",
+            margin = new RectOffset(8, 4, 2, 2)
         };
 
         public static readonly GUIStyle itemLabelGrid = new GUIStyle(itemLabel)
@@ -158,7 +159,8 @@ namespace UnityEditor.Search
 
         public static readonly GUIStyle selectedItemLabelCompact = new GUIStyle(selectedItemLabel)
         {
-            margin = new RectOffset(4, 4, 2, 2)
+            name = "quick-search-item-selected-compact-label",
+            margin = new RectOffset(8, 4, 2, 2)
         };
 
         public static readonly GUIStyle autoCompleteItemLabel = new GUIStyle(EditorStyles.label)
@@ -272,7 +274,7 @@ namespace UnityEditor.Search
         {
             name = "quick-search-bar",
             margin = new RectOffset(0, 0, 0, 0),
-            padding = new RectOffset(4, 8, 4, 8),
+            padding = new RectOffset(4, 8, 4, 4),
             border = new RectOffset(0, 0, 0, 0),
             fixedHeight = 0f
         };
@@ -365,6 +367,7 @@ namespace UnityEditor.Search
         #if USE_SEARCH_MODULE
         public static readonly GUIContent syncSearchButtonContent = new GUIContent(string.Empty, EditorGUIUtility.LoadIcon("QuickSearch/SyncSearch"), "Synchronize search fields (Ctrl + K)");
         public static readonly GUIContent syncSearchOnButtonContent = new GUIContent(string.Empty, EditorGUIUtility.LoadIcon("QuickSearch/SyncSearch On"), "Synchronize search fields (Ctrl + K)");
+        public static readonly GUIContent syncSearchAllGroupTabContent = new GUIContent(string.Empty, EditorGUIUtility.LoadIcon("QuickSearch/SyncSearch"), "Choose a specific search tab (eg. Project) to enable synchronization.");
         public static readonly GUIContent syncSearchProviderNotSupportedContent = new GUIContent(string.Empty, EditorGUIUtility.LoadIcon("QuickSearch/SyncSearch"), "Search provider doesn't support synchronization");
         public static readonly GUIContent syncSearchViewNotEnabledContent = new GUIContent(string.Empty, EditorGUIUtility.LoadIcon("QuickSearch/SyncSearch"), "Search provider uses a search engine\nthat cannot be synchronized.\nSee Preferences -> Search.");
         public static readonly GUIContent searchTipsHelp = new GUIContent("Type '?' for help", EditorGUIUtility.LoadIcon("QuickSearch/Help"));
@@ -379,20 +382,40 @@ namespace UnityEditor.Search
         public static readonly GUIContent searchTipsPreviewInspector = new GUIContent("Enable the Preview Inspector to edit search results in place");
         #endif
 
-        public static readonly GUIContent[] searchTips =
+        public static readonly GUIContent[] searchTipIcons =
         {
-            searchTipsHelp,
-            searchTipsDrag,
-            searchTipsSaveSearches,
-            searchTipsPreviewInspector,
             #if USE_SEARCH_MODULE
-            searchTipsSync
+            new GUIContent("", EditorGUIUtility.LoadIcon("QuickSearch/Help")),
+            new GUIContent("", EditorGUIUtility.LoadIcon("QuickSearch/DragArrow")),
+            new GUIContent("", EditorGUIUtility.FindTexture("SaveAs")),
+            new GUIContent("", EditorGUIUtility.LoadIcon("UnityEditor.InspectorWindow")),
+            new GUIContent("", EditorGUIUtility.LoadIcon("QuickSearch/SyncSearch On"))
+            #else
+            new GUIContent("", Icons.quicksearchHelp),
+            new GUIContent("", Icons.dragArrow),
+            new GUIContent("", EditorGUIUtility.FindTexture("SaveAs")),
+            new GUIContent("", EditorGUIUtility.FindTexture("UnityEditor.InspectorWindow")),
             #endif
         };
 
-        public static readonly GUIStyle tips = new GUIStyle("Label")
+        public static readonly GUIContent[] searchTipLabels =
         {
-            richText = true
+            new GUIContent("Type '?' for help"),
+            new GUIContent("Drag from search results to Scene, Hierarchy or Inspector"),
+            new GUIContent("Save Searches you use often"),
+            new GUIContent("Enable the Preview Inspector to edit search results in place"),
+            new GUIContent("Enable sync to keep other Editor search fields populated")
+        };
+
+        public static readonly GUIStyle tipIcon = new GUIStyle("Label")
+        {
+            margin = new RectOffset(4, 4, 2, 2),
+            stretchWidth = false
+        };
+        public static readonly GUIStyle tipText = new GUIStyle("Label")
+        {
+            richText = true,
+            wordWrap = true
         };
 
         public static readonly GUIStyle tipsSection = Utils.FromUSS("quick-search-tips-section");

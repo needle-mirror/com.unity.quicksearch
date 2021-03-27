@@ -155,7 +155,6 @@ namespace UnityEditor.Search
         {
             if (context == null)
                 return;
-
             context.searchText = searchText ?? string.Empty;
             if (!string.IsNullOrWhiteSpace(context.searchText))
                 SearchField.UpdateLastSearchText(context.searchText);
@@ -1306,16 +1305,20 @@ namespace UnityEditor.Search
                 using (new GUILayout.VerticalScope(Styles.noResult))
                 {
                     GUILayout.FlexibleSpace();
-                    using (new GUILayout.HorizontalScope(Styles.noResult, GUILayout.ExpandWidth(true), GUILayout.ExpandHeight(true)))
+                    using (new GUILayout.HorizontalScope(Styles.noResult, GUILayout.ExpandHeight(true)))
                     {
                         GUILayout.FlexibleSpace();
                         using (new GUILayout.VerticalScope(Styles.tipsSection, GUILayout.Height(160)))
                         {
-                            GUILayout.Label("<b>Search Tips</b>", Styles.tips);
+                            GUILayout.Label("<b>Search Tips</b>", Styles.tipText);
                             GUILayout.Space(15);
-                            foreach (var tip in Styles.searchTips)
+                            for (var i = 0; i < Styles.searchTipIcons.Length; ++i)
                             {
-                                GUILayout.Label(tip, Styles.tips);
+                                using (new GUILayout.HorizontalScope(Styles.noResult))
+                                {
+                                    GUILayout.Label(Styles.searchTipIcons[i], Styles.tipIcon);
+                                    GUILayout.Label(Styles.searchTipLabels[i], Styles.tipText);
+                                }
                             }
                             GUILayout.FlexibleSpace();
                         }
@@ -1624,7 +1627,7 @@ namespace UnityEditor.Search
 
             using (new GUILayout.HorizontalScope(Styles.toolbar))
             {
-                var searchButtonStackWidth = BUTTON_STACK_COUNT * (Styles.toolbarButton.fixedWidth + Styles.toolbarButton.margin.left) + Styles.toolbarButton.margin.right;
+                var searchButtonStackWidth = BUTTON_STACK_COUNT * (Styles.toolbarButton.fixedWidth + Styles.toolbarButton.margin.left) + Styles.searchField.margin.left * 2;
                 var searchTextRect = SearchField.GetRect(context.searchText, position.width, searchButtonStackWidth);
                 var searchClearButtonRect = Styles.searchFieldBtn.margin.Remove(searchTextRect);
                 searchClearButtonRect.xMin = searchClearButtonRect.xMax - SearchField.s_CancelButtonWidth;
@@ -2011,7 +2014,7 @@ namespace UnityEditor.Search
             using (new EditorGUI.DisabledScope(!supportsSync))
             {
                 EditorGUI.BeginChangeCheck();
-                var syncButtonContent = !providerSupportsSync ? Styles.syncSearchProviderNotSupportedContent : !searchViewSyncEnabled ? Styles.syncSearchViewNotEnabledContent : syncSearch ? Styles.syncSearchOnButtonContent : Styles.syncSearchButtonContent;
+                var syncButtonContent = m_FilteredItems.currentGroup == "all" ? Styles.syncSearchAllGroupTabContent : !providerSupportsSync ? Styles.syncSearchProviderNotSupportedContent : !searchViewSyncEnabled ? Styles.syncSearchViewNotEnabledContent : syncSearch ? Styles.syncSearchOnButtonContent : Styles.syncSearchButtonContent;
                 var sync = GUILayout.Toggle(syncSearch, syncButtonContent, Styles.syncButton);
                 if (EditorGUI.EndChangeCheck())
                 {
@@ -2101,7 +2104,7 @@ namespace UnityEditor.Search
         {
             var windowId = (window as QuickSearch)?.windowId ?? null;
             SearchAnalytics.SendEvent(windowId, SearchAnalytics.GenericEventType.QuickSearchOpenDocLink);
-            EditorUtility.OpenWithDefaultApp("https://docs.unity3d.com/Packages/com.unity.quicksearch@3.0/manual/index.html");
+            EditorUtility.OpenWithDefaultApp("https://docs.unity3d.com/2021.1/Documentation/Manual/search-overview.html");
         }
 
         #endif

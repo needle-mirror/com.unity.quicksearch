@@ -162,7 +162,7 @@ namespace UnityEditor.Search
         public string GetDescription(SearchContext context, bool stripHTML = false)
         {
             var tempDescription = description;
-            if (options.HasAny(SearchItemOptions.Compacted) && provider?.fetchDescription != null)
+            if (options.HasAny(SearchItemOptions.Compacted | SearchItemOptions.FullDescription) && provider?.fetchDescription != null)
                 return provider?.fetchDescription?.Invoke(this, context);
             if (description == null && provider?.fetchDescription != null)
             {
