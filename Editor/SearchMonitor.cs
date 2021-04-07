@@ -54,6 +54,7 @@ namespace UnityEditor.Search
         }
     }
 
+    #if USE_PROPERTY_DATABASE
     struct SearchMonitorView : IDisposable
     {
         static ConcurrentDictionary<int, SearchMonitorView> s_PropertyDatabaseViews = new ConcurrentDictionary<int, SearchMonitorView>();
@@ -165,10 +166,12 @@ namespace UnityEditor.Search
             propertyAliasesView.Invalidate(documentKey);
         }
     }
+    #endif
 
     [InitializeOnLoad]
     static class SearchMonitor
     {
+        static volatile bool s_Initialize = false;
         static bool s_ContentRefreshedEnabled;
 
         static readonly HashSet<string> s_UpdatedItems = new HashSet<string>();
@@ -187,9 +190,10 @@ namespace UnityEditor.Search
 
         const string k_TransactionDatabasePath = "Library/Search/transactions.db";
         static TransactionManager s_TransactionManager;
-
-        private static readonly PropertyDatabase propertyDatabase;
-        private static readonly PropertyDatabase propertyAliases;
+        #if USE_PROPERTY_DATABASE
+        private static PropertyDatabase propertyDatabase;
+        private static PropertyDatabase propertyAliases;
+        #endif
 
         static readonly object s_ContentRefreshedLock = new object();
         static event Action<string[], string[], string[]> s_ContentRefreshed;
@@ -221,13 +225,26 @@ namespace UnityEditor.Search
             if (!Utils.IsMainProcess())
                 return;
 
+            if (!EditorApplication.isPlayingOrWillChangePlaymode)
+                Init();
+            else
+                Utils.CallDelayed(Init);
+        }
+
+        static void Init()
+        {
+            if (s_Initialize)
+                return;
+
             Log("Initialize search monitor", 0UL);
 
             s_TransactionManager = new TransactionManager(k_TransactionDatabasePath);
             s_TransactionManager.Init();
 
+            #if USE_PROPERTY_DATABASE
             propertyDatabase = new PropertyDatabase("Library/Search/propertyDatabase.db", true);
             propertyAliases = new PropertyDatabase("Library/Search/propertyAliases.db", true);
+            #endif
 
             EditorApplication.quitting += OnQuitting;
             AssemblyReloadEvents.beforeAssemblyReload += OnBeforeAssemblyReload;
@@ -240,6 +257,8 @@ namespace UnityEditor.Search
             #else
             EditorApplication.hierarchyChanged += () => InvalidateCurrentScene();
             #endif
+
+            s_Initialize = true;
         }
 
         public static AssetIndexChangeSet GetDiff(long timestamp, IEnumerable<string> deletedAssets, Func<string, bool> predicate)
@@ -285,23 +304,30 @@ namespace UnityEditor.Search
             }
         }
 
+        #if USE_PROPERTY_DATABASE
         public static Task TriggerPropertyDatabaseBackgroundUpdate()
         {
             return Task.WhenAll(propertyDatabase.TriggerPropertyDatabaseBackgroundUpdate(), propertyAliases.TriggerPropertyDatabaseBackgroundUpdate());
         }
 
+        #endif
+
         public static void PrintInfo()
         {
             var sb = new StringBuilder();
+            #if USE_PROPERTY_DATABASE
             sb.Append(propertyDatabase.GetInfo());
             sb.Append(propertyAliases.GetInfo());
+            #endif
             sb.Append(s_TransactionManager.GetInfo());
             Debug.LogFormat(LogType.Log, LogOption.NoStacktrace, null, sb.ToString());
         }
 
-        #if USE_SEARCH_MODULE
+        #if USE_PROPERTY_DATABASE
         public static SearchMonitorView GetView(bool delayedSync = false)
         {
+            if (!s_Initialize)
+                Init();
             return new SearchMonitorView(propertyDatabase, propertyAliases, delayedSync);
         }
 
@@ -365,7 +391,7 @@ namespace UnityEditor.Search
                 var timestamp = DateTime.Now.ToBinary();
                 var transactions = updated.Select(path => new Transaction(AssetDatabase.AssetPathToGUID(path), AssetModification.Updated, timestamp))
                     .Concat(removed.Select(path => new Transaction(AssetDatabase.AssetPathToGUID(path), AssetModification.Removed, timestamp)))
-                    .Concat(moved.Select(path => new Transaction(AssetDatabase.AssetPathToGUID(path), AssetModification.Moved, timestamp)));
+                    .Concat(moved.Select(path => new Transaction(AssetDatabase.AssetPathToGUID(path), AssetModification.Moved, timestamp))).ToList();
                 #if DEBUG_SEARCH_MONITOR
                 foreach (var t in transactions)
                     Debug.Log($"{t.timestamp} {(AssetModification)t.state} {t.guid} ({AssetDatabase.GUIDToAssetPath(t.guid.ToString())})");
@@ -446,8 +472,10 @@ namespace UnityEditor.Search
 
         public static void Reset()
         {
+            #if USE_PROPERTY_DATABASE
             propertyDatabase.Clear();
             propertyAliases.Clear();
+            #endif
             s_TransactionManager.ClearAll();
         }
 
@@ -472,7 +500,7 @@ namespace UnityEditor.Search
 
         private static void InvalidateDocuments()
         {
-            #if USE_SEARCH_MODULE
+            #if USE_PROPERTY_DATABASE
             using (var view = GetView(true))
             {
                 foreach (var k in s_DocumentsToInvalidate)
@@ -490,11 +518,14 @@ namespace UnityEditor.Search
             Debug.LogFormat(LogType.Log, LogOption.NoStacktrace, null, $"{message}: <b>{documentKey}</b>");
         }
 
+        #if USE_PROPERTY_DATABASE
         [System.Diagnostics.Conditional("DEBUG_SEARCH_MONITOR")]
         public static void Log(string message, PropertyDatabaseRecordKey recordKey, object value = null)
         {
             Debug.LogFormat(LogType.Log, LogOption.NoStacktrace, null, $"{message}: <b>{recordKey.documentKey}</b>, {recordKey.propertyKey}={value}");
         }
+
+        #endif
     }
 
     static class AssetDatabaseAPI

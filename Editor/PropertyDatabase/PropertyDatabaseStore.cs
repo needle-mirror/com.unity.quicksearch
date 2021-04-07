@@ -1,3 +1,4 @@
+#if USE_PROPERTY_DATABASE
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -1397,3 +1398,4 @@ namespace UnityEditor.Search
         }
     }
 }
+#endif

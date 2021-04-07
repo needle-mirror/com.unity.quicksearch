@@ -108,11 +108,16 @@ namespace UnityEditor.Search.Providers
             if (item.preview && item.preview.width >= size.x && item.preview.height >= size.y)
                 return item.preview;
 
-            if (info.gid.identifierType != (int)IdentifierType.kSceneObject)
+            if (info.gid.identifierType != (int)IdentifierType.kSceneObject &&
+                info.gid.identifierType != (int)IdentifierType.kBuiltInAsset)
             {
                 item.preview = Utils.GetAssetPreviewFromPath(info.path, size, options);
                 if (item.preview)
                     return item.preview;
+            }
+            else if (info.gid.identifierType == (int)IdentifierType.kSceneObject)
+            {
+                return AssetDatabase.GetCachedIcon(AssetDatabase.GUIDToAssetPath(info.gid.assetGUID)) as Texture2D;
             }
 
             var obj = GetObject(item);
@@ -139,7 +144,8 @@ namespace UnityEditor.Search.Providers
             if (item.thumbnail)
                 return item.thumbnail;
 
-            if (info.gid.identifierType != (int)IdentifierType.kSceneObject)
+            if (info.gid.identifierType != (int)IdentifierType.kSceneObject &&
+                info.gid.identifierType != (int)IdentifierType.kBuiltInAsset)
                 return Utils.GetAssetThumbnailFromPath(info.path);
 
             var sourceAssetPath = AssetDatabase.GUIDToAssetPath(info.gid.assetGUID);

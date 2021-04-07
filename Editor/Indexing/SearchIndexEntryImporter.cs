@@ -25,7 +25,8 @@ namespace UnityEditor.Search
         // 8- Index sub-assets using types=true
         // 9- Fix sub objects dependencies indexation
         // 10- Fix sub asset document name (could be an invalid path)
-        public const int version = (10 << 18) ^ SearchIndexEntry.version;
+        // 11- Do not index objects with hide flags DontSave
+        public const int version = (11 << 18) ^ SearchIndexEntry.version;
 
         protected abstract IndexingOptions options { get; }
 

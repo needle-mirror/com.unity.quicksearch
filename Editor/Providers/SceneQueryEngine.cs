@@ -527,11 +527,11 @@ namespace UnityEditor.Search.Providers
             if (!go)
                 return SearchValue.invalid;
 
-            #if USE_SEARCH_MODULE
+            #if USE_PROPERTY_DATABASE
             using (var view = SearchMonitor.GetView())
             #endif
             {
-                #if USE_SEARCH_MODULE
+                #if USE_PROPERTY_DATABASE
                 var documentKey = SearchUtils.GetDocumentKey(go);
                 var recordKey = PropertyDatabase.CreateRecordKey(documentKey, PropertyDatabase.CreatePropertyHash(propertyName));
                 if (view.TryLoadProperty(recordKey, out object data))
@@ -548,14 +548,14 @@ namespace UnityEditor.Search.Providers
                     var property = FindPropertyValue(c, propertyName);
                     if (property.valid)
                     {
-                        #if USE_SEARCH_MODULE
+                        #if USE_PROPERTY_DATABASE
                         view.StoreProperty(recordKey, property);
                         #endif
                         return property;
                     }
                 }
 
-                #if USE_SEARCH_MODULE
+                #if USE_PROPERTY_DATABASE
                 view.StoreProperty(recordKey, SearchValue.invalid);
                 #endif
             }

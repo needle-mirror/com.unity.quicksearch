@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.0.0-preview.8] - 2021-04-07
+- Do not index objects with hide flags DontSave
+- Do not keep full prefab asset path keywords (saving ~1 MB of memory in large projects)
+- Fix object indexing with an invalid global object id.
+- Fix unavailable search index artifact timeout check
+- Scope property database code with USE_PROPERTY_DATABASE
+
 ## [3.0.0-preview.7] - 2021-03-27
 - Minor UI tweaks
 
@@ -25,8 +32,8 @@
 - Fix search index incremental update merge issue
 - Fix search service request using FirstBatchAsync
 - Fix SearchService loading itself too soon
-- Fix sidebar horizontale scrollbar and splitter popping
-- Fix slow find: ** globbing pattern using regex (case 1323783)
+- Fix sidebar horizontal scrollbar and splitter popping
+- Fix slow find: ** globing pattern using regex (case 1323783)
 - Fix status error false positive
 - Fix the 2999 limit with multiple AND nodes
 - Improve active search view query workflow

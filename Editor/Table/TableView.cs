@@ -53,8 +53,12 @@ namespace UnityEditor.Search
 
             if (m_PropertyTable != null)
             {
+                #if USE_PROPERTY_DATABASE
                 using (SearchMonitor.GetView())
+                #endif
+                {
                     m_PropertyTable.OnGUI(screenRect);
+                }
             }
             else
                 GUI.Label(screenRect, "No table configuration selected", Styles.noResult);

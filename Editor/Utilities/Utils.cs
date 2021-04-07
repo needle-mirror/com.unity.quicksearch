@@ -1229,13 +1229,9 @@ namespace UnityEditor.Search
         {
             if (string.IsNullOrEmpty(strText))
                 return 0;
-            var byteContents = System.Text.Encoding.Unicode.GetBytes(strText);
-            var hash = new System.Security.Cryptography.SHA256CryptoServiceProvider();
-            var hashText = hash.ComputeHash(byteContents);
-            ulong hashCodeStart = BitConverter.ToUInt64(hashText, 0);
-            ulong hashCodeMedium = BitConverter.ToUInt64(hashText, 8);
-            ulong hashCodeEnd = BitConverter.ToUInt64(hashText, 24);
-            return hashCodeStart ^ hashCodeMedium ^ hashCodeEnd;
+            var s1 = (ulong)strText.Substring(0, strText.Length / 2).GetHashCode();
+            var s2 = (ulong)strText.Substring(strText.Length / 2).GetHashCode();
+            return s1 << 32 | s2;
         }
 
         public static string RemoveInvalidCharsFromPath(string path, char repl = '/')

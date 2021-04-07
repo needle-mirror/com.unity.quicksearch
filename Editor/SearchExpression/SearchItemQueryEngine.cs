@@ -379,6 +379,7 @@ namespace UnityEditor.Search
             return comparer(v.color, value);
         }
 
+        #if USE_PROPERTY_DATABASE
         [PropertyDatabaseSerializer(typeof(SearchValue))]
         internal static PropertyDatabaseRecordValue SearchValueSerializer(PropertyDatabaseSerializationArgs args)
         {
@@ -422,6 +423,8 @@ namespace UnityEditor.Search
 
             throw new Exception("Failed to deserialize game object property");
         }
+
+        #endif
     }
 
     class SearchItemQueryEngine : QueryEngine<SearchItem>

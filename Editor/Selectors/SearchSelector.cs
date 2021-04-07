@@ -209,11 +209,11 @@ namespace UnityEditor.Search
             if (string.IsNullOrEmpty(selectorName))
                 return null;
 
-            #if USE_SEARCH_MODULE
+            #if USE_PROPERTY_DATABASE
             using (var view = SearchMonitor.GetView())
             #endif
             {
-                #if USE_SEARCH_MODULE
+                #if USE_PROPERTY_DATABASE
                 if (view.TryLoadProperty(item.key, selectorName, out var recordKey, out var cv, out suggestedSelectorName))
                     return cv;
                 #endif
@@ -243,7 +243,7 @@ namespace UnityEditor.Search
                 if (!string.IsNullOrEmpty(localSuggestedSelectorName))
                     suggestedSelectorName = localSuggestedSelectorName;
 
-                #if USE_SEARCH_MODULE
+                #if USE_PROPERTY_DATABASE
                 view.StoreProperty(recordKey, itemValue, suggestedSelectorName);
                 #endif
 

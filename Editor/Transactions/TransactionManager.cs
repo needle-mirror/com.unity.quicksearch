@@ -1,13 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
-using System.Runtime.InteropServices;
-using System.Threading;
 using System.Threading.Tasks;
-using UnityEngine;
 using DateTime = System.DateTime;
-using System.Security.AccessControl;
 using System.Text;
 
 #if PACKAGE_PERFORMANCE_TRACKING

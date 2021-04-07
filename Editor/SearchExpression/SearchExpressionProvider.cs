@@ -80,7 +80,7 @@ namespace UnityEditor.Search
             if (rootExpression == null || (rootExpression.types.HasAny(SearchExpressionType.QueryString) && rootExpression.parameters.Length == 0))
                 yield break;
 
-            #if USE_SEARCH_MODULE
+            #if USE_PROPERTY_DATABASE
             using (SearchMonitor.GetView())
             #endif
             {

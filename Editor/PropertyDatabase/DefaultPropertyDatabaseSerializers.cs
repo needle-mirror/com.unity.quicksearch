@@ -1,3 +1,4 @@
+#if USE_PROPERTY_DATABASE
 using UnityEngine;
 
 namespace UnityEditor.Search
@@ -231,3 +232,4 @@ namespace UnityEditor.Search
         }
     }
 }
+#endif

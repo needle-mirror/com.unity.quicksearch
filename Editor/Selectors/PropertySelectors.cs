@@ -81,11 +81,11 @@ namespace UnityEditor.Search
             if (property != null)
                 return property;
 
-            #if USE_SEARCH_MODULE
+            #if USE_PROPERTY_DATABASE
             using (var view = SearchMonitor.GetView())
             #endif
             {
-                #if USE_SEARCH_MODULE
+                #if USE_PROPERTY_DATABASE
                 var unresolvedPropertyPath = $"{obj.GetType().Name}.{propertyPath}";
                 var propertyPathRecordKey = PropertyDatabase.CreateRecordKey(obj.GetType().Name, unresolvedPropertyPath);
                 if (view.TryLoadAlias(propertyPathRecordKey, out var resolvedPropertyPath))
@@ -105,7 +105,7 @@ namespace UnityEditor.Search
                 property = so.FindProperty($"m_{propertyPath}");
                 if (property != null)
                 {
-                    #if USE_SEARCH_MODULE
+                    #if USE_PROPERTY_DATABASE
                     view.StoreAlias(propertyPathRecordKey, property.propertyPath);
                     #endif
                     return property;
@@ -117,7 +117,7 @@ namespace UnityEditor.Search
                 {
                     if (property.name.EndsWith(propertyPath, StringComparison.OrdinalIgnoreCase))
                     {
-                        #if USE_SEARCH_MODULE
+                        #if USE_PROPERTY_DATABASE
                         view.StoreAlias(propertyPathRecordKey, property.propertyPath);
                         #endif
                         return property;
@@ -125,7 +125,7 @@ namespace UnityEditor.Search
                     next = property.NextVisible(property.hasChildren);
                 }
 
-                #if USE_SEARCH_MODULE
+                #if USE_PROPERTY_DATABASE
                 view.StoreAlias(propertyPathRecordKey, string.Empty);
                 #endif
                 so?.Dispose();

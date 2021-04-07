@@ -287,7 +287,7 @@ namespace UnityEditor.Search.Providers
                         .Where(obj => obj != null);
                 }
 
-                #if USE_SEARCH_MODULE
+                #if USE_PROPERTY_DATABASE
                 using (SearchMonitor.GetView())
                 #endif
                 {

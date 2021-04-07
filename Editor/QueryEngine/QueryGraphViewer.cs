@@ -1,4 +1,4 @@
-//#define USE_GRAPH_VIEWER
+#if USE_GRAPH_VIEWER
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -55,14 +55,11 @@ namespace UnityEditor.Search
             get { yield return graphView; }
         }
 
-        #if USE_GRAPH_VIEWER
         [MenuItem("Window/Search/Graph Viewer")]
         public static void ShowWindow()
         {
             GetWindow<QueryGraphViewWindow>();
         }
-
-        #endif
 
         public virtual void OnEnable()
         {
@@ -360,3 +357,4 @@ namespace UnityEditor.Search
         }
     }
 }
+#endif
