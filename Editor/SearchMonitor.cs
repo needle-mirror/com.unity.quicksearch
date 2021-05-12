@@ -473,10 +473,10 @@ namespace UnityEditor.Search
         public static void Reset()
         {
             #if USE_PROPERTY_DATABASE
-            propertyDatabase.Clear();
-            propertyAliases.Clear();
+            propertyDatabase?.Clear();
+            propertyAliases?.Clear();
             #endif
-            s_TransactionManager.ClearAll();
+            s_TransactionManager?.ClearAll();
         }
 
         private static void InvalidateObject(int instanceId)

@@ -473,12 +473,6 @@ namespace UnityEditor.Search
                     return prop;
                 }
 
-                // TODO
-                public static object DrawVector4Handler(Rect r, SerializedProperty prop)
-                {
-                    return null;
-                }
-
                 public static object DrawDefaultHandler(Rect r, SerializedProperty prop)
                 {
                     var fieldContent = Utils.GUIContentTemp(string.Empty);
@@ -552,7 +546,6 @@ namespace UnityEditor.Search
                 {
                     case SerializedPropertyType.Boolean: return DefaultDelegates.DrawCheckboxHandler(r, sp);
                     case SerializedPropertyType.Quaternion: return DefaultDelegates.DrawQuaternionHandler(r, sp);
-                    case SerializedPropertyType.Vector4: return DefaultDelegates.DrawVector4Handler(r, sp);
                     default: return DefaultDelegates.DrawDefaultHandler(r, sp);
                 }
             }

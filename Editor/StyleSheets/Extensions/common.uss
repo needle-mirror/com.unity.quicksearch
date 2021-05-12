@@ -93,7 +93,7 @@
 .quick-search-panel-background,
 .quick-search-panel-background-left,
 .quick-search-panel-background-right {
-    padding: 1px 1px;
+    padding: 0px 0px;
     background-color: --unity-colors-window-background;
     border: 1px solid --unity-colors-toolbar-border;
     bottom: 1px;
@@ -147,30 +147,25 @@
 
 .quick-search-panel-header {
     color: --theme-label-text-color;
-    margin: 7px 10px;
-    font-size: --unity-font-size-big;
-    -unity-word-wrap: true;
+    font-size: --unity-font-size;
+    -unity-word-wrap: false;
 }
 
-.quick-search-saved-search-item, .quick-search-saved-search-item-selected {
+.quick-search-tree-view-item {
     -unity-enable-hovering: --enable-style-hovering;
     color: --unity-text-color;
-    margin: 0 1px 0 0;
-    padding: 1px 2px 1px 20px;
     font-size: --unity-font-size;
-    height: --window-toolbar-button-height;
-    -unity-text-align: middle-left;
 }
 
-.quick-search-saved-search-item-selected {
+.quick-search-tree-view-item:active {
     background-color: --unity-theme-background-color-50;
 }
 
-.quick-search-saved-search-item:hover {
+.quick-search-tree-view-item:hover {
     background-color: --theme-header-bar-background-color-hover;
 }
 
-.quick-search-saved-search-item-selected:hover {
+.quick-search-tree-view-item:hover:active {
     background-color: --unity-theme-background-color-16;
 }
 
@@ -193,4 +188,5 @@
     border: 0px solid #313131;
     border-radius: 10px;
     padding: 15px;
+    margin: 15px;
 }

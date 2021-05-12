@@ -2,6 +2,7 @@
     "name": "com.unity.quicksearch",
     "rootNamespace": "",
     "references": [
+        "GUID:91807968f761a6d49b0fd6a602d2cbba",
         "GUID:343deaaf83e0cee4ca978e7df0b80d21",
         "GUID:ee25bd4c5770f7147b2e7abfba78d26e"
     ],

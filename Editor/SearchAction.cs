@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Collections.Generic;
 using System.Diagnostics;
 using UnityEngine;
@@ -83,6 +84,19 @@ namespace UnityEditor.Search
             : this(providerId, name, icon, tooltip, handler)
         {
             enabled = enabledHandler;
+        }
+
+        internal SearchAction(string name, string label, Action<SearchItem> execute)
+            : this(name, label, execute, null)
+        {
+        }
+
+        internal SearchAction(string name, string label, Action<SearchItem> execute, Func<SearchItem, bool> enabled)
+            : this(string.Empty, name, new GUIContent(label))
+        {
+            handler = execute;
+            if (enabled != null)
+                this.enabled = (items) => items.All(e => enabled(e));
         }
 
         /// <summary>

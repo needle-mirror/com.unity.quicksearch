@@ -48,6 +48,10 @@ namespace UnityEditor.Search
         public static Texture2D packageUpdate = LoadIcon($"{iconFolder}/package_update.png");
         public static Texture2D quicksearchHelp = LoadIcon($"{iconFolder}/Help.png");
         public static Texture2D dragArrow = LoadIcon($"{iconFolder}/DragArrow.png");
+        public static Texture2D showPanels = LoadIcon($"{iconFolder}/ShowPanels.png");
+        public static Texture2D listView = LoadIcon($"{iconFolder}/ListView.png");
+        public static Texture2D gridView = LoadIcon($"{iconFolder}/GridView.png");
+        public static Texture2D tableView = LoadIcon($"{iconFolder}/TableView.png");
 
         static Icons()
         {
@@ -65,6 +69,10 @@ namespace UnityEditor.Search
                 packageUpdate = LightenTexture(packageUpdate);
                 quicksearchHelp = LightenTexture(quicksearchHelp);
                 dragArrow = LightenTexture(dragArrow);
+                showPanels = LightenTexture(showPanels);
+                listView = LightenTexture(listView);
+                gridView = LightenTexture(gridView);
+                tableView = LightenTexture(tableView);
             }
         }
 

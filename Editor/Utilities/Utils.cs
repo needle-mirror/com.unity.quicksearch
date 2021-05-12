@@ -14,10 +14,14 @@ using UnityEngine.UIElements;
 #if USE_SEARCH_MODULE
 using UnityEditor.Connect;
 using UnityEditor.StyleSheets;
+#else
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("Assembly-CSharp-Editor-testable")]
 #endif
 
 [assembly: System.Runtime.CompilerServices.InternalsVisibleTo("com.unity.quicksearch.tests")]
 [assembly: System.Runtime.CompilerServices.InternalsVisibleTo("com.unity.search.extensions.editor")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("Unity.Environment.Core.Editor")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("Unity.ProceduralGraph.Editor")]
 
 namespace UnityEditor.Search
 {
@@ -77,6 +81,7 @@ namespace UnityEditor.Search
         private static MethodInfo s_GetNumCharactersThatFitWithinWidthMethod;
         private static MethodInfo s_GetMainAssetInstanceID;
         private static MethodInfo s_FindTextureMethod;
+        private static MethodInfo s_LoadIconMethod;
         private static MethodInfo s_GetIconForObject;
         private static MethodInfo s_CallDelayed;
         private static MethodInfo s_FromUSSMethod;
@@ -84,6 +89,20 @@ namespace UnityEditor.Search
         private static Action<string> s_OpenPackageManager;
         private static MethodInfo s_GetSourceAssetFileHash;
         private static PropertyInfo s_CurrentViewWidth;
+        private static FieldInfo s_TextEditor_m_HasFocus;
+        private static MethodInfo s_ObjectFieldButtonGetter;
+        private static MethodInfo s_BeginHorizontal;
+        private static MethodInfo s_IsGUIClipEnabled;
+        private static MethodInfo s_MonoScriptFromScriptedObject;
+        private static MethodInfo s_SerializedPropertyIsScript;
+        private static MethodInfo s_SerializedPropertyObjectReferenceStringValue;
+        private static MethodInfo s_ObjectContent;
+        private static string s_CommandDelete;
+        private static string s_CommandSoftDelete;
+        private static MethodInfo s_PopupWindowWithoutFocus;
+        private static MethodInfo s_PopupWindowWithoutFocusTyped;
+        private static MethodInfo s_OpenPropertyEditor;
+        private static MethodInfo s_MainActionKeyForControl;
 
         internal static string GetPackagePath(string relativePath)
         {
@@ -96,6 +115,24 @@ namespace UnityEditor.Search
         }
 
         #endif
+
+        public static GUIStyle objectFieldButton
+        {
+            get
+            {
+                #if USE_SEARCH_MODULE
+                return EditorStyles.objectFieldButton;
+                #else
+                if (s_ObjectFieldButtonGetter == null)
+                {
+                    var type = typeof(EditorStyles);
+                    var pi = type.GetProperty(nameof(objectFieldButton), BindingFlags.NonPublic | BindingFlags.Static);
+                    s_ObjectFieldButtonGetter = pi.GetMethod;
+                }
+                return s_ObjectFieldButtonGetter.Invoke(null, null) as GUIStyle;
+                #endif
+            }
+        }
 
         static Utils()
         {
@@ -329,6 +366,17 @@ namespace UnityEditor.Search
             var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(path);
             SelectObject(asset, ping);
             return asset;
+        }
+
+        internal static void SetTextEditorHasFocus(TextEditor editor, bool hasFocus)
+        {
+            #if USE_SEARCH_MODULE
+            editor.m_HasFocus = hasFocus;
+            #else
+            if (s_TextEditor_m_HasFocus == null)
+                s_TextEditor_m_HasFocus = typeof(TextEditor).GetField("m_HasFocus", BindingFlags.Instance | BindingFlags.NonPublic);
+            s_TextEditor_m_HasFocus.SetValue(editor, hasFocus);
+            #endif
         }
 
         internal static void FrameAssetFromPath(string path)
@@ -1240,6 +1288,230 @@ namespace UnityEditor.Search
             foreach (var c in invalidChars)
                 path = path.Replace(c, repl);
             return path;
+        }
+
+        public static Rect BeginHorizontal(GUIContent content, GUIStyle style, params GUILayoutOption[] options)
+        {
+            #if USE_SEARCH_MODULE
+            return EditorGUILayout.BeginHorizontal(content, style, options);
+            #else
+            if (s_BeginHorizontal == null)
+            {
+                var type = typeof(EditorGUILayout);
+                s_BeginHorizontal = type.GetMethod(nameof(BeginHorizontal), BindingFlags.NonPublic | BindingFlags.Static, null, new Type[] { typeof(GUIContent), typeof(GUIStyle), typeof(GUILayoutOption[]) }, null);
+            }
+            return (Rect)s_BeginHorizontal.Invoke(null, new object[] { content, style, options });
+            #endif
+        }
+
+        public static bool IsGUIClipEnabled()
+        {
+            #if USE_SEARCH_MODULE
+            return GUIClip.enabled;
+            #else
+            if (s_IsGUIClipEnabled == null)
+            {
+                var assembly = typeof(GUIUtility).Assembly;
+                var type = assembly.GetTypes().First(t => t.Name == "GUIClip");
+                var pi = type.GetProperty("enabled", BindingFlags.NonPublic | BindingFlags.Static);
+                s_IsGUIClipEnabled = pi.GetMethod;
+            }
+            return (bool)s_IsGUIClipEnabled.Invoke(null, null);
+            #endif
+        }
+
+        public static MonoScript MonoScriptFromScriptedObject(UnityEngine.Object obj)
+        {
+            #if USE_SEARCH_MODULE
+            return MonoScript.FromScriptedObject(obj);
+            #else
+            if (s_MonoScriptFromScriptedObject == null)
+            {
+                var type = typeof(MonoScript);
+                s_MonoScriptFromScriptedObject = type.GetMethod("FromScriptedObject", BindingFlags.NonPublic | BindingFlags.Static);
+            }
+            return s_MonoScriptFromScriptedObject.Invoke(null, new object[] {obj}) as MonoScript;
+            #endif
+        }
+
+        public static bool SerializedPropertyIsScript(SerializedProperty property)
+        {
+            #if USE_SEARCH_MODULE
+            return property.isScript;
+            #else
+            if (s_SerializedPropertyIsScript == null)
+            {
+                var type = typeof(SerializedProperty);
+                var pi = type.GetProperty("isScript", BindingFlags.NonPublic | BindingFlags.Instance);
+                s_SerializedPropertyIsScript = pi.GetMethod;
+            }
+            return s_SerializedPropertyIsScript.Invoke(property, null) as MonoScript;
+            #endif
+        }
+
+        public static string SerializedPropertyObjectReferenceStringValue(SerializedProperty property)
+        {
+            #if USE_SEARCH_MODULE
+            return property.objectReferenceStringValue;
+            #else
+            if (s_SerializedPropertyObjectReferenceStringValue == null)
+            {
+                var type = typeof(SerializedProperty);
+                var pi = type.GetProperty("objectReferenceStringValue", BindingFlags.NonPublic | BindingFlags.Instance);
+                s_SerializedPropertyObjectReferenceStringValue = pi.GetMethod;
+            }
+            return s_SerializedPropertyObjectReferenceStringValue.Invoke(property, null) as string;
+            #endif
+        }
+
+        public static GUIContent ObjectContent(UnityEngine.Object obj, Type type, int instanceID)
+        {
+            #if USE_SEARCH_MODULE
+            return EditorGUIUtility.ObjectContent(obj, type, instanceID);
+            #else
+            if (s_ObjectContent == null)
+            {
+                var classType = typeof(EditorGUIUtility);
+                s_ObjectContent = classType.GetMethod("ObjectContent", BindingFlags.NonPublic | BindingFlags.Static);
+            }
+            return s_ObjectContent.Invoke(null, new object[] {obj, type, instanceID}) as GUIContent;
+            #endif
+        }
+
+        public static bool IsCommandDelete(string commandName)
+        {
+            #if USE_SEARCH_MODULE
+            return commandName == EventCommandNames.Delete || commandName == EventCommandNames.SoftDelete;
+            #else
+            if (string.IsNullOrEmpty(s_CommandDelete) || string.IsNullOrEmpty(s_CommandSoftDelete))
+            {
+                var assembly = typeof(GUIUtility).Assembly;
+                var classType = assembly.GetTypes().First(t => t.Name == "EventCommandNames");
+                var fi = classType.GetField("Delete", BindingFlags.Public | BindingFlags.Static);
+                s_CommandDelete = (string)fi.GetRawConstantValue();
+                fi = classType.GetField("SoftDelete", BindingFlags.Public | BindingFlags.Static);
+                s_CommandSoftDelete = (string)fi.GetRawConstantValue();
+            }
+            return commandName == s_CommandDelete || commandName == s_CommandSoftDelete;
+            #endif
+        }
+
+        public static void PopupWindowWithoutFocus(Rect position, PopupWindowContent windowContent)
+        {
+            #if USE_SEARCH_MODULE
+            UnityEditor.PopupWindowWithoutFocus.Show(
+                position,
+                windowContent,
+                new[] { UnityEditor.PopupLocation.Left, UnityEditor.PopupLocation.Below, UnityEditor.PopupLocation.Right });
+            #else
+            if (s_PopupWindowWithoutFocusTyped == null)
+            {
+                var assembly = typeof(EditorGUILayout).Assembly;
+                var popupLocationType = assembly.GetTypes().First(t => t.Name == "PopupLocation");
+                var thisClassType = typeof(Utils);
+                var method = thisClassType.GetMethod("PopupWindowWithoutFocusTyped", BindingFlags.NonPublic | BindingFlags.Static);
+                s_PopupWindowWithoutFocusTyped = method.MakeGenericMethod(new[] {popupLocationType});
+            }
+
+            s_PopupWindowWithoutFocusTyped.Invoke(null, new object[] { position, windowContent });
+            #endif
+        }
+
+        public static void OpenPropertyEditor(UnityEngine.Object target)
+        {
+            #if USE_SEARCH_MODULE
+            PropertyEditor.OpenPropertyEditor(target);
+            #else
+            if (s_OpenPropertyEditor == null)
+            {
+                var assembly = typeof(EditorWindow).Assembly;
+                var type = assembly.GetTypes().First(t => t.Name == "PropertyEditor");
+                s_OpenPropertyEditor = type.GetMethod("OpenPropertyEditor", BindingFlags.NonPublic | BindingFlags.Static);
+            }
+            s_OpenPropertyEditor.Invoke(null, new object[] { target });
+            #endif
+        }
+
+        public static bool MainActionKeyForControl(Event evt, int id)
+        {
+            #if USE_SEARCH_MODULE
+            return evt.MainActionKeyForControl(id);
+            #else
+            if (s_MainActionKeyForControl == null)
+            {
+                var assembly = typeof(MathUtils).Assembly;
+                var type = assembly.GetTypes().First(t => t.Name == "EditorExtensionMethods");
+                s_MainActionKeyForControl = type.GetMethod("MainActionKeyForControl", BindingFlags.NonPublic | BindingFlags.Static);
+            }
+            return (bool)s_MainActionKeyForControl.Invoke(null, new object[] { evt, id });
+            #endif
+        }
+
+        #if !USE_SEARCH_MODULE
+        private static void PopupWindowWithoutFocusTyped<T>(Rect position, PopupWindowContent windowContent)
+        {
+            var popupLocationType = typeof(T);
+            if (s_PopupWindowWithoutFocus == null)
+            {
+                var assembly = typeof(EditorGUILayout).Assembly;
+                var type = assembly.GetTypes().First(t => t.Name == "PopupWindowWithoutFocus");
+                s_PopupWindowWithoutFocus = type.GetMethod("Show", BindingFlags.NonPublic | BindingFlags.Static, null, new Type[] { typeof(Rect), typeof(PopupWindowContent), popupLocationType.MakeArrayType() }, null);
+            }
+            var enumValues = popupLocationType.GetFields().Where(fi => !fi.Name.Equals("value__")).ToDictionary(fi => fi.Name, fi => (T)fi.GetRawConstantValue());
+            var popupLocationArray = new T[] { enumValues["Left"], enumValues["Below"], enumValues["Right"] };
+            s_PopupWindowWithoutFocus.Invoke(null, new object[] { position, windowContent, popupLocationArray });
+        }
+
+        #endif
+
+        public static bool IsNavigationKey(in Event evt)
+        {
+            if (!evt.isKey)
+                return false;
+
+            switch (evt.keyCode)
+            {
+                case KeyCode.UpArrow:
+                case KeyCode.DownArrow:
+                case KeyCode.LeftArrow:
+                case KeyCode.RightArrow:
+                case KeyCode.Home:
+                case KeyCode.End:
+                case KeyCode.PageUp:
+                case KeyCode.PageDown:
+                    return true;
+            }
+
+            return false;
+        }
+
+        public static Texture2D LoadIcon(string name)
+        {
+            #if USE_SEARCH_MODULE
+            return EditorGUIUtility.LoadIcon(name);
+            #else
+            if (s_LoadIconMethod == null)
+            {
+                var t = typeof(EditorGUIUtility);
+                s_LoadIconMethod = t.GetMethod("LoadIcon", BindingFlags.NonPublic | BindingFlags.Static);
+            }
+            return (Texture2D)s_LoadIconMethod.Invoke(null, new object[] {name});
+            #endif
+        }
+
+        public static bool IsEditingTextField()
+        {
+            #if USE_SEARCH_MODULE
+            return GUIUtility.textFieldInput || EditorGUI.IsEditingTextField();
+            #else
+            return EditorGUIUtility.editingTextField;
+            #endif
+        }
+
+        static readonly Regex trimmer = new Regex(@"\s\s+");
+        public static string Simplify(string text)
+        {
+            return trimmer.Replace(text, " ").Trim();
         }
     }
 

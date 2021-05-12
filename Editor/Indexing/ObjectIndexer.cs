@@ -51,7 +51,7 @@ namespace UnityEditor.Search
         internal override IEnumerable<SearchResult> SearchWord(string word, SearchIndexOperator op, SearchResultCollection subset)
         {
             var baseScore = settings.baseScore;
-            var options = FindOptions.Words | FindOptions.Regex | FindOptions.Glob | FindOptions.Fuzzy;
+            var options = FindOptions.Words | FindOptions.Regex | FindOptions.Glob /* | FindOptions.Fuzzy*/;
             if (op == SearchIndexOperator.Equal)
                 options = FindOptions.Exact;
             var documents = subset != null ? subset.Select(r => GetDocument(r.index)) : GetDocuments(ignoreNulls: true);
@@ -275,12 +275,18 @@ namespace UnityEditor.Search
                 var next = p.NextVisible(true);
                 while (next)
                 {
-                    var fieldName = p.displayName.Replace("m_", "").Replace(" ", "").ToLowerInvariant();
-                    if (p.propertyPath[p.propertyPath.Length - 1] != ']')
-                        IndexProperty(documentIndex, fieldName, p);
-
-                    if (dependencies)
-                        AddReference(documentIndex, p);
+                    #if USE_SEARCH_MODULE
+                    if (p.isValid)
+                    #endif
+                    {
+                        var fieldName = p.displayName.Replace("m_", "").Replace(" ", "").ToLowerInvariant();
+                        if (p.propertyPath[p.propertyPath.Length - 1] != ']')
+                        {
+                            IndexProperty(documentIndex, fieldName, p);
+                            if (dependencies)
+                                AddReference(documentIndex, p);
+                        }
+                    }
 
                     next = p.NextVisible(ShouldIndexChildren(p, recursive));
                 }
@@ -289,6 +295,21 @@ namespace UnityEditor.Search
 
         private bool ShouldIndexChildren(SerializedProperty p, bool recursive)
         {
+            // Degenerative built-in types to skip.
+            if (p.propertyType == SerializedPropertyType.Generic)
+            {
+                switch (p.type)
+                {
+                    case "SerializedProperties":
+                    case "VFXPropertySheetSerializedBase":
+                    case "ComputeShaderCompilationContext":
+                        return false;
+                }
+            }
+
+            if (p.depth > 2 && !recursive)
+                return false;
+
             if ((p.isArray || p.isFixedBuffer) && !recursive)
                 return false;
 
@@ -297,17 +318,12 @@ namespace UnityEditor.Search
                 p.propertyType == SerializedPropertyType.Vector4)
                 return false;
 
-            return true;
+            return p.hasVisibleChildren;
         }
 
         private void IndexProperty(int documentIndex, string fieldName, SerializedProperty p)
         {
-            #if DEBUG_INDEXING
-            Debug.LogFormat(LogType.Log, LogOption.NoStacktrace, null, $"[DEBUG] {p.serializedObject.targetObject.name}, " +
-                $"array={p.isArray || p.isFixedBuffer}, children={p.hasVisibleChildren}, {p.propertyPath}, {fieldName}({p.propertyType}/{p.type})");
-            #endif
-
-            if (p.isArray && p.propertyType != SerializedPropertyType.String)
+            if (p.depth <= 1 && p.isArray && p.propertyType != SerializedPropertyType.String)
                 IndexNumber(documentIndex, fieldName, p.arraySize);
 
             switch (p.propertyType)
@@ -322,36 +338,58 @@ namespace UnityEditor.Search
                     IndexNumber(documentIndex, fieldName, (double)p.floatValue);
                     break;
                 case SerializedPropertyType.String:
-                    if (!string.IsNullOrEmpty(p.stringValue) || p.stringValue.Length <= 16 || p.stringValue.LastIndexOf(' ') == -1)
-                        IndexProperty(documentIndex, fieldName, p.stringValue.ToLowerInvariant(), saveKeyword: false, exact: false);
+                    if (p.depth > 1)
+                        return;
+                    if (string.IsNullOrEmpty(p.stringValue) && p.stringValue.Length > 16 && p.stringValue.LastIndexOf(' ') != -1)
+                        return;
+                    IndexProperty(documentIndex, fieldName, p.stringValue.ToLowerInvariant(), saveKeyword: false, exact: false);
                     break;
                 case SerializedPropertyType.Enum:
-                    if (p.enumValueIndex >= 0 && p.type == "Enum")
-                        IndexProperty(documentIndex, fieldName, p.enumNames[p.enumValueIndex].Replace(" ", "").ToLowerInvariant(), saveKeyword: true, exact: false);
+                    if (p.enumValueIndex < 0 || p.type != "Enum")
+                        return;
+                    IndexProperty(documentIndex, fieldName, p.enumNames[p.enumValueIndex].Replace(" ", "").ToLowerInvariant(), saveKeyword: true, exact: false);
                     break;
                 case SerializedPropertyType.Color:
+                    if (p.depth > 1)
+                        return;
                     IndexerExtensions.IndexColor(fieldName, p.colorValue, this, documentIndex);
                     break;
                 case SerializedPropertyType.Vector2:
+                    if (p.depth > 1)
+                        return;
                     IndexerExtensions.IndexVector(fieldName, p.vector2Value, this, documentIndex);
                     break;
                 case SerializedPropertyType.Vector3:
+                    if (p.depth > 1)
+                        return;
                     IndexerExtensions.IndexVector(fieldName, p.vector3Value, this, documentIndex);
                     break;
                 case SerializedPropertyType.Vector4:
+                    if (p.depth > 1)
+                        return;
                     IndexerExtensions.IndexVector(fieldName, p.vector4Value, this, documentIndex);
                     break;
                 case SerializedPropertyType.Quaternion:
+                    if (p.depth > 1)
+                        return;
                     IndexerExtensions.IndexVector(fieldName,  p.quaternionValue.eulerAngles, this, documentIndex);
                     break;
                 case SerializedPropertyType.ObjectReference:
-                    if (p.objectReferenceValue && !string.IsNullOrEmpty(p.objectReferenceValue.name))
-                        IndexProperty(documentIndex, fieldName, p.objectReferenceValue.name.ToLowerInvariant(), saveKeyword: false, exact: true);
+                    if (!p.objectReferenceValue || string.IsNullOrEmpty(p.objectReferenceValue.name))
+                        return;
+                    IndexProperty(documentIndex, fieldName, p.objectReferenceValue.name.ToLowerInvariant(), saveKeyword: false, exact: true);
                     break;
                 case SerializedPropertyType.Generic:
                     IndexProperty(documentIndex, "has", p.type.ToLowerInvariant(), saveKeyword: true, exact: true);
                     break;
+                default:
+                    return;
             }
+
+            #if DEBUG_INDEXING
+            Debug.LogFormat(LogType.Log, LogOption.NoStacktrace, null, $"[{p.depth}] <b>{p.propertyPath}</b>, {fieldName}, ({p.propertyType}/{p.type}), " +
+                $"array={p.isArray || p.isFixedBuffer}, children={p.hasVisibleChildren}", p.serializedObject.targetObject);
+            #endif
 
             MapKeyword(fieldName + ":", $"{p.displayName} ({p.propertyType})");
         }

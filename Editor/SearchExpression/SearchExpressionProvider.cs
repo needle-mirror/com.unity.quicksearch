@@ -150,7 +150,7 @@ namespace UnityEditor.Search
 
         public static ISearchView ShowWindow(string searchQuery)
         {
-            return ShowWindow(searchQuery, SearchService.Providers.Where(p => p.active));
+            return ShowWindow(searchQuery, SearchService.GetActiveProviders());
         }
 
         public static ISearchView ShowWindow(IEnumerable<SearchProvider> providers)

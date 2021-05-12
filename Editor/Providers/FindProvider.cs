@@ -66,7 +66,7 @@ namespace UnityEditor.Search.Providers
                 options |= FindOptions.Packages | FindOptions.Fuzzy;
 
             foreach (var e in Search(context, provider, options))
-                yield return AssetProvider.CreateItem(context, provider, "Find", null, e.source, e.score, useGroupProvider: false);
+                yield return AssetProvider.CreateItem("Files", context, provider, null, e.source, e.score, e.flags);
         }
 
         public static IEnumerable<SearchDocument> Search(SearchContext context, SearchProvider provider, FindOptions options)
@@ -135,7 +135,7 @@ namespace UnityEditor.Search.Providers
             {
                 files = new ConcurrentDictionary<SearchDocument, byte>(Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories)
                     .Where(p => !p.EndsWith(".meta", StringComparison.Ordinal))
-                    .Select(p => p.Replace("\\", "/")).ToDictionary(p => new SearchDocument(p), p => (byte)0));
+                    .Select(p => p.Replace("\\", "/")).ToDictionary(p => new SearchDocument(p, null, null, 0, SearchDocumentFlags.Asset), p => (byte)0));
                 s_RootFilePaths.TryAdd(root, files);
             }
 

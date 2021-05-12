@@ -1,5 +1,13 @@
 # Changelog
 
+## [3.0.0-preview.9] - 2021-05-12
+- Add support to save local search (not shared as an asset in the project)
+- Fix prefab indexing performance issues and out of memory exception.
+- Improve saved search UX.
+- Improve search picker API and workflows.
+- Include many minor UI and UX improvements.
+- Include many QueryEngine improvements and new APIs.
+
 ## [3.0.0-preview.8] - 2021-04-07
 - Do not index objects with hide flags DontSave
 - Do not keep full prefab asset path keywords (saving ~1 MB of memory in large projects)

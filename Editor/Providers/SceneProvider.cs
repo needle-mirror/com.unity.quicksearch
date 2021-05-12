@@ -10,7 +10,6 @@ namespace UnityEditor.Search.Providers
     class SceneProvider : SearchProvider
     {
         private bool m_HierarchyChanged = true;
-        private List<GameObject> m_GameObjects = null;
         private SceneQueryEngine m_SceneQueryEngine;
 
         readonly struct GameObjectData
@@ -273,8 +272,7 @@ namespace UnityEditor.Search.Providers
             {
                 if (m_HierarchyChanged)
                 {
-                    m_GameObjects = new List<GameObject>(SearchUtils.FetchGameObjects());
-                    m_SceneQueryEngine = new SceneQueryEngine(m_GameObjects);
+                    m_SceneQueryEngine = new SceneQueryEngine(SearchUtils.FetchGameObjects());
                     m_HierarchyChanged = false;
                 }
 
@@ -296,7 +294,7 @@ namespace UnityEditor.Search.Providers
                         .Select(go => AddResult(context, provider, go));
                 }
             }
-            else if (context.wantsMore && context.filterType != null && string.IsNullOrEmpty(context.searchQuery))
+            else if (context.filterType != null && string.IsNullOrEmpty(context.searchQuery))
             {
                 yield return UnityEngine.Object.FindObjectsOfType(context.filterType)
                     .Select(obj =>
@@ -370,24 +368,24 @@ namespace UnityEditor.Search.Providers
 
     static class BuiltInSceneObjectsProvider
     {
-        const string k_DefaultProviderId = "scene";
+        public const string type = "scene";
 
         [SearchItemProvider]
         internal static SearchProvider CreateProvider()
         {
-            return new SceneProvider(k_DefaultProviderId, "h:", "Hierarchy");
+            return new SceneProvider(type, "h:", "Hierarchy");
         }
 
         [SearchActionsProvider]
         internal static IEnumerable<SearchAction> ActionHandlers()
         {
-            return SceneProvider.CreateActionHandlers(k_DefaultProviderId);
+            return SceneProvider.CreateActionHandlers(type);
         }
 
         [Shortcut("Help/Search/Hierarchy")]
         internal static void OpenQuickSearch()
         {
-            QuickSearch.OpenWithContextualProvider(k_DefaultProviderId, Query.type);
+            QuickSearch.OpenWithContextualProvider(type, Query.type);
         }
     }
 }

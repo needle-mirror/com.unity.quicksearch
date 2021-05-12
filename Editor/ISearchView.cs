@@ -107,6 +107,11 @@ namespace UnityEditor.Search
         bool multiselect { get; set; }
 
         /// <summary>
+        /// Absolute coordinate of the search view
+        /// </summary>
+        Rect position { get; }
+
+        /// <summary>
         /// Callback used to override the select behavior.
         /// </summary>
         Action<SearchItem, bool> selectCallback { get; }
@@ -165,6 +170,11 @@ namespace UnityEditor.Search
         void ExecuteAction(SearchAction action, SearchItem[] items, bool endSearch = true);
 
         /// <summary>
+        /// Execute the default action of the active selection.
+        /// </summary>
+        void ExecuteSelection();
+
+        /// <summary>
         /// Close the search view
         /// </summary>
         void Close();
@@ -180,5 +190,10 @@ namespace UnityEditor.Search
         /// Request to focus and select the search field.
         /// </summary>
         void SelectSearch();
+
+        /// <summary>
+        /// Focus the search text field control.
+        /// </summary>
+        void FocusSearch();
     }
 }

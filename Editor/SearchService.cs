@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using UnityEditorInternal;
 using UnityEngine;
+using UnityEngine.Search;
 
 namespace UnityEditor.Search
 {
@@ -64,7 +65,7 @@ namespace UnityEditor.Search
             if (!Utils.IsMainProcess())
                 return;
 
-            if (SearchDatabase.EnumeratePaths(SearchDatabase.IndexLocation.assets).Count() == 0)
+            if (!SearchDatabase.EnumeratePaths(SearchDatabase.IndexLocation.assets).Any())
                 SearchDatabase.CreateDefaultIndex();
 
             SearchSettings.onBoardingDoNotAskAgain = true;
@@ -79,6 +80,17 @@ namespace UnityEditor.Search
         public static SearchProvider GetProvider(string providerId)
         {
             return Providers.Find(p => p.id == providerId);
+        }
+
+        internal static SearchProvider GetProvider(Type providerType)
+        {
+            if (providerType.BaseType != typeof(SearchProvider))
+            {
+                Debug.LogFormat(LogType.Warning, LogOption.NoStacktrace, null, $"Trying to instantiate a type that is not a Search Provider: \"{providerType.FullName}\".");
+                return null;
+            }
+
+            return Activator.CreateInstance(providerType) as SearchProvider;
         }
 
         /// <summary>
@@ -142,7 +154,7 @@ namespace UnityEditor.Search
         /// <returns>New SearchContext</returns>
         public static SearchContext CreateContext(IEnumerable<string> providerIds, string searchText = "", SearchFlags flags = SearchFlags.Default)
         {
-            return new SearchContext(providerIds.Select(id => GetProvider(id)).Where(p => p != null), searchText, flags);
+            return new SearchContext(GetProviders(providerIds), searchText, flags);
         }
 
         /// <summary>
@@ -186,7 +198,7 @@ namespace UnityEditor.Search
         /// <returns></returns>
         public static SearchContext CreateContext(string searchText, SearchFlags flags)
         {
-            return CreateContext(Providers.Where(p => p.active).ToList(), searchText, flags);
+            return CreateContext(GetActiveProviders(), searchText, flags);
         }
 
         public static SearchContext CreateContext(string searchText)
@@ -317,7 +329,7 @@ namespace UnityEditor.Search
         /// <returns></returns>
         public static ISearchList Request(string searchText, SearchFlags options = SearchFlags.None)
         {
-            var activeProviders = Providers.Where(p => p.active).ToList();
+            var activeProviders = GetActiveProviders();
             var context = CreateContext(activeProviders, searchText, options);
             return Request(context, options);
         }
@@ -366,7 +378,7 @@ namespace UnityEditor.Search
                 options);
         }
 
-        // <summary>
+        /// <summary>
         /// Execute a search request and callback for every incoming items and when the search is completed.
         /// The user is responsible for disposing of the search context.
         /// </summary>
@@ -504,7 +516,7 @@ namespace UnityEditor.Search
             if (reuseExisting) flags |= SearchFlags.ReuseExistingWindow;
             if (multiselect) flags |= SearchFlags.Multiselect;
             if (dockable) flags |= SearchFlags.Dockable;
-            return QuickSearch.Create(context, topic, flags).ShowWindow(defaultWidth, defaultHeight, flags);
+            return QuickSearch.Create<QuickSearch>(context, topic, flags).ShowWindow(defaultWidth, defaultHeight, flags);
         }
 
         /// <summary>
@@ -533,9 +545,14 @@ namespace UnityEditor.Search
             Action<UnityEngine.Object, bool> selectHandler,
             Action<UnityEngine.Object> trackingHandler,
             string searchText, string typeName, Type filterType,
-            float defaultWidth = 850, float defaultHeight = 539, SearchFlags flags = SearchFlags.OpenPicker)
+            float defaultWidth = 850, float defaultHeight = 539,
+            SearchFlags flags = SearchFlags.None)
         {
-            return QuickSearch.ShowObjectPicker(selectHandler, trackingHandler, searchText, typeName, filterType, defaultWidth, defaultHeight, flags);
+            var context = CreateContext(GetObjectProviders(), searchText, flags | SearchFlags.OpenPicker);
+            return ShowPicker(new SearchViewState(context, selectHandler, trackingHandler, typeName, filterType)
+            {
+                position = new Rect(0, 0, defaultWidth, defaultHeight)
+            }.SetSearchViewFlags(SearchViewFlags.None));
         }
 
         public static ISearchView ShowPicker(
@@ -544,9 +561,46 @@ namespace UnityEditor.Search
             Action<SearchItem> trackingHandler = null,
             Func<SearchItem, bool> filterHandler = null,
             IEnumerable<SearchItem> subset = null,
-            string title = null, float itemSize = 64f, float defaultWidth = 850, float defaultHeight = 539, SearchFlags flags = SearchFlags.OpenPicker)
+            string title = null, float itemSize = 64f, float defaultWidth = 850f, float defaultHeight = 539f, SearchFlags flags = SearchFlags.None)
         {
-            return QuickSearch.ShowPicker(context, selectHandler, trackingHandler, filterHandler, subset, title, itemSize, defaultWidth, defaultHeight, flags);
+            if (subset != null)
+                context.subset = subset.ToList();
+            context.options |= flags | SearchFlags.OpenPicker;
+            return SearchPickerWindow.ShowPicker(new SearchViewState(context, selectHandler)
+            {
+                trackingHandler = trackingHandler,
+                filterHandler = filterHandler,
+                title = title,
+                itemSize = itemSize,
+                position = new Rect(0, 0, defaultWidth, defaultHeight)
+            }.SetSearchViewFlags(SearchViewFlags.None));
+        }
+
+        internal static ISearchView ShowPicker(SearchViewState args)
+        {
+            return SearchPickerWindow.ShowPicker(args);
+        }
+
+        internal static IEnumerable<SearchProvider> GetActiveProviders()
+        {
+            return Providers.Where(p => p.active);
+        }
+
+        internal static IEnumerable<SearchProvider> GetProviders(params string[] providerIds)
+        {
+            return providerIds.Select(GetProvider).Where(p => p != null);
+        }
+
+        internal static IEnumerable<SearchProvider> GetProviders(IEnumerable<string> providerIds)
+        {
+            return providerIds.Select(GetProvider).Where(p => p != null);
+        }
+
+        internal static IEnumerable<SearchProvider> GetObjectProviders()
+        {
+            yield return GetProvider(Search.Providers.BuiltInSceneObjectsProvider.type);
+            yield return GetProvider(Search.Providers.AssetProvider.type);
+            yield return GetProvider(Search.Providers.AdbProvider.type);
         }
     }
 }

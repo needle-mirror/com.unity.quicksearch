@@ -8,29 +8,19 @@ using UnityEngine.Serialization;
 
 namespace UnityEditor.Search
 {
-    enum SearchQuerySortOrder
-    {
-        RecentlyUsed,
-        AToZ,
-        ZToA
-    }
-
     /// <summary>
     /// Asset storing a query that will be executable by a SearchEngine.
     /// </summary>
     [Serializable, ExcludeFromPreset]
-    class SearchQuery : ScriptableObject
+    class SearchQueryAsset : ScriptableObject, ISearchQuery
     {
-        static List<SearchQuery> s_SavedQueries;
-        internal static IEnumerable<SearchQuery> savedQueries
+        static List<SearchQueryAsset> s_SavedQueries;
+        internal static IEnumerable<SearchQueryAsset> savedQueries
         {
             get
             {
                 if (s_SavedQueries == null || s_SavedQueries.Any(qs => !qs))
-                {
                     s_SavedQueries = EnumerateAll().Where(asset => asset != null).ToList();
-                    SortQueries();
-                }
 
                 return s_SavedQueries;
             }
@@ -42,43 +32,43 @@ namespace UnityEditor.Search
             return new SearchFilter
             {
                 searchArea = SearchFilter.SearchArea.AllAssets,
-                classNames = new[] { nameof(SearchQuery) },
+                classNames = new[] { nameof(SearchQueryAsset) },
                 showAllHits = false
             };
         }
 
         #endif
 
-        private static IEnumerable<SearchQuery> EnumerateAll()
+        private static IEnumerable<SearchQueryAsset> EnumerateAll()
         {
             #if USE_SEARCH_MODULE
             using (var savedQueriesItr = AssetDatabase.EnumerateAllAssets(CreateSearchQuerySearchFilter()))
             {
                 while (savedQueriesItr.MoveNext())
-                    yield return savedQueriesItr.Current.pptrValue as SearchQuery;
+                    yield return savedQueriesItr.Current.pptrValue as SearchQueryAsset;
             }
             #else
-            return AssetDatabase.FindAssets($"t:{nameof(SearchQuery)}")
+            return AssetDatabase.FindAssets($"t:{nameof(SearchQueryAsset)}")
                 .Select(AssetDatabase.GUIDToAssetPath)
-                .Select(path => AssetDatabase.LoadAssetAtPath<SearchQuery>(path));
+                .Select(path => AssetDatabase.LoadAssetAtPath<SearchQueryAsset>(path));
             #endif
         }
 
-        public static SearchQuery Create(SearchContext context, string description = null)
+        public static SearchQueryAsset Create(SearchContext context, string description = null)
         {
             return Create(context.searchText, context.GetProviders(), description);
         }
 
-        public static SearchQuery Create(string searchQuery, IEnumerable<string> providerIds, string description = null)
+        public static SearchQueryAsset Create(string searchQuery, IEnumerable<string> providerIds, string description = null)
         {
-            var queryAsset = CreateInstance<SearchQuery>();
+            var queryAsset = CreateInstance<SearchQueryAsset>();
             queryAsset.text = searchQuery;
             queryAsset.providerIds = providerIds.ToList();
             queryAsset.description = description;
             return queryAsset;
         }
 
-        public static SearchQuery Create(string searchQuery, IEnumerable<SearchProvider> providers, string description = null)
+        public static SearchQueryAsset Create(string searchQuery, IEnumerable<SearchProvider> providers, string description = null)
         {
             return Create(searchQuery, providers.Select(p => p.id), description);
         }
@@ -96,7 +86,7 @@ namespace UnityEditor.Search
             return filename;
         }
 
-        public static bool SaveQuery(SearchQuery asset, SearchContext context, string folder, string name = null)
+        public static bool SaveQuery(SearchQueryAsset asset, SearchContext context, string folder, string name = null)
         {
             if (!Directory.Exists(folder))
                 Directory.CreateDirectory(folder);
@@ -106,7 +96,7 @@ namespace UnityEditor.Search
             name += ".asset";
 
             asset.text = context.searchText;
-            asset.providerIds = context.GetProviders().Select(p => p.id).ToList();
+            asset.providerIds = new List<string>();
 
             var createNew = string.IsNullOrEmpty(AssetDatabase.GetAssetPath(asset));
             var fullPath = Path.Combine(folder, name).Replace("\\", "/");
@@ -123,14 +113,14 @@ namespace UnityEditor.Search
             return createNew;
         }
 
-        public static IEnumerable<SearchQuery> GetFilteredSearchQueries(SearchContext context)
+        public static IEnumerable<SearchQueryAsset> GetFilteredSearchQueries(SearchContext context)
         {
             return savedQueries.Where(query => query && query.providerIds.Any(id => context.IsEnabled(id)));
         }
 
         public static IEnumerable<SearchItem> GetAllSearchQueryItems(SearchContext context)
         {
-            var icon = Utils.FindTextureForType(typeof(SearchQuery));
+            var icon = Utils.FindTextureForType(typeof(SearchQueryAsset));
             var queryProvider = SearchService.GetProvider(Providers.Query.type);
             return GetFilteredSearchQueries(context).Select(query =>
             {
@@ -138,34 +128,6 @@ namespace UnityEditor.Search
                 var description = string.IsNullOrEmpty(query.description) ? $"{query.text}" : $"{query.description} ({query.text})";
                 return queryProvider.CreateItem(context, id, query.name, description, icon, query);
             }).OrderBy(item => item.label);
-        }
-
-        public static void SortQueries()
-        {
-            switch (SearchSettings.savedSearchesSortOrder)
-            {
-                case SearchQuerySortOrder.RecentlyUsed:
-                {
-                    var now = DateTime.Now.Ticks;
-                    s_SavedQueries = savedQueries.OrderByDescending(asset =>
-                    {
-                        var recentSearchIndex = SearchSettings.recentSearches.IndexOf(asset.text);
-                        if (recentSearchIndex != -1)
-                        {
-                            return now + SearchSettings.recentSearches.Count - recentSearchIndex;
-                        }
-
-                        return asset.creationTime;
-                    }).ToList();
-                }
-                break;
-                case SearchQuerySortOrder.AToZ:
-                    s_SavedQueries = savedQueries.OrderBy(asset => asset.name).ToList();
-                    break;
-                case SearchQuerySortOrder.ZToA:
-                    s_SavedQueries = savedQueries.OrderByDescending(asset => asset.name).ToList();
-                    break;
-            }
         }
 
         public static void ResetSearchQueryItems()
@@ -180,28 +142,16 @@ namespace UnityEditor.Search
 
         public static ISearchView Open(int instanceId)
         {
-            var query = EditorUtility.InstanceIDToObject(instanceId) as SearchQuery;
+            var query = EditorUtility.InstanceIDToObject(instanceId) as SearchQueryAsset;
             if (query == null)
                 return null;
 
-            if (query.providerIds.Count == 0)
-            {
-                Debug.LogWarning($"Search query has no valid providers.", query);
-                return null;
-            }
-
-            var searchWindow = QuickSearch.OpenWithContextualProvider(query.text, query.providerIds.ToArray(), SearchFlags.ReuseExistingWindow, "Unity");
-            searchWindow.activeSearchQuery = query;
-            searchWindow.SetViewState(query.viewState);
-            AddToRecentSearch(query);
-            return searchWindow;
+            return SearchQuery.Open(query, SearchFlags.ReuseExistingWindow);
         }
 
-        public static void AddToRecentSearch(SearchQuery query)
+        public static void AddToRecentSearch(ISearchQuery query)
         {
-            SearchSettings.AddRecentSearch(query.text);
-            if (SearchSettings.savedSearchesSortOrder == SearchQuerySortOrder.RecentlyUsed)
-                SortQueries();
+            SearchSettings.AddRecentSearch(query.searchText);
         }
 
         [OnOpenAsset]
@@ -225,6 +175,30 @@ namespace UnityEditor.Search
             }
         }
 
+        public string searchText => text;
+
+        public string displayName
+        {
+            get => string.IsNullOrEmpty(name) ? Path.GetFileNameWithoutExtension(AssetDatabase.GetAssetPath(this)) : name;
+            set => name = value;
+        }
+
+        public Texture2D thumbnail => icon;
+        public string filePath => AssetDatabase.GetAssetPath(this);
+
+        private string m_GUID;
+        public string guid
+        {
+            get
+            {
+                if (string.IsNullOrEmpty(m_GUID))
+                {
+                    m_GUID = AssetDatabase.GUIDFromAssetPath(filePath).ToString();
+                }
+                return m_GUID;
+            }
+        }
+
         [FormerlySerializedAs("searchQuery")]
         public string text;
 
@@ -232,11 +206,28 @@ namespace UnityEditor.Search
         public string description;
 
         public List<string> providerIds;
+
+        public IEnumerable<SearchProvider> GetProviders()
+        {
+            if (providerIds == null || providerIds.Count == 0)
+                return SearchService.GetActiveProviders();
+
+            return SearchService.GetProviders(providerIds);
+        }
+
+        public IEnumerable<string> GetProviderIds()
+        {
+            return providerIds ?? Enumerable.Empty<string>();
+        }
+
+        public ResultViewState GetResultViewState()
+        {
+            return viewState;
+        }
+
         public ResultViewState viewState;
 
         public Texture2D icon;
-
-        public string displayName { get { return string.IsNullOrEmpty(name) ? Path.GetFileNameWithoutExtension(AssetDatabase.GetAssetPath(this)) : name; } }
 
         public string tooltip
         {

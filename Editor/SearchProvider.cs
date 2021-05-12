@@ -154,7 +154,7 @@ namespace UnityEditor.Search
             this.id = id;
             type = id;
             active = true;
-            name = displayName;
+            name = displayName ?? SearchUtils.ToPascalWithSpaces(id);
             actions = new List<SearchAction>();
             fetchItems = fetchItemsHandler ?? ((context, items, provider) => null);
             fetchThumbnail = (item, context) => item.thumbnail ?? Icons.quicksearch;
@@ -311,7 +311,6 @@ namespace UnityEditor.Search
         public bool showDetails;
 
         /// <summary> Explicitly define details options to be shown</summary>
-        /// TODO: Move these options to the item options
         public ShowDetailsOptions showDetailsOptions = ShowDetailsOptions.Default;
 
         /// <summary> Handler used to fetch and format the label of a search item.</summary>

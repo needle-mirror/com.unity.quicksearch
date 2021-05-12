@@ -54,6 +54,11 @@ namespace UnityEditor.Search
         QueryString = 1 << 7,
 
         /// <summary>
+        /// Indicates that the query should consider package assets to fetch results. If not set, then package assets will most likely be ignored.
+        /// </summary>
+        Packages = 1 << 8,
+
+        /// <summary>
         /// Default Search Flag
         /// </summary>
         Default = Sorted,
@@ -108,7 +113,7 @@ namespace UnityEditor.Search
         /// <summary>
         /// Options when opening QuickSearch as an Object Picker.
         /// </summary>
-        OpenPicker = FocusContext | HidePanels | WantsMore
+        OpenPicker = FocusContext | HidePanels
     }
 
     static class SearchFlagsExtensions

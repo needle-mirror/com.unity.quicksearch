@@ -71,7 +71,7 @@ namespace UnityEditor.Search
                 if (Event.current.type == EventType.Layout)
                     SetupEditors(selection, showOptions);
 
-                GUILayout.Label("Preview Inspector", Styles.panelHeader);
+                GUILayout.Label(Styles.previewInspectorContent, Styles.panelHeader);
 
                 if (selectionCount == 0)
                     return;
@@ -125,11 +125,14 @@ namespace UnityEditor.Search
             using (new EditorGUILayout.HorizontalScope(EditorStyles.inspectorFullWidthMargins))
             {
                 DrawActions(selection, actions.Where(a => fixedActions.Contains(a.id)));
-                if (remainingActions.Length > 2)
+                if (remainingActions.Length > 3)
                     DrawMoreMenu(selection, remainingActions);
             }
-            if (remainingActions.Length <= 2)
-                DrawActions(selection, remainingActions);
+            if (remainingActions.Length <= 3)
+            {
+                using (new EditorGUILayout.VerticalScope(EditorStyles.inspectorFullWidthMargins))
+                    DrawActions(selection, remainingActions);
+            }
 
             GUILayout.Space(2);
         }
@@ -363,7 +366,9 @@ namespace UnityEditor.Search
 
             if (m_PreviewTexture)
             {
-                var previewHeight = Math.Min(!IsBuiltInIcon(m_PreviewTexture) ? m_PreviewTexture.height : 64f, 256);
+                if (IsBuiltInIcon(m_PreviewTexture))
+                    return;
+                var previewHeight = Math.Min(m_PreviewTexture.height, 256);
                 var textureRect = EditorGUILayout.GetControlRect(false, previewHeight,
                     Styles.largePreview, GUILayout.MaxWidth(size), GUILayout.Height(previewHeight));
                 if (Event.current.type == EventType.Repaint)
@@ -373,7 +378,10 @@ namespace UnityEditor.Search
 
         private static bool IsBuiltInIcon(Texture icon)
         {
-            return AssetDatabase.GetAssetPath(icon) == "Library/unity editor resources";
+            var resPath = AssetDatabase.GetAssetPath(icon);
+            return string.Equals(resPath, "Library/unity editor resources", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(resPath, "resources/unity_builtin_extra", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(resPath, "library/unity default resources", StringComparison.OrdinalIgnoreCase);
         }
 
         private bool SkipGeneratedPreview()
