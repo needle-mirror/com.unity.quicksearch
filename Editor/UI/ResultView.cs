@@ -5,31 +5,6 @@ using UnityEngine;
 
 namespace UnityEditor.Search
 {
-    [Serializable]
-    class ResultViewState
-    {
-        public float itemSize;
-        public string group;
-        public SearchTable tableConfig;
-
-        #if USE_SEARCH_MODULE
-        public ResultViewState(SearchTable tableConfig)
-        {
-            itemSize = (float)DisplayMode.Table;
-            group = null;
-            this.tableConfig = tableConfig;
-        }
-
-        #endif
-
-        public ResultViewState(float itemSize)
-        {
-            this.itemSize = itemSize;
-            group = null;
-            tableConfig = null;
-        }
-    }
-
     /// <summary>
     /// A view able to display a <see cref="ISearchList"/> of <see cref="SearchItem"/>s.
     /// </summary>
@@ -49,11 +24,12 @@ namespace UnityEditor.Search
         int GetDisplayItemCount();
         void HandleInputEvent(Event evt, List<int> selection);
         void DrawControlLayout(float viewWidth);
+        void DrawTabsButtons();
         void Refresh(RefreshFlags flags = RefreshFlags.Default);
-        ResultViewState SaveViewState(string name);
-        void SetViewState(ResultViewState viewState);
-
+        SearchViewState SaveViewState(string name);
+        void SetViewState(SearchViewState viewState);
         void OnGroupChanged(string prevGroupId, string newGroupId);
+        void AddSaveQueryMenuItems(SearchContext context, GenericMenu menu);
     }
 
     abstract class ResultView : IResultView
@@ -103,17 +79,21 @@ namespace UnityEditor.Search
             // Do nothing
         }
 
+        public virtual void DrawTabsButtons()
+        {
+        }
+
         public virtual void OnGroupChanged(string prevGroupId, string newGroupId)
         {
             // Do nothing
         }
 
-        public virtual ResultViewState SaveViewState(string name)
+        public virtual SearchViewState SaveViewState(string name)
         {
-            return new ResultViewState(itemSize);
+            return new SearchViewState(context) { sessionName = name, itemSize = itemSize };
         }
 
-        public virtual void SetViewState(ResultViewState viewState)
+        public virtual void SetViewState(SearchViewState viewState)
         {
             // Do nothing
         }
@@ -443,6 +423,11 @@ namespace UnityEditor.Search
         public virtual void Refresh(RefreshFlags flags)
         {
             // Nothing to refresh by default
+        }
+
+        public virtual void AddSaveQueryMenuItems(SearchContext context, GenericMenu menu)
+        {
+            // Do nothing by default
         }
 
         public virtual void Dispose()

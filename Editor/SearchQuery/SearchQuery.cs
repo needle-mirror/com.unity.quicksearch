@@ -16,16 +16,21 @@ namespace UnityEditor.Search
         string filePath { get; }
         string guid { get; }
         long creationTime { get; }
+        long lastUsedTime { get; }
+        int itemCount { get; }
 
-        ResultViewState GetResultViewState();
+        SearchViewState GetResultViewState();
         IEnumerable<string> GetProviderIds();
+        IEnumerable<string> GetProviderTypes();
     }
 
     enum SearchQuerySortOrder
     {
         AToZ,
         ZToA,
-        CreationTime
+        CreationTime,
+        MostRecentlyUsed,
+        ItemCount
     }
 
     [Serializable]
@@ -64,10 +69,64 @@ namespace UnityEditor.Search
             }
         }
 
+        private long m_LastUsedTime;
+        public long lastUsedTime
+        {
+            get
+            {
+                #if USE_PROPERTY_DATABASE
+                using (var view = SearchMonitor.GetView())
+                {
+                    var recordKey = PropertyDatabase.CreateRecordKey(guid, QuickSearch.k_LastUsedTimePropertyName);
+                    if (view.TryLoadProperty(recordKey, out object data))
+                        m_LastUsedTime = (long)data;
+                }
+                #endif
+
+                return m_LastUsedTime;
+            }
+        }
+
+        private int m_ItemCount = -1;
+        public int itemCount
+        {
+            get
+            {
+                #if USE_PROPERTY_DATABASE
+                using (var view = SearchMonitor.GetView())
+                {
+                    var recordKey = PropertyDatabase.CreateRecordKey(guid, QuickSearch.k_QueryItemsNumberPropertyName);
+                    if (view.TryLoadProperty(recordKey, out object data))
+                        m_ItemCount = (int)data;
+                }
+                #endif
+
+                return m_ItemCount;
+            }
+        }
+
         public string description;
         public string name;
         public SearchViewState viewState;
         public SearchTable tableConfig;
+
+        private static List<SearchQuery> s_SearchQueries;
+        public static IEnumerable<SearchQuery> searchQueries
+        {
+            get
+            {
+                if (s_SearchQueries == null)
+                {
+                    s_SearchQueries = new List<SearchQuery>();
+                    LoadSearchQueries(SearchSettings.projectLocalSettingsFolder, s_SearchQueries);
+                    LoadSearchQueries(userSearchSettingsFolder, s_SearchQueries);
+                }
+
+                return s_SearchQueries;
+            }
+        }
+
+        public static IEnumerable<SearchQuery> userQueries => searchQueries.Where(IsUserQuery);
 
         public static SearchQuery Create(SearchViewState state, SearchTable table)
         {
@@ -90,24 +149,6 @@ namespace UnityEditor.Search
         {
             return filePath.GetHashCode();
         }
-
-        private static List<SearchQuery> s_SearchQueries;
-        public static IEnumerable<SearchQuery> searchQueries
-        {
-            get
-            {
-                if (s_SearchQueries == null)
-                {
-                    s_SearchQueries = new List<SearchQuery>();
-                    LoadSearchQueries(SearchSettings.projectLocalSettingsFolder, s_SearchQueries);
-                    LoadSearchQueries(userSearchSettingsFolder, s_SearchQueries);
-                }
-
-                return s_SearchQueries;
-            }
-        }
-
-        public static IEnumerable<SearchQuery> userQueries => searchQueries.Where(IsUserQuery);
 
         public static bool IsUserQuery(SearchQuery query)
         {
@@ -190,17 +231,23 @@ namespace UnityEditor.Search
             return viewState.GetProviderIds();
         }
 
-        public ResultViewState GetResultViewState()
+        public IEnumerable<string> GetProviderTypes()
+        {
+            return viewState.GetProviderTypes();
+        }
+
+        public SearchViewState GetResultViewState()
         {
             #if USE_SEARCH_MODULE
-            return new ResultViewState(tableConfig)
+            return new SearchViewState(tableConfig)
             {
                 group = null,
                 itemSize = viewState.itemSize
             };
             #else
-            return new ResultViewState(viewState.itemSize)
+            return new SearchViewState()
             {
+                itemSize = viewState.itemSize,
                 group = null
             };
             #endif
@@ -223,7 +270,7 @@ namespace UnityEditor.Search
                 "Texture",
                 typeof(Texture));
             viewState.title = "Query Icon";
-            viewState.SetSearchViewFlags(SearchViewFlags.CompactView);
+            viewState.SetSearchViewFlags(SearchViewFlags.GridView);
             SearchService.ShowPicker(viewState);
         }
 

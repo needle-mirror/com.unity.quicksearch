@@ -85,10 +85,6 @@ namespace UnityEditor.Search
         public override void OnGUI(Rect rect)
         {
             var evt = Event.current;
-            #if USE_SEARCH_MODULE
-            if (controller.scrollViewStyle == null)
-                controller.scrollViewStyle = GUIStyle.none;
-            #endif
 
             // Ignore arrow keys for this tree view, these needs to be handled by the search result view (later)
             if (!isRenaming && Utils.IsNavigationKey(evt))
@@ -129,6 +125,12 @@ namespace UnityEditor.Search
                 case SearchQuerySortOrder.CreationTime:
                     parent.children.Sort(SortCreationTime);
                     break;
+                case SearchQuerySortOrder.MostRecentlyUsed:
+                    parent.children.Sort(SortLastUsedTime);
+                    break;
+                case SearchQuerySortOrder.ItemCount:
+                    parent.children.Sort(SortItemCount);
+                    break;
             }
         }
 
@@ -144,7 +146,34 @@ namespace UnityEditor.Search
 
         private static int SortCreationTime(TreeViewItem a, TreeViewItem b)
         {
-            return ((SearchQueryTreeViewItem)a).query.creationTime.CompareTo(((SearchQueryTreeViewItem)b).query.creationTime);
+            // Most recent is on top.
+            return -((SearchQueryTreeViewItem)a).query.creationTime.CompareTo(((SearchQueryTreeViewItem)b).query.creationTime);
+        }
+
+        private static int SortLastUsedTime(TreeViewItem a, TreeViewItem b)
+        {
+            var tviA = (SearchQueryTreeViewItem)a;
+            var tviB = (SearchQueryTreeViewItem)b;
+
+            // Queries with no last used time are sorted by name.
+            if (tviA.query.lastUsedTime == 0 && tviB.query.lastUsedTime == 0)
+                return (tviA.query.displayName.CompareTo(tviB.query.displayName));
+
+            // Most recently used is on top.
+            return -(tviA.query.lastUsedTime.CompareTo(tviB.query.lastUsedTime));
+        }
+
+        private static int SortItemCount(TreeViewItem a, TreeViewItem b)
+        {
+            var tviA = (SearchQueryTreeViewItem)a;
+            var tviB = (SearchQueryTreeViewItem)b;
+
+            // Queries with no item count are sorted by name.
+            if (tviA.query.itemCount == -1 && tviB.query.itemCount == -1)
+                return (tviA.query.displayName.CompareTo(tviB.query.displayName));
+
+            // Query with the most items is on top.
+            return -(tviA.query.itemCount.CompareTo(tviB.query.itemCount));
         }
 
         private static TreeViewItem FindItemFromQuery(ISearchQuery q, TreeViewItem i)
@@ -208,15 +237,17 @@ namespace UnityEditor.Search
 
         protected override void RowGUI(RowGUIArgs args)
         {
-            isRenaming = isRenaming || args.isRenaming;
+            var evt = Event.current;
             var rowRect = args.rowRect;
+
+            isRenaming = isRenaming || args.isRenaming;
             if (args.item is SearchQueryCategoryTreeViewItem ctvi)
             {
-                if (Event.current.type == EventType.Repaint)
-                    Styles.categoryLabel.Draw(rowRect, rowRect.Contains(Event.current.mousePosition), false, false, false);
+                if (evt.type == EventType.Repaint)
+                    Styles.categoryLabel.Draw(rowRect, rowRect.Contains(evt.mousePosition), false, false, false);
 
                 EditorGUI.BeginDisabledGroup(!searchView.CanSaveQuery());
-                var addBtn = new Rect(rowRect.xMax - 20f, rowRect.y, 20f, 20f);
+                var addBtn = new Rect(rowRect.xMax - 21f, rowRect.y, 22f, 22f);
                 if (GUI.Button(addBtn, ctvi.addBtnContent, Styles.toolbarButton))
                 {
                     switch (ctvi.content.text)
@@ -238,27 +269,68 @@ namespace UnityEditor.Search
             }
             else if (args.item is SearchQueryTreeViewItem tvi)
             {
-                if (!args.isRenaming)
+                if (!tvi.IsValid())
                 {
-                    if (Event.current.type == EventType.MouseDown && rowRect.Contains(Event.current.mousePosition))
+                    SearchQueryAsset.ResetSearchQueryItems();
+                    Reload();
+                    return;
+                }
+
+                if (!args.isRenaming && evt.type == EventType.Repaint)
+                {
+                    var hovered = rowRect.Contains(evt.mousePosition);
+
+                    #if USE_PROPERTY_DATABASE
+                    using (var view = SearchMonitor.GetView())
                     {
-                        if (Event.current.button == 1)
-                            Event.current.Use();
-                        else if (Event.current.button == 0 && GetSelection().Contains(args.item.id))
+                        if (tvi.query != null)
                         {
-                            Event.current.Use();
-                            ClearSelection();
+                            DrawQueryLabelAndIcon(rowRect, args, tvi, hovered, true);
+                            DrawItemCount(tvi.query.itemCount, rowRect, hovered, args.selected);
                         }
                     }
-                    else
-                    {
-                        var oldLeftPadding = Styles.itemLabel.padding.left;
-                        Styles.itemLabel.padding.left += Mathf.RoundToInt(GetContentIndent(args.item) + extraSpaceBeforeIconAndLabel);
-                        GUI.Label(rowRect, Utils.GUIContentTemp(tvi.query.displayName, SearchQuery.GetIcon(tvi.query)), Styles.itemLabel);
-                        Styles.itemLabel.padding.left = oldLeftPadding;
-                    }
+                    #else
+                    DrawQueryLabelAndIcon(rowRect, args, tvi, hovered, false);
+                    #endif
                 }
             }
+        }
+
+        private void DrawItemCount(int itemCount, Rect rowRect, bool hovered, bool selected)
+        {
+            GUIContent itemCountContent = new GUIContent();
+
+            if (itemCount != -1)
+            {
+                string formattedCount = Utils.FormatCount(Convert.ToUInt64(itemCount));
+                itemCountContent = Utils.GUIContentTemp(string.Format(Search.Styles.tabCountTextColorFormat, formattedCount));
+            }
+
+            var itemCountRect = new Rect(Mathf.Floor(rowRect.xMax - 27f), rowRect.y, 28f, 22f);
+            var oldAlignment = Styles.itemLabel.alignment;
+            Styles.itemLabel.alignment = TextAnchor.MiddleCenter;
+            Styles.itemLabel.Draw(itemCountRect, itemCountContent, hovered, selected, false, false);
+            Styles.itemLabel.alignment = oldAlignment;
+        }
+
+        private void DrawQueryLabelAndIcon(Rect rowRect, RowGUIArgs args, SearchQueryTreeViewItem tvi, bool hovered, bool usePropertyDatabase)
+        {
+            var itemContent = Utils.GUIContentTemp(tvi.query.displayName, SearchQuery.GetIcon(tvi.query));
+            var oldLeftPadding = Styles.itemLabel.padding.left;
+            Styles.itemLabel.padding.left += Mathf.RoundToInt(GetContentIndent(args.item) + extraSpaceBeforeIconAndLabel);
+
+            if (usePropertyDatabase)
+            {
+                var itemRect = new Rect(rowRect.x, rowRect.y, Mathf.Floor(rowRect.xMax - 27f), 22f);
+                var oldClipping = Styles.itemLabel.clipping;
+                Styles.itemLabel.clipping = TextClipping.Clip;
+                Styles.itemLabel.Draw(itemRect, itemContent, hovered, args.selected, false, false);
+                Styles.itemLabel.clipping = oldClipping;
+            }
+            else
+                Styles.itemLabel.Draw(rowRect, itemContent, hovered, args.selected, false, false);
+
+            Styles.itemLabel.padding.left = oldLeftPadding;
         }
 
         protected override void SingleClickedItem(int id)
@@ -323,9 +395,9 @@ namespace UnityEditor.Search
 
             if (item != null)
             {
-                if (select)
-                    SelectionClick(item, false);
                 BuildRows(rootItem);
+                if (select)
+                    SetSelection(new int[] { item.id });
             }
         }
     }

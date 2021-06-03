@@ -45,10 +45,8 @@ namespace UnityEditor.Search
 
                 if (itemRect.Overlaps(gridRect))
                 {
-                    #if USE_SEARCH_MODULE
                     var buttonWidth = Styles.actionButton.fixedWidth + Styles.actionButton.margin.right;
                     var favoriteButtonRect = new Rect(itemRect.xMax - buttonWidth, itemRect.yMin + 4f, Styles.actionButton.fixedWidth, Styles.actionButton.fixedHeight);
-                    #endif
 
                     if (evt.isMouse && !isHoverGrid)
                     {
@@ -58,7 +56,6 @@ namespace UnityEditor.Search
                     {
                         if (itemRect.Contains(mousePosition))
                         {
-                            #if USE_SEARCH_MODULE
                             if (favoriteButtonRect.Contains(evt.mousePosition))
                             {
                                 if (SearchSettings.searchItemFavorites.Contains(item.id))
@@ -67,7 +64,6 @@ namespace UnityEditor.Search
                                     SearchSettings.AddItemFavorite(item);
                             }
                             else
-                            #endif
                             {
                                 HandleMouseDown(index);
                             }
@@ -91,19 +87,18 @@ namespace UnityEditor.Search
                     {
                         DrawGridItem(index, item, itemRect, isHoverGrid, selection, evt);
 
-                        #if USE_SEARCH_MODULE
-                        if (isHoverGrid && itemRect.Contains(evt.mousePosition))
+                        var markedAsFavorite = SearchSettings.searchItemFavorites.Contains(item.id);
+                        if (markedAsFavorite || (isHoverGrid && itemRect.Contains(evt.mousePosition)))
                         {
-                            if (SearchSettings.searchItemFavorites.Contains(item.id))
+                            if (markedAsFavorite)
                                 GUI.Button(favoriteButtonRect, Styles.searchFavoriteOnButtonContent, Styles.actionButton);
                             else
                             {
-                                using (new GUI.ColorScope(new Color(0.9f, 0.9f, 0.9f, 0.4f)))
+                                using (new Utils.ColorScope(new Color(0.9f, 0.9f, 0.9f, 0.4f)))
                                     GUI.Button(favoriteButtonRect, Styles.searchFavoriteButtonContent, Styles.actionButton);
                             }
                             EditorGUIUtility.AddCursorRect(favoriteButtonRect, MouseCursor.Link);
                         }
-                        #endif
                     }
                 }
                 else

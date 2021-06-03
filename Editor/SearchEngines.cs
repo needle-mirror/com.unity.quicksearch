@@ -176,6 +176,7 @@ namespace UnityEditor.Search
                 searchSession.context.filterType = null;
             }
             searchSession.context.searchText = query;
+            searchSession.context.options |= SearchFlags.Packages;
             var items = SearchService.GetItems(searchSession.context);
             return items.Select(item => ToPath(item));
         }

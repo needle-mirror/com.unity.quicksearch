@@ -22,7 +22,7 @@ namespace UnityEditor.Search
 
         // Add menu named "My Window" to the Window menu
         #if USE_TRANSACTION_VIEWER
-        [MenuItem("Window/Search/Transaction Viewer")]
+        [MenuItem("Window/Search/Transaction Viewer", priority = 11000)]
         #endif
         static void Init()
         {
@@ -56,7 +56,11 @@ namespace UnityEditor.Search
 
             m_TransactionListView  = new UnityEngine.UIElements.ListView();
             m_TransactionListView.itemsSource = Transactions;
+            #if !USE_SEARCH_MODULE
             m_TransactionListView.itemHeight = k_TransactionRowHeight;
+            #else
+            m_TransactionListView.fixedItemHeight = k_TransactionRowHeight;
+            #endif
             m_TransactionListView.makeItem = MakeRowItem;
             m_TransactionListView.bindItem = BindRowItem;
             m_TransactionListView.style.flexGrow = 1.0f;
@@ -106,7 +110,11 @@ namespace UnityEditor.Search
                 Transactions.AddRange(transactions);
             }
 
+            #if USE_SEARCH_MODULE
+            EditorApplication.delayCall += listViewElement.Rebuild;
+            #else
             EditorApplication.delayCall += listViewElement.Refresh;
+            #endif
         }
 
         static VisualElement MakeRowItem()

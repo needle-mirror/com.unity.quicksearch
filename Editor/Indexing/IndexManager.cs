@@ -12,7 +12,7 @@ namespace UnityEditor.Search
 {
     class IndexManager : EditorWindow
     {
-        [MenuItem("Window/Search/Index Manager")]
+        [MenuItem("Window/Search/Index Manager", priority = 200)]
         public static void OpenWindow()
         {
             OpenWindow(-1);
@@ -184,7 +184,11 @@ namespace UnityEditor.Search
                         i++;
                 }
             }
+            #if USE_SEARCH_MODULE
+            m_ListViewIndexSettings.ListView.Rebuild();
+            #else
             m_ListViewIndexSettings.ListView.Refresh();
+            #endif
             m_ListViewIndexSettings.SetSelection(indexToSelectToggle);
             m_ListViewIndexSettings.UpdateListView();
 
@@ -365,17 +369,29 @@ namespace UnityEditor.Search
             m_SavedIndexData.style.paddingTop = 23; //tab size
             m_IndexDetailsElementScrollView.Add(m_SavedIndexData);
 
+            #if !USE_SEARCH_MODULE
             m_DependenciesListView = new UIToolkitListView() { itemHeight = 20, makeItem = () => { return new Label(); }, bindItem = (e, i) => { e.Q<Label>().text = (string)(m_DependenciesListView.itemsSource[i]); } };
+            #else
+            m_DependenciesListView = new UIToolkitListView() { fixedItemHeight = 20, makeItem = () => { return new Label(); }, bindItem = (e, i) => { e.Q<Label>().text = (string)(m_DependenciesListView.itemsSource[i]); } };
+            #endif
             m_DependenciesListView.AddToClassList("PreviewListView");
             m_DependenciesListView.onSelectionChange += PingAsset;
             m_SavedIndexData.Add(m_DependenciesListView);
 
+            #if !USE_SEARCH_MODULE
             m_DocumentsListView = new UIToolkitListView() { itemHeight = 20, makeItem = () => { return new Label(); }, bindItem = (e, i) => { e.Q<Label>().text = (string)(m_DocumentsListView.itemsSource[i]); } };
+            #else
+            m_DocumentsListView = new UIToolkitListView() { fixedItemHeight = 20, makeItem = () => { return new Label(); }, bindItem = (e, i) => { e.Q<Label>().text = (string)(m_DocumentsListView.itemsSource[i]); } };
+            #endif
             m_DocumentsListView.AddToClassList("PreviewListView");
             m_DocumentsListView.onSelectionChange += PingAsset;
             m_SavedIndexData.Add(m_DocumentsListView);
 
+            #if !USE_SEARCH_MODULE
             m_KeywordsListView = new UIToolkitListView() { itemHeight = 20, makeItem = () => { return new Label(); }, bindItem = (e, i) => { e.Q<Label>().text = (string)(m_KeywordsListView.itemsSource[i]); } };
+            #else
+            m_KeywordsListView = new UIToolkitListView() { fixedItemHeight = 20, makeItem = () => { return new Label(); }, bindItem = (e, i) => { e.Q<Label>().text = (string)(m_KeywordsListView.itemsSource[i]); } };
+            #endif
             m_KeywordsListView.AddToClassList("PreviewListView");
             m_SavedIndexData.Add(m_KeywordsListView);
 
@@ -400,7 +416,11 @@ namespace UnityEditor.Search
         {
             if (selectedItemAsset != null && sb.GetInstanceID() == selectedItemAsset.GetInstanceID())
                 UpdatePreviewCheckIfNeedDelay();
+            #if USE_SEARCH_MODULE
+            m_ListViewIndexSettings.ListView.Rebuild();
+            #else
             m_ListViewIndexSettings.ListView.Refresh();
+            #endif
         }
 
         private void CreateOptionsVisualElements()
@@ -422,7 +442,11 @@ namespace UnityEditor.Search
                 {
                     case "disabled":
                         toggle.tooltip = "Toggles this index off so search does not use it";
+                        #if USE_SEARCH_MODULE
+                        toggle.RegisterValueChangedCallback(evt => m_ListViewIndexSettings.ListView.Rebuild());
+                        #else
                         toggle.RegisterValueChangedCallback(evt => m_ListViewIndexSettings.ListView.Refresh());
+                        #endif
                         break;
                     case "types":
                         toggle.tooltip = "Include object type information in this index";
@@ -619,7 +643,11 @@ namespace UnityEditor.Search
                 m_IndexSettingsAssets[selectedIndex] = (SearchDatabase)AssetDatabase.LoadAssetAtPath(selectedItemPath, typeof(SearchDatabase));
 
                 m_IndexNameTextField.SetValueWithoutNotify(selectedItem.name); // Update the textfield with the file name
+                #if USE_SEARCH_MODULE
+                m_ListViewIndexSettings.ListView.Rebuild();
+                #else
                 m_ListViewIndexSettings.ListView.Refresh();
+                #endif
                 UpdateDetailsForNewOrExistingSettings();
                 UpdateUnsavedChanges(false);
             }
@@ -664,7 +692,11 @@ namespace UnityEditor.Search
             {
                 UpdateUnsavedChanges(false);
                 SearchDatabase.ImportAsset(selectedItemPath);
+                #if USE_SEARCH_MODULE
+                m_ListViewIndexSettings.ListView.Rebuild();
+                #else
                 m_ListViewIndexSettings.ListView.Refresh();
+                #endif
                 UpdatePreviewCheckIfNeedDelay();
             }
         }
@@ -778,10 +810,15 @@ namespace UnityEditor.Search
 
         private void DeleteIndexSetting()
         {
-            if (selectedIndex >= 0 && EditorUtility.DisplayDialog("Delete selected index?", "You are about to delete this index, are you sure?", "Yes", "No"))
-            {
+            string warningMessage = "";
+
+            if (selectedIndex >= 0 && m_IndexSettings.Count > 1)
+                warningMessage = "You are about to delete this index, are you sure?";
+            else if (m_IndexSettingsFilePaths.Count == 1)
+                warningMessage = "If you delete all indexes, search functionality is limited to file names only. Continue?";
+
+            if (EditorUtility.DisplayDialog(L10n.Tr("Delete selected index?"), L10n.Tr(warningMessage), L10n.Tr("Yes"), L10n.Tr("No")))
                 DeleteSelectedIndexSetting();
-            }
         }
 
         internal void DeleteSelectedIndexSetting()
@@ -1431,7 +1468,11 @@ namespace UnityEditor.Search
 
         internal void UpdateListViewOnAdd()
         {
+            #if USE_SEARCH_MODULE
+            ListView.Rebuild();
+            #else
             ListView.Refresh();
+            #endif
             SetSelection(itemsSource.Count - 1);
             UpdateListView();
             m_Window.UpdateUnsavedChanges(true);
@@ -1441,7 +1482,11 @@ namespace UnityEditor.Search
         {
             if (selectedIndex > 0 || itemsSource.Count == 0) // if == 0 and 0 then we need to go to -1
                 SetSelection(selectedIndex - 1);
+            #if USE_SEARCH_MODULE
+            ListView.Rebuild();
+            #else
             ListView.Refresh();
+            #endif
             UpdateListView();
         }
 

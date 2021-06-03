@@ -16,12 +16,12 @@ using UnityEditor.Connect;
 using UnityEditor.StyleSheets;
 #else
 [assembly: System.Runtime.CompilerServices.InternalsVisibleTo("Assembly-CSharp-Editor-testable")]
-#endif
-
-[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("com.unity.quicksearch.tests")]
 [assembly: System.Runtime.CompilerServices.InternalsVisibleTo("com.unity.search.extensions.editor")]
 [assembly: System.Runtime.CompilerServices.InternalsVisibleTo("Unity.Environment.Core.Editor")]
 [assembly: System.Runtime.CompilerServices.InternalsVisibleTo("Unity.ProceduralGraph.Editor")]
+#endif
+
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("com.unity.quicksearch.tests")]
 
 namespace UnityEditor.Search
 {
@@ -64,6 +64,31 @@ namespace UnityEditor.Search
             public override string ToString()
             {
                 return $"{root} -> {absPath}";
+            }
+        }
+
+        public struct ColorScope : IDisposable
+        {
+            private bool m_Disposed;
+            private Color m_PreviousColor;
+
+            public ColorScope(Color newColor)
+            {
+                m_Disposed = false;
+                m_PreviousColor = GUI.color;
+                GUI.color = newColor;
+            }
+
+            public ColorScope(float r, float g, float b, float a = 1.0f) : this(new Color(r, g, b, a))
+            {
+            }
+
+            public void Dispose()
+            {
+                if (m_Disposed)
+                    return;
+                m_Disposed = true;
+                GUI.color = m_PreviousColor;
             }
         }
 

@@ -67,7 +67,7 @@ namespace UnityEditor.Search
             cancelEvent = new EventWaitHandle(false, EventResetMode.ManualReset);
 
             if (IsProgressRunning(progressId))
-                Progress.RegisterCancelCallback(progressId, () => cancelEvent.Set());
+                Progress.RegisterCancelCallback(progressId, () => cancelEvent != null && cancelEvent.Set());
         }
 
         public SearchTask(string name, string title, ResolveHandler resolver, ITaskReporter reporter)
@@ -111,6 +111,7 @@ namespace UnityEditor.Search
                 }
                 catch (ThreadAbortException)
                 {
+                    ClearReport();
                     Thread.ResetAbort();
                 }
                 catch (Exception ex)

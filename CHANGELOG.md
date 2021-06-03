@@ -1,5 +1,14 @@
 # Changelog
 
+## [3.0.0-preview.10] - 2021-06-03
+- Add API SearchService.CreateIndex to dynamically create a new index.
+- Filter scene properties using `#<property_name>:<value>`
+- Fix unloading prefab objects when indexing.
+- Fix various UX issues related to saved search query tree view.
+- Reduced the size of the assset index when using Types and Dependencies options only.
+- Search index combining is 175% faster
+- Some new icons are not final yet.
+
 ## [3.0.0-preview.9] - 2021-05-12
 - Add support to save local search (not shared as an asset in the project)
 - Fix prefab indexing performance issues and out of memory exception.

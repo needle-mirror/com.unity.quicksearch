@@ -338,8 +338,7 @@ namespace UnityEditor.Search
             if (sceneRootObjects != null && sceneRootObjects.Length > 0)
                 goRoots.AddRange(sceneRootObjects);
 
-            return SceneModeUtility.GetObjects(goRoots.ToArray(), true)
-                .Where(o => (o.hideFlags & HideFlags.HideInHierarchy) != HideFlags.HideInHierarchy).ToArray();
+            return SceneModeUtility.GetObjects(goRoots.ToArray(), true);
         }
 
         /// <summary>
@@ -445,6 +444,13 @@ namespace UnityEditor.Search
                 s_GroupProviders[groupId] = groupProvider;
 
             return groupProvider;
+        }
+
+        public static string GetAssetPath(in SearchItem item)
+        {
+            if (item.provider.type == Providers.AssetProvider.type)
+                return Providers.AssetProvider.GetAssetPath(item);
+            return null;
         }
     }
 }

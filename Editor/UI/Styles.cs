@@ -58,8 +58,9 @@ namespace UnityEditor.Search
             margin = new RectOffset(0, 0, 0, 0)
         };
 
-        public static readonly GUIContent moreActionsContent = new GUIContent("", Icons.more, "Open actions menu");
-        public static readonly GUIContent moreProviderFiltersContent = new GUIContent("", Icons.more, "Display search provider filter ids and toggle their activate state.");
+        public static readonly GUIContent moreActionsContent = new GUIContent(string.Empty, Icons.more, "Open actions menu");
+        public static readonly GUIContent moreProviderFiltersContent = new GUIContent(string.Empty, Icons.more, "Display search provider filter ids and toggle their activate state.");
+        public static readonly GUIContent resetSearchColumnsContent = new GUIContent(string.Empty, Utils.LoadIcon("Refresh"), "Reset search result columns.");
 
         public static readonly GUIStyle scrollbar = new GUIStyle("VerticalScrollbar");
         public static readonly float scrollbarWidth = scrollbar.fixedWidth + scrollbar.margin.horizontal;
@@ -248,7 +249,7 @@ namespace UnityEditor.Search
             margin = new RectOffset(4, 4, 6, 0)
         };
 
-        public static readonly GUIStyle syncButton = new GUIStyle("IconButton")
+        public static readonly GUIStyle tabButton = new GUIStyle("IconButton")
         {
             margin = new RectOffset(4, 4, 6, 0),
             padding = paddingNone,
@@ -290,7 +291,7 @@ namespace UnityEditor.Search
             fixedHeight = 0f,
             fixedWidth = 0f,
             alignment = TextAnchor.MiddleLeft,
-            margin = new RectOffset(4, 0, 4, 4),
+            margin = new RectOffset(4, 4, 4, 4),
             padding = new RectOffset(8, 20, 0, 0),
             border = new RectOffset(0, 0, 0, 0),
             normal = clear,
@@ -429,7 +430,7 @@ namespace UnityEditor.Search
 
         public static readonly GUIStyle toolbarButton = new GUIStyle("IconButton")
         {
-            margin = new RectOffset(2, 2, 0, 0),
+            margin = new RectOffset(4, 4, 4, 4),
             padding = new RectOffset(0, 0, 0, 0),
             fixedWidth = 24f,
             fixedHeight = 24f,

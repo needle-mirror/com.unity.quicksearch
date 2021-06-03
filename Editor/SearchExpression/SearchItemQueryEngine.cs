@@ -136,7 +136,7 @@ namespace UnityEditor.Search
         }
     }
 
-    readonly struct SearchValue
+    public readonly struct SearchValue
     {
         public enum ValueType : byte
         {
@@ -150,7 +150,7 @@ namespace UnityEditor.Search
         public readonly ValueType type;
         public readonly double number;
         public readonly string text;
-        public readonly SearchColor color;
+        internal readonly SearchColor color;
         public bool boolean => type == ValueType.Bool && number == 1d;
 
         public bool valid => type != ValueType.Nil;
@@ -197,7 +197,7 @@ namespace UnityEditor.Search
             this.color = new SearchColor(color);
         }
 
-        public SearchValue(SearchColor color)
+        internal SearchValue(SearchColor color)
         {
             this.type = ValueType.Color;
             this.number = float.NaN;
@@ -262,6 +262,44 @@ namespace UnityEditor.Search
             }
 
             return "nil";
+        }
+
+        public static SearchValue ConvertPropertyValue(in SerializedProperty sp)
+        {
+            switch (sp.propertyType)
+            {
+                case SerializedPropertyType.Integer: return new SearchValue(Convert.ToDouble(sp.intValue));
+                case SerializedPropertyType.Boolean: return new SearchValue(sp.boolValue);
+                case SerializedPropertyType.Float: return new SearchValue(sp.floatValue);
+                case SerializedPropertyType.String: return new SearchValue(sp.stringValue);
+                case SerializedPropertyType.Enum: return new SearchValue(sp.enumNames[sp.enumValueIndex]);
+                case SerializedPropertyType.ObjectReference: return new SearchValue(sp.objectReferenceValue?.name);
+                case SerializedPropertyType.Bounds: return new SearchValue(sp.boundsValue.size.magnitude);
+                case SerializedPropertyType.BoundsInt: return new SearchValue(sp.boundsIntValue.size.magnitude);
+                case SerializedPropertyType.Rect: return new SearchValue(sp.rectValue.size.magnitude);
+                case SerializedPropertyType.Color: return new SearchValue(sp.colorValue);
+                case SerializedPropertyType.Generic: break;
+                case SerializedPropertyType.LayerMask: break;
+                case SerializedPropertyType.Vector2: break;
+                case SerializedPropertyType.Vector3: break;
+                case SerializedPropertyType.Vector4: break;
+                case SerializedPropertyType.ArraySize: break;
+                case SerializedPropertyType.Character: break;
+                case SerializedPropertyType.AnimationCurve: break;
+                case SerializedPropertyType.Gradient: break;
+                case SerializedPropertyType.Quaternion: break;
+                case SerializedPropertyType.ExposedReference: break;
+                case SerializedPropertyType.FixedBufferSize: break;
+                case SerializedPropertyType.Vector2Int: break;
+                case SerializedPropertyType.Vector3Int: break;
+                case SerializedPropertyType.RectInt: break;
+                case SerializedPropertyType.ManagedReference: break;
+            }
+
+            if (sp.isArray)
+                return new SearchValue(sp.arraySize);
+
+            return SearchValue.invalid;
         }
 
         public static void SetupEngine<T>(QueryEngine<T> queryEngine)
@@ -429,6 +467,8 @@ namespace UnityEditor.Search
 
     class SearchItemQueryEngine : QueryEngine<SearchItem>
     {
+        static Regex PropertyFilterRx = new Regex(@"[\@\$]([#\w\d\.]+)");
+
         SearchExpressionContext m_Context;
 
         public SearchItemQueryEngine()
@@ -438,8 +478,6 @@ namespace UnityEditor.Search
 
         public IEnumerable<SearchItem> Where(SearchExpressionContext context, IEnumerable<SearchItem> dataSet, string queryStr)
         {
-            queryStr = ConvertSelectors(queryStr);
-
             m_Context = context;
             var query = Parse(queryStr, true);
             if (query.errors.Count != 0)
@@ -468,8 +506,6 @@ namespace UnityEditor.Search
 
         public IEnumerable<SearchItem> WhereMainThread(SearchExpressionContext context, IEnumerable<SearchItem> dataSet, string queryStr)
         {
-            queryStr = ConvertSelectors(queryStr);
-
             m_Context = context;
             var query = Parse(queryStr, true);
             if (query.errors.Count != 0)
@@ -493,13 +529,9 @@ namespace UnityEditor.Search
             return results;
         }
 
-        static string ConvertSelectors(string queryStr)
-        {
-            return ParserUtils.ReplaceSelectorInExpr(queryStr, (selector, cleanedSelector) => $"p({cleanedSelector})");
-        }
-
         private void Setup()
         {
+            AddFilter(PropertyFilterRx, GetValue);
             AddFilter("p", GetValue, s => s, StringComparison.OrdinalIgnoreCase);
 
             SearchValue.SetupEngine(this);

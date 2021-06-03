@@ -677,6 +677,7 @@ namespace UnityEditor.Search
         public string filePath { get; }
 
         event Action<string> m_FileStoreChanged;
+        event Action m_FileStoreAboutToChange;
 
         public PropertyDatabaseFileStore(string filePath)
         {
@@ -698,6 +699,7 @@ namespace UnityEditor.Search
         {
             using (LockWrite())
             {
+                NotifyFileStoreAboutToChange();
                 File.Copy(filePathToSwap, filePath, true);
                 File.Delete(filePathToSwap);
                 NotifyFileStoreChanged();
@@ -710,16 +712,34 @@ namespace UnityEditor.Search
                 m_FileStoreChanged += handler;
         }
 
+        public void RegisterFileStoreAboutToChangeHandler(Action handler)
+        {
+            using (LockWrite())
+                m_FileStoreAboutToChange += handler;
+        }
+
         public void UnregisterFileStoreChangedHandler(Action<string> handler)
         {
             using (LockWrite())
                 m_FileStoreChanged -= handler;
         }
 
+        public void UnregisterFileStoreAboutToChangeHandler(Action handler)
+        {
+            using (LockWrite())
+                m_FileStoreAboutToChange -= handler;
+        }
+
         public void NotifyFileStoreChanged()
         {
             using (LockUpgradeableRead())
                 m_FileStoreChanged?.Invoke(filePath);
+        }
+
+        public void NotifyFileStoreAboutToChange()
+        {
+            using (LockUpgradeableRead())
+                m_FileStoreAboutToChange?.Invoke();
         }
     }
 
@@ -743,6 +763,7 @@ namespace UnityEditor.Search
             m_Store = store;
             // All fields must be assigned before calling any functions.
             store.RegisterFileStoreChangedHandler(HandleFileStoreChanged);
+            store.RegisterFileStoreAboutToChangeHandler(HandleFileStoreAboutToChange);
             OpenFileStream(filePath);
         }
 
@@ -751,6 +772,7 @@ namespace UnityEditor.Search
             if (m_Disposed)
                 return;
             m_Store.UnregisterFileStoreChangedHandler(HandleFileStoreChanged);
+            m_Store.UnregisterFileStoreAboutToChangeHandler(HandleFileStoreAboutToChange);
             m_Br?.Dispose();
             m_Br = null;
             m_Bw?.Dispose();
@@ -765,10 +787,17 @@ namespace UnityEditor.Search
         {
             using (LockWrite())
             {
+                OpenFileStream(newFilePath);
+            }
+        }
+
+        void HandleFileStoreAboutToChange()
+        {
+            using (LockWrite())
+            {
                 m_Br?.Dispose();
                 m_Bw?.Dispose();
                 m_Fs?.Dispose();
-                OpenFileStream(newFilePath);
             }
         }
 

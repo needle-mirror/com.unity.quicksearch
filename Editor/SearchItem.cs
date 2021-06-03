@@ -328,14 +328,10 @@ namespace UnityEditor.Search
             return ToObject(typeof(T)) as T;
         }
 
-        /// <summary>
-        ///
-        /// </summary>
-        /// <returns></returns>
-        [Obsolete("This API will be removed")]
+        [Obsolete("This API will be removed", error: true)]
         public string ToGlobalId()
         {
-            return $"{provider?.id ?? "unknown"}:{id}";
+            throw new NotSupportedException("Obsolete");
         }
 
         /// <summary>

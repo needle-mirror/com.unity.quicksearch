@@ -91,14 +91,6 @@ namespace UnityEditor.Search
 
             var hashForSearchField = "CollectionsSearchField".GetHashCode();
             var searchFieldControlID = GUIUtility.GetControlID(hashForSearchField, FocusType.Passive, searchTextRect);
-            #if USE_SEARCH_TABLE
-            searchView.searchText = EditorGUI.ToolbarSearchField(
-                searchFieldControlID,
-                searchTextRect,
-                searchView.searchText,
-                EditorStyles.toolbarSearchField,
-                string.IsNullOrEmpty(searchView.searchText) ? GUIStyle.none : EditorStyles.toolbarSearchFieldCancelButton);
-            #endif
 
             DrawButtons(buttonStackRect);
         }

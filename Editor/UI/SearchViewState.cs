@@ -14,11 +14,11 @@ namespace UnityEditor.Search
     }
 
     [Serializable]
-    class SearchViewState : ISerializationCallbackReceiver
+    public class SearchViewState : ISerializationCallbackReceiver
     {
         static Vector2 defaultSize = new Vector2(850f, 539f);
 
-        public SearchContext context
+        internal SearchContext context
         {
             get
             {
@@ -32,36 +32,44 @@ namespace UnityEditor.Search
                 m_Context = value ?? throw new ArgumentNullException(nameof(value));
             }
         }
+
         [NonSerialized] private SearchContext m_Context;
         [NonSerialized] private bool m_WasDeserialized;
         [SerializeField] private string[] providerIds;
         [SerializeField] private SearchFlags searchFlags;
         [SerializeField] internal string searchText; // Also used as the initial query when the view was created
 
-        public string sessionId;
-        public string sessionName;
+        [SerializeField] internal string sessionId;
+        [SerializeField] internal string sessionName;
 
         public string title;
-        public float itemSize;
-        public Rect position;
-        public bool centered;
-        public bool forceViewMode;
-        public SearchViewFlags flags = SearchViewFlags.EnableSearchQuery;
+        [SerializeField] internal float itemSize;
+        [SerializeField] internal Rect position;
+        [SerializeField] internal bool forceViewMode;
+        [SerializeField] internal SearchViewFlags flags;
+        [SerializeField] internal string group;
 
-        [NonSerialized] public Action<SearchItem, bool> selectHandler;
-        [NonSerialized] public Action<SearchItem> trackingHandler;
-        [NonSerialized] public Func<SearchItem, bool> filterHandler;
+        #if USE_SEARCH_MODULE
+        [SerializeField] internal SearchTable tableConfig;
+        #endif
 
-        public bool hasWindowSize => position.width > 0f && position.height > 0;
-        public Vector2 windowSize => hasWindowSize ? position.size : defaultSize;
+        [NonSerialized] internal Action<SearchItem, bool> selectHandler;
+        [NonSerialized] internal Action<SearchItem> trackingHandler;
+        [NonSerialized] internal Func<SearchItem, bool> filterHandler;
 
-        public SearchViewState()
-            : this(null, null) {}
+        internal bool hasWindowSize => position.width > 0f && position.height > 0;
+        internal Vector2 windowSize => hasWindowSize ? position.size : defaultSize;
 
-        public SearchViewState(SearchContext context)
-            : this(context, null) {}
+        internal SearchViewState() : this(null, null) {}
+        public SearchViewState(SearchContext context) : this(context, null) {}
 
-        public SearchViewState(SearchContext context, Action<SearchItem, bool> selectHandler)
+        public SearchViewState(SearchContext context, SearchViewFlags flags)
+            : this(context, null)
+        {
+            SetSearchViewFlags(flags);
+        }
+
+        internal SearchViewState(SearchContext context, Action<SearchItem, bool> selectHandler)
         {
             m_Context = context;
             sessionId = Guid.NewGuid().ToString("N");
@@ -72,12 +80,15 @@ namespace UnityEditor.Search
             itemSize = (float)DisplayMode.Grid;
             position = Rect.zero;
             searchText = context?.searchText ?? string.Empty;
+            #if USE_SEARCH_MODULE
+            tableConfig = null;
+            #endif
         }
 
-        public SearchViewState(SearchContext context,
-                               Action<UnityEngine.Object, bool> selectObjectHandler,
-                               Action<UnityEngine.Object> trackingObjectHandler,
-                               string typeName, Type filterType)
+        internal SearchViewState(SearchContext context,
+                                 Action<UnityEngine.Object, bool> selectObjectHandler,
+                                 Action<UnityEngine.Object> trackingObjectHandler,
+                                 string typeName, Type filterType)
             : this(context, null)
         {
             if (filterType == null && !string.IsNullOrEmpty(typeName))
@@ -94,14 +105,22 @@ namespace UnityEditor.Search
             title = filterType?.Name ?? typeName;
         }
 
-        public SearchViewState SetSearchViewFlags(SearchViewFlags flags)
+        #if USE_SEARCH_MODULE
+        internal SearchViewState(SearchTable tableConfig)
+            : this(null, null)
+        {
+            itemSize = (float)DisplayMode.Table;
+            group = null;
+            this.tableConfig = tableConfig;
+        }
+
+        #endif
+
+        internal SearchViewState SetSearchViewFlags(SearchViewFlags flags)
         {
             context.options |= ToSearchFlags(flags);
 
-            // Do not use |= as flags that were not set (like EnableSearchQuery) must properly propagate
             this.flags = flags;
-            if (flags.HasAny(SearchViewFlags.Centered))
-                centered = true;
 
             if (flags.HasAny(SearchViewFlags.CompactView))
             {
@@ -128,7 +147,7 @@ namespace UnityEditor.Search
             return this;
         }
 
-        public void Assign(SearchViewState state)
+        internal void Assign(SearchViewState state)
         {
             providerIds = state.context.providers.Select(p => p.id).ToArray();
             searchFlags = state.searchFlags;
@@ -140,7 +159,6 @@ namespace UnityEditor.Search
             itemSize = state.itemSize;
             position = state.position;
             flags = state.flags;
-            centered = state.centered;
             forceViewMode = state.forceViewMode;
 
             BuildContext();
@@ -155,7 +173,7 @@ namespace UnityEditor.Search
             m_WasDeserialized = false;
         }
 
-        public static SearchFlags ToSearchFlags(SearchViewFlags flags)
+        internal static SearchFlags ToSearchFlags(SearchViewFlags flags)
         {
             var sf = SearchFlags.None;
             if (flags.HasAny(SearchViewFlags.Debug)) sf |= SearchFlags.Debug;
@@ -175,13 +193,13 @@ namespace UnityEditor.Search
             return filterType.IsAssignableFrom(objType);
         }
 
-        public static SearchViewState LoadDefaults()
+        internal static SearchViewState LoadDefaults()
         {
             var viewState = new SearchViewState();
             return viewState.LoadDefaults();
         }
 
-        public SearchViewState LoadDefaults(SearchFlags additionalFlags = SearchFlags.None)
+        internal SearchViewState LoadDefaults(SearchFlags additionalFlags = SearchFlags.None)
         {
             if (string.IsNullOrEmpty(title))
                 title = "Unity";
@@ -211,9 +229,16 @@ namespace UnityEditor.Search
             m_WasDeserialized = true;
         }
 
-        public IEnumerable<string> GetProviderIds()
+        internal IEnumerable<string> GetProviderIds()
         {
             return context.GetProviders().Select(p => p.id);
         }
+
+        internal IEnumerable<string> GetProviderTypes()
+        {
+            return context.GetProviders().Select(p => p.type).Distinct();
+        }
+
+        internal bool HasFlag(SearchViewFlags f) => (flags & f) != 0;
     }
 }

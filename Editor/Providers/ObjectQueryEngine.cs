@@ -152,7 +152,7 @@ namespace UnityEditor.Search.Providers
         #region search_query_error_example
         public IEnumerable<T> Search(SearchContext context, SearchProvider provider, IEnumerable<T> subset = null)
         {
-            var query = m_QueryEngine.Parse(ConvertSelectors(context.searchQuery), true);
+            var query = m_QueryEngine.Parse(context.searchQuery, true);
             if (!query.valid)
             {
                 context.AddSearchQueryErrors(query.errors.Select(e => new SearchQueryError(e, context, provider)));
@@ -164,12 +164,6 @@ namespace UnityEditor.Search.Providers
         }
 
         #endregion
-
-        static readonly Regex k_HashPropertyFilterFunctionRegex = new Regex(@"([#][^><=!:\s]+)[><=!:]");
-        static string ConvertSelectors(string queryStr)
-        {
-            return ParserUtils.ReplaceSelectorInExpr(queryStr, (selector, cleanedSelector) => $"p({cleanedSelector})", k_HashPropertyFilterFunctionRegex);
-        }
 
         public virtual bool GetId(T obj, string op, int instanceId)
         {
@@ -211,47 +205,9 @@ namespace UnityEditor.Search.Providers
             if (property == null)
                 return SearchValue.invalid;
 
-            var v = ConvertPropertyValue(property);
+            var v = SearchValue.ConvertPropertyValue(property);
             so?.Dispose();
             return v;
-        }
-
-        public static SearchValue ConvertPropertyValue(in SerializedProperty sp)
-        {
-            switch (sp.propertyType)
-            {
-                case SerializedPropertyType.Integer: return new SearchValue(Convert.ToDouble(sp.intValue));
-                case SerializedPropertyType.Boolean: return new SearchValue(sp.boolValue);
-                case SerializedPropertyType.Float: return new SearchValue(sp.floatValue);
-                case SerializedPropertyType.String: return new SearchValue(sp.stringValue);
-                case SerializedPropertyType.Enum: return new SearchValue(sp.enumNames[sp.enumValueIndex]);
-                case SerializedPropertyType.ObjectReference: return new SearchValue(sp.objectReferenceValue?.name);
-                case SerializedPropertyType.Bounds: return new SearchValue(sp.boundsValue.size.magnitude);
-                case SerializedPropertyType.BoundsInt: return new SearchValue(sp.boundsIntValue.size.magnitude);
-                case SerializedPropertyType.Rect: return new SearchValue(sp.rectValue.size.magnitude);
-                case SerializedPropertyType.Color: return new SearchValue(sp.colorValue);
-                case SerializedPropertyType.Generic: break;
-                case SerializedPropertyType.LayerMask: break;
-                case SerializedPropertyType.Vector2: break;
-                case SerializedPropertyType.Vector3: break;
-                case SerializedPropertyType.Vector4: break;
-                case SerializedPropertyType.ArraySize: break;
-                case SerializedPropertyType.Character: break;
-                case SerializedPropertyType.AnimationCurve: break;
-                case SerializedPropertyType.Gradient: break;
-                case SerializedPropertyType.Quaternion: break;
-                case SerializedPropertyType.ExposedReference: break;
-                case SerializedPropertyType.FixedBufferSize: break;
-                case SerializedPropertyType.Vector2Int: break;
-                case SerializedPropertyType.Vector3Int: break;
-                case SerializedPropertyType.RectInt: break;
-                case SerializedPropertyType.ManagedReference: break;
-            }
-
-            if (sp.isArray)
-                return new SearchValue(sp.arraySize);
-
-            return SearchValue.invalid;
         }
 
         protected string ToReplacementValue(SerializedProperty sp, string replacement)

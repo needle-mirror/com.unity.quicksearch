@@ -78,8 +78,6 @@ namespace UnityEditor.Search
             // UI Usage
             // Was the item activated using the Enter key (false: user clicked in the item)
             public bool endSearchWithKeyboard;
-            // Was the tool opened in general mode (where we record the search state)
-            [Obsolete] public bool saveSearchStateOnExit = true;
             // Was the history shortcut used.
             public bool useHistoryShortcut;
             // Was the FilterMenu shortcut used.

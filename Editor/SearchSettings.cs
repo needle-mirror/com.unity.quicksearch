@@ -153,6 +153,7 @@ namespace UnityEditor.Search
 
             #if !USE_SEARCH_MODULE
             debounceMs = ReadSetting(settings, nameof(debounceMs), 250);
+            savedSearchesSortOrder = SearchQuerySortOrder.AToZ;
             #endif
 
             var searches = ReadSetting<object[]>(settings, nameof(recentSearches));

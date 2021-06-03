@@ -57,7 +57,12 @@ namespace UnityEditor.Search
             m_LocalStore = new PropertyDatabaseMemoryStore();
             m_FileStore = new PropertyDatabaseFileStore(filePath);
             m_StringTable = new PropertyStringTable(stringTableFilePath, 30);
-            this.autoBackgroundUpdate = autoBackgroundUpdate;
+
+            // Do not allow automatic background updates while running tests. The writing of the file
+            // causes an assembly leak during the test Unity.IntegrationTests.Scripting.AssemblyReloadTest.AssemblyReloadDoesntLeakAssemblies
+            // on MacOs. I haven't found out why exactly does the writing of a file causes an assembly to be held, so instead I deactivate
+            // the automatic update during tests.
+            this.autoBackgroundUpdate = autoBackgroundUpdate && !Utils.IsRunningTests();
 
             m_Debounce = Delayer.Debounce(_ => TriggerPropertyDatabaseBackgroundUpdate(), backgroundUpdateDebounceInSeconds);
         }
@@ -323,7 +328,6 @@ namespace UnityEditor.Search
         {
             var task = Task.Run(() =>
             {
-                Thread.CurrentThread.Name = nameof(TriggerPropertyDatabaseBackgroundUpdate);
                 try
                 {
                     MergeStoresToFile();

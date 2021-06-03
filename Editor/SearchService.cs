@@ -65,7 +65,7 @@ namespace UnityEditor.Search
             if (!Utils.IsMainProcess())
                 return;
 
-            if (!SearchDatabase.EnumeratePaths(SearchDatabase.IndexLocation.assets).Any())
+            if (!SearchDatabase.Enumerate(SearchDatabase.IndexLocation.assets).Any())
                 SearchDatabase.CreateDefaultIndex();
 
             SearchSettings.onBoardingDoNotAskAgain = true;
@@ -520,6 +520,16 @@ namespace UnityEditor.Search
         }
 
         /// <summary>
+        /// Show a search window.
+        /// </summary>
+        /// <param name="viewState">Defines search view parameters for creation</param>
+        /// <returns></returns>
+        public static ISearchView ShowWindow(SearchViewState viewState)
+        {
+            return QuickSearch.Create(viewState).ShowWindow();
+        }
+
+        /// <summary>
         /// Open QuickSearch in contextual mode enabling only the providers specified.
         /// </summary>
         /// <param name="providerIds">List of provider ids to enabled for QuickSearch</param>
@@ -576,9 +586,14 @@ namespace UnityEditor.Search
             }.SetSearchViewFlags(SearchViewFlags.None));
         }
 
-        internal static ISearchView ShowPicker(SearchViewState args)
+        /// <summary>
+        /// Open and show the Search Picker window.
+        /// </summary>
+        /// <param name="viewState">View parameters</param>
+        /// <returns>Returns the newly create search view instance.</returns>
+        public static ISearchView ShowPicker(SearchViewState viewState)
         {
-            return SearchPickerWindow.ShowPicker(args);
+            return SearchPickerWindow.ShowPicker(viewState);
         }
 
         internal static IEnumerable<SearchProvider> GetActiveProviders()
@@ -601,6 +616,101 @@ namespace UnityEditor.Search
             yield return GetProvider(Search.Providers.BuiltInSceneObjectsProvider.type);
             yield return GetProvider(Search.Providers.AssetProvider.type);
             yield return GetProvider(Search.Providers.AdbProvider.type);
+        }
+
+        /// <summary>
+        /// Create a new index and callback user code to indicate that the indexing is finished.
+        /// </summary>
+        /// <param name="name">Unique name of the index to be used.</param>
+        /// <param name="onIndexReady">Callback invoked when the new search index is ready to be used.</param>
+        public static void CreateIndex(
+            in string name,
+            in IndexingOptions options,
+            IEnumerable<string> roots,
+            IEnumerable<string> includes,
+            IEnumerable<string> excludes,
+            Action<string, string, Action> onIndexReady)
+        {
+            var indexName = name;
+            var indexPath = name;
+            if (name.EndsWith(".index"))
+                indexName = name.Substring(0, name.Length - 6);
+            else
+                indexPath = $"{name}.index";
+
+            #if USE_SEARCH_MODULE
+            if (options.HasNone(IndexingOptions.Temporary))
+            {
+                indexName = System.IO.Path.GetFileNameWithoutExtension(indexPath);
+                if (!AssetDatabase.GetAssetFolderInfo(indexPath, out var rootFolder, out var immutable) || immutable)
+                    indexPath = AssetDatabase.GenerateUniqueAssetPath($"Assets/{indexName}.index");
+            }
+            else
+            #endif
+            {
+                indexPath = AssetDatabase.GenerateUniqueAssetPath($"Temp/{indexPath}");
+
+                if (roots == null)
+                    roots = new[] { "Assets" };
+            }
+
+            roots = roots ?? Enumerable.Empty<string>();
+            includes = includes ?? Enumerable.Empty<string>();
+            excludes = excludes ?? Enumerable.Empty<string>();
+
+            var indexDir = System.IO.Path.GetDirectoryName(indexPath);
+            if (!System.IO.Directory.Exists(indexDir))
+                AssetDatabase.CreateFolder(System.IO.Path.GetDirectoryName(indexDir), System.IO.Path.GetFileName(indexDir));
+
+            System.IO.File.WriteAllText(indexPath,
+                $"{{\n\t" +
+                $"\"roots\": [{string.Join(",", roots.Select(p => $"\"{p}\""))}],\n\t" +
+                $"\"includes\": [{string.Join(",", includes.Select(p => $"\"{p}\""))}],\n\t" +
+                $"\"excludes\": [{string.Join(",", excludes.Select(p => $"\"{p}\""))}],\n\t" +
+                $"\"options\": {{\n\t\t" +
+                $"\"types\": {options.HasAny(IndexingOptions.Types).ToString().ToLowerInvariant()},\n\t\t" +
+                $"\"properties\": {options.HasAny(IndexingOptions.Properties).ToString().ToLowerInvariant()},\n\t\t" +
+                $"\"extended\": {options.HasAny(IndexingOptions.Extended).ToString().ToLowerInvariant()},\n\t\t" +
+                $"\"dependencies\": {options.HasAny(IndexingOptions.Dependencies).ToString().ToLowerInvariant()}\n\t}},\n\t" +
+                $"\"baseScore\": 9999\n}}");
+
+            var db = SearchDatabase.ImportAsset(indexPath);
+            TrackCreateIndex(db, options, indexName, indexPath, onIndexReady, 1d);
+        }
+
+        /// <summary>
+        /// Checks if a search index is ready to be used.
+        /// </summary>
+        /// <param name="name">Name or path of the search index to be checked. Pass null if you want to check all available indexes</param>
+        /// <returns></returns>
+        public static bool IsIndexReady(string name)
+        {
+            return SearchDatabase.EnumerateAll().Where(db =>
+            {
+                if (string.IsNullOrEmpty(name))
+                    return true;
+                if (string.Equals(db.name, name, StringComparison.OrdinalIgnoreCase))
+                    return true;
+                if (string.Equals(db.path, name, StringComparison.OrdinalIgnoreCase))
+                    return true;
+                return false;
+            }).All(db => db.ready && !db.updating);
+        }
+
+        static void TrackCreateIndex(SearchDatabase db, IndexingOptions options, string indexName, string indexPath, Action<string, string, Action> onIndexReady, double delay)
+        {
+            if (db.ready)
+            {
+                onIndexReady?.Invoke(indexName, indexPath.Replace("\\", "/"), () =>
+                {
+                    if (EditorUtility.IsPersistent(db))
+                        Resources.UnloadAsset(db);
+                    if (options.HasNone(IndexingOptions.Keep))
+                        AssetDatabase.DeleteAsset(indexPath);
+                });
+            }
+            else
+                Utils.CallDelayed(() => TrackCreateIndex(db, options, indexName, indexPath, onIndexReady, delay), delay);
         }
     }
 }
