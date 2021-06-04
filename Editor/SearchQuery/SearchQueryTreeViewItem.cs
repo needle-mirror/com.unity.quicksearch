@@ -202,7 +202,7 @@ namespace UnityEditor.Search
 
         public override void Open()
         {
-            treeView.searchView.ExecuteSearchQuery(m_Query, SearchAnalytics.GenericEventType.QuickSearchSavedSearchesExecuted);
+            treeView.searchView.ExecuteSearchQuery(m_Query);
         }
     }
 }

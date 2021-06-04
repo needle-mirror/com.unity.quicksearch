@@ -3,7 +3,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using UnityEditor.Profiling;
 using UnityEditorInternal;
 using UnityEngine;
 using UnityEngine.Analytics;
@@ -248,7 +247,9 @@ namespace UnityEditor.Search
 
             QuickSearchExportReport,
             QuickSearchImportReport,
-            ReportViewOpen
+            ReportViewOpen,
+
+            QuickSearchPickerOpens
         }
 
         public static readonly string Package = "com.unity.quicksearch";
@@ -417,7 +418,7 @@ namespace UnityEditor.Search
             report.showPackageIndexes = SearchSettings.showPackageIndexes;
             report.debounceMs = SearchSettings.debounceMs;
             report.savedSearchesSortOrder = SearchSettings.savedSearchesSortOrder.ToString();
-            report.savedSearchesCount = SearchQueryAsset.savedQueries.Count();
+            report.savedSearchesCount = SearchQueryAsset.savedQueries.Count() + SearchQuery.userQueries.Count();
             report.sessionQueryCount = sessionQueryCount;
             report.sessionQuerySearchExecutionCount = sessionQuerySearchExecutionCount;
             report.sessionSearchOpenWindow = sessionSearchOpenWindow;

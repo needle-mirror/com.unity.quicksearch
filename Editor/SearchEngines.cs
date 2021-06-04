@@ -272,12 +272,16 @@ namespace UnityEditor.Search
             Action<Object, bool> selectHandler, Action<Object> trackingHandler)
         {
             var selectContext = (ObjectSelectorSearchContext)context;
-
             var viewFlags = SearchFlags.OpenPicker;
             if (Utils.IsRunningTests())
                 viewFlags |= SearchFlags.Dockable;
-            qsWindow = SearchService.ShowObjectPicker(selectHandler, trackingHandler, "",
-                selectContext.requiredTypeNames.First(), selectContext.requiredTypes.First(), flags: viewFlags) as QuickSearch;
+            SearchAnalytics.SendEvent(null, SearchAnalytics.GenericEventType.QuickSearchPickerOpens, "", "object", "ObjectSelectorEngine");
+            var viewstate = new SearchViewState(
+                SearchService.CreateContext("", viewFlags), selectHandler, trackingHandler,
+                selectContext.requiredTypeNames.First(), selectContext.requiredTypes.First());
+
+
+            qsWindow = SearchService.ShowPicker(viewstate) as QuickSearch;
 
             return qsWindow != null;
         }

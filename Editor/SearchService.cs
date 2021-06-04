@@ -559,6 +559,7 @@ namespace UnityEditor.Search
             SearchFlags flags = SearchFlags.None)
         {
             var context = CreateContext(GetObjectProviders(), searchText, flags | SearchFlags.OpenPicker);
+            SearchAnalytics.SendEvent(null, SearchAnalytics.GenericEventType.QuickSearchPickerOpens, searchText, "object", "api");
             return ShowPicker(new SearchViewState(context, selectHandler, trackingHandler, typeName, filterType)
             {
                 position = new Rect(0, 0, defaultWidth, defaultHeight)
@@ -576,6 +577,7 @@ namespace UnityEditor.Search
             if (subset != null)
                 context.subset = subset.ToList();
             context.options |= flags | SearchFlags.OpenPicker;
+            SearchAnalytics.SendEvent(null, SearchAnalytics.GenericEventType.QuickSearchPickerOpens, context.searchText, "item", "api");
             return SearchPickerWindow.ShowPicker(new SearchViewState(context, selectHandler)
             {
                 trackingHandler = trackingHandler,

@@ -384,6 +384,12 @@ namespace UnityEditor.Search
                 m_ProjectQueries.AddChild(item);
                 SetExpanded(m_ProjectQueries.id, true);
                 SortBy(m_ProjectQueries, m_SortOrder);
+
+                var evt = searchView.CreateEvent(SearchAnalytics.GenericEventType.QuickSearchCreateSearchQuery, query.searchText, query.filePath, "project");
+                #if USE_SEARCH_MODULE
+                evt.intPayload1 = query.GetResultViewState().tableConfig != null ? 1 : 0;
+                #endif
+                SearchAnalytics.SendEvent(evt);
             }
             else if (query is SearchQuery sq && SearchQuery.IsUserQuery(sq))
             {
@@ -391,6 +397,12 @@ namespace UnityEditor.Search
                 m_UserQueries.AddChild(item);
                 SetExpanded(m_UserQueries.id, true);
                 SortBy(m_UserQueries, m_SortOrder);
+
+                var evt = searchView.CreateEvent(SearchAnalytics.GenericEventType.QuickSearchCreateSearchQuery, query.searchText, "", "user");
+                #if USE_SEARCH_MODULE
+                evt.intPayload1 = query.GetResultViewState().tableConfig != null ? 1 : 0;
+                #endif
+                SearchAnalytics.SendEvent(evt);
             }
 
             if (item != null)

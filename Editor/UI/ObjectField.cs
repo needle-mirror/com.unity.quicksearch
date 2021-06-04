@@ -364,6 +364,7 @@ namespace UnityEditor.Search
 
         internal void ShowObjectSelector()
         {
+            SearchAnalytics.SendEvent(null, SearchAnalytics.GenericEventType.QuickSearchPickerOpens, searchContext.searchText, "object", "objectfield");
             m_OriginalObject = value;
             var searchViewState = new SearchViewState(searchContext, OnSelection, OnObjectChanged, objectType.ToString(), objectType)
             {
@@ -948,6 +949,7 @@ namespace UnityEditor.Search
                     .SetSearchViewFlags(searchViewFlags);
             if (property != null)
                 searchViewState.title = $"{property.displayName} ({objType.Name})";
+            SearchAnalytics.SendEvent(null, SearchAnalytics.GenericEventType.QuickSearchPickerOpens, context.searchText, "object", "objectfield");
             SearchService.ShowPicker(searchViewState);
 
             evt.Use();

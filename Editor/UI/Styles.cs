@@ -366,6 +366,7 @@ namespace UnityEditor.Search
         public static readonly GUIContent previewInspectorContent = new GUIContent("Inspector", EditorGUIUtility.FindTexture("UnityEditor.InspectorWindow"), "Open Inspector");
         public static readonly GUIContent previewInspectorButtonContent = new GUIContent(string.Empty, EditorGUIUtility.FindTexture("UnityEditor.InspectorWindow"), "Open Inspector");
         public static readonly GUIContent sortButtonContent = new GUIContent(string.Empty, EditorGUIUtility.FindTexture("UnityEditor/Filter Icon"), "Change Saved Searches sorting order");
+        public static readonly GUIContent saveSearchesContent = new GUIContent("Searches");
 
         #if USE_SEARCH_MODULE
         public static readonly GUIContent syncSearchButtonContent = new GUIContent(string.Empty, EditorGUIUtility.LoadIcon("QuickSearch/SyncSearch"), "Synchronize search fields (Ctrl + K)");
@@ -378,13 +379,13 @@ namespace UnityEditor.Search
         public static readonly GUIContent searchTipsSaveSearches = new GUIContent("Save Searches you use often", EditorGUIUtility.FindTexture("SaveAs"));
         public static readonly GUIContent searchTipsPreviewInspector = new GUIContent("Enable the Preview Inspector to edit search results in place", EditorGUIUtility.LoadIcon("UnityEditor.InspectorWindow"));
         public static readonly GUIContent searchTipsSync = new GUIContent("Enable sync to keep other Editor search fields populated ", EditorGUIUtility.LoadIcon("QuickSearch/SyncSearch On"));
-        public static readonly GUIContent sideBarPanelContent = new GUIContent(string.Empty, Utils.LoadIcon("ShowPanels"), "Open Saved Searches Panel");
+        public static readonly GUIContent saveSearchesIconContent = new GUIContent(string.Empty, Utils.LoadIcon("UnityEditor/Search/SearchQueryAsset Icon"));
         #else
         public static readonly GUIContent searchTipsHelp = new GUIContent("Type '?' for help");
         public static readonly GUIContent searchTipsDrag = new GUIContent("Drag from search results to Scene, Hierarchy or Inspector");
         public static readonly GUIContent searchTipsSaveSearches = new GUIContent("Save Searches you use often");
         public static readonly GUIContent searchTipsPreviewInspector = new GUIContent("Enable the Preview Inspector to edit search results in place");
-        public static readonly GUIContent sideBarPanelContent = new GUIContent(string.Empty, Icons.showPanels, "Open Saved Searches Panel");
+        public static readonly GUIContent saveSearchesIconContent = new GUIContent(string.Empty, Icons.showPanels, "Open Saved Searches Panel");
         #endif
 
         public static readonly GUIContent[] searchTipIcons =
@@ -438,12 +439,22 @@ namespace UnityEditor.Search
             alignment = TextAnchor.MiddleCenter
         };
 
+        public static readonly GUIStyle openSearchesPanelButton = new GUIStyle("IconButton")
+        {
+            margin = new RectOffset(4, 4, 4, 4),
+            padding = new RectOffset(2, 2, 2, 2),
+            fixedWidth = 24f,
+            fixedHeight = 24f,
+            imagePosition = ImagePosition.ImageOnly,
+            alignment = TextAnchor.MiddleCenter
+        };
+
         public static readonly GUIStyle savedSearchesHeaderButton = new GUIStyle("IconButton")
         {
-            margin = new RectOffset(2, 2, 4, 4),
+            margin = new RectOffset(2, 2, 2, 2),
             padding = new RectOffset(0, 0, 0, 0),
-            fixedWidth = 23f,
-            fixedHeight = 23f,
+            fixedWidth = 24f,
+            fixedHeight = 24f,
             imagePosition = ImagePosition.ImageOnly,
             alignment = TextAnchor.MiddleCenter
         };
@@ -464,12 +475,25 @@ namespace UnityEditor.Search
         };
 
         public static readonly GUIStyle panelHeader = Utils.FromUSS(new GUIStyle() {
-            margin = new RectOffset(4, 4, 2, 3),
-            padding = new RectOffset(4, 4, 6, 2),
+            margin = new RectOffset(2, 2, 2, 2),
+            padding = new RectOffset(1, 1, 4, 4),
+            fixedHeight = 24,
             wordWrap = false,
-            stretchWidth = true,
+            alignment = TextAnchor.MiddleLeft,
+            stretchWidth = false,
             clipping = TextClipping.Clip
         }, "quick-search-panel-header");
+
+        public static readonly GUIStyle panelHeaderIcon = new GUIStyle()
+        {
+            fixedWidth = 24,
+            fixedHeight = 24,
+            alignment = TextAnchor.MiddleCenter,
+            stretchWidth = true,
+            stretchHeight = true,
+            margin = new RectOffset(4, 4, 2, 2),
+            padding = new RectOffset(4, 4, 4, 4)
+        };
 
         public static readonly GUIStyle reportHeader = new GUIStyle(panelHeader)
         {

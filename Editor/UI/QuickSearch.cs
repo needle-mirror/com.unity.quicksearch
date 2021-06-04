@@ -431,22 +431,23 @@ namespace UnityEditor.Search
 
             var queryContext = CreateQueryContext(query);
             SetContext(queryContext);
-            SetViewState(query.GetResultViewState());
+            var viewState = query.GetResultViewState();
+            SetViewState(viewState);
 
             RefreshSearch();
             SetTextEditorState(queryContext.searchText, null, selectAll: true);
             SearchQueryAsset.AddToRecentSearch(query);
 
+            var evt = CreateEvent(SearchAnalytics.GenericEventType.QuickSearchSavedSearchesExecuted, query.searchText, "", query is SearchQueryAsset ? "project" : "user");
+            #if USE_SEARCH_MODULE
+            evt.intPayload1 = viewState.tableConfig != null ? 1 : 0;
+            #endif
+            SearchAnalytics.SendEvent(evt);
+
             activeQuery = query;
 
             SaveItemCountToPropertyDatabase(false);
             SaveLastUsedTimeToPropertyDatabase();
-        }
-
-        public void ExecuteSearchQuery(SearchQueryAsset query, SearchAnalytics.GenericEventType eventType)
-        {
-            ExecuteSearchQuery(query);
-            SendEvent(eventType, query.text);
         }
 
         internal virtual SearchContext CreateQueryContext(ISearchQuery query)
@@ -693,7 +694,7 @@ namespace UnityEditor.Search
                     resultViewSize -= m_DetailsPanelSplitter.width - 1;
                 }
 
-                DrawItems(evt, Mathf.Ceil(resultViewSize));
+                DrawItems(evt, Mathf.Round(resultViewSize));
 
                 if (showDetails)
                 {
@@ -712,7 +713,13 @@ namespace UnityEditor.Search
 
             GUILayout.BeginHorizontal(GUIStyle.none, GUILayout.Height(24f));
             {
-                GUILayout.Label("Searches", Styles.panelHeader);
+                GUILayout.Label(Styles.saveSearchesIconContent, Styles.panelHeaderIcon);
+                #if USE_SEARCH_MODULE
+                if (m_SideBarSplitter.width > 135f)
+                #endif
+                {
+                    GUILayout.Label(Styles.saveSearchesContent, Styles.panelHeader);
+                }
                 GUILayout.FlexibleSpace();
 
                 #if USE_SEARCH_MODULE
@@ -763,7 +770,7 @@ namespace UnityEditor.Search
                 m_QueryTreeView.searchString = EditorGUI.ToolbarSearchField(searchFieldControlID, rect, m_QueryTreeView.searchString, false);
             }
             #endif
-            var treeViewRect = EditorGUILayout.GetControlRect(false, -1, GUIStyle.none, GUILayout.ExpandHeight(true), GUILayout.MaxWidth(m_SideBarSplitter.width));
+            var treeViewRect = EditorGUILayout.GetControlRect(false, -1, GUIStyle.none, GUILayout.ExpandHeight(true), GUILayout.MaxWidth(Mathf.Ceil(m_SideBarSplitter.width - 1)));
             m_QueryTreeView.OnGUI(treeViewRect);
             Utils.EndPanelView();
         }
@@ -1740,7 +1747,7 @@ namespace UnityEditor.Search
                     buttonStyle.fixedHeight);
 
                 EditorGUI.BeginChangeCheck();
-                GUI.Toggle(buttonRect, m_ViewState.flags.HasAny(SearchViewFlags.OpenLeftSidePanel), Styles.sideBarPanelContent, Styles.toolbarButton);
+                GUI.Toggle(buttonRect, m_ViewState.flags.HasAny(SearchViewFlags.OpenLeftSidePanel), Styles.saveSearchesIconContent, Styles.openSearchesPanelButton);
                 if (EditorGUI.EndChangeCheck())
                     TogglePanelView(SearchViewFlags.OpenLeftSidePanel);
             }
@@ -2034,8 +2041,6 @@ namespace UnityEditor.Search
                 }
                 else
                     SaveItemCountToPropertyDatabase(true);
-
-                SendEvent(SearchAnalytics.GenericEventType.QuickSearchCreateSearchQuery, searchQuery.text, SearchSettings.queryFolder);
             }
             catch
             {
@@ -2165,6 +2170,14 @@ namespace UnityEditor.Search
                 m_ResultView = new TableView(this);
             #endif
             RefreshViews(RefreshFlags.DisplayModeChanged);
+        }
+
+        internal SearchAnalytics.GenericEvent CreateEvent(SearchAnalytics.GenericEventType category, string name = null, string message = null, string description = null)
+        {
+            var e = SearchAnalytics.GenericEvent.Create(windowId, category, name);
+            e.message = message;
+            e.description = description;
+            return e;
         }
 
         internal void SendEvent(SearchAnalytics.GenericEventType category, string name = null, string message = null, string description = null)

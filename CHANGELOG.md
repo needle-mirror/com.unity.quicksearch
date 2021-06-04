@@ -1,5 +1,8 @@
 # Changelog
 
+## [3.0.0-preview.11] - 2021-06-04
+- Update saved search panel icon
+
 ## [3.0.0-preview.10] - 2021-06-03
 - Add API SearchService.CreateIndex to dynamically create a new index.
 - Filter scene properties using `#<property_name>:<value>`
