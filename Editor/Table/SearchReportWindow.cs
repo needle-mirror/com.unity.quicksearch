@@ -27,6 +27,11 @@ namespace UnityEditor.Search
             OpenWindow(SearchReport.Import());
         }
 
+        public bool IsReadOnly()
+        {
+            return true;
+        }
+
         internal static void OpenWindow(string reportPath)
         {
             if (string.IsNullOrEmpty(reportPath))
@@ -316,6 +321,10 @@ namespace UnityEditor.Search
         public void SetSelection(IEnumerable<SearchItem> items)
         {
             // Selection not handled
+        }
+
+        public void DoubleClick(SearchItem item)
+        {
         }
 
         public bool OpenContextualMenu(Event evt, SearchItem item)

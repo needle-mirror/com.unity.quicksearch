@@ -1,5 +1,24 @@
 # Changelog
 
+## [3.0.0-preview.12] - 2021-06-25
+- Add new SearchColumn API
+- Add new SearchProposition API
+- Add new SearchValue API to extended QueryEngine
+- Add SearchService.CreateIndex to dynamically create new search indexes
+- Add SearchService.IsIndexReady to check what is the state of an index.
+- Add support for read-only search table view.
+- Enable PropertyTable for pacakge version
+- Fix search expression spreading when space in element values.
+- Fix SearchService.Request with non removed delegates.
+- Fixed Console Window log hyperlinks cursor hovering.
+- Fixed package visibility when searching in the Project window when using the advanced search engine.
+- Fixed search by type tags are not adapted for use with the Quick Search engine.
+- Fixed text in the search field of the Search window doesn't get selected after focusing the window and clicking on the field once.
+- Improve asset indexer performances and index size.
+- Improve the search query tree view UI and UX
+- Index scene object references using hashes.
+- Mark some API as Obsolete(error)
+
 ## [3.0.0-preview.11] - 2021-06-04
 - Update saved search panel icon
 

@@ -10,6 +10,7 @@ using System.Text.RegularExpressions;
 using UnityEngine;
 using UnityEditorInternal;
 using UnityEngine.UIElements;
+using UnityEditor.IMGUI.Controls;
 
 #if USE_SEARCH_MODULE
 using UnityEditor.Connect;
@@ -118,6 +119,7 @@ namespace UnityEditor.Search
         private static MethodInfo s_ObjectFieldButtonGetter;
         private static MethodInfo s_BeginHorizontal;
         private static MethodInfo s_IsGUIClipEnabled;
+        private static MethodInfo s_Unclip;
         private static MethodInfo s_MonoScriptFromScriptedObject;
         private static MethodInfo s_SerializedPropertyIsScript;
         private static MethodInfo s_SerializedPropertyObjectReferenceStringValue;
@@ -128,6 +130,10 @@ namespace UnityEditor.Search
         private static MethodInfo s_PopupWindowWithoutFocusTyped;
         private static MethodInfo s_OpenPropertyEditor;
         private static MethodInfo s_MainActionKeyForControl;
+        private static MethodInfo s_GUIContentTempS;
+        private static MethodInfo s_GUIContentTempSS;
+        private static MethodInfo s_GUIContentTempST;
+        private static MethodInfo s_SetChildParentReferences;
 
         internal static string GetPackagePath(string relativePath)
         {
@@ -315,16 +321,26 @@ namespace UnityEditor.Search
             #if USE_SEARCH_MODULE
             return GUIContent.Temp(text, tooltip);
             #else
-            return new GUIContent(text, tooltip);
+            if (s_GUIContentTempSS == null)
+            {
+                var type = typeof(GUIContent);
+                s_GUIContentTempSS = type.GetMethod("Temp", BindingFlags.NonPublic | BindingFlags.Static, null, new Type[] { typeof(string), typeof(string) }, null);
+            }
+            return (GUIContent)s_GUIContentTempSS.Invoke(null, new object[] { text, tooltip });
             #endif
         }
 
-        internal static GUIContent GUIContentTemp(string text, Texture2D image)
+        internal static GUIContent GUIContentTemp(string text, Texture image)
         {
             #if USE_SEARCH_MODULE
             return GUIContent.Temp(text, image);
             #else
-            return new GUIContent(text, image);
+            if (s_GUIContentTempST == null)
+            {
+                var type = typeof(GUIContent);
+                s_GUIContentTempST = type.GetMethod("Temp", BindingFlags.NonPublic | BindingFlags.Static, null, new Type[] { typeof(string), typeof(Texture) }, null);
+            }
+            return (GUIContent)s_GUIContentTempST.Invoke(null, new object[] { text, image });
             #endif
         }
 
@@ -333,7 +349,12 @@ namespace UnityEditor.Search
             #if USE_SEARCH_MODULE
             return GUIContent.Temp(text);
             #else
-            return new GUIContent(text);
+            if (s_GUIContentTempS == null)
+            {
+                var type = typeof(GUIContent);
+                s_GUIContentTempS = type.GetMethod("Temp", BindingFlags.NonPublic | BindingFlags.Static, null, new Type[] { typeof(string) }, null);
+            }
+            return (GUIContent)s_GUIContentTempS.Invoke(null, new object[] { text });
             #endif
         }
 
@@ -347,6 +368,22 @@ namespace UnityEditor.Search
                     preview = largePreview;
             }
             return preview;
+        }
+
+        internal static void SetChildParentReferences(IList<TreeViewItem> m_Items, TreeViewItem root)
+        {
+            #if USE_SEARCH_MODULE
+            TreeViewUtility.SetChildParentReferences(m_Items, root);
+            #else
+            if (s_SetChildParentReferences == null)
+            {
+                var assembly = typeof(TreeView).Assembly;
+                var type = assembly.GetTypes().First(t => t.Name == "TreeViewUtility");
+                s_SetChildParentReferences = type.GetMethod("SetChildParentReferences", BindingFlags.NonPublic | BindingFlags.Static,
+                    null, new[] { typeof(IList<TreeViewItem>), typeof(TreeViewItem)}, null);
+            }
+            s_SetChildParentReferences.Invoke(null, new object[] { m_Items, root });
+            #endif
         }
 
         internal static bool IsEditorValid(Editor e)
@@ -1345,6 +1382,21 @@ namespace UnityEditor.Search
             #endif
         }
 
+        public static Rect Unclip(in Rect r)
+        {
+            #if USE_SEARCH_MODULE
+            return GUIClip.Unclip(r);
+            #else
+            if (s_Unclip == null)
+            {
+                var assembly = typeof(GUIUtility).Assembly;
+                var type = assembly.GetTypes().First(t => t.Name == "GUIClip");
+                s_Unclip = type.GetMethod("Unclip_Rect", BindingFlags.NonPublic | BindingFlags.Static, null, new[] { typeof(Rect) }, null);
+            }
+            return (Rect)s_Unclip.Invoke(null, new object[] { r });
+            #endif
+        }
+
         public static MonoScript MonoScriptFromScriptedObject(UnityEngine.Object obj)
         {
             #if USE_SEARCH_MODULE
@@ -1533,10 +1585,18 @@ namespace UnityEditor.Search
             #endif
         }
 
-        static readonly Regex trimmer = new Regex(@"\s\s+");
+        static readonly Regex trimmer = new Regex(@"(\s\s+)|(\r\n|\r|\n)+");
         public static string Simplify(string text)
         {
-            return trimmer.Replace(text, " ").Trim();
+            return trimmer.Replace(text, " ").Replace("\r\n", " ").Replace('\n', ' ').Trim();
+        }
+
+        public static void OpenGraphViewer(in string searchQuery)
+        {
+            #if USE_GRAPH_VIEWER
+            var gv = EditorWindow.GetWindow<QueryGraphViewWindow>();
+            gv.SetView(searchQuery, GraphType.Query);
+            #endif
         }
     }
 

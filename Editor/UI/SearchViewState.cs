@@ -38,20 +38,17 @@ namespace UnityEditor.Search
         [SerializeField] private string[] providerIds;
         [SerializeField] private SearchFlags searchFlags;
         [SerializeField] internal string searchText; // Also used as the initial query when the view was created
-
+        [SerializeField] internal bool forceViewMode;
         [SerializeField] internal string sessionId;
         [SerializeField] internal string sessionName;
 
         public string title;
-        [SerializeField] internal float itemSize;
-        [SerializeField] internal Rect position;
-        [SerializeField] internal bool forceViewMode;
-        [SerializeField] internal SearchViewFlags flags;
-        [SerializeField] internal string group;
+        public float itemSize;
+        public Rect position;
+        public SearchViewFlags flags;
+        public string group;
 
-        #if USE_SEARCH_MODULE
         [SerializeField] internal SearchTable tableConfig;
-        #endif
 
         [NonSerialized] internal Action<SearchItem, bool> selectHandler;
         [NonSerialized] internal Action<SearchItem> trackingHandler;
@@ -80,9 +77,7 @@ namespace UnityEditor.Search
             itemSize = (float)DisplayMode.Grid;
             position = Rect.zero;
             searchText = context?.searchText ?? string.Empty;
-            #if USE_SEARCH_MODULE
             tableConfig = null;
-            #endif
         }
 
         internal SearchViewState(SearchContext context,
@@ -105,7 +100,6 @@ namespace UnityEditor.Search
             title = filterType?.Name ?? typeName;
         }
 
-        #if USE_SEARCH_MODULE
         internal SearchViewState(SearchTable tableConfig)
             : this(null, null)
         {
@@ -113,8 +107,6 @@ namespace UnityEditor.Search
             group = null;
             this.tableConfig = tableConfig;
         }
-
-        #endif
 
         internal SearchViewState SetSearchViewFlags(SearchViewFlags flags)
         {
@@ -137,13 +129,11 @@ namespace UnityEditor.Search
                 itemSize = (float)DisplayMode.Grid;
                 forceViewMode = true;
             }
-            #if USE_SEARCH_MODULE
             if (flags.HasAny(SearchViewFlags.TableView))
             {
                 itemSize = (float)DisplayMode.Table;
                 forceViewMode = true;
             }
-            #endif
             return this;
         }
 

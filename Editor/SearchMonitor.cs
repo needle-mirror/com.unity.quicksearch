@@ -165,6 +165,13 @@ namespace UnityEditor.Search
             propertyAliasesView.Invalidate(documentKey);
         }
 
+        public void InvalidateDocument(string documentKey)
+        {
+            SearchMonitor.Log("Invalidate document");
+            propertyDatabaseView.Invalidate(documentKey);
+            propertyAliasesView.Invalidate(documentKey);
+        }
+
         public void Invalidate(PropertyDatabaseRecordKey recordKey)
         {
             SearchMonitor.Log("Invalidate record", recordKey);

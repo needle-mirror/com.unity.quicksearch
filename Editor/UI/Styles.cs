@@ -366,6 +366,7 @@ namespace UnityEditor.Search
         public static readonly GUIContent previewInspectorContent = new GUIContent("Inspector", EditorGUIUtility.FindTexture("UnityEditor.InspectorWindow"), "Open Inspector");
         public static readonly GUIContent previewInspectorButtonContent = new GUIContent(string.Empty, EditorGUIUtility.FindTexture("UnityEditor.InspectorWindow"), "Open Inspector");
         public static readonly GUIContent sortButtonContent = new GUIContent(string.Empty, EditorGUIUtility.FindTexture("UnityEditor/Filter Icon"), "Change Saved Searches sorting order");
+        public static readonly GUIContent sideBarPanelContent = new GUIContent(string.Empty, Utils.LoadIcon("UnityEditor/Search/SearchQueryAsset Icon"), "Open Saved Searches Panel");
         public static readonly GUIContent saveSearchesContent = new GUIContent("Searches");
 
         #if USE_SEARCH_MODULE

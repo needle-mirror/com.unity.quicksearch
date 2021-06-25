@@ -173,7 +173,7 @@ namespace UnityEditor.Search
 
         public static string GetQueryName(string query)
         {
-            return RemoveInvalidChars(query.Replace(":", "_").Replace(" ", "_"));
+            return RemoveInvalidChars(Utils.Simplify(query).Replace(":", "_").Replace(" ", "_"));
         }
 
         private static string RemoveInvalidChars(string filename)
@@ -250,6 +250,12 @@ namespace UnityEditor.Search
         public static void AddToRecentSearch(ISearchQuery query)
         {
             SearchSettings.AddRecentSearch(query.searchText);
+        }
+
+        public SearchQuery ToSearchQuery()
+        {
+            var viewState = GetResultViewState();
+            return SearchQuery.Create(viewState, viewState.tableConfig);
         }
 
         [OnOpenAsset]

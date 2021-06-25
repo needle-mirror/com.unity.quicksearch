@@ -25,6 +25,7 @@ namespace UnityEditor.Search
         public static Texture2D logError = EditorGUIUtility.LoadIcon("UIPackageResources/Images/console.erroricon.png");
         public static Texture2D packageInstalled = EditorGUIUtility.LoadIcon($"{iconFolder}/package_installed.png");
         public static Texture2D packageUpdate = EditorGUIUtility.LoadIcon($"{iconFolder}/package_update.png");
+        public static Texture2D dependencies = EditorGUIUtility.LoadIcon("UnityEditor.FindDependencies");
         #else
         public static string iconFolder = $"{Utils.packageFolderName}/Editor/Icons";
         public static Texture2D shortcut = LoadIcon($"{iconFolder}/shortcut.png");
@@ -52,6 +53,7 @@ namespace UnityEditor.Search
         public static Texture2D listView = LoadIcon($"{iconFolder}/ListView.png");
         public static Texture2D gridView = LoadIcon($"{iconFolder}/GridView.png");
         public static Texture2D tableView = LoadIcon($"{iconFolder}/TableView.png");
+        public static Texture2D dependencies = LoadIcon($"{iconFolder}/quicksearch.png");
 
         static Icons()
         {

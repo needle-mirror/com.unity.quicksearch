@@ -450,6 +450,8 @@ namespace UnityEditor.Search
         {
             if (item.provider.type == Providers.AssetProvider.type)
                 return Providers.AssetProvider.GetAssetPath(item);
+            if (item.provider.type == "dep")
+                return AssetDatabase.GUIDToAssetPath(item.id);
             return null;
         }
     }

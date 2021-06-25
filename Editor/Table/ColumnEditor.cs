@@ -3,7 +3,6 @@ using System.Linq;
 using UnityEditor.IMGUI.Controls;
 using UnityEngine;
 
-#if USE_SEARCH_MODULE
 namespace UnityEditor.Search
 {
     [EditorWindowTitle(title = "Edit Search Column Settings")]
@@ -17,20 +16,24 @@ namespace UnityEditor.Search
 
         internal static ColumnEditor ShowWindow(MultiColumnHeaderState.Column column, Action<MultiColumnHeaderState.Column> editCallback)
         {
+            #if USE_SEARCH_MODULE
             var w = GetWindowDontShow<ColumnEditor>();
+            #else
+            var w = CreateWindow<ColumnEditor>();
+            #endif
             w.column = column;
             w.editCallback = editCallback;
             w.minSize = new Vector2(k_Width, k_Height);
             w.maxSize = new Vector2(k_Width * 2f, k_Height);
-            if (column.userDataObj is SearchColumn sc)
-                w.titleContent = sc.content ?? w.GetLocalizedTitleContent();
+            if (((PropertyColumn)column).userDataObj is SearchColumn sc)
+                w.titleContent = sc.content ?? w.titleContent;
             w.ShowAuxWindow();
             return w;
         }
 
         internal void OnGUI()
         {
-            if (!(column.userDataObj is SearchColumn sc))
+            if (!(((PropertyColumn)column).userDataObj is SearchColumn sc))
                 return;
 
             EditorGUIUtility.labelWidth = 70f;
@@ -40,7 +43,7 @@ namespace UnityEditor.Search
             EditorGUI.BeginChangeCheck();
             var providers = new[] { "Default" }.Concat(SearchColumnProvider.providers.Select(p => p.provider)).ToArray();
             var selectedProvider = Math.Max(0, Array.IndexOf(providers, sc.provider));
-            selectedProvider = EditorGUILayout.Popup(GUIContent.Temp("Format"), selectedProvider, providers.Select(ObjectNames.NicifyVariableName).ToArray());
+            selectedProvider = EditorGUILayout.Popup(Utils.GUIContentTemp("Format"), selectedProvider, providers.Select(ObjectNames.NicifyVariableName).ToArray());
             if (EditorGUI.EndChangeCheck())
             {
                 sc.SetProvider(selectedProvider <= 0 ? null : providers[selectedProvider]);
@@ -56,10 +59,8 @@ namespace UnityEditor.Search
             column.headerTextAlignment = (TextAlignment)EditorGUILayout.EnumPopup(new GUIContent("Alignment"), column.headerTextAlignment);
             column.canSort = EditorGUILayout.Toggle(new GUIContent("Sortable"), column.canSort);
 
-            EditorGUI.BeginDisabled(!Unsupported.IsSourceBuild());
             sc.path = EditorGUILayout.TextField(new GUIContent("Path"), sc.path);
             sc.selector = EditorGUILayout.TextField(new GUIContent("Selector"), sc.selector);
-            EditorGUI.EndDisabled();
 
             if (EditorGUI.EndChangeCheck())
             {
@@ -70,4 +71,3 @@ namespace UnityEditor.Search
         }
     }
 }
-#endif

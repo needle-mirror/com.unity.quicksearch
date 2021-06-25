@@ -126,7 +126,9 @@ namespace UnityEditor.Search
 
         public override bool AcceptRename(string oldName, string newName)
         {
-            m_Query.name = newName;
+            var trimmedName = Utils.Simplify(newName);
+            m_Query.name = trimmedName;
+            displayName = trimmedName;
             SearchQuery.SaveSearchQuery(m_Query);
             return true;
         }
@@ -196,7 +198,9 @@ namespace UnityEditor.Search
 
         public override bool AcceptRename(string oldName, string newName)
         {
-            m_Query.name = newName;
+            var trimmedName = Utils.Simplify(newName);
+            m_Query.name = trimmedName;
+            displayName = trimmedName;
             return true;
         }
 

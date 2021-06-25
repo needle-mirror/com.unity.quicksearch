@@ -1,6 +1,7 @@
 using System.IO;
 using System.Linq;
 using System.Collections.Generic;
+using UnityEngine;
 using static UnityEditor.Search.Providers.AssetProvider;
 
 namespace UnityEditor.Search
@@ -20,10 +21,10 @@ namespace UnityEditor.Search
             return Path.GetFileName(GetAssetPath(item));
         }
 
-        [SearchSelector("type", provider: type, priority: 99)]
+        [SearchSelector("type", priority: 99)]
         static string GetAssetType(SearchItem item)
         {
-            if (GetAssetPath(item) is string assetPath)
+            if (SearchUtils.GetAssetPath(item) is string assetPath)
                 return AssetDatabase.GetMainAssetTypeAtPath(assetPath)?.Name;
             return null;
         }
@@ -36,10 +37,10 @@ namespace UnityEditor.Search
             return null;
         }
 
-        [SearchSelector("size", provider: type, priority: 99)]
+        [SearchSelector("size", priority: 99)]
         static object GetAssetFileSize(SearchItem item)
         {
-            if (GetAssetPath(item) is string assetPath && !string.IsNullOrEmpty(assetPath))
+            if (SearchUtils.GetAssetPath(item) is string assetPath && !string.IsNullOrEmpty(assetPath))
             {
                 var fi = new FileInfo(assetPath);
                 return fi.Exists ? fi.Length : 0;

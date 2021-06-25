@@ -111,7 +111,6 @@ namespace UnityEditor.Search
                 }
                 catch (ThreadAbortException)
                 {
-                    ClearReport();
                     Thread.ResetAbort();
                 }
                 catch (Exception ex)

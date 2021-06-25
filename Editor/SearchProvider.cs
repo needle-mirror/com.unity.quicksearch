@@ -361,7 +361,7 @@ namespace UnityEditor.Search
         /// <summary>
         /// Fetch search tables that are used to display search result using a table view.
         /// </summary>
-        internal Func<SearchContext, IEnumerable<SearchItem>, IEnumerable<SearchColumn>> fetchColumns;
+        public Func<SearchContext, IEnumerable<SearchItem>, IEnumerable<SearchColumn>> fetchColumns;
 
         /// <summary>
         /// Called when the QuickSearchWindow is opened. Allow the Provider to perform some caching.

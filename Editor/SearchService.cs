@@ -293,12 +293,6 @@ namespace UnityEditor.Search
         /// <returns>Asynchronous list of search items.</returns>
         public static ISearchList Request(SearchContext context, SearchFlags options = SearchFlags.None)
         {
-            if (options.HasAny(SearchFlags.Synchronous))
-            {
-                throw new NotSupportedException($"Use {nameof(SearchService)}.{nameof(GetItems)}(context, " +
-                    $"{nameof(SearchFlags)}.{nameof(SearchFlags.Synchronous)}) to fetch items synchronously.");
-            }
-
             ISearchList results = null;
             if (!InternalEditorUtility.CurrentThreadIsMainThread())
             {
@@ -394,19 +388,22 @@ namespace UnityEditor.Search
             var firstBatchResolved = false;
             var completed = false;
             var batchCount = 1;
-            context.asyncItemReceived += (c, items) =>
+
+            void ReceiveItems(SearchContext c, IEnumerable<SearchItem> items)
             {
                 if (options.HasAny(SearchFlags.Debug))
                     Debug.Log($"{requestId} #{batchCount++} Request incoming batch {context.searchText}");
                 onIncomingItems?.Invoke(c, items.Where(e => e != null));
-            };
-            context.sessionStarted += c =>
+            }
+
+            void OnSessionStarted(SearchContext c)
             {
                 if (options.HasAny(SearchFlags.Debug))
                     Debug.Log($"{requestId} Request session begin {context.searchText}");
                 ++sessionCount;
-            };
-            context.sessionEnded += c =>
+            }
+
+            void OnSessionEnded(SearchContext c)
             {
                 if (options.HasAny(SearchFlags.Debug))
                     Debug.Log($"{requestId} Request session ended {context.searchText}");
@@ -415,16 +412,26 @@ namespace UnityEditor.Search
                 {
                     if (options.HasAny(SearchFlags.Debug))
                         Debug.Log($"{requestId} Request async ended {context.searchText}");
+                    context.asyncItemReceived -= ReceiveItems;
+                    context.sessionStarted -= OnSessionStarted;
+                    context.sessionEnded -= OnSessionEnded;
                     onSearchCompleted?.Invoke(c);
                     completed = true;
                 }
-            };
+            }
+
+            context.asyncItemReceived += ReceiveItems;
+            context.sessionStarted += OnSessionStarted;
+            context.sessionEnded += OnSessionEnded;
             GetItems(context, options | SearchFlags.FirstBatchAsync);
             firstBatchResolved = true;
             if (sessionCount == 0 && !completed)
             {
                 if (options.HasAny(SearchFlags.Debug))
                     Debug.Log($"{requestId} Request sync ended {context.searchText}");
+                context.asyncItemReceived -= ReceiveItems;
+                context.sessionStarted -= OnSessionStarted;
+                context.sessionEnded -= OnSessionEnded;
                 onSearchCompleted?.Invoke(context);
             }
         }

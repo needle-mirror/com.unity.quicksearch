@@ -126,7 +126,12 @@ namespace UnityEditor.Search
 
         public IEnumerable<TResult> Select<TResult>(Func<SearchItem, TResult> selector)
         {
-            return Fetch().Where(item => item != null).Select(item => selector(item));
+            return Fetch().Where(item =>
+            {
+                if (context.options.HasAny(SearchFlags.Synchronous))
+                    Dispatcher.ProcessOne();
+                return item != null;
+            }).Select(item => selector(item));
         }
 
         public virtual void InsertRange(int index, IEnumerable<SearchItem> items) { throw new NotSupportedException(); }
@@ -199,7 +204,11 @@ namespace UnityEditor.Search
                 throw new Exception("Fetch can only be used if the search list was created with a search context.");
 
             while (context.searchInProgress)
+            {
+                if (context.options.HasAny(SearchFlags.Synchronous))
+                    Dispatcher.ProcessOne();
                 yield return null;
+            }
 
             var it = GetEnumerator();
             while (it.MoveNext())
@@ -784,7 +793,11 @@ namespace UnityEditor.Search
                         yield return m_UnorderedItems[i];
                 }
                 else
+                {
+                    if (context.options.HasAny(SearchFlags.Synchronous))
+                        Dispatcher.ProcessOne();
                     yield return null; // Wait for more items...
+                }
             }
 
             for (; i < m_UnorderedItems.Count; ++i)
@@ -891,7 +904,9 @@ namespace UnityEditor.Search
                     yield return searchItem;
                 }
                 else
+                {
                     yield return null; // Wait for more items...
+                }
             }
 
             while (!m_UnorderedItems.IsEmpty)

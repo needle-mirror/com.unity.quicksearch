@@ -1803,7 +1803,11 @@ namespace UnityEditor.Search
 
             var previousSearchText = context.searchText;
             if (evt.type != EventType.KeyDown || evt.keyCode != KeyCode.None || evt.character != '\r')
-                context.searchText = m_SearchField.Draw(searchTextRect, context.searchText, Styles.searchField);
+            {
+                var newSearchText = m_SearchField.Draw(searchTextRect, context.searchText, Styles.searchField);
+                if (!string.Equals(newSearchText, previousSearchText, StringComparison.Ordinal))
+                    context.searchText = newSearchText;
+            }
 
             if (string.IsNullOrEmpty(context.searchText))
             {

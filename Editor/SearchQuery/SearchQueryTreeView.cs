@@ -315,7 +315,7 @@ namespace UnityEditor.Search
 
         private void DrawQueryLabelAndIcon(Rect rowRect, RowGUIArgs args, SearchQueryTreeViewItem tvi, bool hovered, bool usePropertyDatabase)
         {
-            var itemContent = Utils.GUIContentTemp(tvi.query.displayName, SearchQuery.GetIcon(tvi.query));
+            var itemContent = Utils.GUIContentTemp(Utils.Simplify(tvi.query.displayName), SearchQuery.GetIcon(tvi.query));
             var oldLeftPadding = Styles.itemLabel.padding.left;
             Styles.itemLabel.padding.left += Mathf.RoundToInt(GetContentIndent(args.item) + extraSpaceBeforeIconAndLabel);
 

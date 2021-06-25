@@ -7,7 +7,7 @@ using UnityEngine;
 namespace UnityEditor.Search
 {
     [Flags]
-    enum SearchColumnFlags
+    public enum SearchColumnFlags
     {
         None = 0,
         Hidden = 1 << 0,
@@ -60,7 +60,7 @@ namespace UnityEditor.Search
     }
 
     [Serializable]
-    class SearchColumn : IEquatable<SearchColumn>
+    public class SearchColumn : IEquatable<SearchColumn>
     {
         public delegate object GetterEntry(SearchColumnEventArgs args);
         public delegate void SetterEntry(SearchColumnEventArgs args);
@@ -82,17 +82,17 @@ namespace UnityEditor.Search
 
         public string name => ParseName(path ?? string.Empty);
 
-        public SearchColumn(string path, GUIContent content = null, SearchColumnFlags options = SearchColumnFlags.Default)
+        internal SearchColumn(string path, GUIContent content = null, SearchColumnFlags options = SearchColumnFlags.Default)
             : this(path, path, content, options)
         {
         }
 
-        public SearchColumn(string path, string selector, GUIContent content = null, SearchColumnFlags options = SearchColumnFlags.Default)
+        internal SearchColumn(string path, string selector, GUIContent content = null, SearchColumnFlags options = SearchColumnFlags.Default)
             : this(path, selector, string.Empty, content, options)
         {
         }
 
-        public SearchColumn(string path, string selector, string provider, GUIContent content = null, SearchColumnFlags options = SearchColumnFlags.Default)
+        internal SearchColumn(string path, string selector, string provider, GUIContent content = null, SearchColumnFlags options = SearchColumnFlags.Default)
         {
             this.path = path;
             this.selector = selector;
@@ -106,7 +106,7 @@ namespace UnityEditor.Search
             InitFunctors();
         }
 
-        public SearchColumn(SearchColumn src)
+        internal SearchColumn(SearchColumn src)
             : this(src.path, src.selector, src.provider, src.content ?? new GUIContent(), src.options)
         {
             width = src.width;
@@ -141,7 +141,7 @@ namespace UnityEditor.Search
                 string.Equals(provider, other.provider, StringComparison.Ordinal);
         }
 
-        public static string ParseName(string path)
+        internal static string ParseName(string path)
         {
             var pos = path.LastIndexOf('/');
             var name = pos == -1 ? path : path.Substring(pos + 1);
@@ -175,7 +175,7 @@ namespace UnityEditor.Search
             return SelectorManager.SelectValue(item, context, selector);
         }
 
-        public static List<SearchColumn> Enumerate(SearchContext context, IEnumerable<SearchItem> items)
+        internal static List<SearchColumn> Enumerate(SearchContext context, IEnumerable<SearchItem> items)
         {
             var columns = new List<SearchColumn>(ItemSelectors.Enumerate(items));
 
@@ -202,7 +202,7 @@ namespace UnityEditor.Search
             return columns;
         }
 
-        public void SetProvider(string provider)
+        internal void SetProvider(string provider)
         {
             options &= ~SearchColumnFlags.Volatile;
             this.provider = provider;
@@ -211,7 +211,7 @@ namespace UnityEditor.Search
         }
     }
 
-    struct SearchColumnEventArgs
+    public struct SearchColumnEventArgs
     {
         public SearchColumnEventArgs(SearchItem item, SearchContext context, SearchColumn column)
         {
@@ -240,7 +240,7 @@ namespace UnityEditor.Search
         public bool selected;
     }
 
-    struct SearchColumnCompareArgs
+    public readonly struct SearchColumnCompareArgs
     {
         public SearchColumnCompareArgs(SearchColumnEventArgs lhs, SearchColumnEventArgs rhs, bool sortAscending)
         {
@@ -251,7 +251,7 @@ namespace UnityEditor.Search
 
         public readonly SearchColumnEventArgs lhs;
         public readonly SearchColumnEventArgs rhs;
-        public bool sortAscending;
+        public readonly bool sortAscending;
     }
 
     delegate void SearchColumnProviderHandler(SearchColumn column);
@@ -295,7 +295,7 @@ namespace UnityEditor.Search
     }
 
     [AttributeUsage(AttributeTargets.Method, AllowMultiple = true)]
-    class SearchColumnProviderAttribute : Attribute
+    public class SearchColumnProviderAttribute : Attribute
     {
         public SearchColumnProviderAttribute(string provider)
         {

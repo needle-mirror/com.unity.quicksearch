@@ -228,7 +228,10 @@ namespace UnityEditor.Search
 
         private static string GetTokenAtCursorPosition(string txt, int cursorIndex, out int startPos, out int endPos, Func<char, bool> check)
         {
-            if (txt.Length > 0 && (cursorIndex == txt.Length || IsDelimiter(txt[cursorIndex])))
+            while (cursorIndex >= txt.Length)
+                cursorIndex--;
+
+            if (txt.Length > 0 && IsDelimiter(txt[cursorIndex]))
                 cursorIndex--;
 
             startPos = cursorIndex;

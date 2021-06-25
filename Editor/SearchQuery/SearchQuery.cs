@@ -128,12 +128,24 @@ namespace UnityEditor.Search
 
         public static IEnumerable<SearchQuery> userQueries => searchQueries.Where(IsUserQuery);
 
+        public SearchQuery()
+        {
+            m_GUID = Guid.NewGuid().ToString("N");
+            viewState = new SearchViewState();
+        }
+
+        public SearchQuery(SearchContext context, SearchTable table = null)
+            : this()
+        {
+            viewState = new SearchViewState(context);
+            tableConfig = table;
+        }
+
         public static SearchQuery Create(SearchViewState state, SearchTable table)
         {
             var uq = new SearchQuery();
-            uq.m_GUID = GUID.Generate().ToString();
-            uq.name = uq.description = state.context.searchText;
-            uq.Set(state, table);
+            uq.name = uq.description = Utils.Simplify(state.context.searchText);
+            uq.Set(state, table ?? state.tableConfig);
             return uq;
         }
 

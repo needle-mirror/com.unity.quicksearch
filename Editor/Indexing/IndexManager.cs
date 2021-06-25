@@ -43,6 +43,7 @@ namespace UnityEditor.Search
         private const string k_IndexExtension = "index";
         private const string k_BuildText = "Build";
         private const string k_PackagesPrefix = "Packages/";
+        private const float k_ToggleMaxWidth = 151f;
         private List<IndexManagerViewModel> m_IndexSettings;
         private List<SearchDatabase> m_IndexSettingsAssets;
         private List<string> m_IndexSettingsFilePaths;
@@ -330,6 +331,8 @@ namespace UnityEditor.Search
                 value = selectedItem.hasPackagesRoot,
                 tooltip = "If checked, all packages content will be indexed."
             };
+            m_HasPackagesRoot.style.maxWidth = k_ToggleMaxWidth;
+
             m_HasPackagesRoot.RegisterValueChangedCallback(evt =>
             {
                 selectedItem.hasPackagesRoot = evt.newValue;
@@ -436,6 +439,8 @@ namespace UnityEditor.Search
                     field.SetValue(selectedItem.options, evt.newValue);
                     UpdateUnsavedChanges(true);
                 });
+
+                toggle.style.maxWidth = k_ToggleMaxWidth;
 
                 m_OptionsFoldout.Add(toggle);
                 switch (field.Name)

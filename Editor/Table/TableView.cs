@@ -35,6 +35,11 @@ namespace UnityEditor.Search
             Dispose(true);
         }
 
+        public bool IsReadOnly()
+        {
+            return false;
+        }
+
         public IEnumerable<SearchItem> GetElements()
         {
             return items;
@@ -234,6 +239,10 @@ namespace UnityEditor.Search
             searchView.SetSelection(items.Select(e => searchView.results.IndexOf(e)).Where(i => i != -1).ToArray());
         }
 
+        public void DoubleClick(SearchItem item)
+        {
+        }
+
         public void SetDirty()
         {
             if (m_TableConfig == null)
@@ -380,7 +389,7 @@ namespace UnityEditor.Search
         {
             menu.AddSeparator("");
             menu.AddItem(EditorGUIUtility.TrTextContent("Export Report..."), false, () => ExportJson(context));
-            menu.AddItem(EditorGUIUtility.TrTextContent("Export CSV..."), false, () => ExportJson(context));
+            menu.AddItem(EditorGUIUtility.TrTextContent("Export CSV..."), false, () => ExportCsv(context));
         }
 
         private void ExportJson(SearchContext context)
