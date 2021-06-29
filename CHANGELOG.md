@@ -1,5 +1,10 @@
 # Changelog
 
+## [3.0.0-preview.13] - 2021-06-29
+- Add search table support for drag and drop
+- Fix {t:prefab} not being evaluated as an union expression
+- Fix performance issue with DateTime.Now and GetDocumentKey with scene objects (~10x)
+
 ## [3.0.0-preview.12] - 2021-06-25
 - Add new SearchColumn API
 - Add new SearchProposition API

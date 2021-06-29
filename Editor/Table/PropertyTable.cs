@@ -318,6 +318,39 @@ namespace UnityEditor.Search
             return m_Items;
         }
 
+        protected override bool CanStartDrag(CanStartDragArgs args)
+        {
+            if (args.draggedItem is PropertyItem pi)
+                return pi.GetData()?.provider?.startDrag != null;
+            return false;
+        }
+
+        protected override void SetupDragAndDrop(SetupDragAndDropArgs args)
+        {
+            var selectedObjects = args.draggedItemIDs.Select(i => GetObject(i)).Where(o => o).ToArray();
+            if (selectedObjects.Length == 0)
+                return;
+            var paths = selectedObjects.Select(i => GetAssetPath(i)).ToArray();
+            Utils.StartDrag(selectedObjects, paths, paths[0]);
+        }
+
+        private string GetAssetPath(UnityEngine.Object obj)
+        {
+            return SearchUtils.GetObjectPath(obj);
+        }
+
+        private UnityEngine.Object GetObject(int id)
+        {
+            if (FindItem(id, rootItem) is PropertyItem pi)
+                return pi.GetData().ToObject();
+            return null;
+        }
+
+        protected override DragAndDropVisualMode HandleDragAndDrop(DragAndDropArgs args)
+        {
+            return DragAndDropVisualMode.None;
+        }
+
         private void HandleContextualMenu(Event evt, Rect rowRect, PropertyItem item)
         {
             if (evt.type != EventType.MouseDown || evt.button != 1 || !rowRect.Contains(evt.mousePosition))

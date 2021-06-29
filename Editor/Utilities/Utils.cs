@@ -108,6 +108,7 @@ namespace UnityEditor.Search
         private static MethodInfo s_GetMainAssetInstanceID;
         private static MethodInfo s_FindTextureMethod;
         private static MethodInfo s_LoadIconMethod;
+        private static MethodInfo s_GetFileIDHint;
         private static MethodInfo s_GetIconForObject;
         private static MethodInfo s_CallDelayed;
         private static MethodInfo s_FromUSSMethod;
@@ -1259,6 +1260,11 @@ namespace UnityEditor.Search
                 success = int.TryParse(expression, NumberStyles.Integer, CultureInfo.InvariantCulture.NumberFormat, out var temp);
                 result = (T)(object)temp;
             }
+            else if (typeof(T) == typeof(uint))
+            {
+                success = uint.TryParse(expression, NumberStyles.Integer, CultureInfo.InvariantCulture.NumberFormat, out var temp);
+                result = (T)(object)temp;
+            }
             else if (typeof(T) == typeof(double))
             {
                 if (expression == "pi")
@@ -1275,6 +1281,11 @@ namespace UnityEditor.Search
             else if (typeof(T) == typeof(long))
             {
                 success = long.TryParse(expression, NumberStyles.Integer, CultureInfo.InvariantCulture.NumberFormat, out var temp);
+                result = (T)(object)temp;
+            }
+            else if (typeof(T) == typeof(ulong))
+            {
+                success = ulong.TryParse(expression, NumberStyles.Integer, CultureInfo.InvariantCulture.NumberFormat, out var temp);
                 result = (T)(object)temp;
             }
             return success;
@@ -1573,6 +1584,20 @@ namespace UnityEditor.Search
                 s_LoadIconMethod = t.GetMethod("LoadIcon", BindingFlags.NonPublic | BindingFlags.Static);
             }
             return (Texture2D)s_LoadIconMethod.Invoke(null, new object[] {name});
+            #endif
+        }
+
+        public static ulong GetFileIDHint(in UnityEngine.Object obj)
+        {
+            #if USE_SEARCH_MODULE
+            return Unsupported.GetFileIDHint(obj);
+            #else
+            if (s_GetFileIDHint == null)
+            {
+                var t = typeof(Unsupported);
+                s_GetFileIDHint = t.GetMethod("GetFileIDHint", BindingFlags.NonPublic | BindingFlags.Static);
+            }
+            return (ulong)s_GetFileIDHint.Invoke(null, new object[] {obj});
             #endif
         }
 

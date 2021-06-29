@@ -507,8 +507,8 @@ namespace UnityEditor.Search
         private static void InvalidateDocument(ulong documentKey)
         {
             s_DocumentsToInvalidate.Add(documentKey);
-            s_DelayedInvalidateOff?.Invoke();
-            s_DelayedInvalidateOff = Utils.CallDelayed(InvalidateDocuments, 1f);
+            if (s_DelayedInvalidateOff == null)
+                s_DelayedInvalidateOff = Utils.CallDelayed(InvalidateDocuments, 1f);
         }
 
         private static void InvalidateDocuments()

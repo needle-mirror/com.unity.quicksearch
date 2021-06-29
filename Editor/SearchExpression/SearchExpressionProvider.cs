@@ -77,7 +77,8 @@ namespace UnityEditor.Search
                 yield break;
 
             var rootExpression = ParseExpression(context, expressionProvider);
-            if (rootExpression == null || (rootExpression.types.HasAny(SearchExpressionType.QueryString) && rootExpression.parameters.Length == 0))
+            if (rootExpression == null || (rootExpression.types.HasAny(SearchExpressionType.QueryString) &&
+                                           rootExpression.parameters.Length == 0 && rootExpression.innerText == rootExpression.outerText))
                 yield break;
 
             #if USE_PROPERTY_DATABASE
