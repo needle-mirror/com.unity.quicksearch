@@ -23,6 +23,10 @@ namespace UnityEditor.Search.Providers
         private static QueryEngine<MenuData> queryEngine = null;
         private static List<MenuData> menus;
 
+        #if USE_SEARCH_MODULE
+        private static Delayer debounce;
+        #endif
+
         [SearchItemProvider]
         internal static SearchProvider CreateProvider()
         {
@@ -38,6 +42,19 @@ namespace UnityEditor.Search.Providers
 
             queryEngine.SetNestedQueryHandler((q, f) => q.Split(',').Select(w => w.Trim()));
             queryEngine.SetFilterNestedQueryTransformer<string, string>("id", s => s);
+
+            #if USE_SEARCH_MODULE
+            debounce = Delayer.Debounce(_ => TriggerBackgroundUpdate(itemNames, shortcuts));
+
+            Menu.added -= OnMenuItemAddedOrRemoved;
+            Menu.added += OnMenuItemAddedOrRemoved;
+
+            Menu.removed -= OnMenuItemAddedOrRemoved;
+            Menu.removed += OnMenuItemAddedOrRemoved;
+
+            Menu.rebuild -= OnMenuRebuild;
+            Menu.rebuild += OnMenuRebuild;
+            #endif
 
             return new SearchProvider(type, displayName)
             {
@@ -72,6 +89,26 @@ namespace UnityEditor.Search.Providers
                 fetchThumbnail = (item, context) => Icons.shortcut
             };
         }
+
+        #if USE_SEARCH_MODULE
+        private static void OnMenuItemAddedOrRemoved(string menuPath)
+        {
+            debounce.Execute();
+        }
+
+        private static void OnMenuRebuild()
+        {
+            debounce.Execute();
+        }
+
+        private static void TriggerBackgroundUpdate(List<string> itemNames, List<string> shortcuts)
+        {
+            GetMenuInfo(itemNames, shortcuts);
+            menus = null;
+            System.Threading.Tasks.Task.Run(() => BuildMenus(itemNames));
+        }
+
+        #endif
 
         private static void BuildMenus(List<string> itemNames)
         {

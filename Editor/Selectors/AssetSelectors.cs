@@ -24,9 +24,12 @@ namespace UnityEditor.Search
         [SearchSelector("type", priority: 99)]
         static string GetAssetType(SearchItem item)
         {
-            if (SearchUtils.GetAssetPath(item) is string assetPath)
-                return AssetDatabase.GetMainAssetTypeAtPath(assetPath)?.Name;
-            return null;
+            if (!(SearchUtils.GetAssetPath(item) is string assetPath))
+                return null;
+            var assetType = AssetDatabase.GetMainAssetTypeAtPath(assetPath);
+            if (assetType == typeof(GameObject))
+                return "Prefab";
+            return assetType?.Name;
         }
 
         [SearchSelector("extension", provider: type, priority: 99)]

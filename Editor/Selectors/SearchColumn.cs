@@ -36,18 +36,18 @@ namespace UnityEditor.Search
 
     static class SearchColumnSettings
     {
-        public static void Load(SearchColumn column)
+        public static void Load(in SearchColumn column)
         {
-            column.width = EditorPrefs.GetFloat(GetKey(column.selector, nameof(column.width)), column.width);
-            column.options = (SearchColumnFlags)EditorPrefs.GetInt(GetKey(column.selector, nameof(column.options)), (int)column.options);
-            column.provider = EditorPrefs.GetString(GetKey(column.selector, nameof(column.provider)), column.provider);
+            column.width = EditorPrefs.GetFloat(GetKey(column, nameof(column.width)), column.width);
+            column.options = (SearchColumnFlags)EditorPrefs.GetInt(GetKey(column, nameof(column.options)), (int)column.options);
+            column.provider = EditorPrefs.GetString(GetKey(column, nameof(column.provider)), column.provider);
         }
 
-        public static void Save(SearchColumn column)
+        public static void Save(in SearchColumn column)
         {
-            EditorPrefs.SetFloat(GetKey(column.selector, nameof(column.width)), column.width);
-            EditorPrefs.SetInt(GetKey(column.selector, nameof(column.options)), (int)column.options);
-            EditorPrefs.SetString(GetKey(column.selector, nameof(column.provider)), column.provider);
+            EditorPrefs.SetFloat(GetKey(column, nameof(column.width)), column.width);
+            EditorPrefs.SetInt(GetKey(column, nameof(column.options)), (int)column.options);
+            EditorPrefs.SetString(GetKey(column, nameof(column.provider)), column.provider);
         }
 
         public static void Clear(IEnumerable<string> selectors)
@@ -56,7 +56,8 @@ namespace UnityEditor.Search
                 EditorPrefs.DeleteKey(GetKey(s, "provider"));
         }
 
-        static string GetKey(string selector, string type) => $"Search.Column.{type}.{selector}";
+        static string GetKey(in string selector, string type) => $"Search.Column.{type}.{selector}";
+        static string GetKey(in SearchColumn column, string type) => GetKey(string.IsNullOrEmpty(column.path) ? column.selector : column.path, type);
     }
 
     [Serializable]

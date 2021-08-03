@@ -1,5 +1,8 @@
 # Changelog
 
+## [3.0.0-preview.14] - 2021-08-03
+- Add support for the dependency manager
+
 ## [3.0.0-preview.13] - 2021-06-29
 - Add search table support for drag and drop
 - Fix {t:prefab} not being evaluated as an union expression

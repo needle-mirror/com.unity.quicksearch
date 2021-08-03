@@ -102,6 +102,8 @@ namespace UnityEditor.Search
         public static HashSet<string> searchItemFavorites = new HashSet<string>();
         public static HashSet<string> searchQueryFavorites = new HashSet<string>();
 
+        internal static event Action<string, bool> providerActivationChanged;
+
         #if USE_SEARCH_MODULE
         public static int debounceMs
         {
@@ -482,6 +484,8 @@ namespace UnityEditor.Search
                 {
                     SearchAnalytics.SendEvent(null, SearchAnalytics.GenericEventType.PreferenceChanged, "activateProvider", p.id, p.active.ToString());
                     settings.active = p.active;
+                    if (providerActivationChanged != null)
+                        providerActivationChanged.Invoke(p.id, p.active);
                 }
 
                 using (new EditorGUI.DisabledGroupScope(!p.active))

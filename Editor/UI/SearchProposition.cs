@@ -129,7 +129,7 @@ namespace UnityEditor.Search
     public class SearchPropositionOptions
     {
         static readonly char[] s_Delimiters = new[] { '{', '}', '[', ']', '=', ',' };
-        static readonly char[] s_ExtendedDelimiters = new[] { '{', '}', '[', ']', '=', ':' };
+        static readonly char[] s_ExtendedDelimiters = new[] { '{', '}', '[', ']', '=', ':', ',' };
 
         internal readonly string query;
         internal readonly int cursor;
@@ -196,6 +196,25 @@ namespace UnityEditor.Search
             this.flags = flags;
             m_Word = null;
             m_Tokens = null;
+        }
+
+        internal SearchPropositionOptions(in SearchContext context, int cursor)
+        {
+            this.query = context.searchText;
+            this.cursor = cursor;
+            this.flags = SearchPropositionFlags.None;
+            var subQuery = GetTokenAtCursorPosition(query, cursor, IsDelimiter);
+            foreach (var p in context.providers)
+            {
+                if (!subQuery.StartsWith(p.filterId, StringComparison.Ordinal))
+                    continue;
+                subQuery = subQuery.Substring(p.filterId.Length).Trim();
+            }
+            var exToken = GetTokenAtCursorPosition(query, cursor, IsExtendedDelimiter);
+            if (string.IsNullOrEmpty(exToken))
+                m_Tokens = new string[] { subQuery };
+            else
+                m_Tokens = new string[] { subQuery, exToken };
         }
 
         internal static bool IsExtendedDelimiter(char ch)

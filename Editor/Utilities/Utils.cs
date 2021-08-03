@@ -992,6 +992,9 @@ namespace UnityEditor.Search
 
             if (MPE.ProcessService.level != MPE.ProcessLevel.Main)
                 return false;
+            #else
+            if (MPE.ProcessService.level != MPE.ProcessLevel.Master)
+                return false;
             #endif
 
             return true;

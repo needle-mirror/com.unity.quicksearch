@@ -551,6 +551,8 @@ namespace UnityEditor.Search
             SelectSearch();
             UpdateWindowTitle();
 
+            SearchSettings.providerActivationChanged += OnProviderActivationChanged;
+
             s_GlobalViewState = null;
         }
 
@@ -588,6 +590,7 @@ namespace UnityEditor.Search
             nextFrame = null;
             Utils.tick -= UpdateAsyncResults;
             EditorApplication.delayCall -= DelayTrackSelection;
+            SearchSettings.providerActivationChanged -= OnProviderActivationChanged;
 
             selectCallback?.Invoke(null, true);
 
@@ -748,7 +751,6 @@ namespace UnityEditor.Search
                     }
                     filterMenu.ShowAsContext();
                 }
-                GUILayout.Space(1);
                 #endif
             }
             GUILayout.EndHorizontal();
@@ -1395,7 +1397,7 @@ namespace UnityEditor.Search
             Close();
         }
 
-        private void DrawHelpText()
+        private void DrawHelpText(float availableSpace)
         {
             if (string.IsNullOrEmpty(context.searchText.Trim()))
             {
@@ -1414,7 +1416,7 @@ namespace UnityEditor.Search
                                 using (new GUILayout.HorizontalScope(Styles.noResult))
                                 {
                                     GUILayout.Label(Styles.searchTipIcons[i], Styles.tipIcon);
-                                    GUILayout.Label(Styles.searchTipLabels[i], Styles.tipText);
+                                    GUILayout.Label(Styles.searchTipLabels[i], Styles.tipText, GUILayout.Width(Mathf.Min(Styles.tipMaxSize, availableSpace - Styles.tipSizeOffset)));
                                 }
                             }
                             GUILayout.FlexibleSpace();
@@ -1447,7 +1449,7 @@ namespace UnityEditor.Search
                 if (m_FilteredItems.Count > 0 && m_ResultView != null)
                     m_ResultView.Draw(m_Selection, availableSpace);
                 else
-                    DrawHelpText();
+                    DrawHelpText(availableSpace);
             }
         }
 
@@ -2332,6 +2334,19 @@ namespace UnityEditor.Search
         private SearchProvider GetContextualProvider()
         {
             return context.providers.FirstOrDefault(p => p.active && (p.isEnabledForContextualSearch?.Invoke() ?? false));
+        }
+
+        private void OnProviderActivationChanged(string providerId, bool isActive)
+        {
+            // If a provider was enabled in the settings, we do not want to mess with the current context. User might have disabled it in the CONTEXT for a reason.
+            if (isActive)
+                return;
+
+            // Already disabled
+            if (!context.IsEnabled(providerId))
+                return;
+
+            ToggleFilter(providerId);
         }
 
         internal static Texture2D GetIconFromDisplayMode(DisplayMode displayMode)

@@ -166,7 +166,7 @@ namespace UnityEditor.Search
             if (!obj)
                 return ulong.MaxValue;
             if (obj is GameObject go)
-                return GetStableHash(go, (ulong)go.scene.path.GetHashCode());
+                return GetStableHash(go, (ulong)(GetHierarchyAssetPath(go)?.GetHashCode() ?? 0));
             if (obj is Component c)
                 return GetDocumentKey(c.gameObject);
             var assetPath = AssetDatabase.GetAssetPath(obj);

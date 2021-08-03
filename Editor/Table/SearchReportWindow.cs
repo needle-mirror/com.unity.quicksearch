@@ -55,7 +55,15 @@ namespace UnityEditor.Search
 
         private void InitializeReport(string path)
         {
+            if (!File.Exists(path))
+            {
+                Debug.LogWarning(L10n.Tr($"Search report <a>{path}</a> is no longer valid."));
+                Close();
+                return;
+            }
+
             m_ReportPath = path;
+
             m_Report = SearchReport.LoadFromFile(path);
             m_ReportName = Path.GetFileNameWithoutExtension(path);
             var searchExpressionProvider = SearchService.GetProvider("expression");
@@ -316,6 +324,12 @@ namespace UnityEditor.Search
         public void AddColumns(IEnumerable<SearchColumn> newColumns, int insertColumnAt) => throw new NotImplementedException();
         public void RemoveColumn(int removeColumnAt) => throw new NotImplementedException();
         public void AddColumnHeaderContextMenuItems(GenericMenu menu, SearchColumn sourceColumn) => throw new NotImplementedException();
+
+        public bool AddColumnHeaderContextMenuItems(GenericMenu menu)
+        {
+            return false;
+        }
+
         public void SetupColumns(IEnumerable<SearchItem> items = null) => throw new NotImplementedException();
 
         public void SetSelection(IEnumerable<SearchItem> items)

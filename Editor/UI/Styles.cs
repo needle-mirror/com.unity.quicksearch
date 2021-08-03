@@ -422,8 +422,11 @@ namespace UnityEditor.Search
         public static readonly GUIStyle tipText = new GUIStyle("Label")
         {
             richText = true,
-            wordWrap = true
+            wordWrap = false
         };
+
+        public const float tipSizeOffset = 100f;
+        public const float tipMaxSize = 335f;
 
         public static readonly GUIStyle tipsSection = Utils.FromUSS("quick-search-tips-section");
 

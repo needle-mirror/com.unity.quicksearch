@@ -24,6 +24,7 @@ namespace UnityEditor.Search
         void DoubleClick(SearchItem item);
         void SetDirty();
         void AddColumnHeaderContextMenuItems(GenericMenu menu, SearchColumn sourceColumn);
+        bool AddColumnHeaderContextMenuItems(GenericMenu menu);
         bool OpenContextualMenu(Event evt, SearchItem item);
         bool IsReadOnly();
     }
@@ -89,7 +90,7 @@ namespace UnityEditor.Search
                     headerColumns.Add(new PropertyColumn(c)
                     {
                         width = c.width,
-                        headerContent = c.content,
+                        headerContent = new GUIContent(c.content),
                         canSort = c.options.HasFlag(SearchColumnFlags.CanSort),
                         sortedAscending = !c.options.HasFlag(SearchColumnFlags.SortedDescending),
                         headerTextAlignment = GetHeaderTextAligment(c.options),
@@ -114,9 +115,13 @@ namespace UnityEditor.Search
                 return TextAlignment.Left;
             }
 
-            #if USE_SEARCH_MODULE
             protected override void AddColumnHeaderContextMenuItems(GenericMenu menu)
             {
+                var isFullMenuOverride = m_TableView.AddColumnHeaderContextMenuItems(menu);
+                if (isFullMenuOverride)
+                    return;
+
+                #if USE_SEARCH_MODULE
                 var activeColumn = currentColumnIndex;
                 var mousePosition = GUIClip.UnclipToWindow(Event.current.mousePosition);
 
@@ -162,9 +167,8 @@ namespace UnityEditor.Search
 
                 menu.AddSeparator("");
                 menu.AddItem(EditorGUIUtility.TrTextContent("Reset Columns"), false, ResetColumnLayout);
+                #endif
             }
-
-            #endif
 
             private void EditColumn(object userData)
             {

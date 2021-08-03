@@ -234,6 +234,11 @@ namespace UnityEditor.Search
             }
         }
 
+        public bool AddColumnHeaderContextMenuItems(GenericMenu menu)
+        {
+            return false;
+        }
+
         public void SetSelection(IEnumerable<SearchItem> items)
         {
             searchView.SetSelection(items.Select(e => searchView.results.IndexOf(e)).Where(i => i != -1).ToArray());
