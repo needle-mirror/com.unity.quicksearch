@@ -35,7 +35,8 @@ namespace UnityEditor.Search
 
         protected override IEnumerable<SearchItem> FetchItems()
         {
-            yield return SearchItem.none;
+            if (!viewState.excludeNoneItem)
+                yield return SearchItem.none;
             foreach (var item in SearchService.GetItems(context))
             {
                 if (filterCallback != null && !filterCallback(item))

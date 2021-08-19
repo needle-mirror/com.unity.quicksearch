@@ -117,7 +117,7 @@ namespace UnityEditor.Search
             }
             else
             {
-                GUILayout.Label("No results");
+                GUILayout.Label(L10n.Tr("No results"));
             }
         }
 
@@ -131,7 +131,7 @@ namespace UnityEditor.Search
             }
             else
             {
-                GUI.Label(previewArea, "No results");
+                GUI.Label(previewArea, L10n.Tr("No results"));
             }
         }
 

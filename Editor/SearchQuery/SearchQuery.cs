@@ -235,7 +235,7 @@ namespace UnityEditor.Search
             if (!Directory.Exists(folder))
                 Directory.CreateDirectory(folder);
             var queryJson = EditorJsonUtility.ToJson(query, true);
-            File.WriteAllText(query.filePath, queryJson);
+            Utils.WriteTextFileToDisk(query.filePath, queryJson);
         }
 
         public IEnumerable<string> GetProviderIds()
@@ -250,19 +250,11 @@ namespace UnityEditor.Search
 
         public SearchViewState GetResultViewState()
         {
-            #if USE_SEARCH_MODULE
             return new SearchViewState(tableConfig)
             {
                 group = null,
                 itemSize = viewState.itemSize
             };
-            #else
-            return new SearchViewState()
-            {
-                itemSize = viewState.itemSize,
-                group = null
-            };
-            #endif
         }
 
         public static ISearchView Open(ISearchQuery query, SearchFlags additionalFlags)

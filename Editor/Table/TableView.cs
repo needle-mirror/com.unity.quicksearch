@@ -4,7 +4,6 @@ using System.Linq;
 using UnityEditor.IMGUI.Controls;
 using UnityEngine;
 
-#if USE_SEARCH_MODULE
 namespace UnityEditor.Search
 {
     class TableView : ResultView, ITableView
@@ -47,8 +46,10 @@ namespace UnityEditor.Search
 
         public override void Draw(Rect screenRect, ICollection<int> selection)
         {
+            #if USE_SEARCH_MODULE
             if (Event.current.type == EventType.Repaint)
                 AdvancedDropdownGUI.LoadStyles();
+            #endif
 
             if (Event.current.type == EventType.Repaint)
             {
@@ -66,7 +67,7 @@ namespace UnityEditor.Search
                 }
             }
             else
-                GUI.Label(screenRect, "No table configuration selected", Styles.noResult);
+                GUI.Label(screenRect, L10n.Tr("No table configuration selected"), Styles.noResult);
         }
 
         public override void Refresh(RefreshFlags flags = RefreshFlags.Default)
@@ -77,6 +78,8 @@ namespace UnityEditor.Search
 
         public override SearchViewState SaveViewState(string name)
         {
+            for (int i = 0 ; i < m_PropertyTable.multiColumnHeader.state.columns.Length; ++i)
+                UpdateColumnSettings(i, m_PropertyTable.multiColumnHeader.state.columns[i]);
             var viewState = base.SaveViewState(name);
             viewState.tableConfig = m_TableConfig.Clone();
             viewState.tableConfig.name = name;
@@ -224,7 +227,7 @@ namespace UnityEditor.Search
 
         public void AddColumnHeaderContextMenuItems(GenericMenu menu, SearchColumn sourceColumn)
         {
-            menu.AddItem(GUIContent.Temp("Column Format/Default"), string.IsNullOrEmpty(sourceColumn.provider), () => sourceColumn.SetProvider(null));
+            menu.AddItem(new GUIContent("Column Format/Default"), string.IsNullOrEmpty(sourceColumn.provider), () => sourceColumn.SetProvider(null));
             foreach (var scp in SearchColumnProvider.providers)
             {
                 var provider = scp.provider;
@@ -390,6 +393,7 @@ namespace UnityEditor.Search
             return true;
         }
 
+        #if USE_SEARCH_MODULE
         public override void AddSaveQueryMenuItems(SearchContext context, GenericMenu menu)
         {
             menu.AddSeparator("");
@@ -406,6 +410,7 @@ namespace UnityEditor.Search
         {
             SearchReport.ExportAsCsv(GetSearchTable().name, GetColumns(), GetRows(), context);
         }
+        #endif
 
         public override void DrawTabsButtons()
         {
@@ -418,4 +423,3 @@ namespace UnityEditor.Search
         }
     }
 }
-#endif

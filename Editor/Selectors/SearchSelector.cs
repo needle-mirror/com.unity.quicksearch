@@ -144,7 +144,7 @@ namespace UnityEditor.Search
             }
         }
 
-        private static void RefreshSelectors()
+        internal static void RefreshSelectors()
         {
             Func<MethodInfo, SearchSelectorAttribute, Delegate, SearchSelector> generator = (mi, attribute, handler) =>
             {
@@ -163,7 +163,7 @@ namespace UnityEditor.Search
                 MethodSignature.FromDelegate<SearchSelectorHandler1>(),
                 MethodSignature.FromDelegate<SearchSelectorHandler2>()
             };
-            selectors = ReflectionUtils.LoadAllMethodsWithAttribute(generator, supportedSignatures)
+            selectors = ReflectionUtils.LoadAllMethodsWithAttribute(generator, supportedSignatures, ReflectionUtils.AttributeLoaderBehavior.DoNotThrowOnValidation)
                 .Where(s => s.valid)
                 .OrderBy(s => s.priority)
                 .OrderBy(s => string.IsNullOrEmpty(s.provider))

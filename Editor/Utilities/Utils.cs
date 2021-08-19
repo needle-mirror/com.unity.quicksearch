@@ -1626,6 +1626,15 @@ namespace UnityEditor.Search
             gv.SetView(searchQuery, GraphType.Query);
             #endif
         }
+
+        internal static void WriteTextFileToDisk(in string path, in string content)
+        {
+            #if USE_SEARCH_MODULE
+            FileUtil.WriteTextFileToDisk(path, content);
+            #else
+            System.IO.File.WriteAllText(path, content);
+            #endif
+        }
     }
 
     #if !USE_SEARCH_MODULE

@@ -484,7 +484,7 @@ namespace UnityEditor.Search
             }
             catch (Exception ex)
             {
-                Debug.LogException(ex);
+                Debug.LogWarning($"Cannot load Search Provider method: {methodInfo.Name} ({ex.Message})");
                 return null;
             }
         }
@@ -492,8 +492,19 @@ namespace UnityEditor.Search
         private static void RefreshProviderActions()
         {
             foreach (var action in TypeCache.GetMethodsWithAttribute<SearchActionsProviderAttribute>()
-                     .SelectMany(methodInfo => methodInfo.Invoke(null, null) as IEnumerable<object>)
-                     .Where(a => a != null).Cast<SearchAction>())
+                     .Select(methodInfo => {
+                         try
+                         {
+                             return methodInfo.Invoke(null, null) as IEnumerable<object>;
+                         }
+                         catch(Exception ex)
+                         {
+                             Debug.LogWarning($"Cannot load register Search Actions method: {methodInfo.Name} ({ex.Message})");
+                             return null;
+                         }
+                    }).Where(actionArray => actionArray != null)
+                     .SelectMany(actionArray => actionArray)
+                     .Where(action => action != null).Cast<SearchAction>())
             {
                 var provider = Providers.Find(p => p.id == action.providerId);
                 if (provider == null)
@@ -671,7 +682,7 @@ namespace UnityEditor.Search
             if (!System.IO.Directory.Exists(indexDir))
                 AssetDatabase.CreateFolder(System.IO.Path.GetDirectoryName(indexDir), System.IO.Path.GetFileName(indexDir));
 
-            System.IO.File.WriteAllText(indexPath,
+            Utils.WriteTextFileToDisk(indexPath,
                 $"{{\n\t" +
                 $"\"roots\": [{string.Join(",", roots.Select(p => $"\"{p}\""))}],\n\t" +
                 $"\"includes\": [{string.Join(",", includes.Select(p => $"\"{p}\""))}],\n\t" +

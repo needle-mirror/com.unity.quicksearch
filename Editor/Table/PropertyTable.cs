@@ -121,9 +121,27 @@ namespace UnityEditor.Search
                 if (isFullMenuOverride)
                     return;
 
+                var mousePosition = Event.current.mousePosition;
+                var windowMousePosition = Utils.Unclip(new Rect(mousePosition, Vector2.zero)).position;
+
                 #if USE_SEARCH_MODULE
                 var activeColumn = currentColumnIndex;
-                var mousePosition = GUIClip.UnclipToWindow(Event.current.mousePosition);
+                #else
+                int activeColumn = -1;
+                for (int i = 0; i < state.columns.Length; ++i)
+                {
+                    var vi = GetVisibleColumnIndex(i);
+                    if (vi == -1)
+                        continue;
+
+                    var cr = GetColumnRect(vi);
+                    if (!cr.Contains(mousePosition))
+                        continue;
+
+                    activeColumn = i;
+                    break;
+                }
+                #endif
 
                 if (state.columns.Length > 1)
                 {
@@ -141,7 +159,7 @@ namespace UnityEditor.Search
 
                 if (activeColumn != -1)
                 {
-                    if (state.columns[activeColumn].userDataObj is SearchColumn sourceColumn)
+                    if (state.columns[activeColumn] is PropertyColumn pc && pc.userDataObj is SearchColumn sourceColumn)
                         m_TableView.AddColumnHeaderContextMenuItems(menu, sourceColumn);
                 }
 
@@ -150,7 +168,7 @@ namespace UnityEditor.Search
                     return;
 
                 menu.AddSeparator("");
-                menu.AddItem(EditorGUIUtility.TrTextContent("Add Column..."), false, () => m_TableView.AddColumn(mousePosition, activeColumn));
+                menu.AddItem(EditorGUIUtility.TrTextContent("Add Column..."), false, () => m_TableView.AddColumn(windowMousePosition, activeColumn));
 
                 if (activeColumn != -1)
                 {
@@ -167,7 +185,6 @@ namespace UnityEditor.Search
 
                 menu.AddSeparator("");
                 menu.AddItem(EditorGUIUtility.TrTextContent("Reset Columns"), false, ResetColumnLayout);
-                #endif
             }
 
             private void EditColumn(object userData)

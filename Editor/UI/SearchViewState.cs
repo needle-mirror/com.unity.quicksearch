@@ -41,6 +41,7 @@ namespace UnityEditor.Search
         [SerializeField] internal bool forceViewMode;
         [SerializeField] internal string sessionId;
         [SerializeField] internal string sessionName;
+        [SerializeField] internal bool excludeNoneItem;
 
         public string title;
         public float itemSize;

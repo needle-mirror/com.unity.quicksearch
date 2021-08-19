@@ -141,7 +141,7 @@ namespace UnityEditor.Search
                 EditorGUILayout.BeginVertical();
                 {
                     var originalText = m_TextProperty.stringValue;
-                    EditorGUILayout.DelayedTextField(m_TextProperty, new GUIContent("Search Text"));
+                    EditorGUILayout.DelayedTextField(m_TextProperty, EditorGUIUtility.TrTextContent("Search Text"));
                     if (originalText != m_TextProperty.stringValue)
                     {
                         m_SearchContext.searchText = m_TextProperty.stringValue;
@@ -157,7 +157,7 @@ namespace UnityEditor.Search
             EditorGUILayout.BeginHorizontal();
             GUILayout.Space(20);
             EditorGUI.BeginChangeCheck();
-            m_ProviderFoldout = EditorGUILayout.Foldout(m_ProviderFoldout, "Providers", true);
+            m_ProviderFoldout = EditorGUILayout.Foldout(m_ProviderFoldout, L10n.Tr("Providers"), true);
             if (EditorGUI.EndChangeCheck())
             {
                 EditorPrefs.SetBool("SearchQuery.ShowProviderList", m_ProviderFoldout);

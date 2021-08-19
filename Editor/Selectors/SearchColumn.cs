@@ -271,6 +271,11 @@ namespace UnityEditor.Search
         public static List<SearchColumnProvider> providers { get; private set; }
         static SearchColumnProvider()
         {
+            RefreshProviders();
+        }
+
+        public static void RefreshProviders()
+        {
             Func<MethodInfo, SearchColumnProviderAttribute, Delegate, SearchColumnProvider> generator = (mi, attribute, handler) =>
             {
                 if (handler is SearchColumnProviderHandler handlerWithStruct)
@@ -279,7 +284,7 @@ namespace UnityEditor.Search
             };
 
             var supportedSignatures = new[] { MethodSignature.FromDelegate<SearchColumnProviderHandler>() };
-            providers = ReflectionUtils.LoadAllMethodsWithAttribute(generator, supportedSignatures).ToList();
+            providers = ReflectionUtils.LoadAllMethodsWithAttribute(generator, supportedSignatures, ReflectionUtils.AttributeLoaderBehavior.DoNotThrowOnValidation).ToList();
         }
 
         public static void Initialize(SearchColumn column)

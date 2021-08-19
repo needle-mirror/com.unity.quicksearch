@@ -1,5 +1,9 @@
 # Changelog
 
+## [3.0.0-preview.15] - 2021-08-19
+- Add table view support for 2020.3
+- Remove id: and name: from the asset index (reduces the index size)
+
 ## [3.0.0-preview.14] - 2021-08-03
 - Add support for the dependency manager
 

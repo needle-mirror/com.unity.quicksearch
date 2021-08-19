@@ -46,14 +46,8 @@ namespace UnityEditor.Search.Providers
             #if USE_SEARCH_MODULE
             debounce = Delayer.Debounce(_ => TriggerBackgroundUpdate(itemNames, shortcuts));
 
-            Menu.added -= OnMenuItemAddedOrRemoved;
-            Menu.added += OnMenuItemAddedOrRemoved;
-
-            Menu.removed -= OnMenuItemAddedOrRemoved;
-            Menu.removed += OnMenuItemAddedOrRemoved;
-
-            Menu.rebuild -= OnMenuRebuild;
-            Menu.rebuild += OnMenuRebuild;
+            Menu.menuChanged -= OnMenuChanged;
+            Menu.menuChanged += OnMenuChanged;
             #endif
 
             return new SearchProvider(type, displayName)
@@ -91,12 +85,7 @@ namespace UnityEditor.Search.Providers
         }
 
         #if USE_SEARCH_MODULE
-        private static void OnMenuItemAddedOrRemoved(string menuPath)
-        {
-            debounce.Execute();
-        }
-
-        private static void OnMenuRebuild()
+        private static void OnMenuChanged()
         {
             debounce.Execute();
         }

@@ -532,7 +532,7 @@ namespace UnityEditor.Search
             hideFlags |= HideFlags.DontSaveInEditor;
             m_LastFocusedWindow = m_LastFocusedWindow ?? s_FocusedWindow;
             wantsLessLayoutEvents = true;
-            titleContent = new GUIContent("Search", Icons.quickSearchWindow);
+            titleContent = EditorGUIUtility.TrTextContent("Search", Icons.quickSearchWindow);
 
             m_ViewState = s_GlobalViewState ?? m_ViewState ?? SearchViewState.LoadDefaults();
 
@@ -727,7 +727,7 @@ namespace UnityEditor.Search
 
                 #if USE_SEARCH_MODULE
                 EditorGUI.BeginChangeCheck();
-                m_FilterSearchQueryToggle = GUILayout.Toggle(m_FilterSearchQueryToggle, Icons.quickSearchWindow, Styles.savedSearchesHeaderButton);
+                m_FilterSearchQueryToggle = GUILayout.Toggle(m_FilterSearchQueryToggle, Styles.toggleSavedSearchesTextfieldContent, Styles.savedSearchesHeaderButton);
                 if (EditorGUI.EndChangeCheck())
                 {
                     m_QueryTreeView.searchString = string.Empty;
@@ -1020,7 +1020,7 @@ namespace UnityEditor.Search
                 return;
 
             if (m_FilteredItems.Count == 0)
-                titleContent.text = $"Search";
+                titleContent.text = L10n.Tr("Search");
             else
                 titleContent.text = $"Search ({m_FilteredItems.Count - (selectCallback != null ? 1 : 0)})";
         }
@@ -1029,7 +1029,7 @@ namespace UnityEditor.Search
         {
             var providers = context.providers.ToList();
             if (providers.Count == 0)
-                return "There is no activated search provider";
+                return L10n.Tr("There is no activated search provider");
 
             var msg = "Searching ";
             if (providers.Count > 1)
@@ -1109,7 +1109,6 @@ namespace UnityEditor.Search
                     newItemIconSize = GUI.HorizontalSlider(sliderRect, newItemIconSize, 0f, (float)DisplayMode.Limit);
                 }
 
-                #if USE_SEARCH_MODULE
                 var isList = displayMode == DisplayMode.List;
                 if (GUILayout.Toggle(isList, Styles.listModeContent, Styles.statusBarButton) != isList)
                 {
@@ -1128,7 +1127,6 @@ namespace UnityEditor.Search
                     newItemIconSize = (float)DisplayMode.Table;
                     SendEvent(SearchAnalytics.GenericEventType.QuickSearchSizeRadioButton, DisplayMode.Table.ToString());
                 }
-                #endif
 
                 if (EditorGUI.EndChangeCheck())
                 {
@@ -1409,7 +1407,7 @@ namespace UnityEditor.Search
                         GUILayout.FlexibleSpace();
                         using (new GUILayout.VerticalScope(Styles.tipsSection, GUILayout.Height(160)))
                         {
-                            GUILayout.Label("<b>Search Tips</b>", Styles.tipText);
+                            GUILayout.Label(L10n.Tr("<b>Search Tips</b>"), Styles.tipText);
                             GUILayout.Space(15);
                             for (var i = 0; i < Styles.searchTipIcons.Length; ++i)
                             {
@@ -1749,7 +1747,7 @@ namespace UnityEditor.Search
                     buttonStyle.fixedHeight);
 
                 EditorGUI.BeginChangeCheck();
-                GUI.Toggle(buttonRect, m_ViewState.flags.HasAny(SearchViewFlags.OpenLeftSidePanel), Styles.saveSearchesIconContent, Styles.openSearchesPanelButton);
+                GUI.Toggle(buttonRect, m_ViewState.flags.HasAny(SearchViewFlags.OpenLeftSidePanel), Styles.openSaveSearchesIconContent, Styles.openSearchesPanelButton);
                 if (EditorGUI.EndChangeCheck())
                     TogglePanelView(SearchViewFlags.OpenLeftSidePanel);
             }
@@ -1966,8 +1964,8 @@ namespace UnityEditor.Search
 
         protected virtual void AddSaveQueryMenuItems(GenericMenu saveQueryMenu)
         {
-            saveQueryMenu.AddItem(new GUIContent($"Save User"), false, SaveUserSearchQuery);
-            saveQueryMenu.AddItem(new GUIContent($"Save Project..."), false, SaveProjectSearchQuery);
+            saveQueryMenu.AddItem(new GUIContent("Save User"), false, SaveUserSearchQuery);
+            saveQueryMenu.AddItem(new GUIContent("Save Project..."), false, SaveProjectSearchQuery);
 
             m_ResultView?.AddSaveQueryMenuItems(context, saveQueryMenu);
         }
@@ -2092,14 +2090,10 @@ namespace UnityEditor.Search
 
         protected void UpdateViewState(SearchViewState args)
         {
-            #if USE_SEARCH_MODULE
             if (context?.options.HasAny(SearchFlags.Expression) ?? false)
                 itemIconSize = (int)DisplayMode.Table;
             else
-            #endif
-            {
                 itemIconSize = args.itemSize;
-            }
         }
 
         protected virtual void LoadSessionSettings(SearchViewState args)
@@ -2155,11 +2149,7 @@ namespace UnityEditor.Search
         private void UpdateItemSize(float value)
         {
             var oldMode = displayMode;
-            #if USE_SEARCH_MODULE
             m_ViewState.itemSize = value > (int)DisplayMode.Table ? (int)DisplayMode.Limit : value;
-            #else
-            m_ViewState.itemSize = value > (int)DisplayMode.Limit ? (int)DisplayMode.Limit : value;
-            #endif
             var newMode = displayMode;
             if (m_ResultView == null || oldMode != newMode)
                 SetResultView(newMode);
@@ -2171,10 +2161,8 @@ namespace UnityEditor.Search
                 m_ResultView = new ListView(this);
             else if (mode == DisplayMode.Grid)
                 m_ResultView = new GridView(this);
-            #if USE_SEARCH_MODULE
             else if (mode == DisplayMode.Table)
                 m_ResultView = new TableView(this);
-            #endif
             RefreshViews(RefreshFlags.DisplayModeChanged);
         }
 
@@ -2351,7 +2339,6 @@ namespace UnityEditor.Search
 
         internal static Texture2D GetIconFromDisplayMode(DisplayMode displayMode)
         {
-            #if USE_SEARCH_MODULE
             switch (displayMode)
             {
                 case DisplayMode.Grid:
@@ -2361,17 +2348,6 @@ namespace UnityEditor.Search
                 default:
                     return Styles.listModeContent.image as Texture2D;
             }
-            #else
-            switch (displayMode)
-            {
-                case DisplayMode.Grid:
-                    return Icons.gridView;
-                case DisplayMode.List:
-                    return Icons.listView;
-                default:
-                    return Icons.searchQuery;
-            }
-            #endif
         }
 
         internal static DisplayMode GetDisplayModeFromItemSize(float itemSize)
@@ -2379,10 +2355,8 @@ namespace UnityEditor.Search
             if (itemSize <= (int)DisplayMode.List)
                 return DisplayMode.List;
 
-            #if USE_SEARCH_MODULE
             if (itemSize >= (int)DisplayMode.Table)
                 return DisplayMode.Table;
-            #endif
 
             return DisplayMode.Grid;
         }

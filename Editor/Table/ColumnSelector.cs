@@ -4,7 +4,6 @@ using System.Linq;
 using UnityEditor.IMGUI.Controls;
 using UnityEngine;
 
-#if USE_SEARCH_MODULE
 namespace UnityEditor.Search
 {
     class ColumnSelector : AdvancedDropdown
@@ -14,6 +13,7 @@ namespace UnityEditor.Search
         private readonly IEnumerable<SearchColumn> m_Columns;
         private readonly AddColumnsHandler m_AddColumnsHandler;
         private readonly int m_ActiveColumnIndex;
+        private readonly Dictionary<int, SearchColumn> m_ColumnIndexes = new Dictionary<int, SearchColumn>();
 
         public delegate void AddColumnsHandler(IEnumerable<SearchColumn> descriptors, int activeColumnIndex);
 
@@ -47,11 +47,15 @@ namespace UnityEditor.Search
 
                 AdvancedDropdownItem newItem = new AdvancedDropdownItem(name)
                 {
-                    displayName = string.IsNullOrEmpty(column.content.text) ? column.content.tooltip : SearchColumn.ParseName(column.content.text),
                     icon = column.content.image as Texture2D,
+                    #if USE_SEARCH_MODULE
+                    displayName = string.IsNullOrEmpty(column.content.text) ? column.content.tooltip : SearchColumn.ParseName(column.content.text),
                     tooltip = column.content.tooltip,
                     userData = column
+                    #endif
                 };
+
+                m_ColumnIndexes[newItem.id] = column;
 
                 var parent = rootItem;
                 if (prefix != null)
@@ -61,19 +65,23 @@ namespace UnityEditor.Search
                     parent.AddChild(newItem);
             }
 
+            #if USE_SEARCH_MODULE
             rootItem.SortChildren(SortColumnProviders);
             foreach (var c in rootItem.children)
                 c.SortChildren(SortColumns, true);
+            #endif
             return rootItem;
         }
 
         protected override void ItemSelected(AdvancedDropdownItem i)
         {
             var properties = new List<SearchColumn>();
-            if (i.userData is SearchColumn column)
+            if (m_ColumnIndexes.TryGetValue(i.id, out var column))
                 properties.Add(column);
+            #if USE_SEARCH_MODULE
             else if (i.userData is AdvancedDropdownItem addAllItem)
                 AddAll(properties, addAllItem.children, addAllItem.children.Where(c => c.userData is SearchColumn).All(c => c.children.Any()));
+            #endif
 
             m_AddColumnsHandler?.Invoke(properties, m_ActiveColumnIndex);
         }
@@ -113,8 +121,16 @@ namespace UnityEditor.Search
                 }
                 else
                 {
-                    AdvancedDropdownItem newItem = new AdvancedDropdownItem(p) { icon = desc.content.image as Texture2D, tooltip = desc.content.tooltip };
+                    AdvancedDropdownItem newItem = new AdvancedDropdownItem(p)
+                    {
+                        icon = desc.content.image as Texture2D,
+                        #if USE_SEARCH_MODULES
+                        tooltip = desc.content.tooltip
+                        #endif
+                    };
+                    #if USE_SEARCH_MODULES
                     newItem.AddChild(new AdvancedDropdownItem(k_AddlAllItemName) { userData = newItem });
+                    #endif
                     parent.AddChild(newItem);
                     parent = newItem;
                 }
@@ -123,6 +139,7 @@ namespace UnityEditor.Search
             return parent;
         }
 
+        #if USE_SEARCH_MODULE
         private int SortColumnProviders(AdvancedDropdownItem lhs, AdvancedDropdownItem rhs)
         {
             if (!lhs.hasChildren && rhs.hasChildren)
@@ -164,6 +181,6 @@ namespace UnityEditor.Search
                 properties.Add(ac);
             }
         }
+        #endif
     }
 }
-#endif
