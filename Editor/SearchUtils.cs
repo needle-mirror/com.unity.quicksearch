@@ -20,7 +20,7 @@ namespace UnityEditor.Search
     /// </summary>
     public static class SearchUtils
     {
-        internal static readonly char[] KeywordsValueDelimiters = new[] { ':', '=', '<', '>', '!' };
+        internal static readonly char[] KeywordsValueDelimiters = new[] { ':', '=', '<', '>', '!', '|' };
 
         /// <summary>
         /// Separators used to split an entry into indexable tokens.
@@ -95,11 +95,24 @@ namespace UnityEditor.Search
             var nameTokens = entry.Split(entrySeparators).Distinct();
             var scc = nameTokens.SelectMany(s => SplitCamelCase(s)).Where(s => s.Length > 0);
             var fcc = scc.Aggregate("", (current, s) => current + s[0]);
-            return new[] { fcc, entry }.Concat(scc.Where(s => s.Length > 1))
+            return new[] { fcc }.Concat(scc.Where(s => s.Length > 1))
                 .Where(s => s.Length > 1)
                 .Select(s => s.ToLowerInvariant())
                 .Distinct();
         }
+
+        #if DEBUG_FILE_COMPONENTS
+        [MenuItem("Assets/Word Components")]
+        static void PrintFilenameComponents()
+        {
+            var assetPath = AssetDatabase.GetAssetPath(Selection.activeInstanceID);
+            if (string.IsNullOrEmpty(assetPath))
+                return;
+            var filename = Path.GetFileName(assetPath);
+            foreach (var c in SplitFileEntryComponents(filename, SearchUtils.entrySeparators))
+                Debug.Log(c);
+        }
+        #endif
 
         /// <summary>
         /// Split a file entry according to a list of separators and find all the variations on the entry name.
@@ -107,14 +120,14 @@ namespace UnityEditor.Search
         /// <param name="path"></param>
         /// <param name="entrySeparators"></param>
         /// <returns>Returns list of tokens and variations in lowercase</returns>
-        public static IEnumerable<string> SplitFileEntryComponents(string path, char[] entrySeparators)
+        public static IEnumerable<string> SplitFileEntryComponents(string path, in char[] entrySeparators)
         {
             path = Utils.RemoveInvalidCharsFromPath(path, '_');
-            var name = Path.GetFileName(path);
+            var name = Path.GetFileNameWithoutExtension(path);
             var nameTokens = name.Split(entrySeparators).Distinct().ToArray();
             var scc = nameTokens.SelectMany(s => SplitCamelCase(s)).Where(s => s.Length > 0).ToArray();
             var fcc = scc.Aggregate("", (current, s) => current + s[0]);
-            return new[] { name, Path.GetExtension(path).Replace(".", "") }
+            return new[] { Path.GetExtension(path).Replace(".", "") }
                 .Concat(scc.Where(s => s.Length > 1))
                 .Concat(FindShiftLeftVariations(fcc))
                 .Concat(nameTokens)
@@ -461,6 +474,98 @@ namespace UnityEditor.Search
             if (item.provider.type == "dep")
                 return AssetDatabase.GUIDToAssetPath(item.id);
             return null;
+        }
+
+        internal static IEnumerable<SearchProposition> FetchTypePropositions<T>(string category = "Types") where T : UnityEngine.Object
+        {
+            if (category != null)
+            {
+                yield return new SearchProposition(
+                                    priority: -1,
+                                    category: null,
+                                    label: "Types",
+                                    icon: EditorGUIUtility.FindTexture("FilterByType"));
+            }
+
+            var ignoredAssemblies = new[]
+            {
+                typeof(EditorApplication).Assembly,
+                typeof(UnityEditorInternal.InternalEditorUtility).Assembly
+            };
+            var types = TypeCache.GetTypesDerivedFrom<T>()
+                .Where(t => t.IsVisible)
+                .Where(t => !t.IsGenericType)
+                .Where(t => !ignoredAssemblies.Contains(t.Assembly))
+                .Where(t => !typeof(Editor).IsAssignableFrom(t))
+                .Where(t => !typeof(EditorWindow).IsAssignableFrom(t))
+                .Where(t => !t.FullName.StartsWith("UnityEditor", StringComparison.Ordinal));
+            foreach (var t in types)
+            {
+                yield return new SearchProposition(
+                    priority: t.Name[0],
+                    category: category,
+                    label: t.Name,
+                    replacement: $"t={t.Name}",
+                    data: t,
+                    icon: AssetPreview.GetMiniTypeThumbnail(t));
+            }
+        }
+
+        internal static SearchProposition CreateKeywordProposition(in string keyword)
+        {
+            if (keyword.IndexOf('|') != -1)
+            {
+                var tokens = keyword.Split('|');
+                if (tokens.Length == 5)
+                {
+                    var valueType = tokens[3];
+                    var blockType = Type.GetType(valueType);
+                    var replacement = ParseBlockContent(valueType, tokens[0]);
+                    var ownerType = Type.GetType(tokens[4]);
+                    return new SearchProposition(
+                        priority: (ownerType.Name[0] << 4) + tokens[1][0],
+                        category: $"Properties/{ownerType.Name}",
+                        label: $"{tokens[1]} ({blockType?.Name ?? valueType})",
+                        replacement: replacement,
+                        help: tokens[2],
+                        type: blockType,
+                        icon: AssetPreview.GetMiniTypeThumbnail(blockType) ?? AssetPreview.GetMiniTypeThumbnail(ownerType));
+                }
+            }
+            return SearchProposition.invalid;
+        }
+
+        internal static string ParseBlockContent(in string type, in string content)
+        {
+            var replacement = content;
+            var del = content.LastIndexOf(':');
+            if (del != -1)
+                replacement = content.Substring(0, del);
+            switch (type)
+            {
+                case "Enum":
+                case "String":
+                    return $"{replacement}:\"\"";
+                case "Boolean":
+                    return $"{replacement}=true";
+                case "Array":
+                case "Count":
+                    return $"{replacement}>=1"; // TODO: insert query marker <%number:150,[0,32]%>
+                case "Integer":
+                case "Float":
+                case "Number":
+                    return $"{replacement}>0";
+                case "Color":
+                    return $"{replacement}=#00ff00";
+                case "Vector2":
+                    return $"{replacement}=(,)";
+                case "Vector3":
+                    return $"{replacement}=(,,)";
+                case "Vector4":
+                    return $"{replacement}=(,,,)";
+            }
+
+            return replacement;
         }
     }
 }

@@ -192,6 +192,8 @@ namespace UnityEditor.Search
             }
         }
 
+        internal bool empty => string.IsNullOrEmpty(m_SearchText);
+
         /// <summary>
         /// Raw search text (i.e. what is in the search text box)
         /// </summary>
@@ -214,6 +216,9 @@ namespace UnityEditor.Search
             // Reset a few values
             filterId = null;
             textFilters = searchWords = k_Empty;
+            // TODO: Resolve QueryMarker to get default value.
+            // i.e. p: texturetype=<$enum:Image,TextureImporterType,[GUI, ...]]$>
+            // sets searchQuery to p: texturetype=Image
             searchQuery = searchText.TrimStart();
             searchQueryOffset = 0;
 

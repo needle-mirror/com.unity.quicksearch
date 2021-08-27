@@ -137,6 +137,7 @@ namespace UnityEditor.Search.Providers
                 supportsSyncViewSearch = true,
                 isEnabledForContextualSearch = () => Utils.IsFocusedWindowTypeName("ProjectBrowser"),
                 toObject = (item, type) => GetObject(item, type),
+                toType = (item) => GetItemAssetType(item),
                 toKey = (item) => GetDocumentKey(item),
                 fetchItems = (context, items, provider) => SearchAssets(context, provider),
                 fetchLabel = (item, context) => FetchLabel(item),
@@ -272,6 +273,12 @@ namespace UnityEditor.Search.Providers
             return GlobalObjectId.GlobalObjectIdentifierToInstanceIDSlow(gid);
         }
 
+        private static Type GetItemAssetType(in SearchItem item)
+        {
+            var info = GetInfo(item);
+            return info.type;
+        }
+
         private static Object GetObject(SearchItem item)
         {
             return GetObject(item, typeof(UnityEngine.Object));
@@ -323,11 +330,11 @@ namespace UnityEditor.Search.Providers
 
         private static IEnumerable<SearchProposition> FetchPropositions(SearchContext context, SearchPropositionOptions options)
         {
-            if (options.flags.HasAny(SearchPropositionFlags.FilterOnly) && options.StartsWith("type"))
-                return FetchAssetTypePropositions();
-
             if (context.options.HasAny(SearchFlags.NoIndexing))
                 return null;
+
+            if (options.flags.HasAny(SearchPropositionFlags.QueryBuilder))
+                return FetchQueryBuilderPropositions();
 
             var token = options.tokens[0];
             var ft = token.LastIndexOfAny(SearchUtils.KeywordsValueDelimiters);
@@ -336,27 +343,65 @@ namespace UnityEditor.Search.Providers
             var dbs = SearchDatabase.EnumerateAll();
             return dbs.SelectMany(db => db.index.GetKeywords()
                 .Where(kw => kw.StartsWith(token, StringComparison.OrdinalIgnoreCase)))
-                .Select(kw => new SearchProposition(kw));
+                .Select(kw => new SearchProposition(category: null, label:kw));
         }
 
-        private static IEnumerable<SearchProposition> FetchAssetTypePropositions()
+        private static IEnumerable<SearchProposition> FetchQueryBuilderPropositions()
         {
-            var ignoredAssemblies = new[]
+            foreach (var p in SearchUtils.FetchTypePropositions<Object>())
+                yield return p;
+            foreach (var p in FetchIndexPropositions())
+                yield return p;
+
+            // TODO:
+            // - areas
+            // - labels
+
+            yield return new SearchProposition(category: "Types", label: "Prefabs", replacement: "t=prefab");
+            yield return new SearchProposition(category: "Types", label: "Scripts", replacement: "t=script");
+
+            yield return new SearchProposition(category: "Filters", label: "Directory (Name)", replacement: "dir=\"folder name\"");
+            yield return new SearchProposition(category: "Filters", label: "File Size", replacement: "size>=8096", help: "File size in bytes");
+            yield return new SearchProposition(category: "Filters", label: "File Extension", replacement: "ext:png"); // TODO: ext:<$enum:png,popular extensions... or all project extension?$>
+            yield return new SearchProposition(category: "Filters", label: "Age", replacement: "age>=1.5", help: "In days, when was the file last modified?");
+            yield return new SearchProposition(category: "Filters", label: "Sub Asset", replacement: "is:subasset", help: "Yield nested assets (i.e. media from FBX files)");
+
+            yield return new SearchProposition(category: "Prefabs", label: "Component (Count)", replacement: "components>1");
+            yield return new SearchProposition(category: "Prefabs", label: "Roots", replacement: "prefab:root");
+            yield return new SearchProposition(category: "Prefabs", label: "Instances", replacement: "prefab:instance");
+            yield return new SearchProposition(category: "Prefabs", label: "Top", replacement: "prefab:top");
+            yield return new SearchProposition(category: "Prefabs", label: "Non Asset", replacement: "prefab:nonasset");
+            yield return new SearchProposition(category: "Prefabs", label: "Asset", replacement: "prefab:asset");
+            yield return new SearchProposition(category: "Prefabs", label: "Any", replacement: "prefab:any");
+            yield return new SearchProposition(category: "Prefabs", label: "Models", replacement: "prefab:model");
+            yield return new SearchProposition(category: "Prefabs", label: "Regular", replacement: "prefab:regular");
+            yield return new SearchProposition(category: "Prefabs", label: "Variants", replacement: "prefab:variant");
+            yield return new SearchProposition(category: "Prefabs", label: "Modified", replacement: "prefab:modified");
+            yield return new SearchProposition(category: "Prefabs", label: "Modified (Default Overrides)", replacement: "prefab:altered");
+
+            if (SearchDatabase.EnumerateAll().Any(db => db.index?.settings?.options.extended ?? false))
             {
-                typeof(EditorApplication).Assembly,
-                typeof(UnityEditorInternal.InternalEditorUtility).Assembly
-            };
-            var types = TypeCache.GetTypesDerivedFrom<UnityEngine.Object>()
-                .Where(t => t.IsVisible)
-                .Where(t => !ignoredAssemblies.Contains(t.Assembly))
-                .Where(t => !t.FullName.StartsWith("UnityEditor", StringComparison.Ordinal));
-            foreach (var t in types)
-                yield return new SearchProposition(t.Name, t.Name, GetTypeHelpText(t), 0, TextCursorPlacement.Default, AssetPreview.GetMiniTypeThumbnail(t));
+                yield return new SearchProposition(category: "Filters", label: "Nested", replacement: "is:nested", help: "Yield nested objects from assets if any");
+                yield return new SearchProposition(category: "Filters", label: "Child", replacement: "is:child");
+                yield return new SearchProposition(category: "Filters", label: "Root", replacement: "is:root");
+                yield return new SearchProposition(category: "Filters", label: "Leaf", replacement: "is:leaf");
+                yield return new SearchProposition(category: "Filters", label: "Layer", replacement: "layer=1");
+                yield return new SearchProposition(category: "Filters", label: "Tag", replacement: "tag=untagged");
+                yield return new SearchProposition(category: "Filters", label: "Child", replacement: "is:child");
+            }
         }
 
-        private static string GetTypeHelpText(in Type t)
+        private static IEnumerable<SearchProposition> FetchIndexPropositions()
         {
-            return $"{t.FullName}\n{t.Assembly.Location}";
+            var dbs = SearchDatabase.EnumerateAll();
+            foreach (var db in dbs)
+            {
+                while (!db.loaded)
+                    Dispatcher.ProcessOne();
+
+                foreach (var kw in db.index.GetKeywords())
+                    yield return SearchUtils.CreateKeywordProposition(kw);
+            }
         }
 
         private static void StartDrag(SearchItem item, SearchContext context)
@@ -390,9 +435,17 @@ namespace UnityEditor.Search.Providers
             if (!useIndexing || context.wantsMore)
             {
                 // Perform a quick search on asset paths
-                var findOptions = FindOptions.Words | FindOptions.Regex | FindOptions.Glob | (context.wantsMore ? FindOptions.Fuzzy : FindOptions.None);
+                var findOptions = FindOptions.Words | FindOptions.Regex | FindOptions.Glob;
                 foreach (var e in FindProvider.Search(context, provider, findOptions))
-                    yield return CreateItem("Files", context, provider, null, e.source, 998 + e.score, SearchDocumentFlags.Asset);
+                {
+                    if (!e.valid)
+                        yield return null;
+                    else
+                    {
+                        yield return CreateItem("Files", context, SearchUtils.CreateGroupProvider(provider, "Files", 0, true),
+                                                    null, e.source, 998 + e.score, SearchDocumentFlags.Asset);
+                    }
+                }
             }
 
             // Finally wait for indexes that are being built to end the search.
@@ -401,8 +454,6 @@ namespace UnityEditor.Search.Providers
                 var dbs = SearchDatabase.EnumerateAll();
                 if (context.options.HasAny(SearchFlags.QueryString))
                     dbs = dbs.Where(db => db.ready);
-                else
-                    dbs = dbs.OrderBy(db => !db.ready);
                 foreach (var db in dbs)
                     yield return SearchIndexes(context.searchQuery, context, provider, db);
             }
@@ -419,17 +470,45 @@ namespace UnityEditor.Search.Providers
 
         private static IEnumerator SearchIndexes(string searchQuery, SearchContext context, SearchProvider provider, SearchDatabase db)
         {
-            while (!db.ready)
+            if (!db.ready)
             {
-                if (!db || context.options.HasAny(SearchFlags.Synchronous))
-                    yield break;
-                yield return null;
+                if (!Utils.IsRunningTests())
+                {
+                    var findOptions = FindOptions.Words | FindOptions.Regex | FindOptions.Glob;
+                    foreach (var e in FindProvider.Search(searchQuery, db.settings.roots, context, provider, findOptions))
+                    {
+                        if (!e.valid)
+                            yield return null;
+                        else
+                            yield return CreateItem("Files", context, SearchUtils.CreateGroupProvider(provider, "Files", 0, true),
+                                null, e.source, 998 + e.score, SearchDocumentFlags.Asset);
+                    }
+                }
+
+                while (!db.ready)
+                {
+                    if (!db || context.options.HasAny(SearchFlags.Synchronous))
+                        yield break;
+                    yield return null;
+                }
             }
 
-            // Search index
             var index = db.index;
-            yield return index.Search(searchQuery.ToLowerInvariant(), context, provider)
-                .Select(e => CreateItem(context, provider, db, e));
+            var results = new System.Collections.Concurrent.ConcurrentBag<SearchResult>();
+            var searchTask = System.Threading.Tasks.Task.Run(() =>
+            {
+                // Search index
+                foreach (var r in index.Search(searchQuery.ToLowerInvariant(), context, provider))
+                    results.Add(r);
+            });
+
+            while (results.Count > 0 || !searchTask.Wait(1) || results.Count > 0)
+            {
+                while (results.TryTake(out var e))
+                    yield return CreateItem(context, provider, db, e);
+
+                yield return null;
+            }
         }
 
         private static SearchItem CreateItem(in SearchContext context, in SearchProvider provider, in SearchDatabase db, in SearchResult e)

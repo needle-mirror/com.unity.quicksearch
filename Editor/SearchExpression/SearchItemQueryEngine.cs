@@ -302,6 +302,24 @@ namespace UnityEditor.Search
             return SearchValue.invalid;
         }
 
+        internal static bool TryParseRange(in string arg, out PropertyRange range)
+        {
+            range = default;
+            if (arg.Length < 2 || arg[0] != '[' || arg[arg.Length - 1] != ']')
+                return false;
+
+            var rangeMatches = s_RangeRx.Matches(arg);
+            if (rangeMatches.Count != 1 || rangeMatches[0].Groups.Count != 3)
+                return false;
+
+            var rg = rangeMatches[0].Groups;
+            if (!Utils.TryParse(rg[1].Value, out double min) || !Utils.TryParse(rg[2].Value, out double max))
+                return false;
+
+            range = new PropertyRange(min, max);
+            return true;
+        }
+
         public static void SetupEngine<T>(QueryEngine<T> queryEngine)
         {
             queryEngine.AddOperatorHandler(":", (SearchValue v, PropertyRange range) => PropertyRangeCompare(v, range, (f, r) => r.Contains(f)));
@@ -342,17 +360,8 @@ namespace UnityEditor.Search
 
             queryEngine.AddTypeParser(arg =>
             {
-                if (arg.Length > 0 && arg.Last() == ']')
-                {
-                    var rangeMatches = s_RangeRx.Matches(arg);
-                    if (rangeMatches.Count == 1 && rangeMatches[0].Groups.Count == 3)
-                    {
-                        var rg = rangeMatches[0].Groups;
-                        if (Utils.TryParse(rg[1].Value, out double min) && Utils.TryParse(rg[2].Value, out double max))
-                            return new ParseResult<PropertyRange>(true, new PropertyRange(min, max));
-                    }
-                }
-
+                if (TryParseRange(arg, out var range))
+                    return new ParseResult<PropertyRange>(true, range);
                 return ParseResult<PropertyRange>.none;
             });
 

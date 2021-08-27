@@ -78,8 +78,10 @@ namespace UnityEditor.Search
 
         public override SearchViewState SaveViewState(string name)
         {
+            #if !USE_SEARCH_MODULE
             for (int i = 0 ; i < m_PropertyTable.multiColumnHeader.state.columns.Length; ++i)
                 UpdateColumnSettings(i, m_PropertyTable.multiColumnHeader.state.columns[i]);
+            #endif
             var viewState = base.SaveViewState(name);
             viewState.tableConfig = m_TableConfig.Clone();
             viewState.tableConfig.name = name;

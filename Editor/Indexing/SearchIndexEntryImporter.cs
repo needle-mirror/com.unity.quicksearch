@@ -1,3 +1,4 @@
+//#define DEBUG_INDEXING
 using System;
 using System.IO;
 using UnityEditor.AssetImporters;
@@ -31,7 +32,7 @@ namespace UnityEditor.Search
 
     abstract class SearchIndexEntryImporter : ScriptedImporter
     {
-        public const int version = SearchIndexEntry.version;
+        public const int version = SearchIndexEntry.version | (0x0004 << 4);
 
         protected abstract IndexingOptions options { get; }
 
@@ -48,34 +49,35 @@ namespace UnityEditor.Search
 
         public override void OnImportAsset(AssetImportContext ctx)
         {
+            #if DEBUG_INDEXING
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            #endif
             var settings = new SearchDatabase.Settings { type = "asset", options = GetOptions() };
-
+            var indexer = SearchDatabase.CreateIndexer(settings);
             try
             {
-                var indexer = SearchDatabase.CreateIndexer(settings);
-                try
-                {
-                    ctx.DependsOnCustomDependency(GetType().GUID.ToString("N"));
-                    ctx.DependsOnCustomDependency(nameof(CustomObjectIndexerAttribute));
-                    indexer.IndexDocument(ctx.assetPath, false);
-                    indexer.ApplyUnsorted();
-                }
-                catch (Exception ex)
-                {
-                    ctx.LogImportError($"Failed to build search index for {ctx.assetPath}\n{ex}");
-                }
+                indexer.IndexDocument(ctx.assetPath, false);
+                indexer.Finish(removedDocuments: null);
 
                 #if USE_SEARCH_MODULE
                 var indexArtifactPath = ctx.GetOutputArtifactFilePath($"{(int)options:X}.index".ToLowerInvariant());
                 #else
                 var indexArtifactPath = ctx.GetResultPath($"{(int)options:X}.index".ToLowerInvariant());
                 #endif
-                using (var fileStream = new FileStream(indexArtifactPath, FileMode.CreateNew, FileAccess.Write, FileShare.Read))
+                using (var fileStream = new FileStream(indexArtifactPath, FileMode.CreateNew, FileAccess.Write, FileShare.None))
                     indexer.Write(fileStream);
+
+                ctx.DependsOnCustomDependency(GetType().GUID.ToString("N"));
+                ctx.DependsOnCustomDependency(nameof(CustomObjectIndexerAttribute));
+
+                #if DEBUG_INDEXING
+                UnityEngine.Debug.LogFormat(UnityEngine.LogType.Log, UnityEngine.LogOption.NoStacktrace, null,
+                    $"\n==> Indexing {ctx.assetPath} contains {indexer.documentCount} documents and {indexer.indexCount} entries and took {sw.ElapsedMilliseconds} ms");
+                #endif
             }
             catch (Exception ex)
             {
-                ctx.LogImportError(ex.Message);
+                ctx.LogImportError($"Failed to build search index for {ctx.assetPath}\n{ex}");
             }
         }
 

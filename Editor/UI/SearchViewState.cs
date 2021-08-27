@@ -16,7 +16,8 @@ namespace UnityEditor.Search
     [Serializable]
     public class SearchViewState : ISerializationCallbackReceiver
     {
-        static Vector2 defaultSize = new Vector2(850f, 539f);
+        static readonly Vector2 defaultSize = new Vector2(850f, 539f);
+        static readonly string[] emptyProviders = new string[0];
 
         internal SearchContext context
         {
@@ -35,21 +36,24 @@ namespace UnityEditor.Search
 
         [NonSerialized] private SearchContext m_Context;
         [NonSerialized] private bool m_WasDeserialized;
-        [SerializeField] private string[] providerIds;
+        [SerializeField] internal string[] providerIds;
         [SerializeField] private SearchFlags searchFlags;
         [SerializeField] internal string searchText; // Also used as the initial query when the view was created
         [SerializeField] internal bool forceViewMode;
         [SerializeField] internal string sessionId;
         [SerializeField] internal string sessionName;
         [SerializeField] internal bool excludeNoneItem;
+        [SerializeField] internal SearchTable tableConfig;
+
+        #if USE_QUERY_BUILDER
+        [SerializeField] internal bool queryBuilderEnabled;
+        #endif
 
         public string title;
         public float itemSize;
         public Rect position;
         public SearchViewFlags flags;
         public string group;
-
-        [SerializeField] internal SearchTable tableConfig;
 
         [NonSerialized] internal Action<SearchItem, bool> selectHandler;
         [NonSerialized] internal Action<SearchItem> trackingHandler;
@@ -79,6 +83,7 @@ namespace UnityEditor.Search
             position = Rect.zero;
             searchText = context?.searchText ?? string.Empty;
             tableConfig = null;
+            providerIds = emptyProviders;
         }
 
         internal SearchViewState(SearchContext context,
@@ -173,14 +178,13 @@ namespace UnityEditor.Search
             return sf;
         }
 
-        static bool IsObjectMatchingType(SearchItem item, Type filterType)
+        static bool IsObjectMatchingType(in SearchItem item, in Type filterType)
         {
             if (item == SearchItem.none)
                 return true;
-            var obj = item.ToObject(filterType);
-            if (!obj)
+            var objType = item.ToType(filterType);
+            if (objType == null)
                 return false;
-            var objType = obj.GetType();
             return filterType.IsAssignableFrom(objType);
         }
 
@@ -192,15 +196,21 @@ namespace UnityEditor.Search
 
         internal SearchViewState LoadDefaults(SearchFlags additionalFlags = SearchFlags.None)
         {
+            var runningTests = Utils.IsRunningTests();
             if (string.IsNullOrEmpty(title))
                 title = "Unity";
-            if (!forceViewMode)
+            if (!forceViewMode && !runningTests)
                 itemSize = SearchSettings.itemIconSize;
+
+            #if USE_QUERY_BUILDER
+            if (!runningTests)
+                queryBuilderEnabled = SearchSettings.queryBuilder;
+            #endif
 
             if (context != null)
             {
                 context.options |= additionalFlags;
-                if (Utils.IsRunningTests())
+                if (runningTests)
                     context.options |= SearchFlags.Dockable;
             }
             return this;
@@ -222,12 +232,15 @@ namespace UnityEditor.Search
 
         internal IEnumerable<string> GetProviderIds()
         {
-            return context.GetProviders().Select(p => p.id);
+            if (context != null)
+                return context.GetProviders().Select(p => p.id);
+            return providerIds;
         }
 
         internal IEnumerable<string> GetProviderTypes()
         {
-            return context.GetProviders().Select(p => p.type).Distinct();
+            var providers = context != null ? context.GetProviders() : SearchService.GetProviders(providerIds);
+            return providers.Select(p => p.type).Distinct();
         }
 
         internal bool HasFlag(SearchViewFlags f) => (flags & f) != 0;

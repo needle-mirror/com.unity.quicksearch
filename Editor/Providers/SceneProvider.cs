@@ -125,6 +125,8 @@ namespace UnityEditor.Search.Providers
 
             fetchPropositions = (context, options) =>
             {
+                if (options.HasAny(SearchPropositionFlags.QueryBuilder))
+                    return FetchQueryBuilderPropositions();
                 return m_SceneQueryEngine?.FindPropositions(context, options);
             };
 
@@ -368,6 +370,11 @@ namespace UnityEditor.Search.Providers
                 return go.GetComponent(type);
 
             return ObjectFromItem(item);
+        }
+
+        private IEnumerable<SearchProposition> FetchQueryBuilderPropositions()
+        {
+            return SearchUtils.FetchTypePropositions<Component>();
         }
     }
 

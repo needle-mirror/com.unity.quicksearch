@@ -280,6 +280,14 @@ namespace UnityEditor.Search
             fixedHeight = 0f
         };
 
+        public static readonly GUIStyle queryBuilderToolbar = new GUIStyle("Toolbar")
+        {
+            margin = new RectOffset(4, 4, 0, 4),
+            padding = new RectOffset(4, 8, 4, 4),
+            border = new RectOffset(0, 0, 0, 0),
+            fixedHeight = 0f
+        };
+
 
         const int k_SearchFieldFontSize = 15;
 
@@ -293,6 +301,26 @@ namespace UnityEditor.Search
             alignment = TextAnchor.MiddleLeft,
             margin = new RectOffset(4, 4, 4, 4),
             padding = new RectOffset(8, 20, 0, 0),
+            border = new RectOffset(0, 0, 0, 0),
+            normal = clear,
+            focused = clear,
+            hover = clear,
+            active = clear,
+            onNormal = clear,
+            onHover = clear,
+            onFocused = clear,
+            onActive = clear,
+        };
+
+        public static readonly GUIStyle queryBuilderSearchField = new GUIStyle()
+        {
+            wordWrap = false,
+            fontSize = k_SearchFieldFontSize,
+            fixedHeight = 0f,
+            fixedWidth = 0f,
+            alignment = TextAnchor.MiddleLeft,
+            margin = new RectOffset(0, 0, 0, 0),
+            padding = new RectOffset(2, 2, 0, 0),
             border = new RectOffset(0, 0, 0, 0),
             normal = clear,
             focused = clear,
@@ -687,9 +715,9 @@ namespace UnityEditor.Search
         public static readonly GUIContent tableSaveButtonContent = EditorGUIUtility.TrTextContentWithIcon("Save", "Save current table configuration", EditorGUIUtility.LoadIconRequired("SaveAs"));
         public static readonly GUIContent tableDeleteButtonContent = EditorGUIUtility.TrIconContent("Grid.EraserTool", "Delete table configuration");
         #else
-        public static readonly GUIContent listModeContent = new GUIContent("L", "List View");
+        public static readonly GUIContent listModeContent = EditorGUIUtility.TrTextContent("L", "List View");
         public static readonly GUIContent gridModeContent = new GUIContent("G", $"Grid View ({(int)DisplayMode.Grid}x{(int)DisplayMode.Grid})");
-        public static readonly GUIContent tableModeContent = new GUIContent("T", "Table View");
+        public static readonly GUIContent tableModeContent = EditorGUIUtility.TrTextContent("T", "Table View");
         #endif
 
         public static class QueryBuilder
@@ -704,7 +732,7 @@ namespace UnityEditor.Search
                 fixedWidth = 32f,
                 fixedHeight = 0,
                 padding = new RectOffset(0, 0, 0, 0),
-                margin = new RectOffset(2, 2, 4, 4)
+                margin = new RectOffset(2, 2, 0, 0)
             };
 
             static QueryBuilder()

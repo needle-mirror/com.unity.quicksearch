@@ -381,7 +381,7 @@ namespace UnityEditor.Search.Providers
                             var replacement = ToReplacementValue(p, label);
                             if (replacement != null)
                             {
-                                var proposition = new SearchProposition(label, replacement, $"{cTypeName} ({p.propertyType})");
+                                var proposition = new SearchProposition(label: label, replacement, $"{cTypeName} ({p.propertyType})");
                                 propositions.Add(proposition);
                             }
                             next = p.NextVisible(false);

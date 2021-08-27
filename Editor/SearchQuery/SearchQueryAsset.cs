@@ -75,6 +75,12 @@ namespace UnityEditor.Search
             set => name = value;
         }
 
+        public string details
+        {
+            get => description;
+            set => description = value;
+        }
+
         public Texture2D thumbnail => icon;
         public string filePath => AssetDatabase.GetAssetPath(this);
 
@@ -102,6 +108,20 @@ namespace UnityEditor.Search
         public SearchViewState viewState;
 
         public Texture2D icon;
+
+        [SerializeField] private bool m_IsSearchTemplate;
+
+        public bool isSearchTemplate
+        {
+            get
+            {
+                return m_IsSearchTemplate;
+            }
+            set
+            {
+                m_IsSearchTemplate = value;
+            }
+        }
 
         public string tooltip
         {

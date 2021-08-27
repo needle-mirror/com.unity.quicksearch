@@ -5,7 +5,7 @@ namespace UnityEditor.Search
 {
     class SearchResultCollection : ICollection<SearchResult>
     {
-        private HashSet<SearchResult> m_Set;
+        private readonly HashSet<SearchResult> m_Set;
 
         public int Count => m_Set.Count;
         public bool IsReadOnly => false;

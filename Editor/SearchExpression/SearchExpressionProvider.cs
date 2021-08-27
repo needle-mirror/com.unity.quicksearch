@@ -48,13 +48,13 @@ namespace UnityEditor.Search
                 if (token == '#')
                 {
                     foreach (var c in PropertySelectors.Enumerate(context.searchView.results.Take(10)))
-                        yield return new SearchProposition($"{token}{c.content.text ?? c.path}", $"{c.selector}\t", $"Property ({c.selector})");
+                        yield return new SearchProposition(label: $"{token}{c.content.text ?? c.path}", $"{c.selector}\t", $"Property ({c.selector})");
                 }
 
                 if (token == '@')
                 {
                     foreach (var s in SelectorManager.selectors.Where(s => s.printable))
-                        yield return new SearchProposition($"{token}{s.label}", $"@{s.label}\t", $"Selector");
+                        yield return new SearchProposition(label: $"{token}{s.label}", $"@{s.label}\t", $"Selector");
                 }
             }
         }

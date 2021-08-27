@@ -190,3 +190,11 @@
     padding: 15px;
     margin: 15px;
 }
+
+.quick-search-builder-row {
+    -unity-enable-hovering: --enable-style-hovering;
+}
+
+.quick-search-builder-row:hover {
+    background-color: --theme-line-selection-background-color-hover;
+}

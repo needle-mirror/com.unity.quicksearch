@@ -2,7 +2,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using UnityEditor;
 using UnityEditor.Experimental.GraphView;
 using UnityEngine;
 using UnityEngine.UIElements;
@@ -42,13 +41,24 @@ namespace UnityEditor.Search
         }
     }
 
-    internal class QueryGraphViewWindow : GraphViewEditorWindow
+    enum GraphType
     {
-        private string m_QueryInput;
-        private QueryEngine m_QueryEngine;
-        private GraphViewerQueryHandlerFactory m_QueryHandlerFactory;
+        Evaluation,
+        Query
+    }
+
+    class QueryGraphViewWindow : GraphViewEditorWindow
+    {
+        QueryEngine m_QueryEngine;
+        GraphViewerQueryHandlerFactory m_QueryHandlerFactory;
+
+        [SerializeField] public string searchQuery;
+        [SerializeField] public GraphType graphType = GraphType.Evaluation;
 
         public GraphView graphView { get; private set; }
+
+        RadioButtonGroup m_GraphTypeButtonGroup;
+        TextField m_SearchQueryTextField;
 
         public override IEnumerable<GraphView> graphViews
         {
@@ -71,26 +81,27 @@ namespace UnityEditor.Search
             rootVisualElement.style.flexDirection = FlexDirection.Column;
 
             SetupQueryInputBox(rootVisualElement);
+            SetupGraphToggleButton(rootVisualElement);
 
             rootVisualElement.Add(graphView);
 
             titleContent.text = "Query Graph View";
         }
 
-        private void SetupQueryInputBox(VisualElement root)
+        void SetupQueryInputBox(VisualElement root)
         {
             var queryInputRow = new VisualElement();
             queryInputRow.style.flexDirection = FlexDirection.Row;
             root.Add(queryInputRow);
 
-            var inputBox = new TextField("Query");
-            inputBox.RegisterValueChangedCallback(evt =>
+            m_SearchQueryTextField = new TextField("Query");
+            m_SearchQueryTextField.RegisterValueChangedCallback(evt =>
             {
-                m_QueryInput = evt.newValue;
+                searchQuery = evt.newValue;
                 UpdateGraphView();
             });
-            inputBox.style.flexGrow = 1;
-            queryInputRow.Add(inputBox);
+            m_SearchQueryTextField.style.flexGrow = 1;
+            queryInputRow.Add(m_SearchQueryTextField);
 
             var optimizeButton = new Button(() =>
             {
@@ -103,16 +114,46 @@ namespace UnityEditor.Search
             queryInputRow.Add(optimizeButton);
         }
 
-        private void SetupQueryEngine()
+        void SetupGraphToggleButton(VisualElement root)
+        {
+            var graphTypeNames = Enum.GetNames(typeof(GraphType)).ToList();
+            m_GraphTypeButtonGroup = new RadioButtonGroup("Graphs", graphTypeNames);
+            m_GraphTypeButtonGroup.RegisterValueChangedCallback(evt =>
+            {
+                var newValueIndex = evt.newValue;
+                if (newValueIndex < 0 || newValueIndex >= graphTypeNames.Count)
+                    return;
+                var selectedName = graphTypeNames[newValueIndex];
+                if (!Enum.TryParse(selectedName, out GraphType newValue))
+                    return;
+                graphType = newValue;
+                UpdateGraphView();
+            });
+            root.Add(m_GraphTypeButtonGroup);
+
+            UpdateGraphType();
+        }
+
+        void SetupQueryEngine()
         {
             m_QueryEngine = new QueryEngine(false);
             m_QueryHandlerFactory = new GraphViewerQueryHandlerFactory();
         }
 
-        private void UpdateGraphView()
+        public void SetView(in string searchQuery, GraphType type)
         {
-            var query = m_QueryEngine.Parse(m_QueryInput, m_QueryHandlerFactory);
-            if (!query.valid && !string.IsNullOrEmpty(m_QueryInput))
+            graphType = type;
+            if (m_GraphTypeButtonGroup != null)
+                UpdateGraphType();
+            if (m_SearchQueryTextField != null)
+                m_SearchQueryTextField.value = searchQuery;
+            UpdateGraphView();
+        }
+
+        void UpdateGraphView()
+        {
+            var query = m_QueryEngine.Parse(searchQuery, m_QueryHandlerFactory);
+            if (!query.valid && !string.IsNullOrEmpty(searchQuery))
             {
                 foreach (var error in query.errors)
                 {
@@ -121,18 +162,34 @@ namespace UnityEditor.Search
                 return;
             }
 
-            ((QueryGraphView)graphView).Reload(query.evaluationGraph);
+            var gv = (QueryGraphView)graphView;
+            switch (graphType)
+            {
+                case GraphType.Evaluation:
+                    gv.Reload(query.evaluationGraph);
+                    break;
+                case GraphType.Query:
+                    gv.Reload(query.queryGraph);
+                    break;
+            }
+        }
+
+        void UpdateGraphType()
+        {
+            var currentGraphTypeName = graphType.ToString();
+            var graphTypeNames = Enum.GetNames(typeof(GraphType)).ToList();
+            m_GraphTypeButtonGroup.value = graphTypeNames.FindIndex(graphTypeName => graphTypeName == currentGraphTypeName);
         }
     }
 
-    internal class QueryGraphView : GraphView
+    class QueryGraphView : GraphView
     {
-        private QueryGraphViewWindow m_GraphViewWindow;
-        private QueryGraph m_Graph;
-        private Dictionary<IQueryNode, Node> m_QueryNodesToViewNodes;
+        QueryGraphViewWindow m_GraphViewWindow;
+        QueryGraph m_Graph;
+        Dictionary<IQueryNode, Node> m_QueryNodesToViewNodes;
 
-        private const float k_WidthBetweenNodes = 1;
-        private const float k_HeightBetweenNodes = 5;
+        const float k_WidthBetweenNodes = 1;
+        const float k_HeightBetweenNodes = 5;
 
         public QueryGraph graph => m_Graph;
 
@@ -192,7 +249,7 @@ namespace UnityEditor.Search
             EditorApplication.delayCall += DoLayouting;
         }
 
-        private Node AddNode(IQueryNode node, Dictionary<IQueryNode, Node> queryNodesToViewNodes)
+        Node AddNode(IQueryNode node, Dictionary<IQueryNode, Node> queryNodesToViewNodes)
         {
             var visualElementNode = new Node();
             switch (node.type)
@@ -203,18 +260,15 @@ namespace UnityEditor.Search
                 case QueryNodeType.Intersection:
                 case QueryNodeType.Union:
                 case QueryNodeType.Where:
+                case QueryNodeType.Group:
                     visualElementNode.title = node.type.ToString();
                     break;
                 case QueryNodeType.Search:
-                    var searchNode = node as SearchNode;
-                    visualElementNode.title = $"{(searchNode.exact? "!":"")}{searchNode.searchValue}";
-                    break;
                 case QueryNodeType.Filter:
-                    var filterNode = node as FilterNode;
-                    visualElementNode.title = filterNode.identifier;
-                    break;
                 case QueryNodeType.NestedQuery:
                 case QueryNodeType.Aggregator:
+                case QueryNodeType.Comment:
+                case QueryNodeType.Toggle:
                     visualElementNode.title = node.identifier;
                     break;
                 case QueryNodeType.FilterIn:
@@ -250,7 +304,7 @@ namespace UnityEditor.Search
             return visualElementNode;
         }
 
-        private void ClearContent()
+        void ClearContent()
         {
             m_Graph = null;
             var edgesToRemove = this.Query<Edge>().ToList();
@@ -266,7 +320,7 @@ namespace UnityEditor.Search
             }
         }
 
-        private void DoLayouting()
+        void DoLayouting()
         {
             if (m_Graph == null)
                 return;
@@ -279,7 +333,7 @@ namespace UnityEditor.Search
             FrameAll();
         }
 
-        private void LayoutGraphNodes(QueryGraph graph, Dictionary<IQueryNode, Node> queryNodesToViewNodes)
+        void LayoutGraphNodes(QueryGraph graph, Dictionary<IQueryNode, Node> queryNodesToViewNodes)
         {
             var levelIndexByNode = new Dictionary<IQueryNode, LayoutPosition>();
             var nodesByLevel = new Dictionary<int, List<IQueryNode>>();
