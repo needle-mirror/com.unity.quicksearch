@@ -108,6 +108,7 @@ namespace UnityEditor.Search
                     {
                         var contextRect = new Rect(evt.mousePosition, new Vector2(1, 1));
                         searchView.ShowItemContextualMenu(item, contextRect);
+                        evt.Use();
                         GUIUtility.ExitGUI();
                     }
 

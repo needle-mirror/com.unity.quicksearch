@@ -584,5 +584,10 @@ namespace UnityEditor.Search
             }
             return new StringView(baseString, startIndex, i);
         }
+
+        public static bool HasQuotes(this StringView sv, in char quoteChar = '"')
+        {
+            return sv.Length >= 2 && sv.StartsWith(quoteChar) && sv.EndsWith(quoteChar);
+        }
     }
 }

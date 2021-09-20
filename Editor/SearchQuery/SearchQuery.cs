@@ -125,7 +125,6 @@ namespace UnityEditor.Search
                         m_LastUsedTime = (long)data;
                 }
                 #endif
-
                 return m_LastUsedTime;
             }
         }
@@ -205,19 +204,11 @@ namespace UnityEditor.Search
 
         public SearchViewState GetResultViewState()
         {
-#if USE_SEARCH_MODULE
             return new SearchViewState(tableConfig)
             {
                 group = null,
                 itemSize = viewState.itemSize
             };
-#else
-            return new SearchViewState()
-            {
-                itemSize = viewState.itemSize,
-                group = null
-            };
-#endif
         }
 
         public override int GetHashCode()

@@ -5,11 +5,14 @@ namespace UnityEditor.Search
 {
     class QueryHelperWindow : EditorWindow
     {
+        static bool s_BlockMode;
+
         QueryHelperWidget m_Widget;
         bool m_ShownAsDropdown;
 
-        public static void Open(Rect r, ISearchView view)
+        public static void Open(Rect r, ISearchView view, bool blockMode)
         {
+            s_BlockMode = blockMode;
             var screenRect = new Rect(GUIUtility.GUIToScreenPoint(r.position), r.size);
             var window = CreateInstance<QueryHelperWindow>();
             window.m_ShownAsDropdown = true;
@@ -22,8 +25,8 @@ namespace UnityEditor.Search
         {
             wantsMouseMove = true;
             titleContent = new GUIContent("Helper");
-            m_Widget = new QueryHelperWidget();
-            m_Widget.blockSelected += OnBlockSelected;
+            m_Widget = new QueryHelperWidget(s_BlockMode);
+            m_Widget.queryExecuted += OnQueryExecuted;
         }
 
         void OnGUI()
@@ -34,7 +37,7 @@ namespace UnityEditor.Search
                 Close();
         }
 
-        void OnBlockSelected(QueryBuilder builder, QueryBlock block, bool isDoubleClick)
+        void OnQueryExecuted(ISearchQuery query)
         {
             if (m_ShownAsDropdown)
                 Close();

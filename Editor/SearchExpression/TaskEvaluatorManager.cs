@@ -148,9 +148,8 @@ namespace UnityEditor.Search
             var items = new ConcurrentBag<T>();
             var results = new ConcurrentBag<T>();
             var resultSignal = new EventWaitHandle(false, EventResetMode.AutoReset);
-            var batchFinishedSignal = new EventWaitHandle(true, EventResetMode.AutoReset);
 
-            void ProcessBatch(int batchCount)
+            void ProcessBatch(int batchCount, EventWaitHandle finishedSignal)
             {
                 var processedItemCount = 0;
                 while (items.TryTake(out var item))
@@ -166,9 +165,10 @@ namespace UnityEditor.Search
                         break;
                 }
 
-                batchFinishedSignal.Set();
+                finishedSignal.Set();
             }
 
+            EventWaitHandle batchFinishedSignal = null;
             foreach (var r in set)
             {
                 if (r == null)
@@ -178,11 +178,11 @@ namespace UnityEditor.Search
                 }
 
                 items.Add(r);
-                if (batchFinishedSignal.WaitOne(0))
+                if (batchFinishedSignal == null || batchFinishedSignal.WaitOne(0))
                 {
-
-                    Dispatcher.Enqueue(() => ProcessBatch(minBatchSize));
-                    yield return null;
+                    if (batchFinishedSignal == null)
+                        batchFinishedSignal = new EventWaitHandle(false, EventResetMode.AutoReset);
+                    Dispatcher.Enqueue(() => ProcessBatch(minBatchSize, batchFinishedSignal));
                 }
 
                 if (resultSignal.WaitOne(0))
@@ -190,9 +190,9 @@ namespace UnityEditor.Search
                         yield return item;
             }
 
-            batchFinishedSignal.Reset();
-            Dispatcher.Enqueue(() => ProcessBatch(-1));
-            while (results.Count > 0 || !batchFinishedSignal.WaitOne(1) || results.Count > 0)
+            var finalBatch = new EventWaitHandle(false, EventResetMode.ManualReset);
+            Dispatcher.Enqueue(() => ProcessBatch(-1, finalBatch));
+            while (!finalBatch.WaitOne(1) || results.Count > 0)
             {
                 while (results.TryTake(out var item))
                     yield return item;

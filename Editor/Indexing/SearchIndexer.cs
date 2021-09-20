@@ -953,6 +953,22 @@ namespace UnityEditor.Search
             }
         }
 
+        internal void MapProperty(in string name, in string label, in string help, in string propertyType, in string ownerTypeName, bool removeNestedKeys = false)
+        {
+            MapKeyword(name + ":", $"{label}|{help}|{propertyType}|{ownerTypeName}");
+            if (removeNestedKeys)
+            {
+                m_Keywords.Remove(name + ".x:");
+                m_Keywords.Remove(name + ".y:");
+                m_Keywords.Remove(name + ".z:");
+                m_Keywords.Remove(name + ".w:");
+                m_Keywords.Remove(name + ".r:");
+                m_Keywords.Remove(name + ".g:");
+                m_Keywords.Remove(name + ".b:");
+                m_Keywords.Remove(name + ".a:");
+            }
+        }
+
         internal void MapKeyword(string keyword, string help)
         {
             m_Keywords.Remove(keyword);
@@ -1403,17 +1419,13 @@ namespace UnityEditor.Search
             }
 
             if (value.Length > maxVariations)
-            {
                 indexes.Add(new SearchIndexEntry(valueHash, nameHash, SearchIndexEntry.Type.Property, documentIndex, score - 1));
-                //UnityEngine.Debug.Log($"Add Property [{documentIndex}]: {name}, {nameHash}, {value}, {valueHash}, {score - 1}");
-            }
 
             if (exact)
             {
                 nameHash ^= name.Length.GetHashCode();
                 valueHash ^= value.Length.GetHashCode();
                 indexes.Add(new SearchIndexEntry(valueHash, nameHash, SearchIndexEntry.Type.Property, documentIndex, score - 3));
-                //UnityEngine.Debug.Log($"Add Property [{documentIndex}]: {name}, {nameHash}, {value}, {valueHash}, {score - 3}");
             }
 
             if (saveKeyword)

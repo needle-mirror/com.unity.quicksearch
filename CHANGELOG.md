@@ -1,7 +1,7 @@
 # Changelog
 
-## [3.0.0-preview.16] - 2021-08-27
-- Add query builder experimental support
+## [3.0.0-preview.17] - 2021-09-20
+- Add search action Properties for the asset provider
 - Add support for the dependency manager
 - Add table view support for 2020.3
 - Do not stall asset provider request when done through a search expression if the indexes are not ready.
@@ -9,16 +9,22 @@
 - Fix asset store provider display in compact view.
 - Fix asset type selector for GameObject/Prefabs, @type will report Prefab for GameObject assets (i.e. .prefab files)
 - Fix performance issue with DateTime.Now and GetDocumentKey with scene objects (~10x)
+- Fix Quick Search package 3.0 can not open prefab/scene on alt+enter (case 1362526)
+- Fix saving query doesn't save customized column layout (case 1365672)
 - Fix scene provider item display in compact view.
 - Fix search column serialization using path info instead of selector.
 - Fix search file checkout when using SCM (i.e. perforce)
 - Guard API attributes from user code exceptions
+- Improve material and shader asset indexing. 
 - Improve search auto-completion when query includes commas (,)
+- Improve search indexing keyword mapping.
+- Improve search proposition for upcoming Query Builder.
 - Improve Search UI localization
+- Improve Search UI responsiveness.
 - Optimize scene ref: search queries, ~10% faster.
 - Process search task dispatcher when running background search expressions (fix some query stalling when using SearchService.Request)
 - Reduce index size by 10-20% by removing unused filters, name: and id:
-- Remove id: and name: from the asset index (reduces the index size)
+- Search expression can now be nested in a filtered query, i.e. `h: ref=select{p: t:texture icons, @path}`
 
 ## [3.0.0-preview.12] - 2021-06-25
 - Add API SearchService.CreateIndex to dynamically create a new index.

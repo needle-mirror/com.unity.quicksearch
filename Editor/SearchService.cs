@@ -31,6 +31,7 @@ namespace UnityEditor.Search
     public static class SearchService
     {
         private const int k_MaxFetchTimeMs = 50;
+        static SearchProvider s_SearchServiceProvider;
 
         /// <summary>
         /// Returns the list of all providers (active or not)
@@ -80,6 +81,11 @@ namespace UnityEditor.Search
         public static SearchProvider GetProvider(string providerId)
         {
             return Providers.Find(p => p.id == providerId);
+        }
+
+        internal static SearchProvider GetDefaultProvider()
+        {
+            return s_SearchServiceProvider;
         }
 
         internal static SearchProvider GetProvider(Type providerType)
@@ -231,44 +237,30 @@ namespace UnityEditor.Search
 
             int fetchProviderCount = 0;
             var allItems = new List<SearchItem>(3);
-            foreach (var provider in context.providers)
+
+            if (TryParseExpression(context, out var expression))
             {
-                try
+                var iterator = EvaluateExpression(expression, context);
+                HandleItemsIteratorSession(iterator, allItems, s_SearchServiceProvider.id, context, options);
+                fetchProviderCount++;
+            }
+            else
+            {
+                foreach (var provider in context.providers)
                 {
-                    var watch = new System.Diagnostics.Stopwatch();
-                    watch.Start();
-                    fetchProviderCount++;
-                    var iterator = provider.fetchItems(context, allItems, provider);
-                    if (iterator != null && options.HasAny(SearchFlags.Synchronous))
+                    try
                     {
-                        using (var stackedEnumerator = new SearchEnumerator<SearchItem>(iterator))
-                        {
-                            while (stackedEnumerator.MoveNext())
-                            {
-                                if (stackedEnumerator.Current != null)
-                                    allItems.Add(stackedEnumerator.Current);
-                            }
-                        }
+                        var watch = new System.Diagnostics.Stopwatch();
+                        watch.Start();
+                        fetchProviderCount++;
+                        var iterator = provider.fetchItems(context, allItems, provider);
+                        HandleItemsIteratorSession(iterator, allItems, provider.id, context, options);
+                        provider.RecordFetchTime(watch.Elapsed.TotalMilliseconds);
                     }
-                    else
+                    catch (Exception ex)
                     {
-                        var session = context.sessions.GetProviderSession(context, provider.id);
-                        session.Reset(context, iterator, k_MaxFetchTimeMs);
-                        session.Start();
-                        var sessionEnded = !session.FetchSome(allItems, k_MaxFetchTimeMs);
-                        if (options.HasAny(SearchFlags.FirstBatchAsync))
-                        {
-                            session.SendItems(context.subset != null ? allItems.Intersect(context.subset) : allItems);
-                            allItems.Clear();
-                        }
-                        if (sessionEnded)
-                            session.Stop();
+                        Debug.LogException(new Exception($"Failed to get fetch {provider.name} provider items.", ex));
                     }
-                    provider.RecordFetchTime(watch.Elapsed.TotalMilliseconds);
-                }
-                catch (Exception ex)
-                {
-                    Debug.LogException(new Exception($"Failed to get fetch {provider.name} provider items.", ex));
                 }
             }
 
@@ -286,6 +278,35 @@ namespace UnityEditor.Search
 
             allItems.Sort(SortItemComparer);
             return allItems.GroupBy(i => i.id).Select(i => i.First()).ToList();
+        }
+
+        static void HandleItemsIteratorSession(object iterator, List<SearchItem> allItems,  string id, SearchContext context, SearchFlags options)
+        {
+            if (iterator != null && options.HasAny(SearchFlags.Synchronous))
+            {
+                using (var stackedEnumerator = new SearchEnumerator<SearchItem>(iterator))
+                {
+                    while (stackedEnumerator.MoveNext())
+                    {
+                        if (stackedEnumerator.Current != null)
+                            allItems.Add(stackedEnumerator.Current);
+                    }
+                }
+            }
+            else
+            {
+                var session = context.sessions.GetProviderSession(context, id);
+                session.Reset(context, iterator, k_MaxFetchTimeMs);
+                session.Start();
+                var sessionEnded = !session.FetchSome(allItems, k_MaxFetchTimeMs);
+                if (options.HasAny(SearchFlags.FirstBatchAsync))
+                {
+                    session.SendItems(context.subset != null ? allItems.Intersect(context.subset) : allItems);
+                    allItems.Clear();
+                }
+                if (sessionEnded)
+                    session.Stop();
+            }
         }
 
         /// <summary>
@@ -461,6 +482,7 @@ namespace UnityEditor.Search
                 .Select(LoadProvider)
                 .Where(provider => provider != null)
                 .ToList();
+            s_SearchServiceProvider = SearchServiceProvider.CreateProvider();
         }
 
         private static SearchProvider LoadProvider(System.Reflection.MethodInfo methodInfo)
@@ -734,6 +756,77 @@ namespace UnityEditor.Search
             }
             else
                 Utils.CallDelayed(() => TrackCreateIndex(db, options, indexName, indexPath, onIndexReady, delay), delay);
+        }
+
+        static bool TryParseExpression(SearchContext context, out SearchExpression expression)
+        {
+            expression = null;
+            if (string.IsNullOrEmpty(context.searchText) || context.options.HasAny(SearchFlags.QueryString))
+                return false;
+
+            if (!CouldContainExpression(context))
+                return false;
+
+            var rootExpression = ParseExpression(context);
+            if (rootExpression == null || (rootExpression.types.HasAny(SearchExpressionType.QueryString) &&
+                rootExpression.parameters.Length == 0 && rootExpression.innerText == rootExpression.outerText) ||
+                !rootExpression.types.HasAny(SearchExpressionType.Function | SearchExpressionType.QueryString))
+                return false;
+
+            expression = rootExpression;
+            return true;
+        }
+
+        static bool CouldContainExpression(SearchContext context)
+        {
+            var text = context.searchText;
+            return text.IndexOf('{') != -1 || text.IndexOf('}') != -1 ||
+                text.IndexOf('[') != -1 || text.IndexOf(']') != -1;
+        }
+
+        static SearchExpression ParseExpression(SearchContext context)
+        {
+            try
+            {
+                return SearchExpression.Parse(context);
+            }
+            catch (SearchExpressionParseException ex)
+            {
+                var queryError = new SearchQueryError(ex.index, ex.length, ex.Message,
+                    context, s_SearchServiceProvider, fromSearchQuery: false, SearchQueryErrorType.Error);
+                context.AddSearchQueryError(queryError);
+                return null;
+            }
+        }
+
+        static IEnumerable<SearchItem> EvaluateExpression(SearchExpression expression, SearchContext context)
+        {
+            #if USE_PROPERTY_DATABASE
+            using (SearchMonitor.GetView())
+            #endif
+            {
+                var evaluationFlags = SearchExpressionExecutionFlags.ThreadedEvaluation;
+                var it = expression.Execute(context, evaluationFlags).GetEnumerator();
+                while (EvaluateExpression(context, it))
+                    yield return it.Current;
+
+                TableView.SetupColumns(context, expression);
+            }
+        }
+
+        static bool EvaluateExpression(SearchContext context, IEnumerator<SearchItem> it)
+        {
+            try
+            {
+                return it.MoveNext();
+            }
+            catch (SearchExpressionEvaluatorException ex)
+            {
+                var queryError = new SearchQueryError(ex.errorView.startIndex, ex.errorView.Length, ex.Message,
+                    context, s_SearchServiceProvider, fromSearchQuery: false, SearchQueryErrorType.Error);
+                context.AddSearchQueryError(queryError);
+                return false;
+            }
         }
     }
 }

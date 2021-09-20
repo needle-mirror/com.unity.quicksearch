@@ -18,11 +18,13 @@ using UnityEditor.StyleSheets;
 #else
 [assembly: System.Runtime.CompilerServices.InternalsVisibleTo("Assembly-CSharp-Editor-testable")]
 [assembly: System.Runtime.CompilerServices.InternalsVisibleTo("com.unity.search.extensions.editor")]
-[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("Unity.Environment.Core.Editor")]
-[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("Unity.ProceduralGraph.Editor")]
 #endif
 
 [assembly: System.Runtime.CompilerServices.InternalsVisibleTo("com.unity.quicksearch.tests")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("Unity.Environment.Core.Editor")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("Unity.ProceduralGraph.Editor")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("Unity.Rendering.Hybrid")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("Unity.VisualEffectGraph.Editor")]
 
 namespace UnityEditor.Search
 {
@@ -37,6 +39,8 @@ namespace UnityEditor.Search
     /// </summary>
     static class Utils
     {
+        const int k_MaxRegexTimeout = 25;
+
         #if !USE_SEARCH_MODULE
         const string packageName = "com.unity.quicksearch";
         public static readonly string packageFolderName = $"Packages/{packageName}";
@@ -262,8 +266,6 @@ namespace UnityEditor.Search
             var assetType = AssetDatabase.GetMainAssetTypeAtPath(path);
             if (assetType == typeof(SceneAsset))
                 return AssetDatabase.GetCachedIcon(path) as Texture2D;
-
-            //UnityEngine.Debug.Log($"Generate preview for {path}, {previewSize}, {previewOptions}");
 
             if (previewOptions.HasAny(FetchPreviewOptions.Normal))
             {
@@ -1239,13 +1241,46 @@ namespace UnityEditor.Search
             #endif
         }
 
+        internal static string ToString(in Vector3 v)
+        {
+            return $"({FormatFloatString(v.x)},{FormatFloatString(v.y)},{FormatFloatString(v.z)})";
+        }
+
+        internal static string ToString(in Vector4 v, int dim)
+        {
+            switch (dim)
+            {
+                case 2: return $"({FormatFloatString(v.x)},{FormatFloatString(v.y)})";
+                case 3: return $"({FormatFloatString(v.x)},{FormatFloatString(v.y)},{FormatFloatString(v.z)})";
+                case 4: return $"({FormatFloatString(v.x)},{FormatFloatString(v.y)},{FormatFloatString(v.z)},{FormatFloatString(v.w)})";
+            }
+            return null;
+        }
+
+        internal static string ToString(in Vector2Int v)
+        {
+            return $"({(int.MaxValue == v.x ? string.Empty : v.x.ToString())},{(int.MaxValue == v.y ? string.Empty : v.y.ToString())})";
+        }
+
+        internal static string ToString(in Vector3Int v)
+        {
+            return $"({(int.MaxValue == v.x ? string.Empty : v.x.ToString())},{(int.MaxValue == v.y ? string.Empty : v.y.ToString())},{(int.MaxValue == v.z ? string.Empty : v.z.ToString())})";
+        }
+
+        internal static string FormatFloatString(in float f)
+        {
+            if (float.IsNaN(f))
+                return string.Empty;
+            return f.ToString(CultureInfo.InvariantCulture);
+        }
+
         internal static bool TryParseVectorValue(in object value, out Vector4 vc, out int dim)
         {
             dim = 0;
             vc = new Vector4(float.NaN, float.NaN, float.NaN, float.NaN);
             if (!(value is string arg))
                 return false;
-            if (arg.Length <= 3 || arg[0] != '(' || arg[arg.Length - 1] != ')')
+            if (arg.Length < 3 || arg[0] != '(' || arg[arg.Length - 1] != ')' || arg.IndexOf(',') == -1)
                 return false;
             var ves = arg.Substring(1, arg.Length - 2);
             var values = ves.Split(',');
@@ -1545,9 +1580,10 @@ namespace UnityEditor.Search
             {
                 var assembly = typeof(EditorWindow).Assembly;
                 var type = assembly.GetTypes().First(t => t.Name == "PropertyEditor");
-                s_OpenPropertyEditor = type.GetMethod("OpenPropertyEditor", BindingFlags.NonPublic | BindingFlags.Static);
+                s_OpenPropertyEditor = type.GetMethod("OpenPropertyEditor", BindingFlags.NonPublic | BindingFlags.Static,
+                    null, new [] { typeof(UnityEngine.Object), typeof(bool) }, null);
             }
-            s_OpenPropertyEditor.Invoke(null, new object[] { target });
+            s_OpenPropertyEditor.Invoke(null, new object[] { target, true });
             #endif
         }
 
@@ -1662,6 +1698,51 @@ namespace UnityEditor.Search
             #else
             System.IO.File.WriteAllText(path, content);
             #endif
+        }
+
+        internal static bool ParseRx(string pattern, bool exact, out Regex rx)
+        {
+            try
+            {
+                rx = new Regex(!exact ? pattern : $"^{pattern}$", RegexOptions.IgnoreCase, TimeSpan.FromMilliseconds(k_MaxRegexTimeout));
+            }
+            catch (ArgumentException)
+            {
+                rx = null;
+                return false;
+            }
+
+            return true;
+        }
+
+        internal static bool ParseGlob(string pattern, bool exact, out Regex rx)
+        {
+            try
+            {
+                pattern = Regex.Escape(RemoveDuplicateAdjacentCharacters(pattern, '*')).Replace(@"\*", ".*").Replace(@"\?", ".");
+                rx = new Regex(!exact ? pattern : $"^{pattern}$", RegexOptions.IgnoreCase, TimeSpan.FromMilliseconds(k_MaxRegexTimeout));
+            }
+            catch (ArgumentException)
+            {
+                rx = null;
+                return false;
+            }
+
+            return true;
+        }
+
+        static string RemoveDuplicateAdjacentCharacters(string pattern, char c)
+        {
+            for (int i = pattern.Length - 1; i >= 0; --i)
+            {
+                if (pattern[i] != c || i == 0)
+                    continue;
+
+                if (pattern[i - 1] == c)
+                    pattern = pattern.Remove(i, 1);
+            }
+
+            return pattern;
         }
     }
 

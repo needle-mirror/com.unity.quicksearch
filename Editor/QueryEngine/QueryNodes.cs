@@ -298,20 +298,22 @@ namespace UnityEditor.Search
             children = new List<IQueryNode>();
         }
 
-        public void AddNode(IQueryNode node)
+        public CombinedNode AddNode(IQueryNode node)
         {
             children.Add(node);
             node.parent = this;
+            return this;
         }
 
-        public void RemoveNode(IQueryNode node)
+        public CombinedNode RemoveNode(IQueryNode node)
         {
             if (!children.Contains(node))
-                return;
+                return this;
 
             children.Remove(node);
             if (node.parent == this)
                 node.parent = null;
+            return this;
         }
 
         public void Clear()
@@ -517,15 +519,17 @@ namespace UnityEditor.Search
 
         internal StringView nestedQueryStringView;
         internal StringView associatedFilterStringView;
+        internal StringView rawNestedQueryStringView;
 
-        public NestedQueryNode(in StringView nestedQuery, INestedQueryHandler nestedQueryHandler)
+        public NestedQueryNode(in StringView nestedQuery, in StringView rawNestedQuery, INestedQueryHandler nestedQueryHandler)
         {
             nestedQueryStringView = nestedQuery;
+            rawNestedQueryStringView = rawNestedQuery;
             this.nestedQueryHandler = nestedQueryHandler;
         }
 
-        public NestedQueryNode(in StringView nestedQuery, in StringView filterToken, INestedQueryHandler nestedQueryHandler)
-            : this(nestedQuery, nestedQueryHandler)
+        public NestedQueryNode(in StringView nestedQuery, in StringView rawNestedQuery, in StringView filterToken, INestedQueryHandler nestedQueryHandler)
+            : this(nestedQuery, rawNestedQuery, nestedQueryHandler)
         {
             associatedFilterStringView = filterToken;
         }
@@ -537,7 +541,7 @@ namespace UnityEditor.Search
 
         public IQueryNode Copy()
         {
-            return new NestedQueryNode(in nestedQueryStringView, in associatedFilterStringView, nestedQueryHandler)
+            return new NestedQueryNode(in nestedQueryStringView, in rawNestedQueryStringView, in associatedFilterStringView, nestedQueryHandler)
             {
                 parent = parent,
                 token = token,

@@ -67,8 +67,8 @@ namespace UnityEditor.Search.Providers
                 showDetailsOptions = ShowDetailsOptions.ListView,
                 fetchItems = (context, items, provider) => FetchItems(context, provider),
                 fetchLabel = (item, context) => item.label ?? (item.label = Utils.GetNameFromPath(item.id)),
-
-                fetchThumbnail = (item, context) => Icons.settings
+                fetchThumbnail = (item, context) => Icons.settings,
+                fetchPropositions = (context, options) => FetchPropositions(context, options)
             };
         }
 
@@ -87,6 +87,17 @@ namespace UnityEditor.Search.Providers
             yield return query.Apply(SettingsProviderCache.value).Select(spi => provider.CreateItem(context, spi.path, spi.label, spi.path, null, null));
         }
 
+        static IEnumerable<SearchProposition> FetchPropositions(SearchContext context, SearchPropositionOptions options)
+        {
+            if (!options.flags.HasAny(SearchPropositionFlags.QueryBuilder))
+                yield break;
+
+            #if USE_QUERY_BUILDER
+            foreach (var f in QueryListBlockAttribute.GetPropositions(typeof(QueryScopeFilterBlock)))
+                yield return f;
+            #endif
+        }
+
         [SearchActionsProvider]
         internal static IEnumerable<SearchAction> ActionHandlers()
         {
@@ -103,4 +114,22 @@ namespace UnityEditor.Search.Providers
             };
         }
     }
+
+    #if USE_QUERY_BUILDER
+    [QueryListBlock("Scope", "scope", "scope")]
+    class QueryScopeFilterBlock : QueryListBlock
+    {
+        public QueryScopeFilterBlock(IQuerySource source, string value, QueryListBlockAttribute attr)
+            : base(source, value, attr)
+        {
+            icon = Utils.LoadIcon("Filter Icon");
+        }
+
+        public override IEnumerable<SearchProposition> GetPropositions(SearchPropositionFlags flags)
+        {
+            yield return CreateProposition(flags, "Project", "project", "Search project settings");
+            yield return CreateProposition(flags, "User", "user", "Search user settings");
+        }
+    }
+    #endif
 }

@@ -61,10 +61,15 @@ namespace UnityEditor.Search
                     --level;
                 if (innerText[i] != ',' || level != 0)
                     continue;
+                if (i+1 == innerText.Length)
+                    return false;
 
                 args.Add(innerText.Substring(currentArgStart, i - currentArgStart).Trim());
                 currentArgStart = i + 1;
             }
+
+            if (currentArgStart == innerText.Length)
+                return false; // No arguments
 
             // Extract the final argument, since there is no comma after the last argument
             args.Add(innerText.Substring(currentArgStart, innerText.Length - currentArgStart).Trim());
@@ -166,6 +171,8 @@ namespace UnityEditor.Search
         public static string ReplaceMarkersWithRawValues(StringView text)
         {
             var allMarkers = ParseAllMarkers(text);
+            if (allMarkers == null || allMarkers.Length == 0)
+                return text.ToString();
 
             var modifiedSv = text.GetSubsetStringView();
             foreach (var queryMarker in allMarkers)
@@ -221,6 +228,11 @@ namespace UnityEditor.Search
         public IEnumerable<object> EvaluateArgs(SearchContext context, bool reevaluateLiterals = false)
         {
             return args.SelectMany(qma => qma.Evaluate(context, reevaluateLiterals));
+        }
+
+        public override string ToString()
+        {
+            return $"{k_StartToken}{type}:{string.Join(",", EvaluateArgs())}{k_EndToken}";
         }
     }
 }

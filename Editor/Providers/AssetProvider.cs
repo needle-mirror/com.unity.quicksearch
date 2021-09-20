@@ -353,51 +353,47 @@ namespace UnityEditor.Search.Providers
             foreach (var p in FetchIndexPropositions())
                 yield return p;
 
-            // TODO:
-            // - areas
-            // - labels
+            #if USE_QUERY_BUILDER
+            foreach (var l in QueryListBlockAttribute.GetPropositions(typeof(QueryLabelBlock)))
+                yield return l;
 
-            yield return new SearchProposition(category: "Types", label: "Prefabs", replacement: "t=prefab");
-            yield return new SearchProposition(category: "Types", label: "Scripts", replacement: "t=script");
+            foreach (var l in QueryListBlockAttribute.GetPropositions(typeof(QueryPrefabFilterBlock)))
+                yield return l;
 
-            yield return new SearchProposition(category: "Filters", label: "Directory (Name)", replacement: "dir=\"folder name\"");
-            yield return new SearchProposition(category: "Filters", label: "File Size", replacement: "size>=8096", help: "File size in bytes");
-            yield return new SearchProposition(category: "Filters", label: "File Extension", replacement: "ext:png"); // TODO: ext:<$enum:png,popular extensions... or all project extension?$>
-            yield return new SearchProposition(category: "Filters", label: "Age", replacement: "age>=1.5", help: "In days, when was the file last modified?");
-            yield return new SearchProposition(category: "Filters", label: "Sub Asset", replacement: "is:subasset", help: "Yield nested assets (i.e. media from FBX files)");
-
-            yield return new SearchProposition(category: "Prefabs", label: "Component (Count)", replacement: "components>1");
-            yield return new SearchProposition(category: "Prefabs", label: "Roots", replacement: "prefab:root");
-            yield return new SearchProposition(category: "Prefabs", label: "Instances", replacement: "prefab:instance");
-            yield return new SearchProposition(category: "Prefabs", label: "Top", replacement: "prefab:top");
-            yield return new SearchProposition(category: "Prefabs", label: "Non Asset", replacement: "prefab:nonasset");
-            yield return new SearchProposition(category: "Prefabs", label: "Asset", replacement: "prefab:asset");
-            yield return new SearchProposition(category: "Prefabs", label: "Any", replacement: "prefab:any");
-            yield return new SearchProposition(category: "Prefabs", label: "Models", replacement: "prefab:model");
-            yield return new SearchProposition(category: "Prefabs", label: "Regular", replacement: "prefab:regular");
-            yield return new SearchProposition(category: "Prefabs", label: "Variants", replacement: "prefab:variant");
-            yield return new SearchProposition(category: "Prefabs", label: "Modified", replacement: "prefab:modified");
-            yield return new SearchProposition(category: "Prefabs", label: "Modified (Default Overrides)", replacement: "prefab:altered");
+            foreach (var f in QueryListBlockAttribute.GetPropositions(typeof(QueryBundleFilterBlock)))
+                yield return f;
 
             if (SearchDatabase.EnumerateAll().Any(db => db.index?.settings?.options.extended ?? false))
             {
-                yield return new SearchProposition(category: "Filters", label: "Nested", replacement: "is:nested", help: "Yield nested objects from assets if any");
-                yield return new SearchProposition(category: "Filters", label: "Child", replacement: "is:child");
-                yield return new SearchProposition(category: "Filters", label: "Root", replacement: "is:root");
-                yield return new SearchProposition(category: "Filters", label: "Leaf", replacement: "is:leaf");
-                yield return new SearchProposition(category: "Filters", label: "Layer", replacement: "layer=1");
-                yield return new SearchProposition(category: "Filters", label: "Tag", replacement: "tag=untagged");
-                yield return new SearchProposition(category: "Filters", label: "Child", replacement: "is:child");
+                foreach (var f in QueryListBlockAttribute.GetPropositions(typeof(QueryIsFilterBlock)))
+                    yield return f;
+                foreach (var t in QueryListBlockAttribute.GetPropositions(typeof(QueryTagBlock)))
+                    yield return t;
             }
+            #endif
+
+            yield return new SearchProposition(category: "Filters", label: "Directory (Name)", replacement: "dir=\"folder name\"", icon: Icons.quicksearch);
+            yield return new SearchProposition(category: "Filters", label: "File Size", replacement: "size>=8096", help: "File size in bytes", icon: Icons.quicksearch);
+            yield return new SearchProposition(category: "Filters", label: "File Extension", replacement: "ext:png", icon: Icons.quicksearch);
+            yield return new SearchProposition(category: "Filters", label: "Age", replacement: "age>=1.5", help: "In days, when was the file last modified?", icon: Icons.quicksearch);
+            yield return new SearchProposition(category: "Filters", label: "Sub Asset", replacement: "is:subasset", help: "Yield nested assets (i.e. media from FBX files)", icon: Icons.quicksearch);
+
+            yield return new SearchProposition(category: null, "Reference", "ref=<$object:none,UnityEngine.Object$>", "Find all assets referencing a specific asset.");
         }
 
         private static IEnumerable<SearchProposition> FetchIndexPropositions()
         {
             var dbs = SearchDatabase.EnumerateAll();
-            foreach (var db in dbs)
+            foreach (var db in dbs.Where(db => !db.settings.options.disabled))
             {
                 while (!db.loaded)
                     Dispatcher.ProcessOne();
+
+                yield return new SearchProposition(
+                    category: "Area",
+                    label: db.name,
+                    replacement: $"a:{db.name}",
+                    icon: Icons.quicksearch);
 
                 foreach (var kw in db.index.GetKeywords())
                     yield return SearchUtils.CreateKeywordProposition(kw);
@@ -428,6 +424,18 @@ namespace UnityEditor.Search.Providers
             {
                 var info = new AssetMetaInfo(guidPath, GetGID(guidPath), SearchDocumentFlags.Asset);
                 yield return provider.CreateItem(context, info.gid.ToString(), -1, $"{Path.GetFileName(guidPath)} ({searchQuery})", null, null, info);
+            }
+
+            if (searchQuery.StartsWith("GlobalObjectId", StringComparison.Ordinal))
+            {
+                if (GlobalObjectId.TryParse(searchQuery, out var gid))
+                {
+                    var obj = GlobalObjectId.GlobalObjectIdentifierToObjectSlow(gid);
+                    var objPath = SearchUtils.GetObjectPath(obj);
+                    var info = new AssetMetaInfo(objPath, gid,
+                        gid.identifierType == (int)IdentifierType.kImportedAsset ? SearchDocumentFlags.Asset : SearchDocumentFlags.Nested | SearchDocumentFlags.Object);
+                    yield return provider.CreateItem(context, gid.ToString(), -1, objPath, null, null, info);
+                }
             }
 
             // Search indexes that are ready
@@ -639,15 +647,21 @@ namespace UnityEditor.Search.Providers
         }
 
         #endregion
+        #endif
 
         // We have our own OpenPropertyEditorsOnSelection so we don't have to worry about global selection
         private static void OpenPropertyEditorsOnSelection(IEnumerable<SearchItem> items)
         {
             var objs = items.Select(i => i.ToObject()).Where(o => o).ToArray();
+            if (objs.Length == 0)
+                return;
+            #if USE_SEARCH_MODULE
             if (objs.Length == 1)
+            #endif
             {
-                PropertyEditor.OpenPropertyEditor(objs[0]);
+                Utils.OpenPropertyEditor(objs[0]);
             }
+            #if USE_SEARCH_MODULE
             else if (objs.Length > 0)
             {
                 var firstPropertyEditor = PropertyEditor.OpenPropertyEditor(objs[0]);
@@ -660,9 +674,9 @@ namespace UnityEditor.Search.Providers
                         dock.AddTab(PropertyEditor.OpenPropertyEditor(objs[i], false));
                 };
             }
+            #endif
         }
 
-        #endif
         [SearchActionsProvider]
         internal static IEnumerable<SearchAction> CreateActionHandlers()
         {
@@ -673,8 +687,8 @@ namespace UnityEditor.Search.Providers
                     handler = (item) => SelectItem(item),
                     execute = (items) => SearchUtils.SelectMultipleItems(items, focusProjectBrowser: true)
                 },
-                new SearchAction(type, "open", null, "Open", OpenItem),
-                new SearchAction(type, "reimport", null, "Reimport", ReimportAssets),
+                new SearchAction(type, "open", null, "Open", OpenItem) { enabled = items => items.Count == 1 },
+                new SearchAction(type, "reimport", null, "Reimport", ReimportAssets) { enabled = items => items.Count == 1 },
                 new SearchAction(type, "add_scene", null, "Add scene")
                 {
                     // Only works in single selection and adds a scene to the current hierarchy.
@@ -684,17 +698,38 @@ namespace UnityEditor.Search.Providers
                 new SearchAction(type, "reveal", null, Utils.GetRevealInFinderLabel(), item => EditorUtility.RevealInFinder(GetAssetPath(item))),
                 #if USE_SEARCH_MODULE
                 new SearchAction(type, "delete", null, "Delete", DeleteAssets),
+                #endif
                 new SearchAction(type, "copy_path", null, "Copy Path")
                 {
                     enabled = items => items.Count == 1,
                     handler = item =>
                     {
-                        var selectedPath = GetAssetPath(item);
-                        Clipboard.stringValue = selectedPath;
+                        if (GetAssetPath(item) is string sc)
+                        {
+                            EditorGUIUtility.systemCopyBuffer = sc;
+                            Debug.LogFormat(LogType.Log, LogOption.NoStacktrace, item.ToObject(), sc);
+                        }
+                    }
+                },
+                new SearchAction(type, "copy_guid", null, "Copy GUID")
+                {
+                    enabled = items => items.Count == 1,
+                    handler = item =>
+                    {
+                        if (GetAssetPath(item) is string sc)
+                        {
+                            var guid = AssetDatabase.AssetPathToGUID(sc);
+                            EditorGUIUtility.systemCopyBuffer = guid;
+                            Debug.LogFormat(LogType.Log, LogOption.NoStacktrace, item.ToObject(), guid);
+                        }
                     }
                 },
                 new SearchAction(type, "properties", null, "Properties", OpenPropertyEditorsOnSelection)
-                #endif
+                {
+                    #if !USE_SEARCH_MODULE
+                    enabled = items => items.Count == 1
+                    #endif
+                }
             };
         }
 
@@ -763,5 +798,10 @@ namespace UnityEditor.Search.Providers
         {
             QuickSearch.OpenWithContextualProvider(type, Query.type, FindProvider.providerId);
         }
+
+        [SearchTemplate(description = "Find all textures", providerId = type)] internal static string ST1() => @"t=Texture";
+        #if USE_SEARCH_MODULE
+        [SearchTemplate(description = "Search current folder", providerId = type)] internal static string ST2() => $"dir=\"{Path.GetFileName(ProjectWindowUtil.GetActiveFolderPath())}\" ";
+        #endif
     }
 }

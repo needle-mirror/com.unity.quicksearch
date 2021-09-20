@@ -65,7 +65,7 @@ namespace UnityEditor.Search
                 base.Refresh(flags);
         }
 
-        protected override void UpdateFocusSate(Event evt, TextEditor te)
+        protected override void UpdateFocusState(TextEditor te)
         {
             te.MoveLineEnd();
         }
@@ -84,6 +84,18 @@ namespace UnityEditor.Search
         {
             return m_ViewState.HasFlag(SearchViewFlags.EnableSearchQuery);
         }
+
+        #if USE_QUERY_BUILDER
+        protected override void ProcessNewBuilder(QueryBuilder builder)
+        {
+            if (builder == null)
+                return;
+            foreach (var queryBlock in builder.blocks)
+            {
+                queryBlock.@readonly = true;
+            }
+        }
+        #endif
 
         public static QuickSearch ShowPicker(SearchViewState args)
         {

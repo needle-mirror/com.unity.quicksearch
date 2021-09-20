@@ -282,7 +282,7 @@ namespace UnityEditor.Search
 
                 if (item.GetFieldCount() > 0)
                 {
-                    targets.Add(new ExpressionItem()
+                    targets.Add(new SearchServiceItem()
                     {
                         name = item.label ?? item.value.ToString(),
                         item = item

@@ -13,6 +13,7 @@ namespace UnityEditor.Search
         FilterOnly    = 1 << 0,
         IgnoreRecents = 1 << 1,
         QueryBuilder  = 1 << 2,
+        NoCategory    = 1 << 3
     }
 
     static class SearchPropositionFlagsExtensions
@@ -32,6 +33,8 @@ namespace UnityEditor.Search
         internal readonly string category;
         internal readonly Type type;
         internal readonly object data;
+
+        internal string path => string.IsNullOrEmpty(category) ? label : $"{category}/{label}";
 
         internal static SearchProposition invalid = default;
 
@@ -138,6 +141,19 @@ namespace UnityEditor.Search
                         propositions.UnionWith(currentPropositions);
                 }
             }
+
+            if (!options.HasAny(SearchPropositionFlags.QueryBuilder))
+            {
+                // Add Expression proposition from Default Provider
+                if (queryEmpty)
+                    return;
+                var defaultProvider = SearchService.GetDefaultProvider();
+                if (defaultProvider?.fetchPropositions == null)
+                    return;
+                var props = defaultProvider.fetchPropositions(context, options).Where(p => p.valid);
+                if (props != null)
+                    propositions.UnionWith(props);
+            }
         }
 
         private static void FillBuiltInPropositions(SearchContext context, SortedSet<SearchProposition> propositions)
@@ -225,9 +241,9 @@ namespace UnityEditor.Search
             m_Tokens = null;
         }
 
-        internal SearchPropositionOptions(in SearchContext context, int cursor)
+        internal SearchPropositionOptions(in SearchContext context, int cursor, in string searchText = null)
         {
-            this.query = context.searchText;
+            this.query = searchText ?? context.searchText;
             this.cursor = cursor;
             this.flags = SearchPropositionFlags.None;
             var subQuery = GetTokenAtCursorPosition(query, cursor, IsDelimiter);

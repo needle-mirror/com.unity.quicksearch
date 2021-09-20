@@ -386,9 +386,9 @@ namespace UnityEditor.Search
 
             Log("OnEnable");
             if (bytes?.Length > 0)
-                Utils.tick += Load;
+                Dispatcher.Enqueue(Load);
             else
-                Utils.tick += LoadAsync;
+                Dispatcher.Enqueue(LoadAsync);
         }
 
         internal void OnDisable()
@@ -403,7 +403,6 @@ namespace UnityEditor.Search
 
         private void LoadAsync()
         {
-            Utils.tick -= LoadAsync;
             if (!this)
                 return;
 
@@ -441,7 +440,6 @@ namespace UnityEditor.Search
 
         private void Load()
         {
-            Utils.tick -= Load;
             if (!this)
                 return;
 
@@ -628,7 +626,7 @@ namespace UnityEditor.Search
                 }
 
                 // Resume later with remaining artifacts
-                Utils.CallDelayed(() => ResolveArtifacts(artifacts, remainingArtifacts, task, combineAutoResolve),
+                Dispatcher.Enqueue(() => ResolveArtifacts(artifacts, remainingArtifacts, task, combineAutoResolve),
                     GetArtifactResolutionCheckDelay(remainingArtifacts.Count));
             }
             catch (Exception err)
@@ -755,7 +753,7 @@ namespace UnityEditor.Search
         {
             if (createDirectory && !Directory.Exists(k_QuickSearchLibraryPath))
                 Directory.CreateDirectory(k_QuickSearchLibraryPath);
-            return $"{k_QuickSearchLibraryPath}/{settings.guid}.{SearchIndexEntry.version}.{GetIndexTypeSuffix()}";
+            return $"{k_QuickSearchLibraryPath}/{settings.guid}.{SearchIndexEntryImporter.version}.{GetIndexTypeSuffix()}";
         }
 
         private static void SaveIndex(string backupIndexPath, byte[] saveBytes, Task saveTask = null)
@@ -837,7 +835,7 @@ namespace UnityEditor.Search
             }
             else
             {
-                Utils.CallDelayed(ProcessIncrementalUpdates, 0.5);
+                Dispatcher.Enqueue(ProcessIncrementalUpdates, 0.5d);
             }
         }
 

@@ -9,9 +9,7 @@ namespace UnityEditor.Search
         SearchContext context { get; }
         bool formatNames { get; }
 
-        void Apply(in object value);
         void Apply(in SearchProposition searchProposition);
-
         IEnumerable<SearchProposition> FetchPropositions();
 
         void CloseEditor();

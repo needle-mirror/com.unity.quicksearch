@@ -332,7 +332,10 @@ namespace UnityEditor.Search
         {
             var itemType = provider?.toType?.Invoke(this);
             if (itemType != null)
-                return itemType;
+            {
+                if (typeof(GameObject) != itemType || constraintedType == null || !typeof(Component).IsAssignableFrom(constraintedType))
+                    return itemType;
+            }
             var itemObj = ToObject(constraintedType ?? typeof(UnityEngine.Object));
             return itemObj?.GetType();
         }
@@ -513,8 +516,6 @@ namespace UnityEditor.Search
 
             var f = new Field(name, alias, value);
             m_Fields[name] = f;
-
-            //UnityEngine.Debug.Log($"SetField({id}, {name}, {alias}, {value}");
         }
 
         internal bool RemoveField(string name)

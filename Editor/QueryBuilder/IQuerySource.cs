@@ -5,9 +5,11 @@ namespace UnityEditor.Search
     {
         ISearchView searchView { get; }
         SearchContext context { get; }
-        void AddBlock(string text);
-        void AddBlock(QueryBlock block);
+        QueryBlock AddBlock(string text);
+        QueryBlock AddBlock(QueryBlock block);
+        QueryBlock AddProposition(in SearchProposition searchProposition);
         void RemoveBlock(in QueryBlock block);
+        void BlockActivated(in QueryBlock block);
         void Apply();
         void Repaint();
     }

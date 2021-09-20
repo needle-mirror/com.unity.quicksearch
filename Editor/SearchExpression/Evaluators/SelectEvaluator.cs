@@ -16,7 +16,7 @@ namespace UnityEditor.Search
             yield return EvaluatorUtils.CreateItem(c.ResolveAlias("Selector"), c.expression.innerText, c.expression.innerText.ToString());
         }
 
-        [SearchExpressionEvaluator]
+        [SearchExpressionEvaluator(SearchExpressionEvaluationHints.DoNotValidateSignature)]
         [Description("Create new results by selecting which value and property to take."), Category("Transformers")]
         public static IEnumerable<SearchItem> Select(SearchExpressionContext c)
         {
@@ -52,8 +52,6 @@ namespace UnityEditor.Search
 
                 foreach (var r in results)
                     yield return r;
-
-                yield return null;
             }
         }
 

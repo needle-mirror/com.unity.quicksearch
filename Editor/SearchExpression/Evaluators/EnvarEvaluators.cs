@@ -102,7 +102,8 @@ namespace UnityEditor.Search
         static Dictionary<string, MethodInfo> s_EnvFunctions = null;
         static object s_EnvFunctionsLock = new object();
         [Description("Returns the value of one or more environment variables."), Category("Env")]
-        [SearchExpressionEvaluator(SearchExpressionEvaluationHints.ImplicitArgsLiterals, SearchExpressionType.Text | SearchExpressionType.Variadic | SearchExpressionType.Optional)]
+        [SearchExpressionEvaluator(SearchExpressionEvaluationHints.ImplicitArgsLiterals)]
+        [SearchExpressionEvaluatorSignatureOverload( SearchExpressionType.Text | SearchExpressionType.Variadic)]
         public static IEnumerable<SearchItem> Env(SearchExpressionContext c)
         {
             lock (s_EnvFunctionsLock)

@@ -102,7 +102,7 @@ namespace UnityEditor.Search
             this.content = content ?? new GUIContent(name);
             width = 145f;
 
-            if ((options & SearchColumnFlags.IgnoreSettings) == 0)
+            if ((options & SearchColumnFlags.IgnoreSettings) == 0 && !Utils.IsRunningTests())
                 SearchColumnSettings.Load(this);
             InitFunctors();
         }

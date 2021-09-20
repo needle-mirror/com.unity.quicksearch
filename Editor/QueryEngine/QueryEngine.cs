@@ -901,7 +901,7 @@ namespace UnityEditor.Search
 
             var nestedQueryString = queryString.Substring(1, queryString.Length - 2);
             nestedQueryString = nestedQueryString.Trim();
-            var nestedQueryNode = new NestedQueryNode(in nestedQueryString, m_NestedQueryHandler);
+            var nestedQueryNode = new NestedQueryNode(in nestedQueryString, in queryString, m_NestedQueryHandler);
             nestedQueryNode.token = new QueryToken(startIndex + (nestedQueryAggregator.IsNullOrEmpty() ? 0 : nestedQueryAggregator.Length), queryString.Length);
             userData.nodesToStringPosition.Add(nestedQueryNode, nestedQueryNode.token);
             if (validationOptions.skipNestedQueries)
@@ -1007,7 +1007,7 @@ namespace UnityEditor.Search
 
         IQueryNode CreateFilterToken(IFilter filter, in CreateFilterTokenArgs args)
         {
-            if (!GetFilterOperator(filter, in args.filterOperator, out var op) && !validationOptions.validateSyntaxOnly)
+            if (!GetFilterOperator(filter, in args.filterOperator, out var op))
             {
                 args.errors.Add(new QueryError(args.filterOperatorIndex, args.filterOperator.Length, $"Unknown filter operator \"{args.filterOperator.ToString()}\"."));
                 return null;
@@ -1039,10 +1039,11 @@ namespace UnityEditor.Search
 
                 filterNode = new InFilterNode(filter, args.filterType, in op, args.filterOperator, filterValue, rawFilterValue, args.filterParam, args.token);
 
-                var startIndex = filterValue.IndexOf('{') + 1;
-                filterValue = filterValue.Substring(startIndex, filterValue.Length - startIndex - 1);
+                var startIndex = filterValue.IndexOf('{');
+                var rawNestedQuery = filterValue.Substring(startIndex, filterValue.Length - startIndex);
+                filterValue = rawNestedQuery.Substring(1, rawNestedQuery.Length - 2);
                 filterValue = filterValue.Trim();
-                var nestedQueryNode = new NestedQueryNode(filterValue, args.filterType, m_NestedQueryHandler);
+                var nestedQueryNode = new NestedQueryNode(in filterValue, in rawNestedQuery, in args.filterType, m_NestedQueryHandler);
                 nestedQueryNode.token = new QueryToken(filterValue, args.filterValueIndex);
 
                 if (!args.nestedQueryAggregator.IsNullOrEmpty())
@@ -1111,7 +1112,7 @@ namespace UnityEditor.Search
         {
             // Boolean filters default to equal
             var filterOperator = "=".GetStringView();
-            if (!GetFilterOperator(filter, in filterOperator, out var op) && !validationOptions.validateSyntaxOnly)
+            if (!GetFilterOperator(filter, in filterOperator, out var op))
             {
                 args.errors.Add(new QueryError(args.index, args.token.Length, $"Boolean filter not supported."));
                 return null;
@@ -1169,7 +1170,7 @@ namespace UnityEditor.Search
             var op = QueryFilterOperator.invalid;
             if (!args.filterOperator.IsNullOrEmpty())
             {
-                if (!GetFilterOperator(filter, in args.filterOperator, out op) && !validationOptions.validateSyntaxOnly)
+                if (!GetFilterOperator(filter, in args.filterOperator, out op))
                 {
                     args.errors.Add(new QueryError(args.filterOperatorIndex, args.filterOperator.Length, $"Unknown filter operator \"{args.filterOperator}\"."));
                     return null;
@@ -1625,8 +1626,8 @@ namespace UnityEditor.Search
 
         public void BuildFilterRegex()
         {
-            RebuildAllBasicFilterRegex(validationOptions.validateSyntaxOnly ? null : m_FilterOperators.Keys, false);
-            RebuildAllBasicPartialFilterRegex(validationOptions.validateSyntaxOnly ? null : m_FilterOperators.Keys, false);
+            RebuildAllBasicFilterRegex(m_FilterOperators.Keys, false);
+            RebuildAllBasicPartialFilterRegex(m_FilterOperators.Keys, false);
             foreach (var filter in m_Filters.Values)
             {
                 BuildFilterMatchers(filter, false);

@@ -92,6 +92,7 @@ namespace UnityEditor.Search
         public static Dictionary<string, SearchProviderSettings> providers { get; private set; }
         public static bool queryBuilder { get; set; }
         public static string ignoredProperties { get; set; }
+        public static string helperWidgetCurrentArea { get; set; }
 
         public static int[] expandedQueries { get; set; }
 
@@ -154,6 +155,7 @@ namespace UnityEditor.Search
             showSavedSearchPanel = ReadSetting(settings, nameof(showSavedSearchPanel), false);
             queryBuilder = ReadSetting(settings, nameof(queryBuilder), false);
             ignoredProperties = ReadSetting(settings, nameof(ignoredProperties), "id;name;classname");
+            helperWidgetCurrentArea = ReadSetting(settings, nameof(helperWidgetCurrentArea), "all");
 
             itemIconSize = EditorPrefs.GetFloat(k_ItemIconSizePrefKey, itemIconSize);
 
@@ -201,6 +203,7 @@ namespace UnityEditor.Search
                 [nameof(expandedQueries)] = expandedQueries,
                 [nameof(queryBuilder)] = queryBuilder,
                 [nameof(ignoredProperties)] = ignoredProperties,
+                [nameof(helperWidgetCurrentArea)] = helperWidgetCurrentArea,
 
                 #if !USE_SEARCH_MODULE
                 [nameof(debounceMs)] = debounceMs,

@@ -17,7 +17,7 @@ namespace UnityEditor.Search
 
         [Description("Find the minimal value for each expression."), Category("Math")]
         [SearchExpressionEvaluator(SearchExpressionType.Selector, SearchExpressionType.Iterable | SearchExpressionType.Variadic)]
-        [SearchExpressionEvaluator(SearchExpressionType.Iterable | SearchExpressionType.Variadic)]
+        [SearchExpressionEvaluatorSignatureOverload(SearchExpressionType.Iterable | SearchExpressionType.Variadic)]
         public static IEnumerable<SearchItem> Min(SearchExpressionContext c)
         {
             var skipCount = 0;
@@ -35,7 +35,7 @@ namespace UnityEditor.Search
 
         [Description("Find the maximum value for each expression."), Category("Math")]
         [SearchExpressionEvaluator(SearchExpressionType.Selector, SearchExpressionType.Iterable | SearchExpressionType.Variadic)]
-        [SearchExpressionEvaluator(SearchExpressionType.Iterable | SearchExpressionType.Variadic)]
+        [SearchExpressionEvaluatorSignatureOverload(SearchExpressionType.Iterable | SearchExpressionType.Variadic)]
         public static IEnumerable<SearchItem> Max(SearchExpressionContext c)
         {
             var skipCount = 0;
@@ -52,7 +52,7 @@ namespace UnityEditor.Search
 
         [Description("Find the average value for each expression."), Category("Math")]
         [SearchExpressionEvaluator(SearchExpressionType.Selector, SearchExpressionType.Iterable | SearchExpressionType.Variadic)]
-        [SearchExpressionEvaluator(SearchExpressionType.Iterable | SearchExpressionType.Variadic)]
+        [SearchExpressionEvaluatorSignatureOverload(SearchExpressionType.Iterable | SearchExpressionType.Variadic)]
         public static IEnumerable<SearchItem> Avg(SearchExpressionContext c)
         {
             var skipCount = 0;
@@ -69,7 +69,7 @@ namespace UnityEditor.Search
 
         [Description("Compute the sum value for each expression."), Category("Math")]
         [SearchExpressionEvaluator(SearchExpressionType.Selector, SearchExpressionType.Iterable | SearchExpressionType.Variadic)]
-        [SearchExpressionEvaluator(SearchExpressionType.Iterable | SearchExpressionType.Variadic)]
+        [SearchExpressionEvaluatorSignatureOverload(SearchExpressionType.Iterable | SearchExpressionType.Variadic)]
         public static IEnumerable<SearchItem> Sum(SearchExpressionContext c)
         {
             var skipCount = 0;

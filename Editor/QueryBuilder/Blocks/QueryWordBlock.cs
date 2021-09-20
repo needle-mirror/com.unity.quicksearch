@@ -1,6 +1,4 @@
 #if USE_QUERY_BUILDER
-using System.Collections.Generic;
-using System.Linq;
 using UnityEngine;
 
 namespace UnityEditor.Search
@@ -8,10 +6,17 @@ namespace UnityEditor.Search
     class QueryWordBlock : QueryBlock
     {
         public QueryWordBlock(IQuerySource source, SearchNode node)
+            : this(source, node.searchValue)
+        {
+            if (node.rawSearchValueStringView.HasQuotes())
+                explicitQuotes = true;
+        }
+
+        public QueryWordBlock(IQuerySource source, string searchValue)
             : base(source)
         {
             name = string.Empty;
-            value = node.searchValue;
+            value = searchValue;
         }
 
         public override Rect Layout(in Vector2 at, in float availableSpace)
@@ -32,9 +37,10 @@ namespace UnityEditor.Search
             DrawBorders(widgetRect, mousePosition);
         }
 
-        public override IEnumerable<SearchProposition> FetchPropositions()
+        public override IBlockEditor OpenEditor(in Rect rect)
         {
-            return Enumerable.Empty<SearchProposition>();
+            var screenRect = new Rect(rect.position + context.searchView.position.position, rect.size);
+            return QueryTextBlockEditor.Open(screenRect, this);
         }
 
         protected override Color GetBackgroundColor()
@@ -44,7 +50,7 @@ namespace UnityEditor.Search
 
         public override string ToString()
         {
-            return value;
+            return EscapeLiteralString(value);
         }
     }
 }

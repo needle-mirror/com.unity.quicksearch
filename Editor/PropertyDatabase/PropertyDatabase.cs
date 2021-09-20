@@ -36,7 +36,7 @@ namespace UnityEditor.Search
         PropertyDatabaseFileStore m_FileStore;
         PropertyStringTable m_StringTable;
 
-        public static readonly int version = ((0x50 << 24) | (0x44 << 16) | 0x0002) ^ PropertyStringTable.Version ^ ((InternalEditorUtility.GetUnityVersion().Major & 0xffff) << 16 | InternalEditorUtility.GetUnityVersion().Minor);
+        public static readonly int version = ((0x50 << 24) | (0x44 << 16) | 0x0006) ^ PropertyStringTable.Version ^ ((InternalEditorUtility.GetUnityVersion().Major & 0xffff) << 16 | InternalEditorUtility.GetUnityVersion().Minor);
 
         public string filePath { get; }
         public string stringTableFilePath { get; }

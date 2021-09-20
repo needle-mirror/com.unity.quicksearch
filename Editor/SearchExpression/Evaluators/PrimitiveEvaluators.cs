@@ -34,7 +34,7 @@ namespace UnityEditor.Search
         }
 
         [Description("Convert the text of any expression to a literal string."), Category("Primitives")]
-        [SearchExpressionEvaluator]
+        [SearchExpressionEvaluator(SearchExpressionEvaluationHints.DoNotValidateSignature)]
         public static IEnumerable<SearchItem> Text(SearchExpressionContext c)
         {
             if (c.args.Length == 0)
@@ -44,7 +44,7 @@ namespace UnityEditor.Search
         }
 
         [SearchExpressionEvaluator(SearchExpressionType.Iterable | SearchExpressionType.Variadic)]
-        [SearchExpressionEvaluator(SearchExpressionType.Number, SearchExpressionType.Iterable | SearchExpressionType.Variadic)]
+        [SearchExpressionEvaluatorSignatureOverload(SearchExpressionType.Number, SearchExpressionType.Iterable | SearchExpressionType.Variadic)]
         [Description("Return the first result for each expression."), Category("Primitives")]
         public static IEnumerable<SearchItem> First(SearchExpressionContext c)
         {
@@ -76,16 +76,10 @@ namespace UnityEditor.Search
         }
 
         [SearchExpressionEvaluator(SearchExpressionType.Iterable | SearchExpressionType.Variadic)]
-        [SearchExpressionEvaluator(SearchExpressionType.Number, SearchExpressionType.Iterable | SearchExpressionType.Variadic)]
+        [SearchExpressionEvaluatorSignatureOverload(SearchExpressionType.Number, SearchExpressionType.Iterable | SearchExpressionType.Variadic)]
         [Description("Return the last result for each expression."), Category("Primitives")]
         public static IEnumerable<SearchItem> Last(SearchExpressionContext c)
         {
-            SearchExpressionValidator.ValidateExpressionArguments(c, new[]
-            {
-                new SearchExpressionValidator.Signature().AddArgument(SearchExpressionType.Iterable, true, false),
-                new SearchExpressionValidator.Signature().AddArgument(SearchExpressionType.Number).AddArgument(SearchExpressionType.Iterable, true, false)
-            });
-
             var argIndex = 0;
             var takeNumber = 1;
             if (c.args[0].types.HasFlag(SearchExpressionType.Number))

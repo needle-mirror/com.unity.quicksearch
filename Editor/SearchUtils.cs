@@ -156,10 +156,15 @@ namespace UnityEditor.Search
         /// <returns>Returns the path of an object.</returns>
         public static string GetObjectPath(UnityEngine.Object obj)
         {
-            if (obj is GameObject go)
-                return GetTransformPath(go.transform);
+            if (!obj)
+                return string.Empty;
             if (obj is Component c)
                 return GetTransformPath(c.gameObject.transform);
+            var assetPath = AssetDatabase.GetAssetPath(obj);
+            if (!string.IsNullOrEmpty(assetPath))
+                return assetPath;
+            if (obj is GameObject go)
+                return GetTransformPath(go.transform);
             return obj.name;
         }
 
@@ -458,7 +463,11 @@ namespace UnityEditor.Search
                 fetchThumbnail = templateProvider.fetchThumbnail,
                 startDrag = templateProvider.startDrag,
                 toObject = templateProvider.toObject,
-                trackSelection = templateProvider.trackSelection
+                trackSelection = templateProvider.trackSelection,
+                fetchColumns = templateProvider.fetchColumns,
+                toKey = templateProvider.toKey,
+                toType = templateProvider.toType,
+                fetchPropositions = templateProvider.fetchPropositions,
             };
 
             if (cacheProvider)
@@ -476,15 +485,26 @@ namespace UnityEditor.Search
             return null;
         }
 
-        internal static IEnumerable<SearchProposition> FetchTypePropositions<T>(string category = "Types") where T : UnityEngine.Object
+        internal static IEnumerable<SearchProposition> FetchTypePropositions<T>(string category = "Types", Type blockType = null) where T : UnityEngine.Object
         {
             if (category != null)
             {
                 yield return new SearchProposition(
                                     priority: -1,
                                     category: null,
-                                    label: "Types",
+                                    label: category,
                                     icon: EditorGUIUtility.FindTexture("FilterByType"));
+
+                yield return new SearchProposition(category: category, label: "Prefabs", replacement: "t:prefab",
+                    icon: AssetPreview.GetMiniTypeThumbnail(typeof(GameObject)), data: typeof(GameObject), type: blockType);
+            }
+
+            if (string.Equals(category, "Types", StringComparison.Ordinal))
+            {
+                yield return new SearchProposition(category: "Types", label: "Scripts", replacement: "t:script",
+                    icon: AssetPreview.GetMiniTypeThumbnail(typeof(MonoScript)), data: typeof(MonoScript), type: blockType);
+                yield return new SearchProposition(category: "Types", label: "Scenes", replacement: "t:scene",
+                    icon: AssetPreview.GetMiniTypeThumbnail(typeof(SceneAsset)), data: typeof(SceneAsset), type: blockType);
             }
 
             var ignoredAssemblies = new[]
@@ -505,52 +525,232 @@ namespace UnityEditor.Search
                     priority: t.Name[0],
                     category: category,
                     label: t.Name,
-                    replacement: $"t={t.Name}",
+                    replacement: $"t:{t.Name}",
                     data: t,
+                    type: blockType,
                     icon: AssetPreview.GetMiniTypeThumbnail(t));
             }
         }
 
         internal static SearchProposition CreateKeywordProposition(in string keyword)
         {
-            if (keyword.IndexOf('|') != -1)
-            {
-                var tokens = keyword.Split('|');
-                if (tokens.Length == 5)
-                {
-                    var valueType = tokens[3];
-                    var blockType = Type.GetType(valueType);
-                    var replacement = ParseBlockContent(valueType, tokens[0]);
-                    var ownerType = Type.GetType(tokens[4]);
-                    return new SearchProposition(
-                        priority: (ownerType.Name[0] << 4) + tokens[1][0],
-                        category: $"Properties/{ownerType.Name}",
-                        label: $"{tokens[1]} ({blockType?.Name ?? valueType})",
-                        replacement: replacement,
-                        help: tokens[2],
-                        type: blockType,
-                        icon: AssetPreview.GetMiniTypeThumbnail(blockType) ?? AssetPreview.GetMiniTypeThumbnail(ownerType));
-                }
-            }
-            return SearchProposition.invalid;
+            if (keyword.IndexOf('|') == -1)
+                return SearchProposition.invalid;
+
+            var tokens = keyword.Split('|');
+            if (tokens.Length != 5)
+                return SearchProposition.invalid;
+
+            // <0:fieldname>:|<1:display name>|<2:help text>|<3:property type>|<4: owner type string>
+            var valueType = tokens[3];
+            var replacement = ParseBlockContent(valueType, tokens[0], out Type blockType);
+            var ownerType = FindType<UnityEngine.Object>(tokens[4]);
+            if (ownerType == null)
+                return SearchProposition.invalid;
+            return new SearchProposition(
+                priority: (ownerType.Name[0] << 4) + tokens[1][0],
+                category: $"Properties/{ownerType.Name}",
+                label: $"{tokens[1]} ({blockType?.Name ?? valueType})",
+                replacement: replacement,
+                help: tokens[2],
+                icon: AssetPreview.GetMiniTypeThumbnail(blockType) ?? AssetPreview.GetMiniTypeThumbnail(ownerType));
         }
 
-        internal static string ParseBlockContent(in string type, in string content)
+        internal static IEnumerable<SearchProposition> EnumeratePropertyPropositions(IEnumerable<UnityEngine.Object> objs)
+        {
+            return EnumeratePropertyKeywords(objs).Select(k => CreateKeywordProposition(k));
+        }
+
+        internal static IEnumerable<string> EnumeratePropertyKeywords(IEnumerable<UnityEngine.Object> objs)
+        {
+            var templates = GetTemplates(objs);
+            foreach (var obj in templates)
+            {
+                var objType = obj.GetType();
+                using (var so = new SerializedObject(obj))
+                {
+                    var p = so.GetIterator();
+                    var next = p.NextVisible(true);
+                    while (next)
+                    {
+                        var supported = IsPropertyTypeSupported(p);
+                        if (supported)
+                        {
+                            var propertyType = GetPropertyManagedTypeString(p);
+                            if (propertyType != null)
+                            {
+                                var keyword = $"#{p.name.Replace("m_", "").Replace(" ", "")}|{p.displayName}|{p.tooltip}|{propertyType}|{p.serializedObject?.targetObject?.GetType().AssemblyQualifiedName}";
+                                yield return keyword;
+                            }
+                        }
+
+                        var isVector = p.propertyType == SerializedPropertyType.Vector3 ||
+                            p.propertyType == SerializedPropertyType.Vector4 ||
+                            p.propertyType == SerializedPropertyType.Quaternion ||
+                            p.propertyType == SerializedPropertyType.Vector2;
+
+                        next = p.NextVisible(supported && !p.isArray && !p.isFixedBuffer && !isVector);
+                    }
+                }
+            }
+        }
+
+        internal static string GetPropertyManagedTypeString(in SerializedProperty p)
+        {
+            Type managedType;
+            switch (p.propertyType)
+            {
+                case SerializedPropertyType.Vector2:
+                case SerializedPropertyType.Vector3:
+                case SerializedPropertyType.Vector4:
+                case SerializedPropertyType.Boolean:
+                case SerializedPropertyType.String:
+                    return p.propertyType.ToString();
+
+                case SerializedPropertyType.Integer:
+                    managedType = p.GetManagedType();
+                    if (managedType != null && !managedType.IsPrimitive)
+                        return managedType.AssemblyQualifiedName;
+                    return "Number";
+
+                case SerializedPropertyType.Character:
+                case SerializedPropertyType.ArraySize:
+                case SerializedPropertyType.LayerMask:
+                case SerializedPropertyType.Float:
+                    return "Number";
+
+                case SerializedPropertyType.Generic:
+                    if (p.isArray)
+                        return "Count";
+                    return null;
+
+                case SerializedPropertyType.ObjectReference:
+                    if (p.objectReferenceValue)
+                        return p.objectReferenceValue.GetType().AssemblyQualifiedName;
+                    if (p.type.StartsWith("PPtr<", StringComparison.Ordinal) && TryFindType<UnityEngine.Object>(p.type.Substring(5, p.type.Length - 6), out managedType))
+                        return managedType.AssemblyQualifiedName;
+                    managedType = p.GetManagedType();
+                    if (managedType != null && !managedType.IsPrimitive)
+                        return managedType.AssemblyQualifiedName;
+                    return null;
+            }
+
+            if (p.isArray)
+                return "Count";
+
+            managedType = p.GetManagedType();
+            if (managedType != null && !managedType.IsPrimitive)
+                return managedType.AssemblyQualifiedName;
+
+            return p.propertyType.ToString();
+        }
+
+        internal static bool IsPropertyTypeSupported(SerializedProperty p)
+        {
+            switch (p.propertyType)
+            {
+                case SerializedPropertyType.AnimationCurve:
+                case SerializedPropertyType.Bounds:
+                case SerializedPropertyType.Gradient:
+                    return false;
+            }
+
+            if (p.propertyType == SerializedPropertyType.Generic)
+            {
+                if (string.Equals(p.type, "map", StringComparison.Ordinal))
+                    return false;
+                if (string.Equals(p.type, "Matrix4x4f", StringComparison.Ordinal))
+                    return false;
+            }
+
+            return !p.isArray && !p.isFixedBuffer && p.propertyPath.LastIndexOf('[') == -1;
+        }
+
+        internal static IEnumerable<UnityEngine.Object> GetTemplates(IEnumerable<UnityEngine.Object> objects)
+        {
+            var seenTypes = new HashSet<Type>();
+            foreach (var obj in objects)
+            {
+                if (!obj)
+                    continue;
+                var ct = obj.GetType();
+                if (!seenTypes.Contains(ct))
+                {
+                    seenTypes.Add(ct);
+                    yield return obj;
+                }
+
+                if (obj is GameObject go)
+                {
+                    foreach (var comp in go.GetComponents<Component>())
+                    {
+                        if (!comp)
+                            continue;
+                        ct = comp.GetType();
+                        if (!seenTypes.Contains(ct))
+                        {
+                            seenTypes.Add(ct);
+                            yield return comp;
+                        }
+                    }
+                }
+
+                var path = AssetDatabase.GetAssetPath(obj);
+                if (!string.IsNullOrEmpty(path))
+                {
+                    var importer = AssetImporter.GetAtPath(path);
+                    if (importer)
+                    {
+                        var it = importer.GetType();
+                        if (it != typeof(AssetImporter) && !seenTypes.Contains(it))
+                        {
+                            seenTypes.Add(it);
+                            yield return importer;
+                        }
+                    }
+                }
+            }
+        }
+
+        internal static string ParseSearchText(string searchText, IEnumerable<SearchProvider> providers, out SearchProvider filteredProvider)
+        {
+            filteredProvider = null;
+            var searchQuery = searchText.TrimStart();
+            if (string.IsNullOrEmpty(searchQuery))
+                return searchQuery;
+
+            foreach (var p in providers)
+            {
+                if (searchQuery.StartsWith(p.filterId, StringComparison.OrdinalIgnoreCase))
+                {
+                    filteredProvider = p;
+                    searchQuery = searchQuery.Remove(0, p.filterId.Length).TrimStart();
+                    break;
+                }
+            }
+            return searchQuery;
+        }
+
+        static string ParseBlockContent(string type, in string content, out Type valueType)
         {
             var replacement = content;
             var del = content.LastIndexOf(':');
             if (del != -1)
                 replacement = content.Substring(0, del);
+
+            valueType = Type.GetType(type);
+            type = valueType?.Name ?? type;
             switch (type)
             {
                 case "Enum":
+                    return $"{replacement}=0";
                 case "String":
                     return $"{replacement}:\"\"";
                 case "Boolean":
                     return $"{replacement}=true";
                 case "Array":
                 case "Count":
-                    return $"{replacement}>=1"; // TODO: insert query marker <%number:150,[0,32]%>
+                    return $"{replacement}>=1";
                 case "Integer":
                 case "Float":
                 case "Number":
@@ -560,12 +760,54 @@ namespace UnityEditor.Search
                 case "Vector2":
                     return $"{replacement}=(,)";
                 case "Vector3":
+                case "Quaternion":
                     return $"{replacement}=(,,)";
                 case "Vector4":
                     return $"{replacement}=(,,,)";
+
+                default:
+                    if (valueType != null)
+                    {
+                        if (typeof(UnityEngine.Object).IsAssignableFrom(valueType))
+                            return $"{replacement}=<$object:none,{valueType.FullName}$>";
+                        if (valueType.IsEnum)
+                        {
+                            var enums = valueType.GetEnumValues();
+                            if (enums.Length > 0)
+                                return $"{replacement}=<$enum:{enums.GetValue(0)},{valueType.Name}$>";
+                        }
+                    }
+                    break;
             }
 
             return replacement;
+        }
+
+        internal static bool TryFindType<T>(in string typeString, out Type type)
+        {
+            type = FindType<T>(typeString);
+            return type != null;
+        }
+
+        static Dictionary<string, Type> s_CachedTypes = new Dictionary<string, Type>();
+        internal static Type FindType<T>(in string typeString)
+        {
+            if (s_CachedTypes.TryGetValue(typeString, out var foundType))
+                return foundType;
+            var type = Type.GetType(typeString);
+            if (type != null)
+                return s_CachedTypes[typeString] = type;
+            foreach (var t in TypeCache.GetTypesDerivedFrom<T>())
+            {
+                if (!t.IsVisible)
+                    continue;
+                if (string.Equals(t.Name, typeString, StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(t.FullName, typeString, StringComparison.Ordinal))
+                {
+                    return s_CachedTypes[typeString] = t;
+                }
+            }
+            return s_CachedTypes[typeString] = null;
         }
     }
 }

@@ -50,7 +50,6 @@ namespace UnityEditor.Search.Providers
     static class FindProvider
     {
         public const string providerId = "find";
-        const int k_MaxRegexTimeout = 25;
 
         private static Dictionary<FindOptions, List<string>> s_Roots = new Dictionary<FindOptions, List<string>>();
         private static readonly ConcurrentDictionary<string, ConcurrentDictionary<SearchDocument, byte>> s_RootFilePaths = new ConcurrentDictionary<string, ConcurrentDictionary<SearchDocument, byte>>();
@@ -200,9 +199,9 @@ namespace UnityEditor.Search.Providers
         private static void SearchWord(bool exclude, string word, FindOptions options, IEnumerable<SearchDocument> documents, ConcurrentBag<SearchDocument> results)
         {
             Regex globRx = null, rxm = null;
-            if (options.HasAny(FindOptions.Regex) && !ParseRx(word, options.HasAny(FindOptions.Exact), out rxm))
+            if (options.HasAny(FindOptions.Regex) && !Utils.ParseRx(word, options.HasAny(FindOptions.Exact), out rxm))
                 options &= ~FindOptions.Regex;
-            if (options.HasAny(FindOptions.Glob) && !ParseGlob(word, options.HasAny(FindOptions.Exact), out globRx))
+            if (options.HasAny(FindOptions.Glob) && !Utils.ParseGlob(word, options.HasAny(FindOptions.Exact), out globRx))
                 options &= ~FindOptions.Glob;
             if (exclude)
                 options &= ~FindOptions.Fuzzy;
@@ -341,51 +340,6 @@ namespace UnityEditor.Search.Providers
             return baseScore | (int)FindOptions.Fuzzy | (((int)FindOptions.CustomFinish - (int)fuzzyScore) & (int)FindOptions.CustomRange);
         }
 
-        static bool ParseRx(string pattern, bool exact, out Regex rx)
-        {
-            try
-            {
-                rx = new Regex(!exact ? pattern : $"^{pattern}$", RegexOptions.IgnoreCase, TimeSpan.FromMilliseconds(k_MaxRegexTimeout));
-            }
-            catch (ArgumentException)
-            {
-                rx = null;
-                return false;
-            }
-
-            return true;
-        }
-
-        static bool ParseGlob(string pattern, bool exact, out Regex rx)
-        {
-            try
-            {
-                pattern = Regex.Escape(RemoveDuplicateAdjacentCharacters(pattern, '*')).Replace(@"\*", ".*").Replace(@"\?", ".");
-                rx = new Regex(!exact ? pattern : $"^{pattern}$", RegexOptions.IgnoreCase, TimeSpan.FromMilliseconds(k_MaxRegexTimeout));
-            }
-            catch (ArgumentException)
-            {
-                rx = null;
-                return false;
-            }
-
-            return true;
-        }
-
-        static string RemoveDuplicateAdjacentCharacters(string pattern, char c)
-        {
-            for (int i = pattern.Length - 1; i >= 0; --i)
-            {
-                if (pattern[i] != c || i == 0)
-                    continue;
-
-                if (pattern[i - 1] == c)
-                    pattern = pattern.Remove(i, 1);
-            }
-
-            return pattern;
-        }
-
         static IEnumerable<string> GetRoots(FindOptions options)
         {
             if (s_Roots.TryGetValue(options, out var roots))
@@ -407,6 +361,19 @@ namespace UnityEditor.Search.Providers
             return true;
         }
 
+        private static IEnumerable<SearchProposition> FetchPropositions(SearchContext context, SearchPropositionOptions options)
+        {
+            if (options.flags.HasAny(SearchPropositionFlags.QueryBuilder))
+                return FetchQueryBuilderPropositions();
+            return Enumerable.Empty<SearchProposition>();
+        }
+
+        private static IEnumerable<SearchProposition> FetchQueryBuilderPropositions()
+        {
+            yield return new SearchProposition(category: "Find", "File with Spaces", @"\s+");
+            yield return new SearchProposition(category: "Find", "Numeric Files", @"\d+\.\w+$");
+        }
+
         [SearchItemProvider]
         internal static SearchProvider CreateProvider()
         {
@@ -418,7 +385,8 @@ namespace UnityEditor.Search.Providers
                 filterId = providerId + ":",
                 isExplicitProvider = true,
                 isEnabledForContextualSearch = () => Utils.IsFocusedWindowTypeName("ProjectBrowser"),
-                fetchItems = (context, items, provider) => FetchItems(context, SearchService.GetProvider("asset") ?? provider)
+                fetchItems = (context, items, provider) => FetchItems(context, SearchService.GetProvider("asset") ?? provider),
+                fetchPropositions = FetchPropositions
             };
         }
 

@@ -173,8 +173,8 @@ namespace UnityEditor.Search
         {
             int scoreModifier = 0;
             foreach (var c in GetEntryComponents(value, documentIndex))
-                AddProperty(name, c, settings.baseScore + scoreModifier++, documentIndex, saveKeyword: true, exact: false);
-            AddExactProperty(name, value.ToLowerInvariant(), settings.baseScore, documentIndex, saveKeyword: false);
+                AddProperty(name, c, settings.baseScore + scoreModifier++, documentIndex, saveKeyword: false, exact: false);
+            AddProperty(name, value.ToLowerInvariant(), settings.baseScore-5, documentIndex, saveKeyword: false, exact: true);
         }
 
         /// <summary>
@@ -237,8 +237,6 @@ namespace UnityEditor.Search
             }
             else
                 AddProperty(name, valueLower, settings.baseScore, documentIndex, saveKeyword: saveKeyword);
-
-            //Debug.LogFormat(LogType.Log, LogOption.NoStacktrace, null, $"{name}={valueLower}, {value}, {exact}");
         }
 
         /// <summary>
@@ -307,11 +305,7 @@ namespace UnityEditor.Search
                     {
                         var fieldName = p.displayName.Replace("m_", "").Replace(" ", "").ToLowerInvariant();
                         if (p.propertyPath[p.propertyPath.Length - 1] != ']')
-                        {
                             IndexProperty(documentIndex, fieldName, p);
-                            if (dependencies)
-                                AddReference(documentIndex, p);
-                        }
                     }
 
                     next = p.NextVisible(ShouldIndexChildren(p, recursive));
@@ -416,8 +410,8 @@ namespace UnityEditor.Search
                     LogProperty(fieldName, p);
                     break;
                 case SerializedPropertyType.Vector3:
-                    LogProperty(fieldName, p);
                     IndexerExtensions.IndexVector(fieldName, p.vector3Value, this, documentIndex);
+                    LogProperty(fieldName, p);
                     break;
                 case SerializedPropertyType.Vector4:
                     IndexerExtensions.IndexVector(fieldName, p.vector4Value, this, documentIndex);
@@ -430,13 +424,8 @@ namespace UnityEditor.Search
                 case SerializedPropertyType.ObjectReference:
                     if (!p.objectReferenceValue || string.IsNullOrEmpty(p.objectReferenceValue.name))
                         return;
-                    var objectName = p.objectReferenceValue.name.ToLowerInvariant();
-                    IndexProperty(documentIndex, fieldName, objectName, saveKeyword: false, exact: true);
+                    AddReference(documentIndex, fieldName, p.objectReferenceValue);
                     LogProperty(fieldName, p);
-
-                    var assetPath = AssetDatabase.GetAssetPath(p.objectReferenceValue);
-                    if (!string.IsNullOrEmpty(assetPath))
-                        IndexProperty(documentIndex, fieldName, assetPath.ToLowerInvariant(), saveKeyword: false, exact: true);
                     break;
                 #if USE_SEARCH_MODULE
                 case SerializedPropertyType.Hash128:
@@ -459,65 +448,13 @@ namespace UnityEditor.Search
 
         void LogProperty(in string fieldName, in SerializedProperty p)
         {
-            var propertyType = GetPropertyManagedTypeString(p);
-            MapKeyword(fieldName + ":", $"{p.displayName}|{p.tooltip}|{propertyType}|{p.serializedObject?.targetObject?.GetType().AssemblyQualifiedName}");
+            var propertyType = SearchUtils.GetPropertyManagedTypeString(p);
+            if (propertyType != null)
+                MapProperty(fieldName, p.displayName, p.tooltip, propertyType, p.serializedObject?.targetObject?.GetType().AssemblyQualifiedName, removeNestedKeys: true);
             #if DEBUG_INDEXING
             Debug.LogFormat(LogType.Log, LogOption.NoStacktrace, null, $"[{p.serializedObject?.targetObject?.name ?? string.Empty}/{p.propertyPath}/{p.depth}] <b>{p.propertyPath}</b>, {fieldName}, (<b>{p.propertyType}</b>/{p.type}), " +
                 $"array={p.isArray || p.isFixedBuffer}, children={p.hasVisibleChildren}");
             #endif
-        }
-
-        private string GetPropertyManagedTypeString(in SerializedProperty p)
-        {
-            Type managedType;
-            switch (p.propertyType)
-            {
-                case SerializedPropertyType.Vector2:
-                case SerializedPropertyType.Vector3:
-                case SerializedPropertyType.Vector4:
-                case SerializedPropertyType.Boolean:
-                case SerializedPropertyType.String:
-                    return p.propertyType.ToString();
-
-                case SerializedPropertyType.Integer:
-                    managedType = p.GetManagedType();
-                    if (managedType != null && !managedType.IsPrimitive)
-                        return managedType.AssemblyQualifiedName;
-                    return "Number";
-
-                case SerializedPropertyType.Character:
-                case SerializedPropertyType.ArraySize:
-                case SerializedPropertyType.LayerMask:
-                case SerializedPropertyType.Float:
-                    return "Number";
-
-                case SerializedPropertyType.Generic:
-                    if (p.isArray)
-                        return "Array";
-                    return p.type;
-
-                case SerializedPropertyType.ObjectReference:
-                    if (p.objectReferenceValue)
-                        return p.objectReferenceValue.GetType().AssemblyQualifiedName;
-                    return "Object";
-            }
-
-            if (p.isArray)
-                return "Array";
-
-            managedType = p.GetManagedType();
-            if (managedType != null && !managedType.IsPrimitive)
-                return managedType.AssemblyQualifiedName;
-
-            return p.propertyType.ToString();
-        }
-
-        private void AddReference(int documentIndex, SerializedProperty p)
-        {
-            if (p.propertyType != SerializedPropertyType.ObjectReference || !p.objectReferenceValue)
-                return;
-
-            AddReference(documentIndex, AssetDatabase.GetAssetPath(p.objectReferenceValue));
         }
 
         internal void AddReference(int documentIndex, string assetPath, bool saveKeyword = false)
@@ -525,9 +462,30 @@ namespace UnityEditor.Search
             if (string.IsNullOrEmpty(assetPath))
                 return;
 
-            assetPath = assetPath.ToLowerInvariant();
             IndexProperty(documentIndex, "ref", assetPath, saveKeyword: false, exact: true);
-            IndexProperty(documentIndex, "ref", Path.GetFileName(assetPath), saveKeyword);
+            if (settings.options.properties)
+                IndexPropertyStringComponents(documentIndex, "ref", Path.GetFileNameWithoutExtension(assetPath));
+        }
+
+        internal void AddReference(int documentIndex, string propertyName, Object objRef, in string label = null, in Type ownerPropertyType = null)
+        {
+            if (!objRef)
+                return;
+
+            var assetPath = AssetDatabase.GetAssetPath(objRef);
+            if (string.IsNullOrEmpty(assetPath))
+                return;
+
+            propertyName = propertyName.ToLowerInvariant();
+            IndexProperty(documentIndex, propertyName, assetPath, saveKeyword: false, exact: true);
+            if (settings.options.dependencies)
+                IndexProperty(documentIndex, "ref", assetPath, saveKeyword: false, exact: true);
+            if (settings.options.properties)
+            {
+                IndexPropertyStringComponents(documentIndex, propertyName, Path.GetFileNameWithoutExtension(objRef.name ?? assetPath));
+                if (label != null && ownerPropertyType != null)
+                    MapProperty(propertyName, label, null, objRef.GetType().AssemblyQualifiedName, ownerPropertyType.AssemblyQualifiedName, false);
+            }
         }
 
         /// <summary>

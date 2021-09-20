@@ -44,6 +44,7 @@ namespace UnityEditor.Search
         [SerializeField] internal string sessionName;
         [SerializeField] internal bool excludeNoneItem;
         [SerializeField] internal SearchTable tableConfig;
+        [SerializeField] internal bool ignoreSaveSearches;
 
         #if USE_QUERY_BUILDER
         [SerializeField] internal bool queryBuilderEnabled;
@@ -116,8 +117,10 @@ namespace UnityEditor.Search
 
         internal SearchViewState SetSearchViewFlags(SearchViewFlags flags)
         {
-            context.options |= ToSearchFlags(flags);
-
+            if (m_Context != null)
+            {
+                context.options |= ToSearchFlags(flags);
+            }
             this.flags = flags;
 
             if (flags.HasAny(SearchViewFlags.CompactView))
@@ -140,6 +143,10 @@ namespace UnityEditor.Search
                 itemSize = (float)DisplayMode.Table;
                 forceViewMode = true;
             }
+            #if USE_QUERY_BUILDER
+            if (flags.HasAny(SearchViewFlags.OpenInBuilderMode)) queryBuilderEnabled = true;
+            if (flags.HasAny(SearchViewFlags.OpenInTextMode)) queryBuilderEnabled = false;
+            #endif
             return this;
         }
 
@@ -156,6 +163,10 @@ namespace UnityEditor.Search
             position = state.position;
             flags = state.flags;
             forceViewMode = state.forceViewMode;
+
+            #if USE_QUERY_BUILDER
+            queryBuilderEnabled = state.queryBuilderEnabled;
+            #endif
 
             BuildContext();
         }
@@ -203,7 +214,7 @@ namespace UnityEditor.Search
                 itemSize = SearchSettings.itemIconSize;
 
             #if USE_QUERY_BUILDER
-            if (!runningTests)
+            if (!runningTests && flags.HasNone(SearchViewFlags.OpenInBuilderMode) && flags.HasNone(SearchViewFlags.OpenInTextMode))
                 queryBuilderEnabled = SearchSettings.queryBuilder;
             #endif
 

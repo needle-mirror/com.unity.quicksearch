@@ -71,7 +71,7 @@ namespace UnityEditor.Search
             }
         }
 
-        public string Draw(Rect position, string text, GUIStyle style)
+        public string Draw(in Rect position, string text, GUIStyle style)
         {
             if (m_UndoStack == null)
             {
@@ -815,9 +815,9 @@ namespace UnityEditor.Search
             DrawLineWithTooltip(errorIndex, errorIndex + errorLength, errorTooltip, Styles.Wiggle.wiggleWarning, Styles.Wiggle.wiggleTooltip);
         }
 
-        const float textTopBottomPadding = 4f;
-        const float minSinglelineTextHeight = 20f;
-        public const float searchFieldSingleLineHeight = minSinglelineTextHeight + textTopBottomPadding;
+        public const float textTopBottomPadding = 5f;
+        public const float minSinglelineTextHeight = 20f;
+        public const float searchFieldSingleLineHeight = minSinglelineTextHeight + textTopBottomPadding * 2f;
 
         private void DrawLineWithTooltip(int lineStartIndex, int lineEndIndex, string tooltip, GUIStyle lineStyle, GUIStyle tooltipStyle)
         {
@@ -854,14 +854,14 @@ namespace UnityEditor.Search
         {
             var fieldWidth = width - padding;
             var fieldHeight = Mathf.Max(minSinglelineTextHeight, Styles.searchField.CalcHeight(Utils.GUIContentTemp(text), fieldWidth));
-            return GUILayoutUtility.GetRect(fieldWidth, fieldHeight + textTopBottomPadding, Styles.searchField);
+            return GUILayoutUtility.GetRect(fieldWidth, fieldHeight + textTopBottomPadding * 2f, Styles.searchField);
         }
 
         internal Rect AdjustRect(string text, Rect rect)
         {
             var fieldWidth = rect.width;
             var fieldHeight = Mathf.Max(minSinglelineTextHeight, Styles.searchField.CalcHeight(Utils.GUIContentTemp(text), fieldWidth));
-            return new Rect(rect.x, rect.y, fieldWidth, fieldHeight + textTopBottomPadding);
+            return new Rect(rect.x, rect.y, fieldWidth, fieldHeight + textTopBottomPadding * 2f);
         }
     }
 }

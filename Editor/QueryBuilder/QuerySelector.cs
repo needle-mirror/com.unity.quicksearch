@@ -24,6 +24,7 @@ namespace UnityEditor.Search
             m_Propositions = m_BlockSource.FetchPropositions().Where(p => p.valid).OrderBy(p => p.priority);
 
             minimumSize = new Vector2(Mathf.Max(rect.width, 300f), 350f);
+            maximumSize = new Vector2(Mathf.Max(rect.width, 400f), 450f);
         }
 
         public static QuerySelector Open(Rect r, IBlockSource source)
@@ -56,9 +57,16 @@ namespace UnityEditor.Search
             var formatNames = m_BlockSource.formatNames;
             foreach (var p in m_Propositions)
             {
-                var path = string.IsNullOrEmpty(p.category) ? p.label : $"{p.category}/{p.label}";
+                var path = p.path;
                 var name = p.label;
                 var prefix = p.category;
+
+                if (name.LastIndexOf('/') != -1)
+                {
+                    var ls = path.LastIndexOf('/');
+                    name = path.Substring(ls+1);
+                    prefix = path.Substring(0, ls);
+                }
 
                 var newItem = new AdvancedDropdownItem(path)
                 {

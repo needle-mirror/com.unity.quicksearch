@@ -44,7 +44,6 @@ namespace UnityEditor.Search
                         m_LastUsedTime = (long)data;
                 }
                 #endif
-
                 return m_LastUsedTime;
             }
         }

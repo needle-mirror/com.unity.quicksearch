@@ -9,15 +9,17 @@ namespace UnityEditor.Search
     {
         static List<SearchTemplateAttribute> s_QueryProviders;
 
-        private string providerId;
-        private string description;
+        public string providerId { get; set; }
+        public string description { get; set; }
+        public UnityEngine.Search.SearchViewFlags viewFlags { get; set; }
 
         private Func<IEnumerable<string>> multiEntryHandler;
 
-        public SearchTemplateAttribute(string description, string providerId = null)
+        public SearchTemplateAttribute(string description = null, string providerId = null, UnityEngine.Search.SearchViewFlags viewFlags = UnityEngine.Search.SearchViewFlags.None)
         {
             this.providerId = providerId;
             this.description = description;
+            this.viewFlags = viewFlags;
         }
 
         internal static IEnumerable<ISearchQuery> GetAllQueries()
@@ -35,6 +37,7 @@ namespace UnityEditor.Search
                 q.displayName = query;
                 q.viewState.providerIds = new[] { providerId };
                 q.description = description;
+                q.viewState.SetSearchViewFlags(viewFlags);
                 yield return q;
             }
         }

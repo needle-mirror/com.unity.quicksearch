@@ -36,7 +36,7 @@ namespace UnityEditor.Search
         public static readonly Regex k_WordRx = new Regex("\\G!?\\S+", RegexOptions.Compiled);
         public static readonly Regex k_NestedQueryRx = new Regex($"\\G{k_NestedFilterPattern}", RegexOptions.Compiled);
 
-        public static readonly Regex k_FilterNameDecomposeRx = new Regex("(?<beforeCapture>[^\\(]*)\\((?<name>\\?<.+?>)?(?<token>.+?)\\)", RegexOptions.Compiled);
+        public static readonly Regex k_FilterNameDecomposeRx = new Regex("(?<beforeCapture>.*)(?!\\(\\?:)\\((?<name>\\?<.+?>)?(?<token>.+?)\\)", RegexOptions.Compiled);
     }
 
     [Flags]
