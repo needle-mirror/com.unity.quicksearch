@@ -5,6 +5,57 @@ using UnityEngine;
 
 namespace UnityEditor.Search
 {
+    #if USE_QUERY_BUILDER
+    delegate IEnumerable<SearchProposition> SearchPropositionsProviderHandler(SearchContext context, SearchPropositionOptions options);
+
+    readonly struct SearchPropositionProvider
+    {
+        public readonly SearchPropositionsProviderHandler handler;
+
+        public bool valid => handler != null;
+
+        public SearchPropositionProvider(SearchPropositionsProviderHandler handler)
+        {
+            this.handler = handler;
+        }
+    }
+
+    [AttributeUsage(AttributeTargets.Method, AllowMultiple = true)]
+    class SearchPropositionsProviderAttribute : Attribute
+    {
+        static List<SearchPropositionProvider> s_Providers;
+        public static List<SearchPropositionProvider> providers
+        {
+            get
+            {
+                if (s_Providers == null)
+                {
+                    var supportedSignature = MethodSignature.FromDelegate<SearchPropositionsProviderHandler>();
+                    s_Providers = ReflectionUtils.LoadAllMethodsWithAttribute<SearchPropositionsProviderAttribute, SearchPropositionProvider>((mi, attribute, handler) =>
+                    {
+                        if (handler is SearchPropositionsProviderHandler _handler)
+                            return new SearchPropositionProvider(_handler);
+
+                        Debug.LogWarning($"Invalid search proposition provider handler using {mi.DeclaringType.FullName}.{mi.Name}");
+                        return default;
+                    }, supportedSignature, ReflectionUtils.AttributeLoaderBehavior.DoNotThrowOnValidation).Distinct().Where(e => e.valid).ToList();
+                }
+
+                return s_Providers;
+            }
+        }
+
+        internal static void FetchPropositions(in SearchContext context, in SearchPropositionOptions options, SortedSet<SearchProposition> propositions)
+        {
+            foreach (var provider in providers)
+            {
+                foreach (var p in provider.handler(context, options))
+                    propositions.Add(p);
+            }
+        }
+    }
+    #endif
+
     [Flags]
     enum SearchPropositionFlags
     {
@@ -43,19 +94,19 @@ namespace UnityEditor.Search
         public SearchProposition(string label, string replacement = null, string help = null,
                                  int priority = int.MaxValue, TextCursorPlacement moveCursor = TextCursorPlacement.MoveAutoComplete,
                                  Texture2D icon = null)
-            : this (null, label, replacement, help, priority, moveCursor, icon, null, null)
+            : this(null, label, replacement, help, priority, moveCursor, icon, null, null)
         {
         }
 
         internal SearchProposition(string label, string replacement, string help,
-                                int priority, Texture2D icon, object data)
+                                   int priority, Texture2D icon, object data)
             : this(null, label, replacement, help, priority, TextCursorPlacement.MoveAutoComplete, icon, null, data)
         {
         }
 
         internal SearchProposition(string category = null, string label = null, string replacement = null, string help = null,
-                                 int priority = 0, TextCursorPlacement moveCursor = TextCursorPlacement.MoveAutoComplete,
-                                 Texture2D icon = null, Type type = null, object data = null)
+                                   int priority = 0, TextCursorPlacement moveCursor = TextCursorPlacement.MoveAutoComplete,
+                                   Texture2D icon = null, Type type = null, object data = null)
         {
             var kparts = label.Split(new char[] { '|' });
             this.label = kparts[0];
@@ -74,10 +125,10 @@ namespace UnityEditor.Search
             var c = priority.CompareTo(other.priority);
             if (c != 0)
                 return c;
-            c = label?.CompareTo(other.label) ?? -1;
+            c = string.CompareOrdinal(label, other.label);
             if (c != 0)
                 return c;
-            return string.Compare(help, other.help);
+            return string.CompareOrdinal(help, other.help);
         }
 
         public bool Equals(SearchProposition other)
@@ -109,17 +160,15 @@ namespace UnityEditor.Search
 
         internal static SortedSet<SearchProposition> Fetch(SearchContext context, in SearchPropositionOptions options)
         {
-            #if USE_QUERY_BUILDER
-            //using (new DebugTimer("Fetch search propositions"))
-            #endif
-            {
-                var propositions = new SortedSet<SearchProposition>();
+            var propositions = new SortedSet<SearchProposition>();
 
-                if (!options.HasAny(SearchPropositionFlags.QueryBuilder) && !context.options.HasFlag(SearchFlags.Debug) && !Utils.IsRunningTests())
-                    FillBuiltInPropositions(context, propositions);
-                FillProviderPropositions(context, options, propositions);
-                return propositions;
-            }
+            if (!options.HasAny(SearchPropositionFlags.QueryBuilder) && !context.options.HasFlag(SearchFlags.Debug) && !Utils.IsRunningTests())
+                FillBuiltInPropositions(context, propositions);
+            FillProviderPropositions(context, options, propositions);
+            #if USE_QUERY_BUILDER
+            SearchPropositionsProviderAttribute.FetchPropositions(context, options, propositions);
+            #endif
+            return propositions;
         }
 
         private static void FillProviderPropositions(SearchContext context, in SearchPropositionOptions options, SortedSet<SearchProposition> propositions)

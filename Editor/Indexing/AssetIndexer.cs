@@ -178,7 +178,7 @@ namespace UnityEditor.Search
             IndexBundles(documentIndex, path);
 
             if (settings.options.properties || hasCustomIndexers)
-                IndexProperties(documentIndex, path, isPrefab, hasCustomIndexers);
+                IndexProperties(documentIndex, path, hasCustomIndexers);
 
             if (settings.options.extended)
                 IndexSceneDocument(path, checkIfDocumentExists);
@@ -187,11 +187,11 @@ namespace UnityEditor.Search
                 IndexDependencies(documentIndex, path);
         }
 
-        private void IndexProperties(in int documentIndex, in string path, in bool isPrefab, in bool hasCustomIndexers)
+        private void IndexProperties(in int documentIndex, in string path, in bool hasCustomIndexers)
         {
             bool wasLoaded = AssetDatabase.IsMainAssetAtPathLoaded(path);
 
-            var mainAsset = isPrefab ? PrefabUtility.LoadPrefabContents(path) : AssetDatabase.LoadMainAssetAtPath(path);
+            var mainAsset = AssetDatabase.LoadMainAssetAtPath(path);
             if (!mainAsset)
                 return;
 
@@ -220,11 +220,9 @@ namespace UnityEditor.Search
                     IndexObject(documentIndex, importSettings, dependencies: settings.options.dependencies, recursive: true);
             }
 
-            if (!wasLoaded || isPrefab)
+            if (!wasLoaded)
             {
-                if (isPrefab && mainAsset is GameObject prefabObject)
-                    PrefabUtility.UnloadPrefabContents(prefabObject);
-                else if (mainAsset && !mainAsset.hideFlags.HasFlag(HideFlags.DontUnloadUnusedAsset) &&
+                if (mainAsset && !mainAsset.hideFlags.HasFlag(HideFlags.DontUnloadUnusedAsset) &&
                          !(mainAsset is GameObject) &&
                          !(mainAsset is Component) &&
                          !(mainAsset is AssetBundle))
@@ -405,15 +403,7 @@ namespace UnityEditor.Search
             {
                 IndexObject(documentIndex, go, options.dependencies);
 
-                if (PrefabUtility.IsPartOfPrefabInstance(go)) IndexProperty(documentIndex, "prefab", "instance", saveKeyword: true, exact: true);
-                if (PrefabUtility.IsOutermostPrefabInstanceRoot(go)) IndexProperty(documentIndex, "prefab", "top", saveKeyword: true, exact: true);
-                if (PrefabUtility.IsPartOfNonAssetPrefabInstance(go)) IndexProperty(documentIndex, "prefab", "nonasset", saveKeyword: true, exact: true);
-                if (PrefabUtility.IsPartOfPrefabAsset(go)) IndexProperty(documentIndex, "prefab", "asset", saveKeyword: true, exact: true);
-                if (PrefabUtility.IsPartOfAnyPrefab(go)) IndexProperty(documentIndex, "prefab", "any", saveKeyword: true, exact: true);
-                if (PrefabUtility.IsPartOfModelPrefab(go)) IndexProperty(documentIndex, "prefab", "model", saveKeyword: true, exact: true);
-                if (PrefabUtility.IsPartOfRegularPrefab(go)) IndexProperty(documentIndex, "prefab", "regular", saveKeyword: true, exact: true);
-                if (PrefabUtility.IsPartOfVariantPrefab(go)) IndexProperty(documentIndex, "prefab", "variant", saveKeyword: true, exact: true);
-                if (PrefabUtility.HasPrefabInstanceAnyOverrides(go, false)) IndexProperty(documentIndex, "prefab", "modified", saveKeyword: true, exact: true);
+                IndexerExtensions.IndexPrefabProperties(documentIndex, go, this);
             }
 
             if (options.dependencies)

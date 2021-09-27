@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using UnityEditor.Profiling;
 using UnityEditorInternal;
 using UnityEngine;
 using UnityEngine.Search;
@@ -204,7 +205,7 @@ namespace UnityEditor.Search
 
         public SearchViewState GetResultViewState()
         {
-            return new SearchViewState(tableConfig)
+            return new SearchViewState(null, tableConfig)
             {
                 group = null,
                 itemSize = viewState.itemSize
@@ -292,6 +293,7 @@ namespace UnityEditor.Search
                 return null;
             }
         }
+
         #endregion
 
         public static ISearchView Open(ISearchQuery query, SearchFlags additionalFlags)

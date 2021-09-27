@@ -154,7 +154,7 @@ namespace UnityEditor.Search
             savedSearchesSortOrder = (SearchQuerySortOrder)ReadSetting(settings, nameof(savedSearchesSortOrder), 0);
             showSavedSearchPanel = ReadSetting(settings, nameof(showSavedSearchPanel), false);
             queryBuilder = ReadSetting(settings, nameof(queryBuilder), false);
-            ignoredProperties = ReadSetting(settings, nameof(ignoredProperties), "id;name;classname");
+            ignoredProperties = ReadSetting(settings, nameof(ignoredProperties), "id;name;classname;imagecontentshash");
             helperWidgetCurrentArea = ReadSetting(settings, nameof(helperWidgetCurrentArea), "all");
 
             itemIconSize = EditorPrefs.GetFloat(k_ItemIconSizePrefKey, itemIconSize);

@@ -1,5 +1,22 @@
 # Changelog
 
+## [3.0.0-preview.18] - 2021-09-27
+- Add `ref=<global object id>` asset reference indexing to have nested queries work with `h: ref={p: t:material}`
+- Add new prefab asset selectors, (i.e. `select{t:prefab, @label, @prefabbase, @prefabtype}`
+- Add scene object name indexing if no asset path resolves.
+- Add support for Vector4 filtering (i.e. `h: position<(,0,)` to find objects below the ground at 0)
+- Fix `prefab:` variants indexing
+- Fix integer property filter using an floating number (i.e. `h: vertices>900.1`)
+- Fix long error string display in search view status bar.
+- Fix scene provider GameObject serialized property filtering (i.e. `#m_Layer=0`)
+- Fix search table construciton alias initialization using a select{} statement
+- Fix single search index entry less than or equal number comparison.
+- Fix sort{} with duplicate values
+- Fix threaded evaluation of search expression handle leaks
+- Fix where{} search expression error logging.
+- Improve search view undo manager (i.e. CTRL+Z and CTRL+Y)
+- Optimize search proposition enumeration
+
 ## [3.0.0-preview.17] - 2021-09-20
 - Add search action Properties for the asset provider
 - Add support for the dependency manager

@@ -627,7 +627,7 @@ namespace UnityEditor.Search
         static int MatchCombiningToken(string text, int startIndex, int endIndex, ICollection<QueryError> errors, out StringView sv, out Match match, out bool matched)
         {
             match = null;
-            sv = text.GetStringView();
+            sv = text.GetWordView(startIndex);
             var totalUsableLength = endIndex - startIndex;
 
             foreach (var combiningToken in k_CombiningToken)
@@ -636,8 +636,7 @@ namespace UnityEditor.Search
                 if (tokenLength > totalUsableLength)
                     continue;
 
-                sv = text.GetWordView(startIndex);
-                if (sv == combiningToken)
+                if (sv.Equals(combiningToken, StringComparison.OrdinalIgnoreCase))
                 {
                     matched = true;
                     return sv.Length;

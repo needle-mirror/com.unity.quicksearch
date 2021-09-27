@@ -20,11 +20,13 @@ namespace UnityEditor.Search
         // Keep a static table for when we open a new table view
         static private SearchTable s_ActiveSearchTable { get; set; }
 
-        public TableView(ISearchView hostView)
+        public override bool showNoResultMessage => context.empty;
+
+        public TableView(ISearchView hostView, SearchTable tableConfig)
             : base(hostView)
         {
-            m_TableConfig = s_ActiveSearchTable;
             m_TableId = Guid.NewGuid().ToString("N");
+            s_ActiveSearchTable = m_TableConfig = tableConfig ?? s_ActiveSearchTable;
         }
 
         ~TableView() => Dispose(false);
@@ -79,7 +81,7 @@ namespace UnityEditor.Search
         public override SearchViewState SaveViewState(string name)
         {
             #if !USE_SEARCH_MODULE
-            for (int i = 0 ; i < m_PropertyTable.multiColumnHeader.state.columns.Length; ++i)
+            for (int i = 0; i < m_PropertyTable.multiColumnHeader.state.columns.Length; ++i)
                 UpdateColumnSettings(i, m_PropertyTable.multiColumnHeader.state.columns[i]);
             #endif
             var viewState = base.SaveViewState(name);
@@ -350,6 +352,10 @@ namespace UnityEditor.Search
                 var fp = fields.IndexOf(new SearchItem.Field(c.selector));
                 if (fp != -1)
                 {
+                    if (!string.IsNullOrEmpty(fields[fp].alias))
+                        c.content.text = fields[fp].alias;
+                    else if (fields[fp].value is string alias && !string.IsNullOrEmpty(alias))
+                        c.content.text = alias;
                     fields.RemoveAt(fp);
                     return true;
                 }
@@ -412,6 +418,7 @@ namespace UnityEditor.Search
         {
             SearchReport.ExportAsCsv(GetSearchTable().name, GetColumns(), GetRows(), context);
         }
+
         #endif
 
         public override void DrawTabsButtons()

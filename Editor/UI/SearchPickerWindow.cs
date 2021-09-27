@@ -92,9 +92,23 @@ namespace UnityEditor.Search
                 return;
             foreach (var queryBlock in builder.blocks)
             {
-                queryBlock.@readonly = true;
+                queryBlock.@readonly = !HasMarker(queryBlock);
             }
         }
+
+        static bool HasMarker(QueryBlock block)
+        {
+            if (block is QueryListMarkerBlock)
+            {
+                return true;
+            }
+            if (block is QueryFilterBlock fb)
+            {
+                return fb.marker.valid;
+            }
+            return false;
+        }
+
         #endif
 
         public static QuickSearch ShowPicker(SearchViewState args)

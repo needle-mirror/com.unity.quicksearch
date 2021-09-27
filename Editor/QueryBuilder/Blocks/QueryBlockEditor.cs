@@ -21,6 +21,14 @@ namespace UnityEditor.Search
 
         public void OnGUI()
         {
+            var evt = Event.current;
+
+            if (block == null)
+            {
+                Close();
+                return;
+            }
+
             using (new EditorGUILayout.VerticalScope(Styles.panelBorder))
             {
                 GUILayout.FlexibleSpace();
@@ -31,7 +39,8 @@ namespace UnityEditor.Search
                 GUILayout.FlexibleSpace();
             }
 
-            if (Event.current.isKey && Event.current.keyCode == KeyCode.Escape)
+            var key = evt.keyCode;
+            if (evt.isKey && (key == KeyCode.Escape || key == KeyCode.KeypadEnter || key == KeyCode.Return))
                 Close();
         }
 
@@ -43,7 +52,13 @@ namespace UnityEditor.Search
         protected IBlockEditor Show(in B block, in Rect rect, in float width = 400f)
         {
             this.block = block;
-            ShowAsDropDown(new Rect(rect.x, rect.yMax, rect.width, rect.height), new Vector2(width, EditorGUI.kSingleLineHeight * 1.5f));
+            minSize = Vector2.zero;
+            maxSize = new Vector2(width, EditorGUI.kSingleLineHeight * 1.5f);
+
+            var popupRect = new Rect(rect.x, rect.yMax, rect.width, rect.height);
+            var windowRect = new Rect(rect.x, rect.yMax + rect.height, rect.width, rect.height);
+            ShowAsDropDown(popupRect, maxSize);
+            position = windowRect;
             m_Parent.window.m_DontSaveToLayout = true;
             return this;
         }
@@ -78,7 +93,7 @@ namespace UnityEditor.Search
             var w = CreateInstance<QueryNumberBlockEditor>();
             w.value = Convert.ToSingle(block.formatValue);
             w.block = block;
-            return w.Show(block, new Rect(rect.x - 20f, rect.y, rect.width, rect.height), 150f);
+            return w.Show(block, rect, 150f);
         }
 
         protected override float Draw()
@@ -114,7 +129,8 @@ namespace UnityEditor.Search
             w.block = block;
             w.value = (Vector4)block.formatValue;
             w.dimension = dimension;
-            return w.Show(block, new Rect(rect.x - 150f, rect.y, rect.width, rect.height), dimension * 80f + 30f);
+            var width = dimension * 80f + 30f;
+            return w.Show(block, rect, width);
         }
 
         protected override void Apply(in Vector4 value)
@@ -169,6 +185,52 @@ namespace UnityEditor.Search
             }
             EditorGUI.showMixedValue = false;
             return v;
+        }
+    }
+
+    class QueryExpressionBlockEditor : QuickSearch, IBlockEditor
+    {
+        public EditorWindow window => this;
+        public QueryFilterBlock block { get; protected set; }
+
+        public static IBlockEditor Open(in Rect rect, QueryFilterBlock block)
+        {
+            var qb = block.formatValue as QueryBuilder;
+            var searchFlags = SearchFlags.None;
+            var searchContext = SearchService.CreateContext(qb.searchText, searchFlags);
+            var viewState = new SearchViewState(searchContext,
+                UnityEngine.Search.SearchViewFlags.OpenInBuilderMode |
+                UnityEngine.Search.SearchViewFlags.DisableInspectorPreview);
+            var w = Create<QueryExpressionBlockEditor>(viewState) as QueryExpressionBlockEditor;
+            w.block = block;
+            w.minSize = Vector2.zero;
+            w.maxSize = new Vector2(600, 300);
+            var popupRect = new Rect(rect.x, rect.yMax, rect.width, rect.height);
+            var windowRect = new Rect(rect.x, rect.yMax + rect.height, rect.width, rect.height);
+            w.ShowAsDropDown(popupRect, w.maxSize);
+            w.position = windowRect;
+            w.m_Parent.window.m_DontSaveToLayout = true;
+            return w;
+        }
+
+        internal new void OnDisable()
+        {
+            Apply();
+            block.CloseEditor();
+            base.OnDisable();
+        }
+
+        protected override void UpdateAsyncResults()
+        {
+            base.UpdateAsyncResults();
+            Apply();
+        }
+
+        void Apply()
+        {
+            block.formatValue = block.CreateExpressionBuilder(context.searchText);
+            block.CloseEditor();
+            block.source.Apply();
         }
     }
 }

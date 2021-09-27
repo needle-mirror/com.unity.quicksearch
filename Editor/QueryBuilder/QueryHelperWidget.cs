@@ -2,7 +2,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using UnityEditor.Profiling;
 using UnityEngine;
 
 namespace UnityEditor.Search
@@ -126,8 +125,10 @@ namespace UnityEditor.Search
         public bool isExpanded;
         public Vector2 scrollPos;
 
-        public float expectedHeight {
-            get {
+        public float expectedHeight
+        {
+            get
+            {
                 if (filteredQueries.Length == 0)
                     return 0;
                 if (!isExpanded)
@@ -146,15 +147,12 @@ namespace UnityEditor.Search
         QueryBuilder m_Areas;
         QueryHelperSearchGroup m_Searches;
         Rect m_WidgetRect;
-        float m_LastLayoutWindowHeight;
         ISearchView m_SearchView;
         bool m_BlockMode;
 
         string m_CurrentAreaFilterId;
         double m_LastUpClick;
         const string k_All = "all";
-
-        bool needGroupLayouting => m_LastLayoutWindowHeight != m_WidgetRect.height;
 
         internal static class Constants
         {
@@ -184,33 +182,36 @@ namespace UnityEditor.Search
             };
 
             public static readonly GUIStyle foldout = new GUIStyle("IN Foldout");
-            public static readonly GUIStyle description = new GUIStyle("label")
+            public static readonly GUIStyle icon = new GUIStyle(Search.Styles.panelHeaderIcon)
+            {
+                fixedWidth = 16,
+                fixedHeight = 16,
+                margin = new RectOffset(2, 2, 4, 4),
+                padding = new RectOffset(0, 0, 0, 0)
+            };
+            public static readonly GUIStyle textQuery = new GUIStyle("label")
+            {
+                alignment = TextAnchor.MiddleLeft,
+                fixedHeight = 0f,
+                wordWrap = true,
+                margin = new RectOffset(4, 4, 3, 0),
+                padding = new RectOffset(0, 0, 0, 0)
+            };
+            public static readonly GUIStyle description = new GUIStyle(textQuery)
             {
                 name = "description",
                 alignment = TextAnchor.MiddleRight,
-                padding = new RectOffset(2, (int)Constants.kScrollbarOffset, 1,1),
-                fixedHeight = Constants.kBuilderHeight
+                margin = new RectOffset(2, 2, 1, 1),
+                padding = new RectOffset(2, (int)Constants.kScrollbarOffset, 0, 0),
+                fixedHeight = 20
             };
 
             public static readonly GUIStyle builderRow = Utils.FromUSS("quick-search-builder-row");
-
-            public static readonly GUIStyle textQuery = new GUIStyle("label")
-            {
-                wordWrap = true
-            };
         }
 
         internal event Action<ISearchQuery> queryExecuted;
-
-        public bool drawBorder;
-
-        public QueryBlock currentQueryAreaBlock
-        {
-            get
-            {
-                return m_Areas.blocks.FirstOrDefault(b => GetAreaFilterId(b) == m_CurrentAreaFilterId);
-            }
-        }
+        public bool drawBorder { get; set; }
+        public QueryBlock currentQueryAreaBlock => m_Areas.blocks.FirstOrDefault(b => GetAreaFilterId(b) == m_CurrentAreaFilterId);
 
         internal string GetAreaFilterId(QueryBlock block)
         {
@@ -225,18 +226,16 @@ namespace UnityEditor.Search
             m_BlockMode = blockMode;
             drawBorder = true;
 
-            m_Areas = new QueryBuilder("")
-            {
-                drawBackground = false,
-            };
+            m_Areas = new QueryBuilder("") { drawBackground = false, };
             m_Areas.AddBlock(new QueryAreaBlock(m_Areas, k_All, ""));
 
+            var builtinSearches = SearchTemplateAttribute.GetAllQueries();
             var allProviders = view != null && view.context != null ? view.context.GetProviders() : SearchService.GetActiveProviders();
             var generalProviders = allProviders.Where(p => !p.isExplicitProvider);
             var explicitProviders = allProviders.Where(p => p.isExplicitProvider);
             var providers = generalProviders.Concat(explicitProviders);
             if (blockMode)
-                m_ActiveSearchProviders = providers.Where(p => p.fetchPropositions != null && p.id != "expression").ToArray();
+                m_ActiveSearchProviders = providers.Where(p => p.id != "expression" && (p.fetchPropositions != null || builtinSearches.Any(sq => sq.searchText.StartsWith(p.filterId) || sq.GetProviderIds().Any(pid => p.id == pid)))).ToArray();
             else
                 m_ActiveSearchProviders = providers.ToArray();
 
@@ -254,7 +253,7 @@ namespace UnityEditor.Search
 
             ChangeCurrentAreaFilter(m_CurrentAreaFilterId);
 
-            PopulateSearches();
+            PopulateSearches(builtinSearches);
             RefreshSearches();
             BindSearchView(view);
         }
@@ -282,7 +281,7 @@ namespace UnityEditor.Search
             GUILayout.Label("Narrow your search");
 
             var areaRect = new Rect(m_WidgetRect.x, GUILayoutUtility.GetLastRect().yMax, m_WidgetRect.width, Constants.kAreaBuilderMaxHeight);
-            areaRect = DrawBuilder(e, m_Areas, areaRect);
+            DrawBuilder(e, m_Areas, areaRect);
             DrawSearches(e, m_Searches);
             EditorGUILayout.EndVertical();
 
@@ -292,10 +291,8 @@ namespace UnityEditor.Search
 
         internal static ISearchQuery CreateQuery(string queryStr)
         {
-            var q = new SearchQuery()
-            {
-                searchText = queryStr
-            };
+            var q = new SearchQuery() { searchText = queryStr };
+            q.viewState.itemSize = SearchSettings.itemIconSize;
             return q;
         }
 
@@ -310,20 +307,21 @@ namespace UnityEditor.Search
             for (var i = 0; i < group.filteredQueries.Length; ++i)
             {
                 var queryData = group.filteredQueries[i];
+                var y = i == 0 ? 0 : GUILayoutUtility.GetLastRect().yMax;
+                var rowRect = new Rect(0, y, m_WidgetRect.width, m_BlockMode ? queryData.builder.rect.height : Constants.kBuilderHeight);
+
                 if (m_BlockMode)
                 {
                     if (queryData.descSize.x == 0)
                         queryData.descSize = Styles.description.CalcSize(queryData.description);
-                    var y = i == 0 ? 0 : GUILayoutUtility.GetLastRect().yMax;
-                    var rowHeight = m_BlockMode ? queryData.builder.rect.height : Constants.kBuilderHeight;
-                    var rowRect = new Rect(0, y, m_WidgetRect.width, rowHeight);
+
                     GUI.Label(rowRect, queryData.tooltip, Styles.builderRow);
 
-                    var iconRect = new Rect(Constants.kLeftPadding, y, Constants.kBuilderIconSize, Constants.kBuilderIconSize);
-                    GUI.Label(iconRect, queryData.icon, Search.Styles.panelHeaderIcon);
+                    var iconRect = new Rect(Constants.kLeftPadding, y + 6f, Constants.kBuilderIconSize, Constants.kBuilderIconSize);
+                    GUI.Label(iconRect, queryData.icon, Styles.icon);
 
                     var descWidth = Mathf.Min(maxDescriptionWidth, queryData.descSize.x + Constants.kScrollbarOffset);
-                    var descRect = new Rect(m_WidgetRect.width - descWidth - Constants.kLeftPadding, y, descWidth, Constants.kBuilderHeight);
+                    var descRect = new Rect(m_WidgetRect.width - descWidth - Constants.kLeftPadding, y + 6f, descWidth, Constants.kBuilderHeight);
                     GUI.Label(descRect, queryData.description, Styles.description);
 
                     var builderWidth = m_WidgetRect.width - descRect.width - iconRect.width;
@@ -333,37 +331,40 @@ namespace UnityEditor.Search
                 }
                 else
                 {
-                    var y = i == 0 ? 0 : GUILayoutUtility.GetLastRect().yMax;
-                    var rowRect = new Rect(0, y, m_WidgetRect.width, m_BlockMode ? queryData.builder.rect.height : Constants.kBuilderHeight);
-                    GUI.Label(rowRect, queryData.searchText != queryData.tooltip.tooltip ? queryData.tooltip : GUIContent.Temp(""), Styles.builderRow);
+                    var descSize = Styles.description.CalcSize(queryData.description);
+
+                    var textHeight = Styles.textQuery.CalcHeight(Utils.GUIContentTemp(queryData.searchText), rowRect.xMax - descSize.x - 20f);
+                    rowRect.height = textHeight + 6f;
+
+                    GUI.Label(rowRect, queryData.searchText != queryData.tooltip.tooltip ? queryData.tooltip : GUIContent.none, Styles.builderRow);
                     GUILayout.BeginHorizontal();
-                    GUILayout.Label(queryData.icon, Search.Styles.panelHeaderIcon);
+                    GUILayout.Label(queryData.icon, Styles.icon);
+
                     GUILayout.Label(queryData.searchText, Styles.textQuery);
                     GUILayout.FlexibleSpace();
-                    GUILayout.Label(queryData.description, GUILayout.MaxHeight(Constants.kBuilderHeight));
-                    GUILayout.EndHorizontal();
+                    GUILayout.Label(queryData.description, Styles.description);
 
-                    if (e.type == EventType.MouseUp && e.button == 0 && rowRect.Contains(e.mousePosition))
-                    {
-                        ExecuteQuery(queryData.query);
-                    }
+                    GUILayout.EndHorizontal();
+                }
+
+                EditorGUIUtility.AddCursorRect(rowRect, MouseCursor.Link);
+
+                if (e.type == EventType.MouseUp && e.button == 0 && rowRect.Contains(e.mousePosition))
+                {
+                    ExecuteQuery(queryData.query);
+                    e.Use();
                 }
             }
             EditorGUILayout.EndScrollView();
         }
 
-        private void PopulateSearches()
+        private void PopulateSearches(IEnumerable<ISearchQuery> builtinSearches)
         {
-            var builtinSearches = SearchTemplateAttribute.GetAllQueries();
             foreach (var q in builtinSearches)
-            {
                 m_Searches.Add(q, QueryHelperSearchGroup.QueryType.Template, SearchQuery.GetIcon(q));
-            }
 
             foreach (var q in SearchQueryAsset.savedQueries.Cast<ISearchQuery>().Concat(SearchQuery.userQueries).Where(q => q.isSearchTemplate))
-            {
                 m_Searches.Add(q, QueryHelperSearchGroup.QueryType.Template, SearchQuery.GetIcon(q));
-            }
 
             foreach (var a in EnumerateUniqueRecentSearches().Take(5))
                 m_Searches.Add(a, QueryHelperSearchGroup.QueryType.Recent, Constants.recentSearchesIcon);
@@ -380,8 +381,7 @@ namespace UnityEditor.Search
                 for (var j = i + 1; j < recentSearches.Count();)
                 {
                     var b = recentSearches[j];
-                    var dist = Utils.LevenshteinDistance(a, b, false);
-                    if (dist < 9)
+                    if (a.StartsWith(b) || Utils.LevenshteinDistance(a, b, false) < 9)
                     {
                         recentSearches.RemoveAt(j);
                     }
@@ -395,22 +395,17 @@ namespace UnityEditor.Search
 
         private void RefreshSearches()
         {
-            using (new EditorPerformanceTracker("helper_RefreshSearches"))
-            {
-                var isAll = k_All == m_CurrentAreaFilterId;
-                var currentProvider = m_ActiveSearchProviders.FirstOrDefault(p => p.filterId == m_CurrentAreaFilterId);
+            var isAll = k_All == m_CurrentAreaFilterId;
+            var currentProvider = m_ActiveSearchProviders.FirstOrDefault(p => p.filterId == m_CurrentAreaFilterId);
 
-                m_Searches.filteredQueries = m_Searches.queries.Where(q => {
-                    if (isAll)
-                        return true;
-                    if (q.type == QueryHelperSearchGroup.QueryType.Recent)
-                        return q.searchText.StartsWith(m_CurrentAreaFilterId);
-                    return IsFilteredQuery(q.query, currentProvider);
-                }).ToArray();
-                m_Searches.UpdateTitle();
-
-                m_LastLayoutWindowHeight = 0;
-            }
+            m_Searches.filteredQueries = m_Searches.queries.Where(q => {
+                if (isAll)
+                    return true;
+                if (q.type == QueryHelperSearchGroup.QueryType.Recent)
+                    return q.searchText.StartsWith(m_CurrentAreaFilterId);
+                return IsFilteredQuery(q.query, currentProvider);
+            }).ToArray();
+            m_Searches.UpdateTitle();
         }
 
         private bool IsFilteredQuery(ISearchQuery query, SearchProvider provider)
@@ -434,34 +429,37 @@ namespace UnityEditor.Search
                 var isDoubleClick = now - m_LastUpClick < 0.3;
                 foreach (var b in builder.blocks)
                 {
-                    if (b.drawRect.Contains(e.mousePosition))
+                    if (!b.drawRect.Contains(e.mousePosition))
+                        continue;
+
+                    if (BlockClicked(builder, b, isDoubleClick))
                     {
-                        BlockClicked(builder, b, isDoubleClick);
                         e.Use();
                         break;
                     }
                 }
 
-                BuilderClicked(builder, isDoubleClick);
-                e.Use();
+                if (e.type != EventType.Used && BuilderClicked(builder))
+                    e.Use();
 
                 m_LastUpClick = now;
             }
             return r;
         }
 
-        private void BuilderClicked(QueryBuilder builder, bool isDoubleClick)
+        private bool BuilderClicked(QueryBuilder builder)
         {
             ISearchQuery query = null;
             if (m_Searches.HasBuilder(builder, out var queryIndex))
-            {
                 query = m_Searches.queries[queryIndex].query;
-            }
 
             if (query != null)
             {
                 ExecuteQuery(query);
+                return true;
             }
+
+            return false;
         }
 
         private void ChangeCurrentAreaFilter(string newFilterArea)
@@ -477,26 +475,26 @@ namespace UnityEditor.Search
             SearchSettings.helperWidgetCurrentArea = m_CurrentAreaFilterId;
         }
 
-        private void BlockClicked(QueryBuilder builder, QueryBlock block, bool isDoubleClick)
+        private bool BlockClicked(QueryBuilder builder, QueryBlock block, bool isDoubleClick)
         {
-            if (builder == m_Areas)
+            if (builder != m_Areas)
+                return false;
+
+            if (isDoubleClick)
             {
-                if (isDoubleClick)
-                {
-                    var query = CreateQuery(block.ToString());
-                    ExecuteQuery(query);
-                }
-                else
-                {
-                    ChangeCurrentAreaFilter(GetAreaFilterId(block));
-                    RefreshSearches();
-                }
+                var query = CreateQuery(block.ToString());
+                ExecuteQuery(query);
+                return true;
             }
+
+            ChangeCurrentAreaFilter(GetAreaFilterId(block));
+            RefreshSearches();
+            return true;
         }
 
         private void ExecuteQuery(ISearchQuery query)
         {
-            if (m_SearchView != null)
+            if (m_SearchView != null && !string.IsNullOrEmpty(query.searchText))
                 ((QuickSearch)m_SearchView).ExecuteSearchQuery(query);
             queryExecuted?.Invoke(query);
         }

@@ -107,10 +107,9 @@ namespace UnityEditor.Search
             title = filterType?.Name ?? typeName;
         }
 
-        internal SearchViewState(SearchTable tableConfig)
-            : this(null, null)
+        internal SearchViewState(SearchContext context, SearchTable tableConfig, SearchViewFlags flags = SearchViewFlags.None)
+            : this(context, flags | SearchViewFlags.TableView)
         {
-            itemSize = (float)DisplayMode.Table;
             group = null;
             this.tableConfig = tableConfig;
         }

@@ -7,45 +7,99 @@ namespace UnityEditor.Search
 {
     static class IndexerExtensions
     {
-        [CustomObjectIndexer(typeof(GameObject), version = 1)]
+        [CustomObjectIndexer(typeof(GameObject), version = 2)]
         internal static void IndexPrefabTypes(CustomObjectIndexerTarget context, ObjectIndexer indexer)
         {
             if (!(context.target is GameObject prefab))
                 return;
+            IndexPrefabProperties(context.documentIndex, prefab, indexer);
+        }
 
-            if (PrefabUtility.IsAnyPrefabInstanceRoot(prefab))
-                indexer.IndexProperty(context.documentIndex, "prefab", "root", saveKeyword: true, exact:true);
+        internal static void IndexPrefabProperties(int documentIndex, GameObject prefab, ObjectIndexer indexer)
+        {
+            var prefabType = PrefabUtility.GetPrefabAssetType(prefab);
+            indexer.IndexProperty(documentIndex, "prefab", prefabType.ToString(), saveKeyword: true, exact: true);
 
-            if (PrefabUtility.IsPartOfPrefabInstance(prefab))
-                indexer.IndexProperty(context.documentIndex, "prefab", "instance", saveKeyword: true, exact: true);
+            if (prefabType != PrefabAssetType.NotAPrefab)
+                indexer.IndexProperty(documentIndex, "prefab", "any", saveKeyword: true, exact: true);
 
-            if (PrefabUtility.IsOutermostPrefabInstanceRoot(prefab))
-                indexer.IndexProperty(context.documentIndex, "prefab", "top", saveKeyword: true, exact: true);
+            #if USE_SEARCH_MODULE
+            var rootPrefab = PrefabUtility.GetOriginalSourceOrVariantRoot(prefab);
+            if (rootPrefab != null && rootPrefab != prefab)
+                indexer.AddReference(documentIndex, "root", rootPrefab, "Root Prefab", typeof(GameObject));
+            #endif
 
-            if (PrefabUtility.IsPartOfNonAssetPrefabInstance(prefab))
-                indexer.IndexProperty(context.documentIndex, "prefab", "nonasset", saveKeyword: true, exact: true);
+            var source = PrefabUtility.GetCorrespondingObjectFromSource(prefab);
+            if (source != null && source != prefab)
+                indexer.AddReference(documentIndex, "base", source, "Base Prefab", typeof(GameObject));
 
-            if (PrefabUtility.IsPartOfPrefabAsset(prefab))
-                indexer.IndexProperty(context.documentIndex, "prefab", "asset", saveKeyword: true, exact: true);
-
-            if (PrefabUtility.IsPartOfAnyPrefab(prefab))
-                indexer.IndexProperty(context.documentIndex, "prefab", "any", saveKeyword: true, exact: true);
-
-            if (PrefabUtility.IsPartOfModelPrefab(prefab))
-                indexer.IndexProperty(context.documentIndex, "prefab", "model", saveKeyword: true, exact: true);
-
-            if (PrefabUtility.IsPartOfRegularPrefab(prefab))
-                indexer.IndexProperty(context.documentIndex, "prefab", "regular", saveKeyword: true, exact: true);
-
-            if (PrefabUtility.IsPartOfVariantPrefab(prefab))
-                indexer.IndexProperty(context.documentIndex, "prefab", "variant", saveKeyword: true, exact: true);
+            #if USE_SEARCH_MODULE
+            if (rootPrefab == null || source == null)
+            #else
+            if (source == null)
+            #endif
+            {
+                indexer.IndexProperty(documentIndex, "prefab", "base", saveKeyword: true, exact: true);
+            }
 
             if (PrefabUtility.HasPrefabInstanceAnyOverrides(prefab, false))
-                indexer.IndexProperty(context.documentIndex, "prefab", "modified", saveKeyword: true, exact: true);
+                indexer.IndexProperty(documentIndex, "prefab", "modified", saveKeyword: true, exact: true);
 
             if (PrefabUtility.HasPrefabInstanceAnyOverrides(prefab, true))
-                indexer.IndexProperty(context.documentIndex, "prefab", "altered", saveKeyword: true, exact: true);
+                indexer.IndexProperty(documentIndex, "prefab", "altered", saveKeyword: true, exact: true);
         }
+
+        [SearchSelector("prefabtype", provider: "scene")]
+        [SearchSelector("prefabtype", provider: "asset")]
+        [System.ComponentModel.Description("Prefab Type")]
+        internal static object GetPrefabType(SearchItem item)
+        {
+            var prefab = item.ToObject();
+            if (!prefab)
+                return null;
+            return PrefabUtility.GetPrefabAssetType(prefab);
+        }
+
+        [SearchSelector("prefabstatus", provider: "scene")]
+        [SearchSelector("prefabstatus", provider: "asset")]
+        [System.ComponentModel.Description("Prefab Status")]
+        internal static object GetPrefabStatus(SearchItem item)
+        {
+            var prefab = item.ToObject();
+            if (!prefab)
+                return null;
+            return PrefabUtility.GetPrefabInstanceStatus(prefab);
+        }
+
+        [SearchSelector("prefabbase", provider: "scene")]
+        [SearchSelector("prefabbase", provider: "asset")]
+        [System.ComponentModel.Description("Prefab Base")]
+        internal static object GetPrefabBase(SearchItem item)
+        {
+            var prefab = item.ToObject();
+            if (!prefab)
+                return null;
+            var basePrefab = PrefabUtility.GetCorrespondingObjectFromSource(prefab);
+            if (basePrefab == null || prefab == basePrefab)
+                return null;
+            return basePrefab;
+        }
+
+        #if USE_SEARCH_MODULE
+        [SearchSelector("prefabroot", provider: "scene")]
+        [SearchSelector("prefabroot", provider: "asset")]
+        [System.ComponentModel.Description("Prefab Root")]
+        internal static object GetPrefabRoot(SearchItem item)
+        {
+            var prefab = item.ToObject();
+            if (!prefab)
+                return null;
+            var rootPrefab = PrefabUtility.GetOriginalSourceOrVariantRoot(prefab);
+            if (rootPrefab == null || prefab == rootPrefab)
+                return null;
+            return rootPrefab;
+        }
+        #endif
 
         [CustomObjectIndexer(typeof(AnimationClip), version = 1)]
         internal static void AnimationClipEventsIndexing(CustomObjectIndexerTarget context, ObjectIndexer indexer)

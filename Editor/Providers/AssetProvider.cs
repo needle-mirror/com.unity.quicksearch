@@ -194,7 +194,7 @@ namespace UnityEditor.Search.Providers
             if (info.gid.identifierType == (int)IdentifierType.kBuiltInAsset)
                 return AssetPreview.GetMiniThumbnail(info.obj);
 
-            return AssetPreview.GetMiniTypeThumbnail(info.type ?? typeof(GameObject));
+            return SearchUtils.GetTypeIcon(info.type ?? typeof(GameObject));
         }
 
         private static string TrimLabel(in string label, in bool trim)
@@ -343,7 +343,7 @@ namespace UnityEditor.Search.Providers
             var dbs = SearchDatabase.EnumerateAll();
             return dbs.SelectMany(db => db.index.GetKeywords()
                 .Where(kw => kw.StartsWith(token, StringComparison.OrdinalIgnoreCase)))
-                .Select(kw => new SearchProposition(category: null, label:kw));
+                .Select(kw => new SearchProposition(category: null, label: kw));
         }
 
         private static IEnumerable<SearchProposition> FetchQueryBuilderPropositions()
@@ -378,7 +378,8 @@ namespace UnityEditor.Search.Providers
             yield return new SearchProposition(category: "Filters", label: "Age", replacement: "age>=1.5", help: "In days, when was the file last modified?", icon: Icons.quicksearch);
             yield return new SearchProposition(category: "Filters", label: "Sub Asset", replacement: "is:subasset", help: "Yield nested assets (i.e. media from FBX files)", icon: Icons.quicksearch);
 
-            yield return new SearchProposition(category: null, "Reference", "ref=<$object:none,UnityEngine.Object$>", "Find all assets referencing a specific asset.");
+            var sceneIcon = Utils.LoadIcon("SceneAsset Icon");
+            yield return new SearchProposition(category: null, "Reference", "ref=<$object:none,UnityEngine.Object$>", "Find all assets referencing a specific asset.", icon: sceneIcon);
         }
 
         private static IEnumerable<SearchProposition> FetchIndexPropositions()
@@ -451,7 +452,7 @@ namespace UnityEditor.Search.Providers
                     else
                     {
                         yield return CreateItem("Files", context, SearchUtils.CreateGroupProvider(provider, "Files", 0, true),
-                                                    null, e.source, 998 + e.score, SearchDocumentFlags.Asset);
+                            null, e.source, 998 + e.score, SearchDocumentFlags.Asset);
                     }
                 }
             }
@@ -799,7 +800,7 @@ namespace UnityEditor.Search.Providers
             QuickSearch.OpenWithContextualProvider(type, Query.type, FindProvider.providerId);
         }
 
-        [SearchTemplate(description = "Find all textures", providerId = type)] internal static string ST1() => @"t=Texture";
+        [SearchTemplate(description = "Find all textures", providerId = type)] internal static string ST1() => @"t:texture";
         #if USE_SEARCH_MODULE
         [SearchTemplate(description = "Search current folder", providerId = type)] internal static string ST2() => $"dir=\"{Path.GetFileName(ProjectWindowUtil.GetActiveFolderPath())}\" ";
         #endif

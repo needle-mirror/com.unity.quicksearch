@@ -139,6 +139,7 @@ namespace UnityEditor.Search
         private static MethodInfo s_GUIContentTempSS;
         private static MethodInfo s_GUIContentTempST;
         private static MethodInfo s_SetChildParentReferences;
+        private static MethodInfo s_HasInvalidComponent;
 
         internal static string GetPackagePath(string relativePath)
         {
@@ -300,6 +301,22 @@ namespace UnityEditor.Search
             #endif
 
             return GetAssetPreview(obj, previewOptions) ?? AssetDatabase.GetCachedIcon(path) as Texture2D;
+        }
+
+        internal static bool HasInvalidComponent(UnityEngine.Object obj)
+        {
+            #if USE_SEARCH_MODULE
+            return PrefabUtility.HasInvalidComponent(obj);
+            #else
+            if (s_HasInvalidComponent == null)
+            {
+                var type = typeof(PrefabUtility);
+                s_HasInvalidComponent = type.GetMethod("s_HasInvalidComponent", BindingFlags.NonPublic | BindingFlags.Static);
+                if (s_HasInvalidComponent == null)
+                    return default;
+            }
+            return (bool)s_HasInvalidComponent.Invoke(null, new object[] { obj });
+            #endif
         }
 
         internal static int GetMainAssetInstanceID(string assetPath)
@@ -1581,7 +1598,7 @@ namespace UnityEditor.Search
                 var assembly = typeof(EditorWindow).Assembly;
                 var type = assembly.GetTypes().First(t => t.Name == "PropertyEditor");
                 s_OpenPropertyEditor = type.GetMethod("OpenPropertyEditor", BindingFlags.NonPublic | BindingFlags.Static,
-                    null, new [] { typeof(UnityEngine.Object), typeof(bool) }, null);
+                    null, new[] { typeof(UnityEngine.Object), typeof(bool) }, null);
             }
             s_OpenPropertyEditor.Invoke(null, new object[] { target, true });
             #endif
@@ -1743,6 +1760,35 @@ namespace UnityEditor.Search
             }
 
             return pattern;
+        }
+
+        internal static T GetAttribute<T>(this MethodInfo mi) where T : System.Attribute
+        {
+            var attrs = mi.GetCustomAttributes(typeof(T), false);
+            if (attrs == null || attrs.Length == 0)
+                return null;
+            return attrs[0] as T;
+        }
+
+        internal static T GetAttribute<T>(this Type mi) where T : System.Attribute
+        {
+            var attrs = mi.GetCustomAttributes(typeof(T), false);
+            if (attrs == null || attrs.Length == 0)
+                return null;
+            return attrs[0] as T;
+        }
+
+        internal static bool IsBuiltInResource(UnityEngine.Object obj)
+        {
+            var resPath = AssetDatabase.GetAssetPath(obj);
+            return IsBuiltInResource(resPath);
+        }
+
+        internal static bool IsBuiltInResource(in string resPath)
+        {
+            return string.Equals(resPath, "Library/unity editor resources", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(resPath, "resources/unity_builtin_extra", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(resPath, "library/unity default resources", StringComparison.OrdinalIgnoreCase);
         }
     }
 

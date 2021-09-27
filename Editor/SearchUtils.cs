@@ -54,9 +54,10 @@ namespace UnityEditor.Search
         /// </summary>
         /// <param name="source"></param>
         /// <returns></returns>
+        static readonly Regex s_CamelCaseSplit = new Regex(@"(?<!^)(?=[A-Z0-9])", RegexOptions.Compiled);
         public static string[] SplitCamelCase(string source)
         {
-            return Regex.Split(source, @"(?<!^)(?=[A-Z0-9])");
+            return s_CamelCaseSplit.Split(source);
         }
 
         internal static string UppercaseFirst(string s)
@@ -112,6 +113,7 @@ namespace UnityEditor.Search
             foreach (var c in SplitFileEntryComponents(filename, SearchUtils.entrySeparators))
                 Debug.Log(c);
         }
+
         #endif
 
         /// <summary>
@@ -162,7 +164,11 @@ namespace UnityEditor.Search
                 return GetTransformPath(c.gameObject.transform);
             var assetPath = AssetDatabase.GetAssetPath(obj);
             if (!string.IsNullOrEmpty(assetPath))
+            {
+                if (Utils.IsBuiltInResource(assetPath))
+                    return GlobalObjectId.GetGlobalObjectIdSlow(obj).ToString();
                 return assetPath;
+            }
             if (obj is GameObject go)
                 return GetTransformPath(go.transform);
             return obj.name;
@@ -485,26 +491,26 @@ namespace UnityEditor.Search
             return null;
         }
 
-        internal static IEnumerable<SearchProposition> FetchTypePropositions<T>(string category = "Types", Type blockType = null) where T : UnityEngine.Object
+        internal static IEnumerable<SearchProposition> FetchTypePropositions<T>(string category = "Types", Type blockType = null, int priority = -1444) where T : UnityEngine.Object
         {
             if (category != null)
             {
                 yield return new SearchProposition(
-                                    priority: -1,
-                                    category: null,
-                                    label: category,
-                                    icon: EditorGUIUtility.FindTexture("FilterByType"));
+                    priority: priority,
+                    category: null,
+                    label: category,
+                    icon: EditorGUIUtility.FindTexture("FilterByType"));
 
                 yield return new SearchProposition(category: category, label: "Prefabs", replacement: "t:prefab",
-                    icon: AssetPreview.GetMiniTypeThumbnail(typeof(GameObject)), data: typeof(GameObject), type: blockType);
+                    icon: GetTypeIcon(typeof(GameObject)), data: typeof(GameObject), type: blockType, priority: priority);
             }
 
             if (string.Equals(category, "Types", StringComparison.Ordinal))
             {
                 yield return new SearchProposition(category: "Types", label: "Scripts", replacement: "t:script",
-                    icon: AssetPreview.GetMiniTypeThumbnail(typeof(MonoScript)), data: typeof(MonoScript), type: blockType);
+                    icon: GetTypeIcon(typeof(MonoScript)), data: typeof(MonoScript), type: blockType, priority: priority);
                 yield return new SearchProposition(category: "Types", label: "Scenes", replacement: "t:scene",
-                    icon: AssetPreview.GetMiniTypeThumbnail(typeof(SceneAsset)), data: typeof(SceneAsset), type: blockType);
+                    icon: GetTypeIcon(typeof(SceneAsset)), data: typeof(SceneAsset), type: blockType, priority: priority);
             }
 
             var ignoredAssemblies = new[]
@@ -522,13 +528,13 @@ namespace UnityEditor.Search
             foreach (var t in types)
             {
                 yield return new SearchProposition(
-                    priority: t.Name[0],
+                    priority: t.Name[0] + priority,
                     category: category,
                     label: t.Name,
                     replacement: $"t:{t.Name}",
                     data: t,
                     type: blockType,
-                    icon: AssetPreview.GetMiniTypeThumbnail(t));
+                    icon: GetTypeIcon(t));
             }
         }
 
@@ -553,7 +559,21 @@ namespace UnityEditor.Search
                 label: $"{tokens[1]} ({blockType?.Name ?? valueType})",
                 replacement: replacement,
                 help: tokens[2],
-                icon: AssetPreview.GetMiniTypeThumbnail(blockType) ?? AssetPreview.GetMiniTypeThumbnail(ownerType));
+                icon:
+                    #if USE_SEARCH_MODULE
+                    AssetPreview.GetMiniTypeThumbnailFromType(blockType) ??
+                    #endif
+                    GetTypeIcon(ownerType));
+        }
+
+        static Dictionary<Type, Texture2D> s_TypeIcons = new Dictionary<Type, Texture2D>();
+        internal static Texture2D GetTypeIcon(in Type type)
+        {
+            if (s_TypeIcons.TryGetValue(type, out var t) && t)
+                return t;
+            t = AssetPreview.GetMiniTypeThumbnail(type);
+            s_TypeIcons[type] = t;
+            return t;
         }
 
         internal static IEnumerable<SearchProposition> EnumeratePropertyPropositions(IEnumerable<UnityEngine.Object> objs)
@@ -579,7 +599,7 @@ namespace UnityEditor.Search
                             var propertyType = GetPropertyManagedTypeString(p);
                             if (propertyType != null)
                             {
-                                var keyword = $"#{p.name.Replace("m_", "").Replace(" ", "")}|{p.displayName}|{p.tooltip}|{propertyType}|{p.serializedObject?.targetObject?.GetType().AssemblyQualifiedName}";
+                                var keyword = CreateKeyword(p, propertyType);
                                 yield return keyword;
                             }
                         }
@@ -593,6 +613,14 @@ namespace UnityEditor.Search
                     }
                 }
             }
+        }
+
+        private static string CreateKeyword(in SerializedProperty p, in string propertyType)
+        {
+            var path = p.propertyPath;
+            if (path.IndexOf(' ') != -1)
+                path = p.name;
+            return $"#{path.Replace(" ", "")}|{p.displayName}|{p.tooltip}|{propertyType}|{p.serializedObject?.targetObject?.GetType().AssemblyQualifiedName}";
         }
 
         internal static string GetPropertyManagedTypeString(in SerializedProperty p)
@@ -740,6 +768,12 @@ namespace UnityEditor.Search
 
             valueType = Type.GetType(type);
             type = valueType?.Name ?? type;
+
+            #if USE_QUERY_BUILDER
+            if (QueryListBlockAttribute.TryGetReplacement(replacement.ToLower(), type, ref valueType, out var replacementText))
+                return replacementText;
+            #endif
+
             switch (type)
             {
                 case "Enum":
@@ -794,12 +828,20 @@ namespace UnityEditor.Search
         {
             if (s_CachedTypes.TryGetValue(typeString, out var foundType))
                 return foundType;
+
+            var selfType = typeof(T);
+            if (string.Equals(selfType.Name, typeString, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(selfType.FullName, typeString, StringComparison.Ordinal))
+                return s_CachedTypes[typeString] = selfType;
+
             var type = Type.GetType(typeString);
             if (type != null)
                 return s_CachedTypes[typeString] = type;
             foreach (var t in TypeCache.GetTypesDerivedFrom<T>())
             {
                 if (!t.IsVisible)
+                    continue;
+                if (t.GetAttribute<ObsoleteAttribute>() != null)
                     continue;
                 if (string.Equals(t.Name, typeString, StringComparison.OrdinalIgnoreCase) ||
                     string.Equals(t.FullName, typeString, StringComparison.Ordinal))
@@ -808,6 +850,22 @@ namespace UnityEditor.Search
                 }
             }
             return s_CachedTypes[typeString] = null;
+        }
+
+        internal static IEnumerable<Type> FindTypes<T>(string typeString)
+        {
+            foreach (var t in TypeCache.GetTypesDerivedFrom<T>())
+            {
+                if (!t.IsVisible)
+                    continue;
+                if (t.GetAttribute<ObsoleteAttribute>() != null)
+                    continue;
+                if (string.Equals(t.Name, typeString, StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(t.FullName, typeString, StringComparison.Ordinal))
+                {
+                    yield return t;
+                }
+            }
         }
     }
 }

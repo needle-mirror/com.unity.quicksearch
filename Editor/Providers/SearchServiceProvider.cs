@@ -54,7 +54,7 @@ namespace UnityEditor.Search
                 if (token == '@')
                 {
                     foreach (var s in SelectorManager.selectors.Where(s => s.printable))
-                        yield return new SearchProposition(category: category, label: $"{token}{s.label}", $"@{s.label}\t", $"Selector");
+                        yield return new SearchProposition(category: category, label: $"{token}{s.label}", help: s.description ?? "Selector", replacement: $"@{s.label}\t");
                 }
             }
         }

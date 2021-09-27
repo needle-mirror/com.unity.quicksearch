@@ -118,10 +118,8 @@ namespace UnityEditor.Search
         internal void OnEnable()
         {
             m_SearchField = new SearchField();
-            if (m_ReportPath != null)
+            if (!string.IsNullOrEmpty(m_ReportPath))
                 InitializeReport(m_ReportPath);
-            if (m_Parent != null && m_Parent.window != null)
-                m_Parent.window.m_DontSaveToLayout = true;
         }
 
         internal void OnGUI()

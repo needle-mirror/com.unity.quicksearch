@@ -201,3 +201,42 @@
 .quick-search-builder-row:hover {
     background-color: --theme-line-selection-background-color-hover;
 }
+
+.quick-search-builder-in-place-objectfield {
+    -unity-enable-hovering: --enable-style-hovering;
+    -unity-text-align: middle-left;
+    -unity-clipping: clip;
+
+    font-size: --unity-font-size;
+    margin: --theme-default-control-margin;
+    padding-left: 3px;
+    padding-right: 20px;
+    padding-top: 0px;
+    padding-bottom: 0px;
+
+    border-radius: --theme-default-border-radius;
+    border: 0px solid --unity-colors-object_field-border;
+
+    color: --quick-search-builder-in-place-objectfield-color;
+    background-color: --quick-search-builder-in-place-objectfield-background-color;
+}
+
+.quick-search-builder-in-place-objectfield-button {
+    background-size: 12px 12px;
+    background-position: right 3px top 0.5;
+
+    border-radius: --theme-default-border-radius;
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+    border-left-width: 0;
+
+    margin: 1px 1px 1px 0;
+    -unity-enable-hovering: --enable-style-hovering;
+
+    background-color: --quick-search-builder-in-place-objectfield-button-background-color;
+    background-image: resource("UIPackageResources/Images/d_pick.png");
+}
+
+.quick-search-builder-in-place-objectfield-button:hover {
+    background-color: --quick-search-builder-in-place-objectfield-button-background-color-hover;
+}

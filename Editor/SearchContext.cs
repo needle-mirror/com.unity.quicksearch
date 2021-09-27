@@ -140,6 +140,13 @@ namespace UnityEditor.Search
         /// </summary>
         internal string rawSearchQuery { get; private set; } = string.Empty;
 
+        #if USE_QUERY_BUILDER
+        /// <summary>
+        /// Keep a trace of all parsed query markers in the searchText
+        /// </summary>
+        internal QueryMarker[] markers;
+        #endif
+
         /// <summary>
         /// Character offset of the processed search query in the raw search text.
         /// </summary>
@@ -225,7 +232,7 @@ namespace UnityEditor.Search
             searchQueryOffset = 0;
             rawSearchQuery = SearchUtils.ParseSearchText(searchText, m_Providers, out var filteredProvider);
             #if USE_QUERY_BUILDER
-            searchQuery = QueryMarker.ReplaceMarkersWithRawValues(rawSearchQuery);
+            searchQuery = QueryMarker.ReplaceMarkersWithRawValues(rawSearchQuery, out markers);
             #else
             searchQuery = rawSearchQuery;
             #endif

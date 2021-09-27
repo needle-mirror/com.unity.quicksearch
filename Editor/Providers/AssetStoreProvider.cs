@@ -518,28 +518,24 @@ namespace UnityEditor.Search.Providers
             return newPreview.preview;
         }
 
+        static bool IsItemOwned(IReadOnlyCollection<SearchItem> items)
+        {
+            if (items.Count > 1)
+                return false;
+            return IsItemOwned(items.First());
+        }
+
+        static bool IsItemOwned(SearchItem item)
+        {
+            var doc = (AssetDocument)item.data;
+            return purchasePackageIds != null && purchasePackageIds.Contains(doc.id);
+        }
+
         [SearchActionsProvider]
         internal static IEnumerable<SearchAction> ActionHandlers()
         {
             return new[]
             {
-                #if USE_SEARCH_MODULE
-                new SearchAction(k_ProviderId, "open", new GUIContent("Show in Package Manager"))
-                {
-                    handler = (item) =>
-                    {
-                        var doc = (AssetDocument)item.data;
-                        Utils.OpenPackageManager(doc.name_en_US);
-                    },
-                    enabled = items =>
-                    {
-                        if (items.Count > 1)
-                            return false;
-                        var doc = (AssetDocument)items.First().data;
-                        return purchasePackageIds != null && purchasePackageIds.Contains(doc.id);
-                    }
-                },
-                #endif
                 new SearchAction(k_ProviderId, "browse", new GUIContent("Open Unity Asset Store..."))
                 {
                     execute = (items) =>
@@ -547,7 +543,26 @@ namespace UnityEditor.Search.Providers
                         foreach (var item in items)
                             BrowseAssetStoreItem(item);
                     }
+                },
+                #if USE_SEARCH_MODULE
+                new SearchAction(k_ProviderId, "open", new GUIContent("Show in Package Manager"))
+                {
+                    handler = (item) =>
+                    {
+                        if (IsItemOwned(item))
+                        {
+                            var doc = (AssetDocument)item.data;
+                            Utils.OpenPackageManager(doc.id);
+                        }
+                        else
+                        {
+                            BrowseAssetStoreItem(item);
+                        }
+
+                    },
+                    enabled = IsItemOwned
                 }
+                #endif
             };
         }
 

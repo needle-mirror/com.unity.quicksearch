@@ -119,8 +119,8 @@ namespace UnityEditor.Search.Providers
     [QueryListBlock("Scope", "scope", "scope")]
     class QueryScopeFilterBlock : QueryListBlock
     {
-        public QueryScopeFilterBlock(IQuerySource source, string value, QueryListBlockAttribute attr)
-            : base(source, value, attr)
+        public QueryScopeFilterBlock(IQuerySource source, string id, string value, QueryListBlockAttribute attr)
+            : base(source, id, value, attr)
         {
             icon = Utils.LoadIcon("Filter Icon");
         }

@@ -739,9 +739,23 @@ namespace UnityEditor.Search
         protected override bool ConsumeCombiningToken(string text, int startIndex, int endIndex, in StringView sv, Match match, ICollection<QueryError> errors, QueryEngineParserData userData)
         {
             var token = sv.ToString();
-            if (!k_CombiningTokenGenerators.TryGetValue(token, out var generator))
+            IQueryNode newNode = null;
+
+            foreach (var tokenGenerator in k_CombiningTokenGenerators)
+            {
+                if (sv.Equals(tokenGenerator.Key, StringComparison.OrdinalIgnoreCase))
+                {
+                    newNode = tokenGenerator.Value();
+                    break;
+                }
+            }
+
+            if (newNode == null)
+            {
+                errors.Add(new QueryError(startIndex, endIndex - startIndex, $"No node generator found for combining token \"{token}\"."));
                 return false;
-            var newNode = generator();
+            }
+
             newNode.token = new QueryToken(in sv, startIndex);
             userData.nodesToStringPosition.Add(newNode, new QueryToken(startIndex, sv.Length));
             userData.expressionNodes.Add(newNode);
@@ -1665,7 +1679,15 @@ namespace UnityEditor.Search
 
         void BuildDefaultTypeParsers()
         {
-            AddDefaultTypeParser(s => int.TryParse(s, out var value) ? new ParseResult<int>(true, value) : ParseResult<int>.none);
+            AddDefaultTypeParser(s =>
+            {
+                if (int.TryParse(s, out var value))
+                    return new ParseResult<int>(true, value);
+                if (double.TryParse(s, NumberStyles.Number, NumberFormatInfo.InvariantInfo, out var number))
+                    return new ParseResult<int>(true, (int)number);
+
+                return ParseResult<int>.none;
+            });
             AddDefaultTypeParser(s => float.TryParse(s, NumberStyles.Number, NumberFormatInfo.InvariantInfo, out var value) ? new ParseResult<float>(true, value) : ParseResult<float>.none);
             AddDefaultTypeParser(s => bool.TryParse(s, out var value) ? new ParseResult<bool>(true, value) : ParseResult<bool>.none);
             AddDefaultTypeParser(s => double.TryParse(s, NumberStyles.Number, NumberFormatInfo.InvariantInfo, out var value) ? new ParseResult<double>(true, value) : ParseResult<double>.none);

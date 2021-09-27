@@ -10,7 +10,7 @@ namespace UnityEditor.Search
 {
     class QueryBuilder : IQuerySource
     {
-        const float blockSpacing = 3f;
+        const float blockSpacing = 4f;
         const float builderPadding = SearchField.textTopBottomPadding;
         const float minHeight = SearchField.minSinglelineTextHeight;
 
@@ -20,12 +20,13 @@ namespace UnityEditor.Search
         private QueryAddNewBlock m_AddBlock;
         private QueryTextFieldBlock m_TextBlock;
         private SearchField m_SearchField;
-        private List<List<QueryBlock>> m_BlockFrames;
-        private int m_BlockFramesIndex = 0;
 
         private readonly string m_SearchText;
         private readonly SearchContext m_Context;
         private readonly QueryEngine<QueryBlock> m_QueryEngine;
+
+        public float width => m_BuilderWidth;
+        public float height => m_BuilderHeight;
 
         private bool m_ReadOnly;
         public bool @readonly
@@ -77,10 +78,10 @@ namespace UnityEditor.Search
         {
             errors = new List<QueryError>();
             blocks = new List<QueryBlock>();
-            m_BlockFrames = new List<List<QueryBlock>>();
             var opts = new QueryValidationOptions() { validateSyntaxOnly = true };
             m_QueryEngine = new QueryEngine<QueryBlock>(opts);
             m_QueryEngine.AddQuoteDelimiter(new QueryTextDelimiter("<$", "$>"));
+            m_QueryEngine.AddQuoteDelimiter(new QueryTextDelimiter("[", "]"));
             m_QueryEngine.AddFilter(new Regex("(#[\\w.]+)"));
             drawBackground = true;
         }
@@ -151,24 +152,28 @@ namespace UnityEditor.Search
             return blocks.IndexOf(b);
         }
 
-        public Rect Draw(Event evt, Rect rect)
+        public Rect Draw(Event evt, Rect rect, bool createLayout = true)
         {
             if (evt.type == EventType.Layout || rect != m_LayoutRect)
                 LayoutBlocks(rect.width - 20f);
 
             m_LayoutRect = rect;
             m_LayoutRect.height = m_BuilderHeight;
-            if (m_SearchField == null)
+            if (createLayout)
             {
-                GUILayoutUtility.GetRect(m_LayoutRect.width, m_LayoutRect.height);
-            }
-            else
-            {
-                GUILayoutUtility.GetRect(m_LayoutRect.width, m_LayoutRect.height + Styles.searchField.margin.bottom, Styles.queryBuilderToolbar);
+                if (m_SearchField == null)
+                {
+                    GUILayoutUtility.GetRect(m_LayoutRect.width, m_LayoutRect.height);
+                }
+                else
+                {
+                    GUILayoutUtility.GetRect(m_LayoutRect.width, m_LayoutRect.height + Styles.searchField.margin.bottom, Styles.queryBuilderToolbar);
+                }
+
+                if (drawBackground)
+                    DrawBackground(evt);
             }
 
-            if (drawBackground)
-                DrawBackground(evt);
             DrawBlocks(evt);
             return m_LayoutRect;
         }
@@ -179,7 +184,7 @@ namespace UnityEditor.Search
                 Styles.searchField.Draw(m_LayoutRect, false, false, false, false);
         }
 
-        private void LayoutBlocks(float availableWidth)
+        public void LayoutBlocks(float availableWidth)
         {
             var blockPosition = new Vector2(builderPadding, builderPadding);
             int rowCount = 1;
@@ -252,7 +257,7 @@ namespace UnityEditor.Search
             var newBlocks = new List<QueryBlock>();
             if (!string.IsNullOrEmpty(searchText))
             {
-                string searchQuery = null;
+                string searchQuery;
                 if (context != null)
                 {
                     if (!string.IsNullOrEmpty(context.filterId))
@@ -299,8 +304,6 @@ namespace UnityEditor.Search
 
             blocks.Clear();
             blocks.AddRange(newBlocks);
-            m_BlockFrames.Clear();
-            UndoLogBlocks();
             return errors.Count == 0;
         }
 
@@ -351,7 +354,7 @@ namespace UnityEditor.Search
 
             if ((node.type == QueryNodeType.Filter || node.type == QueryNodeType.FilterIn) && node is FilterNode fn)
             {
-                var block = QueryListBlockAttribute.CreateBlock(fn.filterId.ToLower(), this, fn.rawFilterValueStringView.ToString());
+                var block = QueryListBlockAttribute.CreateBlock(fn.filterId.ToLower(), fn.operatorId.ToLower(), this, fn.rawFilterValueStringView.ToString());
                 if (block != null)
                     return block;
                 return new QueryFilterBlock(this, fn);
@@ -367,6 +370,9 @@ namespace UnityEditor.Search
                 !node.leaf && node.children[0].type == QueryNodeType.NestedQuery &&
                 node is AggregatorNode an && node.children[0] is NestedQueryNode nq)
                 return new QueryWordBlock(this, $"{an.tokenStringView}{nq.rawNestedQueryStringView}");
+
+            if (node.type == QueryNodeType.Or)
+                return new QueryAndOrBlock(this, $"or");
 
             if (HasFlag(SearchFlags.Debug))
                 Debug.LogWarning($"TODO: Failed to parse block {node.identifier} ({node.type})");
@@ -410,7 +416,6 @@ namespace UnityEditor.Search
                 return null;
 
             blocks.AddRange(newBlocks);
-            UndoLogBlocks();
             Apply();
             return newBlocks.FirstOrDefault();
         }
@@ -418,7 +423,6 @@ namespace UnityEditor.Search
         public QueryBlock AddBlock(QueryBlock newBlock)
         {
             blocks.Add(newBlock);
-            UndoLogBlocks();
             Apply();
             return newBlock;
         }
@@ -433,7 +437,6 @@ namespace UnityEditor.Search
                     currentIndex--;
                 SetSelection(currentIndex);
             }
-            UndoLogBlocks();
             Apply();
         }
 
@@ -446,18 +449,6 @@ namespace UnityEditor.Search
                 var index = GetBlockIndex(block);
                 SetSelection(index);
             }
-        }
-
-        private void UndoLogBlocks()
-        {
-            if (@readonly || context == null)
-                return;
-            if (m_BlockFrames.Count > 20)
-                m_BlockFrames.RemoveAt(0);
-            if (m_BlockFramesIndex + 1 < m_BlockFrames.Count)
-                m_BlockFrames.RemoveRange(m_BlockFramesIndex + 1, m_BlockFrames.Count - (m_BlockFramesIndex + 1));
-            m_BlockFrames.Add(blocks.ToList());
-            m_BlockFramesIndex = m_BlockFrames.Count - 1;
         }
 
         private void SetSearchText(string text)
@@ -474,27 +465,7 @@ namespace UnityEditor.Search
             if (@readonly || context == null || evt.type != EventType.KeyDown)
                 return false;
 
-            if (evt.keyCode == KeyCode.Z && (evt.command || evt.control))
-            {
-                if (m_BlockFrames.Count == 0 || m_BlockFramesIndex <= 0)
-                    return false;
-
-                blocks = m_BlockFrames[--m_BlockFramesIndex];
-                Apply();
-                evt.Use();
-                return true;
-            }
-            else if (evt.keyCode == KeyCode.Y && (evt.command || evt.control))
-            {
-                if (m_BlockFrames.Count == 0 || m_BlockFramesIndex + 1 >= m_BlockFrames.Count)
-                    return false;
-
-                blocks = m_BlockFrames[++m_BlockFramesIndex];
-                Apply();
-                evt.Use();
-                return true;
-            }
-            else if (evt.keyCode == KeyCode.Home)
+            if (evt.keyCode == KeyCode.Home)
             {
                 var cb = currentBlock;
                 if (cb != null)

@@ -2028,6 +2028,11 @@ namespace UnityEditor.Search
             {
                 // Potential range insertion, only used for not exact matches
                 foundIndex = (-foundIndex) - 1;
+
+                if (comparer.op == SearchIndexOperator.Less || comparer.op == SearchIndexOperator.LessOrEqual && foundIndex > 0)
+                {
+                    foundIndex--;
+                }
             }
 
             if (!IsIndexValid(foundIndex, term.crc, term.type))

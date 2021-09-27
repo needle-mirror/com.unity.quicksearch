@@ -1,3 +1,6 @@
+#if USE_PROPERTY_DATABASE
+#define CACHE_SERIALIZED_PROPERTY
+#endif
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -220,40 +223,50 @@ namespace UnityEditor.Search.Providers
             if (string.IsNullOrEmpty(propertyName))
                 return SearchValue.invalid;
 
-            #if USE_PROPERTY_DATABASE
+            #if CACHE_SERIALIZED_PROPERTY
             using (var view = SearchMonitor.GetView())
             #endif
             {
-                #if USE_PROPERTY_DATABASE
+                #if CACHE_SERIALIZED_PROPERTY
                 var documentKey = SearchUtils.GetDocumentKey(go);
                 var recordKey = PropertyDatabase.CreateRecordKey(documentKey, PropertyDatabase.CreatePropertyHash(propertyName));
                 if (view.TryLoadProperty(recordKey, out object data))
                     return (SearchValue)data;
                 #endif
 
-                var gocs = go.GetComponents<Component>();
-                for (int componentIndex = 0; componentIndex < gocs.Length; ++componentIndex)
+                foreach (var c in EnumerateSubObjects(go))
                 {
-                    var c = gocs[componentIndex];
-                    if (!c || (c.hideFlags & HideFlags.HideInInspector) == HideFlags.HideInInspector)
-                        continue;
-
                     var property = FindPropertyValue(c, propertyName);
                     if (property.valid)
                     {
-                        #if USE_PROPERTY_DATABASE
+                        #if CACHE_SERIALIZED_PROPERTY
                         view.StoreProperty(recordKey, property);
                         #endif
                         return property;
                     }
                 }
 
-                #if USE_PROPERTY_DATABASE
+                #if CACHE_SERIALIZED_PROPERTY
                 view.StoreProperty(recordKey, SearchValue.invalid);
                 #endif
             }
 
             return SearchValue.invalid;
+        }
+
+        IEnumerable<UnityEngine.Object> EnumerateSubObjects(GameObject go)
+        {
+            yield return go;
+
+            var gocs = go.GetComponents<Component>();
+            for (int componentIndex = 0; componentIndex < gocs.Length; ++componentIndex)
+            {
+                var c = gocs[componentIndex];
+                if (!c || (c.hideFlags & HideFlags.HideInInspector) == HideFlags.HideInInspector)
+                    continue;
+
+                yield return c;
+            }
         }
 
         bool OnAttributeFilter(GameObject go, string op, string value)

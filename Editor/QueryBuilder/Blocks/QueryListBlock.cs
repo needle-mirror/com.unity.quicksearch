@@ -10,7 +10,6 @@ namespace UnityEditor.Search
     abstract class QueryListBlock : QueryBlock
     {
         const float iconSize = 16f;
-        static readonly Color s_TextureBackgroundColor = new Color(0.2f, 0.2f, 0.25f, 0.95f);
 
         public readonly string id;
         public readonly string category;
@@ -20,14 +19,23 @@ namespace UnityEditor.Search
 
         public abstract IEnumerable<SearchProposition> GetPropositions(SearchPropositionFlags flags = SearchPropositionFlags.None);
 
-        protected QueryListBlock(IQuerySource source, string value, QueryListBlockAttribute attr)
+        protected QueryListBlock(IQuerySource source, string id, string value, QueryListBlockAttribute attr)
             : base(source)
         {
-            this.id = attr.id;
+            this.id = id ?? attr.id;
             this.op = attr.op;
             this.name = attr.name;
             this.value = value;
             this.category = attr.category;
+        }
+
+        protected QueryListBlock(IQuerySource source, string id, string op, string value, string category = null)
+            : base(source)
+        {
+            this.id = id;
+            this.op = op;
+            this.value = value;
+            this.category = category;
         }
 
         protected string GetCategory(SearchPropositionFlags flags)
@@ -75,7 +83,7 @@ namespace UnityEditor.Search
 
             var labelStyle = Styles.QueryBuilder.label;
             var valueContent = labelStyle.CreateContent(label ?? value);
-            var blockWidth = iconSize + valueContent.width + labelStyle.margin.horizontal + blockExtraPadding + QueryContent.DownArrow.width;
+            var blockWidth = iconSize + valueContent.width + labelStyle.margin.horizontal + blockExtraPadding + (@readonly ? 0 : QueryContent.DownArrow.width);
             return GetRect(at, blockWidth, blockHeight);
         }
 
@@ -90,14 +98,14 @@ namespace UnityEditor.Search
             var labelStyle = Styles.QueryBuilder.label;
             var valueContent = labelStyle.CreateContent(label ?? value);
 
-            DrawBackground(blockRect);
+            DrawBackground(blockRect, mousePosition);
 
             var backgroundTextureRect = new Rect(blockRect.x + 1f, blockRect.y + 1f, 24f, blockRect.height - 2f);
             var iconBackgroundRadius = new Vector4(borderRadius, 0, 0, editor != null ? 0 : borderRadius);
             var backgroundTextureRect2 = backgroundTextureRect;
             if (selected)
                 backgroundTextureRect2.xMin -= 1f;
-            GUI.DrawTexture(backgroundTextureRect2, EditorGUIUtility.whiteTexture, ScaleMode.StretchToFill, false, 0f, s_TextureBackgroundColor, Vector4.zero, iconBackgroundRadius);
+            GUI.DrawTexture(backgroundTextureRect2, EditorGUIUtility.whiteTexture, ScaleMode.StretchToFill, false, 0f, QueryColors.textureBackgroundColor, Vector4.zero, iconBackgroundRadius);
 
             var valueRect = backgroundTextureRect;
             var textureRect = backgroundTextureRect;
@@ -120,6 +128,45 @@ namespace UnityEditor.Search
             menu.AddItem(EditorGUIUtility.TrTextContent($"Operator/Equal (=)"), string.Equals(op, "=", StringComparison.Ordinal), () => SetOperator("="));
             menu.AddItem(EditorGUIUtility.TrTextContent($"Operator/Contains (:)"), string.Equals(op, ":", StringComparison.Ordinal), () => SetOperator(":"));
         }
+
+        public virtual bool TryGetReplacement(string id, string type, ref Type blockType, out string replacement)
+        {
+            replacement = string.Empty;
+            return false;
+        }
+    }
+
+    class QueryListMarkerBlock : QueryListBlock
+    {
+        private QueryMarker m_Marker;
+
+        public QueryListMarkerBlock(IQuerySource source, string id, string name, string op, QueryMarker value)
+            : base(source, id, op, value.value as string)
+        {
+            m_Marker = value;
+            this.name = name ?? id;
+        }
+
+        public QueryListMarkerBlock(IQuerySource source, string id, QueryMarker value, QueryListBlockAttribute attr)
+            : base(source, id, value.value as string, attr)
+        {
+            m_Marker = value;
+        }
+
+        public override IEnumerable<SearchProposition> GetPropositions(SearchPropositionFlags flags = SearchPropositionFlags.None)
+        {
+            var args = m_Marker.EvaluateArgs().ToArray();
+            if (args.Length < 2)
+                yield break;
+            else
+            {
+                foreach (var choice in args.Skip(1))
+                {
+                    var choiceStr = (string)choice;
+                    yield return new SearchProposition(category: null, label: ObjectNames.NicifyVariableName(choiceStr), replacement: choiceStr);
+                }
+            }
+        }
     }
 
     [QueryListBlock("Types", "type", "t", ":")]
@@ -127,8 +174,8 @@ namespace UnityEditor.Search
     {
         private Type type;
 
-        public QueryTypeBlock(IQuerySource source, string value, QueryListBlockAttribute attr)
-            : base(source, value, attr)
+        public QueryTypeBlock(IQuerySource source, string id, string value, QueryListBlockAttribute attr)
+            : base(source, id, value, attr)
         {
             SetType(GetValueType(value));
         }
@@ -140,7 +187,7 @@ namespace UnityEditor.Search
             {
                 value = type.Name;
                 label = ObjectNames.NicifyVariableName(type.Name);
-                icon = AssetPreview.GetMiniTypeThumbnail(type);
+                icon = SearchUtils.GetTypeIcon(type);
             }
         }
 
@@ -176,8 +223,8 @@ namespace UnityEditor.Search
     [QueryListBlock("Components", "component", "t", ":")]
     class QueryComponentBlock : QueryTypeBlock
     {
-        public QueryComponentBlock(IQuerySource source, string value, QueryListBlockAttribute attr)
-             : base(source, value, attr)
+        public QueryComponentBlock(IQuerySource source, string id, string value, QueryListBlockAttribute attr)
+             : base(source, id, value, attr)
         {
         }
 
@@ -190,8 +237,8 @@ namespace UnityEditor.Search
     [QueryListBlock("Labels", "label", "l", ":")]
     class QueryLabelBlock : QueryListBlock
     {
-       public QueryLabelBlock(IQuerySource source, string value, QueryListBlockAttribute attr)
-            : base(source, value, attr)
+       public QueryLabelBlock(IQuerySource source, string id, string value, QueryListBlockAttribute attr)
+            : base(source, id, value, attr)
         {
             icon = Utils.LoadIcon("AssetLabelIcon");
         }
@@ -208,11 +255,10 @@ namespace UnityEditor.Search
     [QueryListBlock("Tags", "tag", "tag")]
     class QueryTagBlock : QueryListBlock
     {
-        public QueryTagBlock(IQuerySource source, string value, QueryListBlockAttribute attr)
-            : base(source, value, attr)
+        public QueryTagBlock(IQuerySource source, string id, string value, QueryListBlockAttribute attr)
+            : base(source, id, value, attr)
         {
             icon = Utils.LoadIcon("AssetLabelIcon");
-            alwaysDrawLabel = true;
         }
 
         public override IEnumerable<SearchProposition> GetPropositions(SearchPropositionFlags flags)
@@ -225,19 +271,23 @@ namespace UnityEditor.Search
         }
     }
 
-    [QueryListBlock("Layers", "layer", "layer")]
+    [QueryListBlock("Layers", "layer", new[] { "layer", "#m_layer" })]
     class QueryLayerBlock : QueryListBlock
     {
-        public QueryLayerBlock(IQuerySource source, string value, QueryListBlockAttribute attr)
-            : base(source, value, attr)
+        const int k_MaxLayerCount = 32;
+
+        public QueryLayerBlock(IQuerySource source, string id, string value, QueryListBlockAttribute attr)
+            : base(source, id, value, attr)
         {
             icon = Utils.LoadIcon("GUILayer Icon");
-            alwaysDrawLabel = true;
+
+            if (QueryMarker.TryParse(value, out var marker) && marker.valid && marker.args.Length >= 2)
+                this.value = marker.args[1].rawText.ToString();
         }
 
         public override IEnumerable<SearchProposition> GetPropositions(SearchPropositionFlags flags)
         {
-            for (var i = 0; i < 32; i++)
+            for (var i = 0; i < k_MaxLayerCount; i++)
             {
                 var layerName = InternalEditorUtility.GetLayerName(i);
                 if (!string.IsNullOrEmpty(layerName))
@@ -249,28 +299,47 @@ namespace UnityEditor.Search
 
         public override string ToString()
         {
-            for (var i = 0; i < 32; i++)
+            for (var i = 0; i < k_MaxLayerCount; i++)
             {
                 var layerName = InternalEditorUtility.GetLayerName(i);
                 if (layerName == value)
-                    return $"{id}{op}{i}";
+                    return $"{id}{op}{FormatValue(i, layerName)}";
             }
 
             return base.ToString();
+        }
+
+        public override bool TryGetReplacement(string id, string type, ref Type blockType, out string replacement)
+        {
+            replacement = $"{id}{op}{GetDefaultMarker()}";
+            return true;
+        }
+
+        static string FormatValue(int layerIndex, string layerName)
+        {
+            return $"<$layer:{layerIndex}, {layerName}$>";
+        }
+
+        public static string GetDefaultMarker()
+        {
+            var layerName = InternalEditorUtility.GetLayerName(0);
+            return FormatValue(0, layerName);
         }
     }
 
     [QueryListBlock("Prefabs", "prefab", "prefab", ":")]
     class QueryPrefabFilterBlock : QueryListBlock
     {
-        public QueryPrefabFilterBlock(IQuerySource source, string value, QueryListBlockAttribute attr)
-            : base(source, value, attr)
+        public QueryPrefabFilterBlock(IQuerySource source, string id, string value, QueryListBlockAttribute attr)
+            : base(source, id, value, attr)
         {
             icon = Utils.LoadIcon("Prefab Icon");
         }
 
         public override IEnumerable<SearchProposition> GetPropositions(SearchPropositionFlags flags)
         {
+            yield return CreateProposition(flags, "Any", "any", "Search prefabs");
+            yield return CreateProposition(flags, "Base", "Base", "Search base prefabs");
             yield return CreateProposition(flags, "Root", "root", "Search prefab roots");
             yield return CreateProposition(flags, "Top", "top", "Search top-level prefab root instances");
             yield return CreateProposition(flags, "Instance", "instance", "Search objects that are part of a prefab instance");
@@ -287,8 +356,8 @@ namespace UnityEditor.Search
     [QueryListBlock("Filters", "is", "is", ":")]
     class QueryIsFilterBlock : QueryListBlock
     {
-        public QueryIsFilterBlock(IQuerySource source, string value, QueryListBlockAttribute attr)
-            : base(source, value, attr)
+        public QueryIsFilterBlock(IQuerySource source, string id, string value, QueryListBlockAttribute attr)
+            : base(source, id, value, attr)
         {
             icon = Utils.LoadIcon("Filter Icon");
             alwaysDrawLabel = true;

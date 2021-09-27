@@ -37,6 +37,11 @@ namespace UnityEditor.Search
 
         public bool valid => text.valid;
 
+        public static bool TryParse(string text, out QueryMarker marker)
+        {
+            return TryParse(text.GetStringView(), out marker);
+        }
+
         public static bool TryParse(StringView text, out QueryMarker marker)
         {
             marker = none;
@@ -163,19 +168,19 @@ namespace UnityEditor.Search
             return markers.ToArray();
         }
 
-        public static string ReplaceMarkersWithRawValues(string text)
+        public static string ReplaceMarkersWithRawValues(string text, out QueryMarker[] markers)
         {
-            return ReplaceMarkersWithRawValues(text.GetStringView());
+            return ReplaceMarkersWithRawValues(text.GetStringView(), out markers);
         }
 
-        public static string ReplaceMarkersWithRawValues(StringView text)
+        public static string ReplaceMarkersWithRawValues(StringView text, out QueryMarker[] markers)
         {
-            var allMarkers = ParseAllMarkers(text);
-            if (allMarkers == null || allMarkers.Length == 0)
+            markers = ParseAllMarkers(text);
+            if (markers == null || markers.Length == 0)
                 return text.ToString();
 
             var modifiedSv = text.GetSubsetStringView();
-            foreach (var queryMarker in allMarkers)
+            foreach (var queryMarker in markers)
             {
                 if (!queryMarker.valid || queryMarker.args == null || queryMarker.args.Length == 0)
                     continue;

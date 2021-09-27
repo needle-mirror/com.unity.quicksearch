@@ -345,6 +345,9 @@ namespace UnityEditor.Search
                 case SerializedPropertyType.String: return new SearchValue(sp.stringValue);
 
                 case SerializedPropertyType.Enum:
+                    managedType = sp.GetManagedType();
+                    if (managedType != null && managedType.IsEnum)
+                        return new SearchValue(sp.intValue, managedType.GetEnumValues().GetValue(sp.intValue).ToString());
                     return new SearchValue(sp.intValue, sp.enumNames[sp.enumValueIndex]);
 
                 case SerializedPropertyType.ObjectReference:
@@ -418,6 +421,14 @@ namespace UnityEditor.Search
             queryEngine.AddOperatorHandler(">", (SearchValue v, double number) => PropertyFloatCompare(v, number, (f, r) => f > r));
             queryEngine.AddOperatorHandler(">=", (SearchValue v, double number) => PropertyFloatCompare(v, number, (f, r) => f >= r));
 
+            queryEngine.AddOperatorHandler(":", (Vector4 v, Vector4 v4, StringComparison sc) => PropertyVector4Compare(v, v4, (f, r) => Math.Abs(f - r) < double.Epsilon));
+            queryEngine.AddOperatorHandler("=", (Vector4 v, Vector4 v4) => PropertyVector4Compare(v, v4, (f, r) => Math.Abs(f - r) < double.Epsilon));
+            queryEngine.AddOperatorHandler("!=", (Vector4 v, Vector4 v4) => PropertyVector4Compare(v, v4, (f, r) => Math.Abs(f - r) >= double.Epsilon));
+            queryEngine.AddOperatorHandler("<=", (Vector4 v, Vector4 v4) => PropertyVector4Compare(v, v4, (f, r) => f <= r));
+            queryEngine.AddOperatorHandler("<", (Vector4 v, Vector4 v4) => PropertyVector4Compare(v, v4, (f, r) => f < r));
+            queryEngine.AddOperatorHandler(">", (Vector4 v, Vector4 v4) => PropertyVector4Compare(v, v4, (f, r) => f > r));
+            queryEngine.AddOperatorHandler(">=", (Vector4 v, Vector4 v4) => PropertyVector4Compare(v, v4, (f, r) => f >= r));
+
             queryEngine.AddOperatorHandler(":", (SearchValue v, Vector4 v4, StringComparison sc) => PropertyVector4Compare(v, v4, (f, r) => Math.Abs(f - r) < double.Epsilon));
             queryEngine.AddOperatorHandler("=", (SearchValue v, Vector4 v4) => PropertyVector4Compare(v, v4, (f, r) => Math.Abs(f - r) < double.Epsilon));
             queryEngine.AddOperatorHandler("!=", (SearchValue v, Vector4 v4) => PropertyVector4Compare(v, v4, (f, r) => Math.Abs(f - r) >= double.Epsilon));
@@ -479,18 +490,23 @@ namespace UnityEditor.Search
             return ev.IndexOf(fv, sc) != -1;
         }
 
-        private static bool PropertyVector4Compare(SearchValue v, Vector4 v4, Func<float, float, bool> comparer)
+        private static bool PropertyVector4Compare(in SearchValue v, in Vector4 v4, in Func<float, float, bool> comparer)
         {
             if (v.type != ValueType.Vector3 && v.type != ValueType.Vector2 && v.type != ValueType.Vector4)
                 return false;
+            return PropertyVector4Compare(v.v4, v4, comparer);
+        }
+
+        private static bool PropertyVector4Compare(in Vector4 v, in Vector4 v4, in Func<float, float, bool> comparer)
+        {
             bool hx = !float.IsNaN(v4.x),
                  hy = !float.IsNaN(v4.y),
                  hz = !float.IsNaN(v4.z),
                  hw = !float.IsNaN(v4.w);
-            return (hx == false || comparer(v.v4.x, v4.x))
-                && (hy == false || comparer(v.v4.y, v4.y))
-                && (hz == false || comparer(v.v4.z, v4.z))
-                && (hw == false || comparer(v.v4.w, v4.w));
+            return (hx == false || comparer(v.x, v4.x))
+                && (hy == false || comparer(v.y, v4.y))
+                && (hz == false || comparer(v.z, v4.z))
+                && (hw == false || comparer(v.w, v4.w));
         }
 
         private static bool PropertyRangeCompare(in SearchValue v, in PropertyRange range, Func<double, PropertyRange, bool> comparer)
@@ -640,12 +656,7 @@ namespace UnityEditor.Search
             var query = Parse(queryStr, true);
             if (query.errors.Count != 0)
             {
-                foreach (var queryError in query.errors)
-                {
-                    Debug.LogFormat(LogType.Error, LogOption.NoStacktrace, null, $"Error parsing input at {queryError.index}: {queryError.reason}");
-                }
-
-                var errorStr = string.Join("\n", query.errors.Select(err => $"Error parsing input at {err.index}: {err.reason}"));
+                var errorStr = string.Join("\n", query.errors.Select(err => $"Invalid where query expression at {err.index}: {err.reason}"));
                 context.ThrowError(errorStr);
             }
 
@@ -668,12 +679,7 @@ namespace UnityEditor.Search
             var query = Parse(queryStr, true);
             if (query.errors.Count != 0)
             {
-                foreach (var queryError in query.errors)
-                {
-                    Debug.LogFormat(LogType.Error, LogOption.NoStacktrace, null, $"Error parsing input at {queryError.index}: {queryError.reason}");
-                }
-
-                var errorStr = string.Join("\n", query.errors.Select(err => $"Error parsing input at {err.index}: {err.reason}"));
+                var errorStr = string.Join("\n", query.errors.Select(err => $"Invalid where query expression at {err.index}: {err.reason}"));
                 context.ThrowError(errorStr);
             }
 

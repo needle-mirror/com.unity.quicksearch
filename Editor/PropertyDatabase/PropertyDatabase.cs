@@ -1,12 +1,16 @@
 #if USE_PROPERTY_DATABASE
+// #define USE_PERFORMANCE_TRACKER
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
-using System.Threading;
 using System.Threading.Tasks;
 using UnityEditorInternal;
 using UnityEngine;
+
+#if USE_PERFORMANCE_TRACKER
+using UnityEditor.Profiling;
+#endif
 
 namespace UnityEditor.Search
 {
@@ -321,7 +325,12 @@ namespace UnityEditor.Search
 
         public PropertyDatabaseView GetView(bool delayedSync = false)
         {
-            return new PropertyDatabaseView(this, m_LocalVolatileStore, m_LocalStore, m_FileStore, m_StringTable, delayedSync);
+            #if USE_PERFORMANCE_TRACKER
+            using (var tracker = new EditorPerformanceTracker("PropertyDatabase.GetView"))
+            #endif
+            {
+                return new PropertyDatabaseView(this, m_LocalVolatileStore, m_LocalStore, m_FileStore, m_StringTable, delayedSync);
+            }
         }
 
         public Task TriggerPropertyDatabaseBackgroundUpdate()
@@ -398,7 +407,8 @@ namespace UnityEditor.Search
 
         void MergeStoresToFile()
         {
-            using (var view = GetView())
+            // TODO: When trackers are removed, put back GetView()
+            using (var view = new PropertyDatabaseView(this, m_LocalVolatileStore, m_LocalStore, m_FileStore, m_StringTable, false))
                 view.MergeStores();
         }
 
@@ -481,10 +491,15 @@ namespace UnityEditor.Search
 
         public bool Store(PropertyDatabaseRecordKey recordKey, object value)
         {
-            if (!IsSupportedValue(value))
-                return m_VolatileMemoryStoreView.Store(recordKey, value, !m_DelayedSync);
-            var record = m_PropertyDatabase.CreateRecord(recordKey, value, m_StringTableView);
-            return Store(record);
+            #if USE_PERFORMANCE_TRACKER
+            using (var tracker = new EditorPerformanceTracker("PropertyDatabaseView.Store(PropertyDatabaseRecordKey recordKey, object value)"))
+            #endif
+            {
+                if (!IsSupportedValue(value))
+                    return m_VolatileMemoryStoreView.Store(recordKey, value, !m_DelayedSync);
+                var record = m_PropertyDatabase.CreateRecord(recordKey, value, m_StringTableView);
+                return Store(record);
+            }
         }
 
         public bool Store(PropertyDatabaseRecordKey recordKey, PropertyDatabaseRecordValue value)
@@ -495,81 +510,111 @@ namespace UnityEditor.Search
 
         public bool Store(PropertyDatabaseRecord record)
         {
-            if (!record.recordValue.valid)
-                return false;
-            if (m_FileStoreView.TryLoad(record.recordKey, out PropertyDatabaseRecordValue _))
-                return false;
-            var success =  m_MemoryStoreView.Store(record, !m_DelayedSync);
-            if (success)
+            #if USE_PERFORMANCE_TRACKER
+            using (var tracker = new EditorPerformanceTracker("PropertyDatabaseView.Store(PropertyDatabaseRecord record)"))
+            #endif
             {
-                m_PropertyDatabase.StoresChanged();
+                if (!record.recordValue.valid)
+                    return false;
+                var success = m_MemoryStoreView.Store(record, !m_DelayedSync);
+                if (success)
+                {
+                    m_PropertyDatabase.StoresChanged();
+                }
+                return success;
             }
-            return success;
         }
 
         public bool TryLoad(PropertyDatabaseRecordKey recordKey, out object data)
         {
-            data = null;
-            if (!TryLoad(recordKey, out PropertyDatabaseRecordValue recordValue))
-                return m_VolatileMemoryStoreView.TryLoad(recordKey, out data);
-            data = GetObjectFromRecordValue(recordValue);
-            return true;
+            #if USE_PERFORMANCE_TRACKER
+            using (var tracker = new EditorPerformanceTracker("PropertyDatabaseView.TryLoad(PropertyDatabaseRecordKey recordKey, out object data)"))
+            #endif
+            {
+                data = null;
+                if (!TryLoad(recordKey, out PropertyDatabaseRecordValue recordValue))
+                    return m_VolatileMemoryStoreView.TryLoad(recordKey, out data);
+                data = GetObjectFromRecordValue(recordValue);
+                return true;
+            }
         }
 
         public bool TryLoad(PropertyDatabaseRecordKey recordKey, out PropertyDatabaseRecordValue data)
         {
-            if (m_MemoryStoreView.TryLoad(recordKey, out data))
-                return true;
-            if (!m_FileStoreView.TryLoad(recordKey, out data))
-                return false;
+            #if USE_PERFORMANCE_TRACKER
+            using (var tracker = new EditorPerformanceTracker("PropertyDatabaseView.TryLoad(PropertyDatabaseRecordKey recordKey, out PropertyDatabaseRecordValue data)"))
+            #endif
+            {
+                if (m_MemoryStoreView.TryLoad(recordKey, out data))
+                    return true;
+                if (!m_FileStoreView.TryLoad(recordKey, out data))
+                    return false;
 
-            // Cache loaded value into memory store.
-            var record = CreateRecord(recordKey, data);
-            m_MemoryStoreView.Store(record, !m_DelayedSync);
-            return true;
+                // Cache loaded value into memory store.
+                var record = CreateRecord(recordKey, data);
+                m_MemoryStoreView.Store(record, !m_DelayedSync);
+                return true;
+            }
         }
 
         public bool TryLoad(PropertyDatabaseRecordKey recordKey, out IPropertyDatabaseRecordValue data)
         {
-            if (m_VolatileMemoryStoreView.TryLoad(recordKey, out data))
-                return true;
+            #if USE_PERFORMANCE_TRACKER
+            using (var tracker = new EditorPerformanceTracker("PropertyDatabaseView.TryLoad(PropertyDatabaseRecordKey recordKey, out IPropertyDatabaseRecordValue data)"))
+            #endif
+            {
+                if (m_VolatileMemoryStoreView.TryLoad(recordKey, out data))
+                    return true;
 
-            var success = TryLoad(recordKey, out PropertyDatabaseRecordValue recordValue);
-            data = recordValue;
-            return success;
+                var success = TryLoad(recordKey, out PropertyDatabaseRecordValue recordValue);
+                data = recordValue;
+                return success;
+            }
+
         }
 
         public bool TryLoad(ulong documentKey, out IEnumerable<object> data)
         {
-            data = null;
-            if (!TryLoad(documentKey, out IEnumerable<IPropertyDatabaseRecord> records))
-                return false;
-
-            var results = new List<object>();
-            foreach (var propertyDatabaseRecord in records)
+            #if USE_PERFORMANCE_TRACKER
+            using (var tracker = new EditorPerformanceTracker("PropertyDatabaseView.TryLoad(ulong documentKey, out IEnumerable<object> data)"))
+            #endif
             {
-                results.Add(GetObjectFromRecordValue(propertyDatabaseRecord.value));
-            }
+                data = null;
+                if (!TryLoad(documentKey, out IEnumerable<IPropertyDatabaseRecord> records))
+                    return false;
 
-            data = results;
-            return true;
+                var results = new List<object>();
+                foreach (var propertyDatabaseRecord in records)
+                {
+                    results.Add(GetObjectFromRecordValue(propertyDatabaseRecord.value));
+                }
+
+                data = results;
+                return true;
+            }
         }
 
         public bool TryLoad(ulong documentKey, out IEnumerable<IPropertyDatabaseRecord> records)
         {
-            records = null;
-            SortedSet<IPropertyDatabaseRecord> allRecords = new SortedSet<IPropertyDatabaseRecord>(new IPropertyDatabaseRecordComparer());
-            if (m_VolatileMemoryStoreView.TryLoad(documentKey, out var volatileRecords))
-                allRecords.UnionWith(volatileRecords);
-            if (m_MemoryStoreView.TryLoad(documentKey, out var memoryRecords))
-                allRecords.UnionWith(memoryRecords);
-            if (m_FileStoreView.TryLoad(documentKey, out var fileRecords))
-                allRecords.UnionWith(fileRecords);
+            #if USE_PERFORMANCE_TRACKER
+            using (var tracker = new EditorPerformanceTracker("PropertyDatabaseView.TryLoad(ulong documentKey, out IEnumerable<IPropertyDatabaseRecord> records)"))
+            #endif
+            {
+                records = null;
+                SortedSet<IPropertyDatabaseRecord> allRecords = new SortedSet<IPropertyDatabaseRecord>(new IPropertyDatabaseRecordComparer());
+                if (m_VolatileMemoryStoreView.TryLoad(documentKey, out var volatileRecords))
+                    allRecords.UnionWith(volatileRecords);
+                if (m_MemoryStoreView.TryLoad(documentKey, out var memoryRecords))
+                    allRecords.UnionWith(memoryRecords);
+                if (m_FileStoreView.TryLoad(documentKey, out var fileRecords))
+                    allRecords.UnionWith(fileRecords);
 
-            if (allRecords.Count == 0)
-                return false;
-            records = allRecords;
-            return true;
+                if (allRecords.Count == 0)
+                    return false;
+                records = allRecords;
+                return true;
+            }
+
         }
 
         public void Invalidate(string documentId)
@@ -580,51 +625,81 @@ namespace UnityEditor.Search
 
         public void Invalidate(ulong documentKey)
         {
-            m_VolatileMemoryStoreView.Invalidate(documentKey, !m_DelayedSync);
-            m_MemoryStoreView.Invalidate(documentKey, !m_DelayedSync);
-            m_FileStoreView.Invalidate(documentKey, !m_DelayedSync);
-            m_PropertyDatabase.StoresChanged();
+            #if USE_PERFORMANCE_TRACKER
+            using (var tracker = new EditorPerformanceTracker("PropertyDatabaseView.Invalidate(ulong documentKey)"))
+            #endif
+            {
+                m_VolatileMemoryStoreView.Invalidate(documentKey, !m_DelayedSync);
+                m_MemoryStoreView.Invalidate(documentKey, !m_DelayedSync);
+                m_FileStoreView.Invalidate(documentKey, !m_DelayedSync);
+                m_PropertyDatabase.StoresChanged();
+            }
         }
 
         public void Invalidate(PropertyDatabaseRecordKey recordKey)
         {
-            m_VolatileMemoryStoreView.Invalidate(recordKey, !m_DelayedSync);
-            m_MemoryStoreView.Invalidate(recordKey, !m_DelayedSync);
-            m_FileStoreView.Invalidate(recordKey, !m_DelayedSync);
-            m_PropertyDatabase.StoresChanged();
+            #if USE_PERFORMANCE_TRACKER
+            using (var tracker = new EditorPerformanceTracker("PropertyDatabaseView.Invalidate(PropertyDatabaseRecordKey recordKey)"))
+            #endif
+            {
+                m_VolatileMemoryStoreView.Invalidate(recordKey, !m_DelayedSync);
+                m_MemoryStoreView.Invalidate(recordKey, !m_DelayedSync);
+                m_FileStoreView.Invalidate(recordKey, !m_DelayedSync);
+                m_PropertyDatabase.StoresChanged();
+            }
         }
 
         public void Invalidate(uint documentKeyHiWord)
         {
-            m_VolatileMemoryStoreView.Invalidate(documentKeyHiWord, !m_DelayedSync);
-            m_MemoryStoreView.Invalidate(documentKeyHiWord, !m_DelayedSync);
-            m_FileStoreView.Invalidate(documentKeyHiWord, !m_DelayedSync);
-            m_PropertyDatabase.StoresChanged();
+            #if USE_PERFORMANCE_TRACKER
+            using (var tracker = new EditorPerformanceTracker("PropertyDatabaseView.Invalidate(uint documentKeyHiWord)"))
+            #endif
+            {
+                m_VolatileMemoryStoreView.Invalidate(documentKeyHiWord, !m_DelayedSync);
+                m_MemoryStoreView.Invalidate(documentKeyHiWord, !m_DelayedSync);
+                m_FileStoreView.Invalidate(documentKeyHiWord, !m_DelayedSync);
+                m_PropertyDatabase.StoresChanged();
+            }
         }
 
         public void InvalidateMask(ulong documentKeyMask)
         {
-            m_VolatileMemoryStoreView.InvalidateMask(documentKeyMask, !m_DelayedSync);
-            m_MemoryStoreView.InvalidateMask(documentKeyMask, !m_DelayedSync);
-            m_FileStoreView.InvalidateMask(documentKeyMask, !m_DelayedSync);
-            m_PropertyDatabase.StoresChanged();
+            #if USE_PERFORMANCE_TRACKER
+            using (var tracker = new EditorPerformanceTracker("PropertyDatabaseView.Invalidate(ulong documentKeyMask)"))
+            #endif
+            {
+                m_VolatileMemoryStoreView.InvalidateMask(documentKeyMask, !m_DelayedSync);
+                m_MemoryStoreView.InvalidateMask(documentKeyMask, !m_DelayedSync);
+                m_FileStoreView.InvalidateMask(documentKeyMask, !m_DelayedSync);
+                m_PropertyDatabase.StoresChanged();
+            }
         }
 
         public void InvalidateMask(uint documentKeyHiWordMask)
         {
-            m_VolatileMemoryStoreView.InvalidateMask(documentKeyHiWordMask, !m_DelayedSync);
-            m_MemoryStoreView.InvalidateMask(documentKeyHiWordMask, !m_DelayedSync);
-            m_FileStoreView.InvalidateMask(documentKeyHiWordMask, !m_DelayedSync);
-            m_PropertyDatabase.StoresChanged();
+            #if USE_PERFORMANCE_TRACKER
+            using (var tracker = new EditorPerformanceTracker("PropertyDatabaseView.Invalidate(uint documentKeyHiWordMask)"))
+            #endif
+            {
+                m_VolatileMemoryStoreView.InvalidateMask(documentKeyHiWordMask, !m_DelayedSync);
+                m_MemoryStoreView.InvalidateMask(documentKeyHiWordMask, !m_DelayedSync);
+                m_FileStoreView.InvalidateMask(documentKeyHiWordMask, !m_DelayedSync);
+                m_PropertyDatabase.StoresChanged();
+            }
         }
 
         public IEnumerable<IPropertyDatabaseRecord> EnumerateAll()
         {
-            SortedSet<IPropertyDatabaseRecord> allRecords = new SortedSet<IPropertyDatabaseRecord>(new IPropertyDatabaseRecordComparer());
-            allRecords.UnionWith(m_VolatileMemoryStoreView.EnumerateAll());
-            allRecords.UnionWith(m_MemoryStoreView.EnumerateAll());
-            allRecords.UnionWith(m_FileStoreView.EnumerateAll());
-            return allRecords;
+            #if USE_PERFORMANCE_TRACKER
+            using (var tracker = new EditorPerformanceTracker("PropertyDatabaseView.EnumerateAll"))
+            #endif
+            {
+                SortedSet<IPropertyDatabaseRecord> allRecords = new SortedSet<IPropertyDatabaseRecord>(new IPropertyDatabaseRecordComparer());
+                allRecords.UnionWith(m_VolatileMemoryStoreView.EnumerateAll());
+                allRecords.UnionWith(m_MemoryStoreView.EnumerateAll());
+                allRecords.UnionWith(m_FileStoreView.EnumerateAll());
+                return allRecords;
+            }
         }
 
         public void Sync()
@@ -741,8 +816,8 @@ namespace UnityEditor.Search
             using (var newMemoryStoreView = (PropertyDatabaseMemoryStoreView)newMemoryStore.GetView())
             {
                 // Merge both stores
-                newMemoryStoreView.MergeWith(m_MemoryStoreView);
                 newMemoryStoreView.MergeWith(m_FileStoreView);
+                newMemoryStoreView.MergeWith(m_MemoryStoreView);
 
                 // Write new memory store to file.
                 var tempFilePath = GetTempFilePath(m_FileStore.filePath);

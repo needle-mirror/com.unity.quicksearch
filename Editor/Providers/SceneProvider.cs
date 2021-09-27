@@ -416,11 +416,25 @@ namespace UnityEditor.Search.Providers
             var queryEngineFunctions = TypeCache.GetMethodsWithAttribute<SceneQueryEngineFilterAttribute>();
             foreach (var mi in queryEngineFunctions)
             {
-                var attr = mi.GetCustomAttributes(typeof(SceneQueryEngineFilterAttribute), false).Cast<SceneQueryEngineFilterAttribute>().First();
+                var attr = mi.GetAttribute<SceneQueryEngineFilterAttribute>();
                 var op = attr.supportedOperators == null ? ">" : attr.supportedOperators[0];
                 var value = op == ":" ? "" : "1";
+                var label = attr.token;
+                string help = null;
+
+                if (mi.ReturnType == typeof(Vector4))
+                    value = "(,,,)";
+
                 var replacement = $"{attr.token}{op}{value}";
-                yield return new SearchProposition(category: "Scene Filters", label: attr.token, replacement: replacement, icon: sceneIcon);
+
+                var descriptionAttr = mi.GetAttribute<System.ComponentModel.DescriptionAttribute>();
+                if (descriptionAttr != null)
+                {
+                    help = label;
+                    label = descriptionAttr.Description;
+                }
+
+                yield return new SearchProposition(category: "Scene Filters", label: label, help: help, replacement: replacement, icon: sceneIcon);
             }
 
             var sceneObjects = context.searchView?.results.Count > 0 ?
@@ -428,8 +442,10 @@ namespace UnityEditor.Search.Providers
             foreach (var p in SearchUtils.EnumeratePropertyPropositions(sceneObjects).Take(100))
                 yield return p;
 
-            yield return new SearchProposition(category: "Reference", "Reference By Path (Object)", "ref=<$object:none,UnityEngine.Object$>", "Find all objects referencing a specific asset.");
-            yield return new SearchProposition(category: "Reference", "Reference By Instance ID (Number)", "ref=1000", "Find all objects referencing a specific instance ID (Number).");
+
+            yield return new SearchProposition(category: "Reference", "Reference By Path (Object)", "ref=<$object:none,UnityEngine.Object$>", "Find all objects referencing a specific asset.", icon:sceneIcon);
+            yield return new SearchProposition(category: "Reference", "Reference By Instance ID (Number)", "ref=1000", "Find all objects referencing a specific instance ID (Number).", icon: sceneIcon);
+            yield return new SearchProposition(category: "Reference", "Reference By Asset Expression", "ref={p: }", "Find all objects referencing for a given asset search.", icon: sceneIcon);
         }
     }
 

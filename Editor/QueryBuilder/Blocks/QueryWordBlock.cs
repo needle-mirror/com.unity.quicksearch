@@ -1,8 +1,46 @@
 #if USE_QUERY_BUILDER
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace UnityEditor.Search
 {
+    class QueryAndOrBlock : QueryWordBlock
+    {
+        public QueryAndOrBlock(IQuerySource source, string combine)
+            : base(source, combine)
+        {
+        }
+
+        public override Rect openRect => drawRect;
+
+        protected override Color GetBackgroundColor()
+        {
+            return QueryColors.combine;
+        }
+
+        public override IBlockEditor OpenEditor(in Rect rect)
+        {
+            return QuerySelector.Open(rect, this);
+        }
+
+        public override IEnumerable<SearchProposition> FetchPropositions()
+        {
+            return BuiltInQueryBuilderPropositions(null);
+        }
+
+        public override void Apply(in SearchProposition searchProposition)
+        {
+            value = searchProposition.replacement;
+            source.Apply();
+        }
+
+        public static IEnumerable<SearchProposition> BuiltInQueryBuilderPropositions(string category = "Operators")
+        {
+            yield return new SearchProposition(category: category, label: "OR", replacement: "or");
+            yield return new SearchProposition(category: category, label: "AND", replacement: "and");
+        }
+    }
+
     class QueryWordBlock : QueryBlock
     {
         public QueryWordBlock(IQuerySource source, SearchNode node)
@@ -31,7 +69,7 @@ namespace UnityEditor.Search
             var wordContent = Styles.QueryBuilder.label.CreateContent(value);
             var widgetWidth = wordContent.expandedWidth;
 
-            DrawBackground(widgetRect);
+            DrawBackground(widgetRect, mousePosition);
             var wordRect = new Rect(widgetRect.x + wordContent.style.margin.left, widgetRect.y - 1f, widgetWidth, widgetRect.height);
             wordContent.Draw(wordRect, mousePosition);
             DrawBorders(widgetRect, mousePosition);

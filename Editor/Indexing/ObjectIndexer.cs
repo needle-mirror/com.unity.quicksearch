@@ -352,7 +352,7 @@ namespace UnityEditor.Search
             if (p.depth <= 1 && p.isArray && p.propertyType != SerializedPropertyType.String)
             {
                 IndexNumber(documentIndex, fieldName, p.arraySize);
-                LogProperty(fieldName, p);
+                LogProperty(fieldName, p, p.arraySize);
             }
 
             if (p.depth > 1)
@@ -373,87 +373,97 @@ namespace UnityEditor.Search
                             var v = (int)values.GetValue(i);
                             if (v == p.intValue)
                             {
-                                IndexPropertyStringComponents(documentIndex, fieldName, Enum.GetNames(managedType)[i]);
+                                if (IndexPropertyStringComponents(documentIndex, fieldName, Enum.GetNames(managedType)[i]))
+                                    LogProperty(fieldName, p, Enum.GetValues(managedType).GetValue(i));
                                 break;
                             }
                         }
                     }
                     else if (managedType == typeof(bool))
-                        IndexProperty(documentIndex, fieldName, p.intValue == 0 ? "false" : "true", saveKeyword: false, exact: true);
-                    LogProperty(fieldName, p);
+                    {
+                        var boolStringValue = p.intValue == 0 ? "false" : "true";
+                        IndexProperty(documentIndex, fieldName, boolStringValue, saveKeyword: false, exact: true);
+                        LogProperty(fieldName, p, boolStringValue);
+                    }
+                    else
+                        LogProperty(fieldName, p, p.intValue);
                     break;
                 case SerializedPropertyType.Boolean:
                     IndexProperty(documentIndex, fieldName, p.boolValue.ToString().ToLowerInvariant(), saveKeyword: false, exact: true);
-                    LogProperty(fieldName, p);
+                    LogProperty(fieldName, p, p.boolValue);
                     break;
                 case SerializedPropertyType.Float:
                     IndexNumber(documentIndex, fieldName, (double)p.floatValue);
-                    LogProperty(fieldName, p);
+                    LogProperty(fieldName, p, p.floatValue);
                     break;
                 case SerializedPropertyType.String:
-                    IndexPropertyStringComponents(documentIndex, fieldName, p.stringValue);
-                    LogProperty(fieldName, p);
+                    if (IndexPropertyStringComponents(documentIndex, fieldName, p.stringValue))
+                        LogProperty(fieldName, p, p.stringValue);
                     break;
                 case SerializedPropertyType.Enum:
                     if (p.enumValueIndex < 0 || p.type != "Enum")
                         return;
                     var enumValue = p.enumNames[p.enumValueIndex].Replace(" ", "");
-                    IndexPropertyStringComponents(documentIndex, fieldName, enumValue);
-                    LogProperty(fieldName, p);
+                    if (IndexPropertyStringComponents(documentIndex, fieldName, enumValue))
+                        LogProperty(fieldName, p, enumValue);
                     break;
                 case SerializedPropertyType.Color:
                     IndexerExtensions.IndexColor(fieldName, p.colorValue, this, documentIndex);
-                    LogProperty(fieldName, p);
+                    LogProperty(fieldName, p, p.colorValue);
                     break;
                 case SerializedPropertyType.Vector2:
                     IndexerExtensions.IndexVector(fieldName, p.vector2Value, this, documentIndex);
-                    LogProperty(fieldName, p);
+                    LogProperty(fieldName, p, p.vector2Value);
                     break;
                 case SerializedPropertyType.Vector3:
                     IndexerExtensions.IndexVector(fieldName, p.vector3Value, this, documentIndex);
-                    LogProperty(fieldName, p);
+                    LogProperty(fieldName, p, p.vector3Value);
                     break;
                 case SerializedPropertyType.Vector4:
                     IndexerExtensions.IndexVector(fieldName, p.vector4Value, this, documentIndex);
-                    LogProperty(fieldName, p);
+                    LogProperty(fieldName, p, p.vector4Value);
                     break;
                 case SerializedPropertyType.Quaternion:
                     IndexerExtensions.IndexVector(fieldName, p.quaternionValue.eulerAngles, this, documentIndex);
-                    LogProperty(fieldName, p);
+                    LogProperty(fieldName, p, p.quaternionValue.eulerAngles);
                     break;
                 case SerializedPropertyType.ObjectReference:
                     if (!p.objectReferenceValue || string.IsNullOrEmpty(p.objectReferenceValue.name))
                         return;
                     AddReference(documentIndex, fieldName, p.objectReferenceValue);
-                    LogProperty(fieldName, p);
+                    LogProperty(fieldName, p, p.objectReferenceValue);
                     break;
                 #if USE_SEARCH_MODULE
                 case SerializedPropertyType.Hash128:
                     IndexProperty(documentIndex, fieldName, p.hash128Value.ToString().ToLowerInvariant(), saveKeyword: true, exact: true);
-                    LogProperty(fieldName, p);
+                    LogProperty(fieldName, p, p.hash128Value);
                     break;
                 #endif
             }
         }
 
-        void IndexPropertyStringComponents(in int documentIndex, in string fieldName, in string sv)
+        bool IndexPropertyStringComponents(in int documentIndex, in string fieldName, in string sv)
         {
             if (string.IsNullOrEmpty(sv) || sv.Length > 64)
-                return;
+                return false;
             if (sv.Length > 4 && sv.Length < 32 && char.IsLetter(sv[0]) && sv.IndexOf(' ') == -1)
                 IndexPropertyComponents(documentIndex, fieldName, sv);
             else
                 IndexProperty(documentIndex, fieldName, sv, saveKeyword: false, exact: true);
+            return true;
         }
 
-        void LogProperty(in string fieldName, in SerializedProperty p)
+        void LogProperty(in string fieldName, in SerializedProperty p, object value = null)
         {
             var propertyType = SearchUtils.GetPropertyManagedTypeString(p);
             if (propertyType != null)
                 MapProperty(fieldName, p.displayName, p.tooltip, propertyType, p.serializedObject?.targetObject?.GetType().AssemblyQualifiedName, removeNestedKeys: true);
             #if DEBUG_INDEXING
-            Debug.LogFormat(LogType.Log, LogOption.NoStacktrace, null, $"[{p.serializedObject?.targetObject?.name ?? string.Empty}/{p.propertyPath}/{p.depth}] <b>{p.propertyPath}</b>, {fieldName}, (<b>{p.propertyType}</b>/{p.type}), " +
-                $"array={p.isArray || p.isFixedBuffer}, children={p.hasVisibleChildren}");
+            if (value is UnityEngine.Object obj)
+                value = SearchUtils.GetObjectPath(obj);
+            Debug.LogFormat(LogType.Log, LogOption.NoStacktrace, null,
+                $"<b>{fieldName}</b>=>{value} [{p.serializedObject?.targetObject?.name ?? string.Empty}/{p.propertyPath}/{p.depth} " +
+                $"(<b>{p.propertyType}</b>/{p.type}/{value?.GetType().Name})]");
             #endif
         }
 
@@ -462,7 +472,11 @@ namespace UnityEditor.Search
             if (string.IsNullOrEmpty(assetPath))
                 return;
 
-            IndexProperty(documentIndex, "ref", assetPath, saveKeyword: false, exact: true);
+            IndexProperty(documentIndex, "ref", assetPath, saveKeyword, exact: true);
+            var assetInstanceID = Utils.GetMainAssetInstanceID(assetPath);
+            var gid = GlobalObjectId.GetGlobalObjectIdSlow(assetInstanceID);
+            if (gid.identifierType != 0)
+                IndexProperty(documentIndex, "ref", gid.ToString(), saveKeyword, exact: true);
             if (settings.options.properties)
                 IndexPropertyStringComponents(documentIndex, "ref", Path.GetFileNameWithoutExtension(assetPath));
         }
@@ -472,12 +486,17 @@ namespace UnityEditor.Search
             if (!objRef)
                 return;
 
-            var assetPath = AssetDatabase.GetAssetPath(objRef);
+            var assetPath = SearchUtils.GetObjectPath(objRef);
             if (string.IsNullOrEmpty(assetPath))
                 return;
 
             propertyName = propertyName.ToLowerInvariant();
             IndexProperty(documentIndex, propertyName, assetPath, saveKeyword: false, exact: true);
+
+            var gid = GlobalObjectId.GetGlobalObjectIdSlow(objRef);
+            if (gid.identifierType != 0)
+                IndexProperty(documentIndex, "ref", gid.ToString(), saveKeyword: false, exact: true);
+
             if (settings.options.dependencies)
                 IndexProperty(documentIndex, "ref", assetPath, saveKeyword: false, exact: true);
             if (settings.options.properties)

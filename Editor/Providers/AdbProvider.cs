@@ -149,8 +149,8 @@ namespace UnityEditor.Search.Providers
     [QueryListBlock(null, "area", "a", ":")]
     class QueryAreaFilterBlock : QueryListBlock
     {
-        public QueryAreaFilterBlock(IQuerySource source, string value, QueryListBlockAttribute attr)
-            : base(source, value, attr)
+        public QueryAreaFilterBlock(IQuerySource source, string id, string value, QueryListBlockAttribute attr)
+            : base(source, id, value, attr)
         {
             icon = Utils.LoadIcon("Filter Icon");
         }
@@ -166,8 +166,8 @@ namespace UnityEditor.Search.Providers
     [QueryListBlock("Bundle", "bundle", "b", ":")]
     class QueryBundleFilterBlock : QueryListBlock
     {
-        public QueryBundleFilterBlock(IQuerySource source, string value, QueryListBlockAttribute attr)
-            : base(source, value, attr)
+        public QueryBundleFilterBlock(IQuerySource source, string id, string value, QueryListBlockAttribute attr)
+            : base(source, id, value, attr)
         {
             icon = Utils.LoadIcon("Filter Icon");
         }

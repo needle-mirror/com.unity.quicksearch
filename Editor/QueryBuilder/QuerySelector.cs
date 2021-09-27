@@ -21,7 +21,7 @@ namespace UnityEditor.Search
         {
             m_BlockSource = dataSource;
             m_Title = m_BlockSource.name ?? string.Empty;
-            m_Propositions = m_BlockSource.FetchPropositions().Where(p => p.valid).OrderBy(p => p.priority);
+            m_Propositions = m_BlockSource.FetchPropositions().Where(p => p.valid);
 
             minimumSize = new Vector2(Mathf.Max(rect.width, 300f), 350f);
             maximumSize = new Vector2(Mathf.Max(rect.width, 400f), 450f);
@@ -35,10 +35,38 @@ namespace UnityEditor.Search
             return w;
         }
 
+        readonly struct ItemPropositionComparer : IComparer<AdvancedDropdownItem>
+        {
+            public int Compare(AdvancedDropdownItem x, AdvancedDropdownItem y)
+            {
+                if (x.userData is SearchProposition px && y.userData is SearchProposition py)
+                    return px.priority.CompareTo(py.priority);
+                return x.CompareTo(y);
+            }
+        }
+
         private void Bind()
         {
             m_WindowInstance.windowClosed += OnClose;
             m_WindowInstance.selectionCanceled += OnSelectionCanceled;
+            m_DataSource.searchMatchItem = OnSearchItemMatch;
+            m_DataSource.searchMatchItemComparer = new ItemPropositionComparer();
+        }
+
+        private bool OnSearchItemMatch(in AdvancedDropdownItem item, in string[] words, out bool didMatchStart)
+        {
+            didMatchStart = false;
+            var label = item.displayName ?? item.name;
+            var pp = label.LastIndexOf('(');
+            pp = pp == -1 ? label.Length : pp;
+            foreach (var w in words)
+            {
+                var fp = label.IndexOf(w, 0, pp, StringComparison.OrdinalIgnoreCase);
+                if (fp == -1)
+                    return false;
+                didMatchStart |= (fp == 0 || label[fp-1] == ' ');
+            }
+            return true;
         }
 
         private void OnClose(AdvancedDropdownWindow w = null)

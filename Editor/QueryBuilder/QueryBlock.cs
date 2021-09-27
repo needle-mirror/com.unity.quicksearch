@@ -7,19 +7,39 @@ namespace UnityEditor.Search
 {
     static class QueryColors
     {
+        private static bool isDarkTheme => EditorGUIUtility.isProSkin;
+
         public static readonly Color area;
         public static readonly Color filter;
+        public static readonly Color property;
         public static readonly Color type;
         public static readonly Color typeIcon;
         public static readonly Color word;
+        public static readonly Color combine;
+        public static readonly Color textureBackgroundColor = new Color(0.2f, 0.2f, 0.25f, 0.95f);
+        public static readonly Color selectedBorderColor = new Color(58 / 255f, 121 / 255f, 187 / 255f);
+        public static readonly Color hoveredBorderColor = new Color(0.6f, 0.6f, 0.6f);
+        public static readonly Color normalBorderColor = new Color(0.1f, 0.1f, 0.1f);
+        public static readonly Color selectedTint = new Color(1.3f, 1.2f, 1.3f, 1f);
 
         static QueryColors()
         {
             ColorUtility.TryParseHtmlString("#74CBEE", out area);
-            ColorUtility.TryParseHtmlString("#70B0BA", out filter);
+            ColorUtility.TryParseHtmlString("#78CAB6", out filter);
+            ColorUtility.TryParseHtmlString("#A38CD0", out property);
             ColorUtility.TryParseHtmlString("#EBD05F", out type);
-            ColorUtility.TryParseHtmlString("#CBB03F", out typeIcon);
-            ColorUtility.TryParseHtmlString("#367BA1", out word);
+            ColorUtility.TryParseHtmlString("#EBD05F", out typeIcon);
+            ColorUtility.TryParseHtmlString("#739CEB", out word);
+            ColorUtility.TryParseHtmlString("#B7B741", out combine);
+            if (isDarkTheme)
+            {
+                ColorUtility.TryParseHtmlString("#383838", out textureBackgroundColor);
+                selectedBorderColor = Color.white;
+            }
+            else
+            {
+                ColorUtility.TryParseHtmlString("#CBCBCB", out textureBackgroundColor);
+            }
         }
     }
 
@@ -29,10 +49,10 @@ namespace UnityEditor.Search
         protected const float blockHeight = SearchField.minSinglelineTextHeight;
         protected const float blockExtraPadding = 4f;
         protected const float borderRadius = 8f;
-        protected static readonly Color hoveredBorderColor = new Color(0.6f, 0.6f, 0.6f);
-        protected static readonly Color normalBorderColor = new Color(0.1f, 0.1f, 0.1f);
-        protected static readonly Color selectedBorderColor = new Color(58/255f, 121/255f, 187/255f);
+
+
         protected Rect arrowRect { get; set; }
+        protected Rect valueRect { get; set; }
 
         public IQuerySource source { get; private set; }
         public SearchContext context => source.context; // TODO: Can this be removed from here?
@@ -47,6 +67,7 @@ namespace UnityEditor.Search
         public virtual bool wantsEvents => false;
         public virtual bool canExclude => true;
         public virtual bool canDisable => true;
+        public virtual bool canOpenEditorOnValueClicked => false;
         public bool hideMenu { get; set; }
         public bool disabled { get; set; }
         public bool @readonly { get; set; }
@@ -59,6 +80,20 @@ namespace UnityEditor.Search
         public float width => layoutRect.width;
         public float height => layoutRect.height;
         public Vector2 size => layoutRect.size;
+
+        public virtual Rect openRect
+        {
+            get
+            {
+                var openRect = new Rect(arrowRect.x, arrowRect.y, arrowRect.width, arrowRect.height);
+                openRect.xMin -= 10f;
+                openRect.xMax = drawRect.xMax;
+                if (canOpenEditorOnValueClicked)
+                    openRect.xMin = valueRect.xMin;
+
+                return openRect;
+            }
+        }
 
         public QueryBlock(IQuerySource source)
         {
@@ -177,9 +212,9 @@ namespace UnityEditor.Search
                     }
                     else if (!disabled)
                     {
-                        if (arrowRect != Rect.zero)
+                        if (openRect != Rect.zero)
                         {
-                            if (arrowRect.Contains(evt.mousePosition))
+                            if (openRect.Contains(evt.mousePosition))
                                 OpenEditor(evt, blockRect);
                         }
                         else if (!wantsEvents)
@@ -255,7 +290,7 @@ namespace UnityEditor.Search
             var nameContent = labelStyle.CreateContent(name);
             var valueContent = labelStyle.CreateContent(value);
 
-            DrawBackground(blockRect);
+            DrawBackground(blockRect, mousePosition);
 
             var nameRect = DrawName(blockRect, mousePosition, nameContent);
             var sepRect = DrawSeparator(nameRect);
@@ -267,17 +302,17 @@ namespace UnityEditor.Search
         protected void DrawValue(in Rect at, in Rect blockRect, in Vector2 mousePosition, in QueryContent valueContent)
         {
             var x = at.xMax + valueContent.style.margin.left;
-            var valueRect = new Rect(x, blockRect.y - 1f, blockRect.width - (x - blockRect.xMin) - valueContent.style.margin.right, blockRect.height);
+            valueRect = new Rect(x, blockRect.y - 1f, blockRect.width - (x - blockRect.xMin) - valueContent.style.margin.right, blockRect.height);
             valueContent.Draw(valueRect, mousePosition);
 
             if (!@readonly)
-                DrawArrow(blockRect, mousePosition, editor != null ? QueryContent.UpArrow : QueryContent.DownArrow);
+                DrawArrow(blockRect, mousePosition, QueryContent.DownArrow);
         }
 
         protected void DrawArrow(in Rect blockRect, in Vector2 mousePosition, QueryContent arrowContent)
         {
             arrowRect = new Rect(blockRect.xMax - arrowContent.width - arrowOffset, blockRect.y - 1f, QueryContent.DownArrow.width, blockRect.height);
-            EditorGUIUtility.AddCursorRect(arrowRect, MouseCursor.Link);
+            EditorGUIUtility.AddCursorRect(openRect, MouseCursor.Link);
             arrowContent.Draw(arrowRect, mousePosition);
         }
 
@@ -299,22 +334,23 @@ namespace UnityEditor.Search
 
         protected void DrawBorders(in Rect blockRect, in Vector2 mousePosition)
         {
-            var isHovered = blockRect.Contains(mousePosition);
-            if (selected || (isHovered  && !disableHovering))
+            if (selected)
             {
-                var borderColor = selected ? selectedBorderColor : hoveredBorderColor;
-                var borderWidth4 = selected ? new Vector4(1, 1, 1, 1) : new Vector4(1, 1, 1, 1);
+                var borderColor = QueryColors.selectedBorderColor;
+                var borderWidth4 = new Vector4(1, 1, 1, 1);
                 var borderRadius4 = editor != null ? new Vector4(borderRadius, borderRadius, 0, 0) : new Vector4(borderRadius, borderRadius, borderRadius, borderRadius);
                 GUI.DrawTexture(blockRect, EditorGUIUtility.whiteTexture, ScaleMode.StretchToFill, false, 0f, borderColor, borderWidth4, borderRadius4);
             }
         }
 
-        protected void DrawBackground(in Rect blockRect)
+        protected void DrawBackground(in Rect blockRect, in Vector2 mousePosition)
         {
             var borderRadius4 = editor != null ? new Vector4(borderRadius, borderRadius, 0, 0) : new Vector4(borderRadius, borderRadius, borderRadius, borderRadius);
             var bgColor = GetBackgroundColor();
-            var color = selected ? EditorGUIUtility.LightenColor(bgColor) : bgColor;
+            var isHovered = !disableHovering && blockRect.Contains(mousePosition);
+            var color = (isHovered || selected) ? bgColor * QueryColors.selectedTint : bgColor;
             GUI.DrawTexture(blockRect, EditorGUIUtility.whiteTexture, ScaleMode.StretchToFill, false, 0f, color, Vector4.zero, borderRadius4);
+            GUIView.current.MarkHotRegion(GUIClip.UnclipToWindow(blockRect));
         }
 
         protected virtual Color GetBackgroundColor() => Color.red;

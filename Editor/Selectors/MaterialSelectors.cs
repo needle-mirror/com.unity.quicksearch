@@ -184,7 +184,7 @@ namespace UnityEditor.Search
                 case MaterialProperty.PropType.Vector:
                     return MaterialEditor.VectorPropertyInternal(r, matProp, string.Empty);
                 case MaterialProperty.PropType.Texture:
-                    return EditorGUI.DoObjectField(r, r, GUIUtility.GetControlID(FocusType.Passive), matProp.textureValue, matProp.targets[0], typeof(Texture), null, true, null);
+                    return EditorGUI.DoObjectField(r, r, GUIUtility.GetControlID(FocusType.Passive), matProp.textureValue, matProp.targets[0], typeof(Texture), null, true);
             }
 
             return null;

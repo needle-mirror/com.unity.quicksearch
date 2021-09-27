@@ -16,12 +16,20 @@ namespace UnityEditor.Search
         Enum,
         Vector2,
         Vector3,
-        Vector4
+        Vector4,
+        Expression
     }
 
     class QueryFilterBlock : QueryBlock
     {
         public static readonly string[] ops = new[] { "=", "<", "<=", ">=", ">" };
+
+        static class InPlaceStyles
+        {
+            public static readonly GUIStyle objectField = Utils.FromUSS("quick-search-builder-in-place-objectfield");
+            public static readonly GUIStyle objectFieldButton = Utils.FromUSS("quick-search-builder-in-place-objectfield-button");
+            public static readonly Color toggleTint = new Color(1, 1, 1, 0.6f);
+        }
 
         private int m_InPlaceEditorId;
         public string id { get; private set; }
@@ -29,9 +37,11 @@ namespace UnityEditor.Search
         public QueryBlockFormat format { get; set; }
         public Type formatType { get; set; }
         public QueryMarker marker { get; set; }
+        public bool property { get; set; }
 
         public override bool formatNames => true;
         public override bool wantsEvents => HasInPlaceEditor();
+        public override bool canOpenEditorOnValueClicked => !HasInPlaceEditor();
 
         protected QueryFilterBlock(IQuerySource source, in string id, in string op, in string value)
             : base(source)
@@ -40,8 +50,14 @@ namespace UnityEditor.Search
             this.op = op;
             this.value = UnQuoteString(value) ?? string.Empty;
 
-            //name = ObjectNames.NicifyVariableName(id.Replace("#", ""));
-            name = id.Replace("#", "").ToLowerInvariant();
+            if (id.Length > 0 && id[0] == '#')
+            {
+                property = true;
+                name = ObjectNames.NicifyVariableName(id.TrimStart('#').Replace("m_", "").Replace(".", ""));
+            }
+            else
+                name = id.ToLowerInvariant();
+
             marker = default;
             formatValue = null;
             formatType = null;
@@ -56,16 +72,16 @@ namespace UnityEditor.Search
             }
         }
 
+        public QueryFilterBlock(IQuerySource source, FilterNode node)
+            : this(source, node.filterId, node.operatorId, node.rawFilterValueStringView.ToString())
+        {
+        }
+
         private string UnQuoteString(string value)
         {
             if (value != null && value.Length > 2 && value[0] == '"' && value[value.Length-1] == '"')
                 return value.Substring(1, value.Length - 2);
             return value;
-        }
-
-        public QueryFilterBlock(IQuerySource source, FilterNode node)
-            : this(source, node.filterId, node.operatorId, node.rawFilterValueStringView.ToString())
-        {
         }
 
         public override void Apply(in SearchProposition searchProposition)
@@ -92,6 +108,7 @@ namespace UnityEditor.Search
             var screenRect = new Rect(rect.position + context.searchView.position.position, rect.size);
             switch (format)
             {
+                case QueryBlockFormat.Expression: return QueryExpressionBlockEditor.Open(screenRect, this);
                 case QueryBlockFormat.Number: return QueryNumberBlockEditor.Open(screenRect, this);
                 case QueryBlockFormat.Default: return QueryTextBlockEditor.Open(screenRect, this);
                 case QueryBlockFormat.Vector2: return QueryVectorBlockEditor.Open(screenRect, this, 2);
@@ -122,6 +139,14 @@ namespace UnityEditor.Search
                 {
                     foreach (Enum v in ve.GetType().GetEnumValues())
                         yield return new SearchProposition(category: null, label: ObjectNames.NicifyVariableName(v.ToString()), data: v);
+
+                    foreach (Enum v in SearchUtils.FindTypes<Enum>(ve.GetType().Name).SelectMany(t => t.GetEnumValues().OfType<Enum>()))
+                    {
+                        var vv = Convert.ToInt32(v);
+                        var label = $"{ObjectNames.NicifyVariableName(v.ToString())} ({vv})";
+                        yield return new SearchProposition(category: $"More/{v.GetType().FullName.Replace("UnityEngine.", "").Replace(".", "/")}",
+                            label: label, help: v.GetType().FullName, data: v, priority: vv);
+                    }
                 }
                 else
                 {
@@ -164,11 +189,11 @@ namespace UnityEditor.Search
             var nameContent = labelStyle.CreateContent(name);
 
             if (Event.current.type == EventType.Repaint)
-                DrawBackground(blockRect);
+                DrawBackground(blockRect, mousePosition);
 
             var nameRect = DrawName(blockRect, mousePosition, nameContent);
             EditorGUI.BeginChangeCheck();
-            var newValue = DrawInPlaceEditor(nameRect, blockRect);
+            var newValue = DrawInPlaceEditor(nameRect, blockRect, mousePosition);
             if (EditorGUI.EndChangeCheck())
                 SetValue(newValue);
 
@@ -196,7 +221,7 @@ namespace UnityEditor.Search
 
         protected override Color GetBackgroundColor()
         {
-            return QueryColors.filter + new Color((float)format / 20f, (float)format / 18f, (float)format / 15f);
+            return (property ? QueryColors.property : QueryColors.filter);
         }
 
         protected override void AddContextualMenuItems(GenericMenu menu)
@@ -224,9 +249,44 @@ namespace UnityEditor.Search
                 SetValue(enums.GetValue(0));
         }
 
+        private bool TryGetExpression(in string text, out string expression, out int start, out int end)
+        {
+            end = start = -1;
+            expression = null;
+            if (text == null && text.Length <= 2)
+                return false;
+
+            start = text.IndexOfAny(new[] { '{', '[' });
+            if (start == -1)
+                return false;
+
+            end = text.IndexOfAny(new[] { '}', ']' });
+            if (end != text.Length-1)
+                return false;
+
+            expression = text.Substring(start + 1, end - start - 1);
+            return true;
+        }
+
+        public QueryBuilder CreateExpressionBuilder(in string expression)
+        {
+            var embeddedBuilder = new QueryBuilder(expression) { drawBackground = false, @readonly = true };
+            foreach (var b in embeddedBuilder.blocks)
+            {
+                b.@readonly = true;
+                b.disableHovering = true;
+            }
+            return embeddedBuilder;
+        }
+
         private bool ParseValue(in string value)
         {
-            if (string.Equals(value, "true", StringComparison.OrdinalIgnoreCase))
+            if (TryGetExpression(value, out var expression, out _, out _))
+            {
+                format = QueryBlockFormat.Expression;
+                formatValue = CreateExpressionBuilder(expression);
+            }
+            else if (string.Equals(value, "true", StringComparison.OrdinalIgnoreCase))
             {
                 format = QueryBlockFormat.Toggle;
                 formatValue = true;
@@ -279,6 +339,12 @@ namespace UnityEditor.Search
             if (string.Equals("none", value, StringComparison.OrdinalIgnoreCase))
                 return true;
 
+            if (value.StartsWith("GlobalObjectId", StringComparison.Ordinal) && GlobalObjectId.TryParse(value, out var gid))
+            {
+                objValue = GlobalObjectId.GlobalObjectIdentifierToObjectSlow(gid);
+                return objValue != null;
+            }
+
             var guid = AssetDatabase.AssetPathToGUID(value);
             if (!string.IsNullOrEmpty(guid))
             {
@@ -313,13 +379,13 @@ namespace UnityEditor.Search
                             break;
                         foreach (var e in Enum.GetValues(formatType))
                         {
-                            if (formatValue == null)
-                                formatValue = e;
-                            else if (string.Equals(e.ToString(), marker.value?.ToString(), StringComparison.OrdinalIgnoreCase))
+                            if (string.Equals(e.ToString(), marker.value?.ToString(), StringComparison.OrdinalIgnoreCase))
                             {
                                 formatValue = e;
                                 break;
                             }
+                            else if (!(formatValue is Enum))
+                                formatValue = e;
                         }
 
                         break;
@@ -355,6 +421,9 @@ namespace UnityEditor.Search
             if (format == QueryBlockFormat.Object)
                 return FormatObjectValue();
 
+            if (format == QueryBlockFormat.Expression && formatValue is QueryBuilder qb)
+                return $"{{{qb.searchText}}}";
+
             if (marker.valid || format == QueryBlockFormat.Enum)
                 return $"<${format.ToString().ToLowerInvariant()}:{formatValue?.ToString() ?? sv}{GetFormatMarkerArgs()}$>";
 
@@ -385,6 +454,10 @@ namespace UnityEditor.Search
                 else
                     formatValue = new Vector4(float.NaN, float.NaN, float.NaN, float.NaN);
             }
+            else if (format == QueryBlockFormat.Expression)
+            {
+                formatValue = CreateExpressionBuilder(value);
+            }
             source.Repaint();
         }
 
@@ -395,6 +468,7 @@ namespace UnityEditor.Search
                 case QueryBlockFormat.Object:
                 case QueryBlockFormat.Color:
                 case QueryBlockFormat.Toggle:
+                case QueryBlockFormat.Expression:
                     return true;
             }
 
@@ -408,21 +482,28 @@ namespace UnityEditor.Search
                 case QueryBlockFormat.Object: return 120f;
                 case QueryBlockFormat.Color: return 20f;
                 case QueryBlockFormat.Toggle: return 4f;
+                case QueryBlockFormat.Expression:
+                    if (formatValue is QueryBuilder qb)
+                    {
+                        qb.LayoutBlocks(10000f);
+                        return qb.width;
+                    }
+                    break;
             }
 
             return 0f;
         }
 
-        private object DrawInPlaceEditor(in Rect at, in Rect blockRect)
+        private object DrawInPlaceEditor(in Rect at, in Rect blockRect, in Vector2 mousePosition)
         {
             var x = at.xMax - 4f;
             switch (format)
             {
                 case QueryBlockFormat.Object:
-                    var editorRect = new Rect(x, blockRect.y + 2f, blockRect.width - (x - blockRect.xMin) - 6f, blockRect.height - 4f);
+                    var editorRect = new Rect(x, blockRect.y + 1f, blockRect.width - (x - blockRect.xMin) - 6f, blockRect.height - 2f);
                     var objectFieldType = formatType ?? typeof(UnityEngine.Object);
                     var allowSceneObjects = typeof(Component).IsAssignableFrom(objectFieldType) || typeof(GameObject).IsAssignableFrom(objectFieldType);
-                    var result = EditorGUI.ObjectField(editorRect, formatValue as UnityEngine.Object, objectFieldType, allowSceneObjects: allowSceneObjects);
+                    var result = EditorGUI.ObjectField(editorRect, formatValue as UnityEngine.Object, objectFieldType, allowSceneObjects: allowSceneObjects, InPlaceStyles.objectField, InPlaceStyles.objectFieldButton);
                     m_InPlaceEditorId = EditorGUIUtility.s_LastControlID;
                     return result;
                 case QueryBlockFormat.Color:
@@ -438,7 +519,21 @@ namespace UnityEditor.Search
                     if (formatValue is bool fb)
                         b = fb;
                     editorRect = new Rect(x, blockRect.y + 2f, blockRect.width - (x - blockRect.xMin) - 8f, blockRect.height - 4f);
-                    return EditorGUI.Toggle(editorRect, b);
+                    var oldColor = GUI.color;
+                    GUI.color = InPlaceStyles.toggleTint;
+                    var value = EditorGUI.Toggle(editorRect, b, EditorStyles.toggle);
+                    GUI.color = oldColor;
+                    return value;
+
+                case QueryBlockFormat.Expression:
+                    if (formatValue is QueryBuilder qb)
+                    {
+                        valueRect = new Rect(x - 5f, blockRect.yMin - 5f, qb.width + 24f, qb.height);
+                        qb.Draw(Event.current, valueRect, createLayout: false);
+                        DrawArrow(blockRect, mousePosition, QueryContent.DownArrow);
+                        return qb;
+                    }
+                    break;
             }
 
             return null;

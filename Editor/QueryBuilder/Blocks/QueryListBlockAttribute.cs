@@ -12,32 +12,51 @@ namespace UnityEditor.Search
         static List<QueryListBlockAttribute> s_Attributes;
 
         public QueryListBlockAttribute(string category, string name, string id, string op = "=")
+            : this(category, name, new []{id}, op)
+        {}
+
+        public QueryListBlockAttribute(string category, string name, string[] ids, string op = "=")
         {
-            this.id = id;
+            this.ids = ids ?? new string[]{};
             this.category = category;
             this.name = name;
             this.op = op;
         }
 
-        public string id;
+        public string[] ids;
         public string name;
         public string category;
         public string op;
         public Type type;
 
+        public string id => ids.Length > 0 ? ids[0] : string.Empty;
+
         public static QueryListBlock CreateBlock(Type type, IQuerySource source, string value)
         {
             var attr = FindBlock(type);
             if (attr != null)
-                return (QueryListBlock)Activator.CreateInstance(type, new object[] { source, value, attr });
+                return (QueryListBlock)Activator.CreateInstance(type, new object[] { source, attr.id, value, attr });
             return null;
         }
 
-        public static QueryListBlock CreateBlock(string id, IQuerySource source, string value)
+        public static QueryListBlock CreateBlock(string id, string op, IQuerySource source, string value)
         {
             var attr = FindBlock(id);
+            QueryMarker.TryParse(value, out var marker);
+            var isValidMarker = marker.valid && marker.type == "list";
             if (attr != null)
-                return (QueryListBlock)Activator.CreateInstance(attr.type, new object[] { source, value, attr });
+            {
+                if (isValidMarker)
+                {
+                    return new QueryListMarkerBlock(source, id, marker, attr);
+                }
+
+                return (QueryListBlock)Activator.CreateInstance(attr.type, new object[] { source, id, value, attr });
+            }
+            else if (isValidMarker)
+            {
+                return new QueryListMarkerBlock(source, id, id, op, marker);
+            }
             return null;
         }
 
@@ -60,7 +79,7 @@ namespace UnityEditor.Search
         {
             if (s_Attributes == null)
                 RefreshQueryListBlock();
-            return s_Attributes.FirstOrDefault(a => a.id == id);
+            return s_Attributes.FirstOrDefault(a => a.ids.Any(matchedId => matchedId.Equals(id, StringComparison.Ordinal)));
         }
 
         internal static void RefreshQueryListBlock()
@@ -82,6 +101,15 @@ namespace UnityEditor.Search
                     Debug.LogWarning($"Cannot register QueryListBlock provider: {ti.Name}\n{e}");
                 }
             }
+        }
+
+        public static bool TryGetReplacement(string id, string type, ref Type blockType, out string replacement)
+        {
+            var block = CreateBlock(id, null, null, null);
+            if (block != null)
+                return block.TryGetReplacement(id, type, ref blockType, out replacement);
+            replacement = string.Empty;
+            return false;
         }
     }
 }

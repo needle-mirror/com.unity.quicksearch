@@ -1,5 +1,6 @@
 #if USE_QUERY_BUILDER
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 
 namespace UnityEditor.Search
@@ -44,7 +45,7 @@ namespace UnityEditor.Search
 
             var options = new SearchPropositionOptions(string.Empty,
                 SearchPropositionFlags.IgnoreRecents | SearchPropositionFlags.QueryBuilder);
-            return SearchProposition.Fetch(context, options);
+            return SearchProposition.Fetch(context, options).Concat(QueryAndOrBlock.BuiltInQueryBuilderPropositions());
         }
     }
 }

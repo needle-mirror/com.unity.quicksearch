@@ -522,12 +522,12 @@ namespace UnityEditor.Search
                          {
                              return methodInfo.Invoke(null, null) as IEnumerable<object>;
                          }
-                         catch(Exception ex)
+                         catch (Exception ex)
                          {
                              Debug.LogWarning($"Cannot load register Search Actions method: {methodInfo.Name} ({ex.Message})");
                              return null;
                          }
-                    }).Where(actionArray => actionArray != null)
+                     }).Where(actionArray => actionArray != null)
                      .SelectMany(actionArray => actionArray)
                      .Where(action => action != null).Cast<SearchAction>())
             {
@@ -769,8 +769,8 @@ namespace UnityEditor.Search
 
             var rootExpression = ParseExpression(context);
             if (rootExpression == null || (rootExpression.types.HasAny(SearchExpressionType.QueryString) &&
-                rootExpression.parameters.Length == 0 && rootExpression.innerText == rootExpression.outerText) ||
-                !rootExpression.types.HasAny(SearchExpressionType.Function | SearchExpressionType.QueryString))
+                                           rootExpression.parameters.Length == 0 && rootExpression.innerText == rootExpression.outerText) ||
+                !rootExpression.types.HasAny(SearchExpressionType.Iterable))
                 return false;
 
             expression = rootExpression;
