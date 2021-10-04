@@ -322,17 +322,17 @@ namespace UnityEditor.Search
             if (rootNode == null)
                 return null;
 
-            ParseNode(rootNode, newBlocks);
+            ParseNode(rootNode, newBlocks, exclude: false, @explicit: true);
 
             return newBlocks;
         }
 
-        private void ParseNode(in IQueryNode node, List<QueryBlock> blocks, bool exclude = false)
+        private void ParseNode(in IQueryNode node, List<QueryBlock> blocks, bool exclude = false, bool @explicit = false)
         {
             if (!node.leaf)
                 ParseNode(node.children[0], blocks, node.type == QueryNodeType.Not);
 
-            var newBlock = CreateBlock(node);
+            var newBlock = CreateBlock(node, @explicit);
             if (newBlock != null)
             {
                 if (exclude)
@@ -347,7 +347,7 @@ namespace UnityEditor.Search
             }
         }
 
-        private QueryBlock CreateBlock(in IQueryNode node)
+        private QueryBlock CreateBlock(in IQueryNode node, bool @explicit = false)
         {
             if (node.type == QueryNodeType.Search && node is SearchNode sn)
                 return new QueryWordBlock(this, sn);
@@ -373,6 +373,9 @@ namespace UnityEditor.Search
 
             if (node.type == QueryNodeType.Or)
                 return new QueryAndOrBlock(this, $"or");
+
+            if (node.type == QueryNodeType.And && @explicit)
+                return new QueryAndOrBlock(this, $"and");
 
             if (HasFlag(SearchFlags.Debug))
                 Debug.LogWarning($"TODO: Failed to parse block {node.identifier} ({node.type})");

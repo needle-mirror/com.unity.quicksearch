@@ -125,7 +125,7 @@ namespace UnityEditor.Search
             var c = priority.CompareTo(other.priority);
             if (c != 0)
                 return c;
-            c = string.CompareOrdinal(label, other.label);
+            c = string.CompareOrdinal(path, other.path);
             if (c != 0)
                 return c;
             return string.CompareOrdinal(help, other.help);
@@ -133,7 +133,7 @@ namespace UnityEditor.Search
 
         public bool Equals(SearchProposition other)
         {
-            return label.Equals(other.label) && string.Equals(help, other.help);
+            return path.Equals(other.path) && string.Equals(help, other.help);
         }
 
         public override int GetHashCode()
@@ -141,15 +141,15 @@ namespace UnityEditor.Search
             unchecked
             {
                 if (help != null)
-                    return label.GetHashCode() ^ help.GetHashCode() ^ priority.GetHashCode();
-                return label.GetHashCode() ^ priority.GetHashCode();
+                    return path.GetHashCode() ^ help.GetHashCode() ^ priority.GetHashCode();
+                return path.GetHashCode() ^ priority.GetHashCode();
             }
         }
 
         public override bool Equals(object other)
         {
             if (other is string s)
-                return label.Equals(s);
+                return path.Equals(s);
             return other is SearchProposition l && Equals(l);
         }
 

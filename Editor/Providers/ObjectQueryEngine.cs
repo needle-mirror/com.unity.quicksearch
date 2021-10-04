@@ -164,7 +164,7 @@ namespace UnityEditor.Search.Providers
 
         #endregion
 
-        public virtual bool GetId(T obj, string op, int instanceId)
+        public virtual bool GetId(T obj, QueryFilterOperator op, int instanceId)
         {
             return instanceId == obj.GetInstanceID();
         }
@@ -190,7 +190,7 @@ namespace UnityEditor.Search.Providers
             return god;
         }
 
-        protected virtual bool OnIsFilter(T obj, string op, string value)
+        protected virtual bool OnIsFilter(T obj, QueryFilterOperator op, string value)
         {
             if (string.Equals(value, "object", StringComparison.Ordinal))
                 return true;
@@ -248,7 +248,7 @@ namespace UnityEditor.Search.Providers
             return null;
         }
 
-        bool OnTypeFilter(T obj, string op, string value)
+        bool OnTypeFilter(T obj, QueryFilterOperator op, string value)
         {
             if (!obj)
                 return false;
@@ -334,7 +334,7 @@ namespace UnityEditor.Search.Providers
             return true;
         }
 
-        private bool GetReferences(T obj, string op, string value)
+        private bool GetReferences(T obj, QueryFilterOperator op, string value)
         {
             var god = GetGOD(obj);
 
@@ -377,9 +377,9 @@ namespace UnityEditor.Search.Providers
             return god.refs.Contains(value.ToLowerInvariant().GetHashCode());
         }
 
-        protected bool CompareWords(in string op, string value, in IEnumerable<string> words, StringComparison stringComparison = StringComparison.Ordinal)
+        protected bool CompareWords(in QueryFilterOperator op, string value, in IEnumerable<string> words, StringComparison stringComparison = StringComparison.Ordinal)
         {
-            if (string.Equals(op, "=", stringComparison))
+            if (op.type == FilterOperatorType.Equal)
                 return words.Any(t => t.Equals(value, stringComparison));
             return words.Any(t => t.IndexOf(value, stringComparison) != -1);
         }

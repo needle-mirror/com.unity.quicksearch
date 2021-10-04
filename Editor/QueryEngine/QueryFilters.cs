@@ -210,7 +210,10 @@ namespace UnityEditor.Search
         {
             if (m_FilterOperators.ContainsKey(op))
                 return m_FilterOperators[op];
-            var filterOperator = new QueryFilterOperator(op, m_QueryEngine);
+            // We can't assume that the overridden operator is a custom one. A user could
+            // add a custom handler for a default operator.
+            var operatorType = QueryFilterOperator.GetType(op);
+            var filterOperator = new QueryFilterOperator(op, operatorType, m_QueryEngine);
             m_FilterOperators.Add(op, filterOperator);
 
             BuildFilterMatchers();
@@ -268,7 +271,7 @@ namespace UnityEditor.Search
     class Filter<TData, TFilter> : BaseFilter<TFilter, TData>
     {
         Func<TData, TFilter> m_GetDataCallback;
-        Func<TData, string, TFilter, bool> m_FilterResolver;
+        Func<TData, QueryFilterOperator, TFilter, bool> m_FilterResolver;
 
         public Filter(string token, IEnumerable<string> supportedOperatorType, QueryEngineImpl<TData> queryEngine)
             : base(token, supportedOperatorType, false, queryEngine)
@@ -291,6 +294,12 @@ namespace UnityEditor.Search
         public Filter(string token, IEnumerable<string> supportedOperatorType, Func<TData, string, TFilter, bool> resolver, QueryEngineImpl<TData> queryEngine)
             : base(token, supportedOperatorType, true, queryEngine)
         {
+            m_FilterResolver = (data, op, filterValue) => resolver(data, op.token, filterValue);
+        }
+
+        public Filter(string token, IEnumerable<string> supportedOperatorType, Func<TData, QueryFilterOperator, TFilter, bool> resolver, QueryEngineImpl<TData> queryEngine)
+            : base(token, supportedOperatorType, true, queryEngine)
+        {
             m_FilterResolver = resolver;
         }
 
@@ -303,7 +312,7 @@ namespace UnityEditor.Search
         {
             if (!usesResolver)
                 return false;
-            return m_FilterResolver(data, op.token, value);
+            return m_FilterResolver(data, op, value);
         }
 
         public override IFilterOperation GenerateOperation(FilterOperationGeneratorData data, int operatorIndex, ICollection<QueryError> errors)
@@ -328,7 +337,7 @@ namespace UnityEditor.Search
         public override Type parameterType => typeof(TParam);
 
         Func<TData, TParam, TFilter> m_GetDataCallback;
-        Func<TData, TParam, string, TFilter, bool> m_FilterResolver;
+        Func<TData, TParam, QueryFilterOperator, TFilter, bool> m_FilterResolver;
         Func<string, TParam> m_ParameterTransformer;
 
         public Filter(string token, IEnumerable<string> supportedOperatorType, QueryEngineImpl<TData> queryEngine)
@@ -366,10 +375,23 @@ namespace UnityEditor.Search
         public Filter(string token, IEnumerable<string> supportedOperatorType, Func<TData, TParam, string, TFilter, bool> resolver, QueryEngineImpl<TData> queryEngine)
             : base(token, supportedOperatorType, true, queryEngine)
         {
-            m_FilterResolver = resolver;
+            m_FilterResolver = (data, param, op, filterValue) => resolver(data, param, op.token, filterValue);
         }
 
         public Filter(string token, IEnumerable<string> supportedOperatorType, Func<TData, TParam, string, TFilter, bool> resolver, Func<string, TParam> parameterTransformer, QueryEngineImpl<TData> queryEngine)
+            : base(token, supportedOperatorType, true, queryEngine)
+        {
+            m_FilterResolver = (data, param, op, filterValue) => resolver(data, param, op.token, filterValue);
+            m_ParameterTransformer = parameterTransformer;
+        }
+
+        public Filter(string token, IEnumerable<string> supportedOperatorType, Func<TData, TParam, QueryFilterOperator, TFilter, bool> resolver, QueryEngineImpl<TData> queryEngine)
+            : base(token, supportedOperatorType, true, queryEngine)
+        {
+            m_FilterResolver = resolver;
+        }
+
+        public Filter(string token, IEnumerable<string> supportedOperatorType, Func<TData, TParam, QueryFilterOperator, TFilter, bool> resolver, Func<string, TParam> parameterTransformer, QueryEngineImpl<TData> queryEngine)
             : base(token, supportedOperatorType, true, queryEngine)
         {
             m_FilterResolver = resolver;
@@ -385,7 +407,7 @@ namespace UnityEditor.Search
         {
             if (!usesResolver)
                 return false;
-            return m_FilterResolver(data, param, op.token, value);
+            return m_FilterResolver(data, param, op, value);
         }
 
         public TParam TransformParameter(string param)
@@ -416,7 +438,7 @@ namespace UnityEditor.Search
     class RegexFilter<TData, TFilter> : BaseFilter<TFilter, TData>
     {
         Func<TData, string, TFilter> m_GetDataCallback;
-        Func<TData, string, string, TFilter, bool> m_FilterResolver;
+        Func<TData, string, QueryFilterOperator, TFilter, bool> m_FilterResolver;
 
         public override bool usesRegularExpressionToken => true;
 
@@ -441,6 +463,12 @@ namespace UnityEditor.Search
         public RegexFilter(Regex token, IEnumerable<string> supportedOperatorType, Func<TData, string, string, TFilter, bool> resolver, QueryEngineImpl<TData> queryEngine)
             : base(token, supportedOperatorType, true, queryEngine)
         {
+            m_FilterResolver = (data, filterId, op, filterValue) => resolver(data, filterId, op.token, filterValue);
+        }
+
+        public RegexFilter(Regex token, IEnumerable<string> supportedOperatorType, Func<TData, string, QueryFilterOperator, TFilter, bool> resolver, QueryEngineImpl<TData> queryEngine)
+            : base(token, supportedOperatorType, true, queryEngine)
+        {
             m_FilterResolver = resolver;
         }
 
@@ -453,7 +481,7 @@ namespace UnityEditor.Search
         {
             if (!usesResolver)
                 return false;
-            return m_FilterResolver(data, filterId, op.token, value);
+            return m_FilterResolver(data, filterId, op, value);
         }
 
         public override IFilterOperation GenerateOperation(FilterOperationGeneratorData data, int operatorIndex, ICollection<QueryError> errors)
@@ -479,7 +507,7 @@ namespace UnityEditor.Search
         public override Type parameterType => typeof(TParam);
 
         Func<TData, string, TParam, TFilter> m_GetDataCallback;
-        Func<TData, string, TParam, string, TFilter, bool> m_FilterResolver;
+        Func<TData, string, TParam, QueryFilterOperator, TFilter, bool> m_FilterResolver;
         Func<string, TParam> m_ParameterTransformer;
 
         public RegexFilter(Regex token, IEnumerable<string> supportedOperatorType, QueryEngineImpl<TData> queryEngine)
@@ -517,10 +545,23 @@ namespace UnityEditor.Search
         public RegexFilter(Regex token, IEnumerable<string> supportedOperatorType, Func<TData, string, TParam, string, TFilter, bool> resolver, QueryEngineImpl<TData> queryEngine)
             : base(token, supportedOperatorType, true, queryEngine)
         {
-            m_FilterResolver = resolver;
+            m_FilterResolver = (data, filterId, param, op, filterValue) => resolver(data, filterId, param, op.token, filterValue);
         }
 
         public RegexFilter(Regex token, IEnumerable<string> supportedOperatorType, Func<TData, string, TParam, string, TFilter, bool> resolver, Func<string, TParam> parameterTransformer, QueryEngineImpl<TData> queryEngine)
+            : base(token, supportedOperatorType, true, queryEngine)
+        {
+            m_FilterResolver = (data, filterId, param, op, filterValue) => resolver(data, filterId, param, op.token, filterValue);
+            m_ParameterTransformer = parameterTransformer;
+        }
+
+        public RegexFilter(Regex token, IEnumerable<string> supportedOperatorType, Func<TData, string, TParam, QueryFilterOperator, TFilter, bool> resolver, QueryEngineImpl<TData> queryEngine)
+            : base(token, supportedOperatorType, true, queryEngine)
+        {
+            m_FilterResolver = resolver;
+        }
+
+        public RegexFilter(Regex token, IEnumerable<string> supportedOperatorType, Func<TData, string, TParam, QueryFilterOperator, TFilter, bool> resolver, Func<string, TParam> parameterTransformer, QueryEngineImpl<TData> queryEngine)
             : base(token, supportedOperatorType, true, queryEngine)
         {
             m_FilterResolver = resolver;
@@ -536,7 +577,7 @@ namespace UnityEditor.Search
         {
             if (!usesResolver)
                 return false;
-            return m_FilterResolver(data, filterId, param, op.token, value);
+            return m_FilterResolver(data, filterId, param, op, value);
         }
 
         public TParam TransformParameter(string param)

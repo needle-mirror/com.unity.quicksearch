@@ -1,5 +1,16 @@
 # Changelog
 
+## [3.0.0-preview.19] - 2021-10-04
+- Add debug search preference dropdown to disable specific custom indexers.
+- Fix indexation of removed properties (case 1370415)
+- Fix QuickSearch window icon in dark theme.
+- Fix search table serialization.
+- Fix SearchQueryProvider query enumeration (i.e. `q:...`)
+- Fix text not selected when search view opens.
+- Optimize the amount of material and shader properties that get indexed.
+- Refresh search views when new data gets indexed.
+- Remove the Help provider (?) which wasn't used and will be replaced with the new Query Builder UI
+
 ## [3.0.0-preview.18] - 2021-09-27
 - Add `ref=<global object id>` asset reference indexing to have nested queries work with `h: ref={p: t:material}`
 - Add new prefab asset selectors, (i.e. `select{t:prefab, @label, @prefabbase, @prefabtype}`
@@ -9,7 +20,7 @@
 - Fix integer property filter using an floating number (i.e. `h: vertices>900.1`)
 - Fix long error string display in search view status bar.
 - Fix scene provider GameObject serialized property filtering (i.e. `#m_Layer=0`)
-- Fix search table construciton alias initialization using a select{} statement
+- Fix search table construction alias initialization using a select{} statement
 - Fix single search index entry less than or equal number comparison.
 - Fix sort{} with duplicate values
 - Fix threaded evaluation of search expression handle leaks
@@ -51,7 +62,7 @@
 - Add SearchService.CreateIndex to dynamically create new search indexes
 - Add SearchService.IsIndexReady to check what is the state of an index.
 - Add support for read-only search table view.
-- Enable PropertyTable for pacakge version
+- Enable PropertyTable for package version
 - Filter scene properties using `#<property_name>:<value>`
 - Fix search expression spreading when space in element values.
 - Fix SearchService.Request with non removed delegates.
@@ -65,7 +76,7 @@
 - Improve the search query tree view UI and UX
 - Index scene object references using hashes.
 - Mark some API as Obsolete(error)
-- Reduced the size of the assset index when using Types and Dependencies options only.
+- Reduced the size of the asset index when using Types and Dependencies options only.
 - Search index combining is 175% faster
 - Some new icons are not final yet.
 - Update saved search panel icon
@@ -102,7 +113,7 @@
 - Fix error reporting triggered by avg in main thread
 - Fix floating number parsing with dots and comma
 - Fix multiple incremental incoming updates
-- Fix seach field text selection when executing a saved query
+- Fix search field text selection when executing a saved query
 - Fix search index incremental update merge issue
 - Fix search service request using FirstBatchAsync
 - Fix SearchService loading itself too soon

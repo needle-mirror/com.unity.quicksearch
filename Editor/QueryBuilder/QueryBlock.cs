@@ -306,12 +306,13 @@ namespace UnityEditor.Search
             valueContent.Draw(valueRect, mousePosition);
 
             if (!@readonly)
-                DrawArrow(blockRect, mousePosition, QueryContent.DownArrow);
+                DrawArrow(blockRect, mousePosition, editor != null ? QueryContent.UpArrow : QueryContent.DownArrow);
         }
 
         protected void DrawArrow(in Rect blockRect, in Vector2 mousePosition, QueryContent arrowContent)
         {
-            arrowRect = new Rect(blockRect.xMax - arrowContent.width - arrowOffset, blockRect.y - 1f, QueryContent.DownArrow.width, blockRect.height);
+            var arrow = editor != null ? QueryContent.UpArrow : QueryContent.DownArrow;
+            arrowRect = new Rect(blockRect.xMax - arrowContent.width - arrowOffset, blockRect.y - 1f, arrow.width, blockRect.height);
             EditorGUIUtility.AddCursorRect(openRect, MouseCursor.Link);
             arrowContent.Draw(arrowRect, mousePosition);
         }

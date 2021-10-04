@@ -3,6 +3,18 @@ using System.Collections.Generic;
 
 namespace UnityEditor.Search
 {
+    enum FilterOperatorType
+    {
+        Contains,
+        Equal,
+        NotEqual,
+        Greater,
+        GreaterOrEqual,
+        Lesser,
+        LesserOrEqual,
+        Custom
+    }
+
     readonly struct FilterOperatorContext
     {
         public readonly IQueryEngineFilter filter;
@@ -75,6 +87,8 @@ namespace UnityEditor.Search
         /// </summary>
         public string token { get; }
 
+        internal readonly FilterOperatorType type;
+
         internal Dictionary<Type, Dictionary<Type, IFilterHandlerDelegate>> handlers { get; }
 
         /// <summary>
@@ -82,11 +96,12 @@ namespace UnityEditor.Search
         /// </summary>
         public bool valid => !string.IsNullOrEmpty(token);
 
-        internal static QueryFilterOperator invalid = new QueryFilterOperator(null, null);
+        internal static QueryFilterOperator invalid = new QueryFilterOperator(null, FilterOperatorType.Custom, null);
 
-        internal QueryFilterOperator(string token, IQueryEngineImplementation engine)
+        internal QueryFilterOperator(string token, FilterOperatorType type, IQueryEngineImplementation engine)
         {
             this.token = token;
+            this.type = type;
             handlers = new Dictionary<Type, Dictionary<Type, IFilterHandlerDelegate>>();
             m_EngineImplementation = engine;
         }
@@ -168,6 +183,25 @@ namespace UnityEditor.Search
                     return filterHandlerDelegate;
             }
             return null;
+        }
+
+        internal static FilterOperatorType GetType(string op)
+        {
+            if (string.Equals(op, ":", StringComparison.Ordinal))
+                return FilterOperatorType.Contains;
+            if (string.Equals(op, "=", StringComparison.Ordinal))
+                return FilterOperatorType.Equal;
+            if (string.Equals(op, "!=", StringComparison.Ordinal))
+                return FilterOperatorType.NotEqual;
+            if (string.Equals(op, "<", StringComparison.Ordinal))
+                return FilterOperatorType.Lesser;
+            if (string.Equals(op, "<=", StringComparison.Ordinal))
+                return FilterOperatorType.LesserOrEqual;
+            if (string.Equals(op, ">", StringComparison.Ordinal))
+                return FilterOperatorType.Greater;
+            if (string.Equals(op, ">=", StringComparison.Ordinal))
+                return FilterOperatorType.GreaterOrEqual;
+            return FilterOperatorType.Custom;
         }
     }
 }

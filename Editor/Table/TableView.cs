@@ -209,7 +209,7 @@ namespace UnityEditor.Search
 
         public void UpdateColumnSettings(int columnIndex, MultiColumnHeaderState.Column columnSettings)
         {
-            if (m_TableConfig == null)
+            if (m_TableConfig == null || columnIndex >= m_TableConfig.columns.Length)
                 return;
 
             var searchColumn = m_TableConfig.columns[columnIndex];
@@ -253,6 +253,7 @@ namespace UnityEditor.Search
 
         public void DoubleClick(SearchItem item)
         {
+            searchView.ExecuteSelection();
         }
 
         public void SetDirty()

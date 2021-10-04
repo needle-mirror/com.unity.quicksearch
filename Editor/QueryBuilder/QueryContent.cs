@@ -10,6 +10,7 @@ namespace UnityEditor.Search
         public readonly GUIStyle style;
 
         public static readonly QueryContent DownArrow;
+        public static readonly QueryContent UpArrow;
 
         public static readonly new QueryContent none = new QueryContent(string.Empty, null, Styles.QueryBuilder.label);
 
@@ -18,6 +19,7 @@ namespace UnityEditor.Search
         static QueryContent()
         {
             DownArrow = Styles.QueryBuilder.label.CreateContent("", EditorGUIUtility.LoadGeneratedIconOrNormalIcon("icon dropdown"));
+            UpArrow = Styles.QueryBuilder.label.CreateContent("", EditorGUIUtility.LoadGeneratedIconOrNormalIcon("icon dropdown open"));
         }
 
         public QueryContent(string text, Texture2D image, GUIStyle style) : base(text, image)

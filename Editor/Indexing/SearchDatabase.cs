@@ -887,6 +887,7 @@ namespace UnityEditor.Search
             m_CurrentUpdateTask = null;
             Interlocked.Decrement(ref m_UpdateTasks);
             ProcessIncrementalUpdates();
+            SearchService.RefreshWindows();
         }
 
         private IndexArtifact[] CreateArtifacts(in IList<string> assetPaths)

@@ -232,7 +232,7 @@ namespace UnityEditor.Search
 
         public static IEnumerable<SearchQueryAsset> GetFilteredSearchQueries(SearchContext context)
         {
-            return savedQueries.Where(query => query && query.providerIds.Any(id => context.IsEnabled(id)));
+            return savedQueries.Where(query => query && (query.providerIds.Count == 0 || query.providerIds.Any(id => context.IsEnabled(id))));
         }
 
         public static IEnumerable<SearchItem> GetAllSearchQueryItems(SearchContext context)

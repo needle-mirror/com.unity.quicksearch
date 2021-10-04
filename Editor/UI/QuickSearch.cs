@@ -398,7 +398,7 @@ namespace UnityEditor.Search
         private void SetSelection(bool trackSelection, int[] selection)
         {
             if (!multiselect && selection.Length > 1)
-                throw new Exception("Multi selection is not allowed.");
+                selection = new int[] { selection[selection.Length - 1] };
 
             var lastIndexAdded = k_ResetSelectionIndex;
 
@@ -590,6 +590,7 @@ namespace UnityEditor.Search
             RefreshBuilder();
             #else
             SelectSearch();
+            SetTextEditorState(context.searchText, te => UpdateFocusState(te), true);
             #endif
 
             UpdateWindowTitle();
@@ -1020,7 +1021,7 @@ namespace UnityEditor.Search
                 menu.AddItem(previewInspectorContent, m_ViewState.flags.HasAny(SearchViewFlags.OpenInspectorPreview), () => TogglePanelView(SearchViewFlags.OpenInspectorPreview));
             #if USE_QUERY_BUILDER
             if (m_ViewState.flags.HasNone(SearchViewFlags.DisableBuilderModeToggle))
-                menu.AddItem(new GUIContent($"Query Builder\tF2"), viewState.queryBuilderEnabled, () => ToggleQueryBuilder());
+                menu.AddItem(new GUIContent($"Query Builder\tF1"), viewState.queryBuilderEnabled, () => ToggleQueryBuilder());
             #endif
             if (IsSavedSearchQueryEnabled() || m_ViewState.flags.HasNone(SearchViewFlags.DisableInspectorPreview))
                 menu.AddSeparator("");
@@ -1427,19 +1428,13 @@ namespace UnityEditor.Search
                         evt.Use();
                     }
                 }
-                else if (evt.keyCode == KeyCode.F1)
-                {
-                    SetSearchText("?");
-                    SendEvent(SearchAnalytics.GenericEventType.QuickSearchToggleHelpProviderF1);
-                    evt.Use();
-                }
                 else if (evt.keyCode == KeyCode.F5)
                 {
                     Refresh();
                     evt.Use();
                 }
                 #if USE_QUERY_BUILDER
-                else if (evt.keyCode == KeyCode.F2)
+                else if (evt.keyCode == KeyCode.F1)
                 {
                     ToggleQueryBuilder();
                     evt.Use();
@@ -1877,6 +1872,7 @@ namespace UnityEditor.Search
         {
             if (m_FilteredItems.currentGroup == groupId)
                 return;
+
             var selectedProvider = SearchService.GetProvider(groupId);
             if (selectedProvider != null && selectedProvider.showDetailsOptions.HasAny(ShowDetailsOptions.ListView))
             {
@@ -2228,6 +2224,7 @@ namespace UnityEditor.Search
 
         internal void SaveUserSearchQuery()
         {
+            m_ViewState.group = m_FilteredItems.currentGroup;
             var query = SearchQuery.AddUserQuery(m_ViewState,
                 m_ResultView.SaveViewState(context.searchText).tableConfig
             );

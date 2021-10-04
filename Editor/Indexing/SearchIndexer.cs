@@ -1,7 +1,5 @@
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -112,7 +110,6 @@ namespace UnityEditor.Search
     /// <summary>
     /// Encapsulate an element that was retrieved from a query in a g.
     /// </summary>
-    [DebuggerDisplay("{id}[{index}] ({score})")]
     public readonly struct SearchResult : IEquatable<SearchResult>, IComparable<SearchResult>
     {
         /// <summary>
@@ -211,6 +208,11 @@ namespace UnityEditor.Search
             if (c == 0)
                 return index.CompareTo(other.index);
             return c;
+        }
+
+        public override string ToString()
+        {
+            return id;
         }
     }
 
@@ -1131,15 +1133,15 @@ namespace UnityEditor.Search
                 updatedDocIndexes = other.m_Documents.Select(d => FindDocumentIndex(d)).ToArray();
 
                 var removeDocIndexes = new HashSet<int>(removeDocuments.Concat(other.m_SourceDocuments.Keys).SelectMany(FindDocumentIndexesByPath));
-                removeDocIndexes.ExceptWith(updatedDocIndexes);
                 if (removeDocIndexes.Count > 0)
                 {
-                    foreach (var idi in removeDocIndexes)
+                    foreach (var idi in removeDocIndexes.Except(updatedDocIndexes))
                     {
                         m_UnusedDocumentIndexes.Push(idi);
                         m_IndexByDocuments.Remove(m_Documents[idi].id);
                         m_Documents[idi] = default;
                     }
+
                     indexes = new List<SearchIndexEntry>(m_Indexes.Where(i =>
                     {
                         i.docs.ExceptWith(removeDocIndexes);

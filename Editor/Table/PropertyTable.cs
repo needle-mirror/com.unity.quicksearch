@@ -103,6 +103,9 @@ namespace UnityEditor.Search
                     });
                 }
 
+                if (headerColumns.Count == 0)
+                    headerColumns.Add(new PropertyColumn(new SearchColumn("Invalid")));
+
                 return headerColumns.ToArray();
             }
 

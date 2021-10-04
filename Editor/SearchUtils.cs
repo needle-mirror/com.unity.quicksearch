@@ -491,6 +491,7 @@ namespace UnityEditor.Search
             return null;
         }
 
+        static Dictionary<Type, List<Type>> s_BaseTypes = new Dictionary<Type, List<Type>>();
         internal static IEnumerable<SearchProposition> FetchTypePropositions<T>(string category = "Types", Type blockType = null, int priority = -1444) where T : UnityEngine.Object
         {
             if (category != null)
@@ -513,18 +514,22 @@ namespace UnityEditor.Search
                     icon: GetTypeIcon(typeof(SceneAsset)), data: typeof(SceneAsset), type: blockType, priority: priority);
             }
 
-            var ignoredAssemblies = new[]
+            if (!s_BaseTypes.TryGetValue(typeof(T), out var types))
             {
-                typeof(EditorApplication).Assembly,
-                typeof(UnityEditorInternal.InternalEditorUtility).Assembly
-            };
-            var types = TypeCache.GetTypesDerivedFrom<T>()
+                var ignoredAssemblies = new[]
+                {
+                    typeof(EditorApplication).Assembly,
+                    typeof(UnityEditorInternal.InternalEditorUtility).Assembly
+                };
+                types = TypeCache.GetTypesDerivedFrom<T>()
                 .Where(t => t.IsVisible)
                 .Where(t => !t.IsGenericType)
                 .Where(t => !ignoredAssemblies.Contains(t.Assembly))
                 .Where(t => !typeof(Editor).IsAssignableFrom(t))
                 .Where(t => !typeof(EditorWindow).IsAssignableFrom(t))
-                .Where(t => !t.FullName.StartsWith("UnityEditor", StringComparison.Ordinal));
+                .Where(t => t.Assembly.GetName().Name.IndexOf("Editor", StringComparison.Ordinal) == -1).ToList();
+                s_BaseTypes[typeof(T)] = types;
+            }
             foreach (var t in types)
             {
                 yield return new SearchProposition(
@@ -571,9 +576,20 @@ namespace UnityEditor.Search
         {
             if (s_TypeIcons.TryGetValue(type, out var t) && t)
                 return t;
-            t = AssetPreview.GetMiniTypeThumbnail(type);
-            s_TypeIcons[type] = t;
-            return t;
+            if (!type.IsAbstract && typeof(MonoBehaviour) != type && typeof(MonoBehaviour).IsAssignableFrom(type))
+            {
+                var go = new GameObject();
+                go.SetActive(false);
+                var c = go.AddComponent(type);
+                var p = AssetPreview.GetMiniThumbnail(c);
+                UnityEngine.Object.DestroyImmediate(go, true);
+                if (p)
+                {
+                    s_TypeIcons[type] = p;
+                    return p;
+                }
+            }
+            return s_TypeIcons[type] = AssetPreview.GetMiniTypeThumbnail(type) ?? AssetPreview.GetMiniTypeThumbnail(typeof(MonoScript));
         }
 
         internal static IEnumerable<SearchProposition> EnumeratePropertyPropositions(IEnumerable<UnityEngine.Object> objs)

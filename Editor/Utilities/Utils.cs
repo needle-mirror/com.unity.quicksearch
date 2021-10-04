@@ -25,6 +25,7 @@ using UnityEditor.StyleSheets;
 [assembly: System.Runtime.CompilerServices.InternalsVisibleTo("Unity.ProceduralGraph.Editor")]
 [assembly: System.Runtime.CompilerServices.InternalsVisibleTo("Unity.Rendering.Hybrid")]
 [assembly: System.Runtime.CompilerServices.InternalsVisibleTo("Unity.VisualEffectGraph.Editor")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("Unity.Localization.Editor")]
 
 namespace UnityEditor.Search
 {

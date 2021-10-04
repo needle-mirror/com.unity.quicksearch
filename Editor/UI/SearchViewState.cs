@@ -156,12 +156,15 @@ namespace UnityEditor.Search
             searchText = state.context.searchText;
             sessionId = state.sessionId;
             sessionName = state.sessionName;
+            excludeNoneItem = state.excludeNoneItem;
+            ignoreSaveSearches = state.ignoreSaveSearches;
 
             title = state.title;
             itemSize = state.itemSize;
             position = state.position;
             flags = state.flags;
             forceViewMode = state.forceViewMode;
+            group = state.group;
 
             #if USE_QUERY_BUILDER
             queryBuilderEnabled = state.queryBuilderEnabled;
@@ -238,6 +241,8 @@ namespace UnityEditor.Search
         public void OnAfterDeserialize()
         {
             m_WasDeserialized = true;
+            if (tableConfig != null && tableConfig.columns?.Length == 0)
+                tableConfig = null;
         }
 
         internal IEnumerable<string> GetProviderIds()

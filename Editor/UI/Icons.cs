@@ -39,7 +39,7 @@ namespace UnityEditor.Search
         public static Texture2D help = EditorGUIUtility.FindTexture($"Icons/_Help.png");
         public static Texture2D search = LoadIcon($"{iconFolder}/search.png");
         public static Texture2D clear = LoadIcon($"{iconFolder}/clear.png");
-        public static Texture2D quickSearchWindow = quicksearch;
+        public static Texture2D quickSearchWindow = LoadIcon($"{iconFolder}/quicksearch.png");
         public static Texture2D more = LoadIcon($"{iconFolder}/more.png");
         public static Texture2D store = LoadIcon($"{iconFolder}/store.png");
         public static Texture2D logInfo = LoadIcon($"{iconFolder}/log_info.png");
@@ -75,6 +75,7 @@ namespace UnityEditor.Search
                 listView = LightenTexture(listView);
                 gridView = LightenTexture(gridView);
                 tableView = LightenTexture(tableView);
+                quickSearchWindow = LightenTexture(quickSearchWindow);
             }
         }
 

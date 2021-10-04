@@ -1,7 +1,9 @@
 using System.Linq;
+using System.Text.RegularExpressions;
 using UnityEditor;
 using UnityEditor.Search.Providers;
 using UnityEngine;
+using UnityEngine.Rendering;
 
 namespace UnityEditor.Search
 {
@@ -138,7 +140,7 @@ namespace UnityEditor.Search
         }
 
         #region ShaderIndexing
-        [CustomObjectIndexer(typeof(Shader), version = 1)]
+        [CustomObjectIndexer(typeof(Shader), version = 2)]
         internal static void ShaderIndexing(CustomObjectIndexerTarget context, ObjectIndexer indexer)
         {
             if (!(context.target is Shader shader) || !indexer.settings.options.properties)
@@ -148,20 +150,25 @@ namespace UnityEditor.Search
             for (int i = 0, end = shader.GetPropertyCount(); i != end; ++i)
             {
                 var label = shader.GetPropertyName(i);
+
+                // Keep some property name patterns
+                if (s_IgnorePropertyNameRx.IsMatch(label))
+                    continue;
+
                 var name = label.ToLowerInvariant();
                 if (name.Length > 0 && name[0] == '_')
                     name = name.Substring(1);
                 switch (shader.GetPropertyType(i))
                 {
-                    case UnityEngine.Rendering.ShaderPropertyType.Color:
+                    case ShaderPropertyType.Color:
                         var v = shader.GetPropertyDefaultVectorValue(i);
                         IndexColor(name, new Color(v.x, v.y, v.z, v.w), indexer, context.documentIndex, label, ownerPropertyType);
                         break;
-                    case UnityEngine.Rendering.ShaderPropertyType.Vector:
+                    case ShaderPropertyType.Vector:
                         v = shader.GetPropertyDefaultVectorValue(i);
                         IndexVector(name, v, indexer, context.documentIndex, label, ownerPropertyType);
                         break;
-                    case UnityEngine.Rendering.ShaderPropertyType.Float:
+                    case ShaderPropertyType.Float:
                         indexer.IndexNumber(context.documentIndex, name, shader.GetPropertyDefaultFloatValue(i));
                         break;
                 }
@@ -170,7 +177,8 @@ namespace UnityEditor.Search
 
         #endregion
 
-        [CustomObjectIndexer(typeof(Material), version = 4)]
+        static readonly Regex s_IgnorePropertyNameRx = new Regex(@"_([A-F0-9]{8}|[a-f0-9]{32})$");
+        [CustomObjectIndexer(typeof(Material), version = 15)]
         internal static void MaterialShaderReferences(CustomObjectIndexerTarget context, ObjectIndexer indexer)
         {
             var material = context.target as Material;
@@ -187,11 +195,16 @@ namespace UnityEditor.Search
             var properties = MaterialEditor.GetMaterialProperties(new Material[] { material });
             foreach (var property in properties)
             {
-                if (property.flags == MaterialProperty.PropFlags.HideInInspector)
+                var flags = (ShaderPropertyFlags)property.flags;
+                if ((flags & (ShaderPropertyFlags.HideInInspector | ShaderPropertyFlags.NonModifiableTextureData)) != 0)
                     continue;
 
                 var upn = property.name;
                 if (upn == null)
+                    continue;
+
+                // Keep some property name patterns
+                if (s_IgnorePropertyNameRx.IsMatch(upn))
                     continue;
 
                 var propertyName = upn.ToLowerInvariant();

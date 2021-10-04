@@ -1124,6 +1124,9 @@ namespace UnityEditor.Search
 
         private class DraggableTextField : TextField
         {
+            #if USE_SEARCH_MODULE
+            [EventInterest(typeof(DragUpdatedEvent), typeof(DragPerformEvent))]
+            #endif
             protected override void ExecuteDefaultActionAtTarget(EventBase evt)
             {
                 base.ExecuteDefaultActionAtTarget(evt);

@@ -142,6 +142,10 @@ namespace UnityEditor.Search
                 m_ObjectLabel.text = content.text;
             }
 
+            #if USE_SEARCH_MODULE
+            [EventInterest(typeof(MouseDownEvent), typeof(KeyDownEvent),
+                typeof(DragUpdatedEvent), typeof(DragPerformEvent), typeof(DragLeaveEvent))]
+            #endif
             protected override void ExecuteDefaultActionAtTarget(EventBase evt)
             {
                 base.ExecuteDefaultActionAtTarget(evt);
@@ -274,6 +278,9 @@ namespace UnityEditor.Search
                 m_ObjectField = objectField;
             }
 
+            #if USE_SEARCH_MODULE
+            [EventInterest(typeof(MouseDownEvent))]
+            #endif
             protected override void ExecuteDefaultAction(EventBase evt)
             {
                 base.ExecuteDefaultAction(evt);

@@ -530,7 +530,7 @@ namespace UnityEditor.Search
                     {
                         valueRect = new Rect(x - 5f, blockRect.yMin - 5f, qb.width + 24f, qb.height);
                         qb.Draw(Event.current, valueRect, createLayout: false);
-                        DrawArrow(blockRect, mousePosition, QueryContent.DownArrow);
+                        DrawArrow(blockRect, mousePosition, editor != null ? QueryContent.UpArrow : QueryContent.DownArrow);
                         return qb;
                     }
                     break;
