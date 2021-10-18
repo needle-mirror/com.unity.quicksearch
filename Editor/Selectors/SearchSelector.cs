@@ -1,3 +1,7 @@
+#if USE_PROPERTY_DATABASE
+#define CACHE_SELECTED_VALUE
+#endif
+
 using System;
 using System.Linq;
 using System.Collections.Generic;
@@ -212,11 +216,11 @@ namespace UnityEditor.Search
             if (string.IsNullOrEmpty(selectorName))
                 return null;
 
-            #if USE_PROPERTY_DATABASE
+            #if CACHE_SELECTED_VALUE
             using (var view = SearchMonitor.GetView())
             #endif
             {
-                #if USE_PROPERTY_DATABASE
+                #if CACHE_SELECTED_VALUE
                 if (view.TryLoadProperty(item.key, selectorName, out var recordKey, out var cv, out suggestedSelectorName))
                     return cv;
                 #endif
@@ -246,7 +250,7 @@ namespace UnityEditor.Search
                 if (!string.IsNullOrEmpty(localSuggestedSelectorName))
                     suggestedSelectorName = localSuggestedSelectorName;
 
-                #if USE_PROPERTY_DATABASE
+                #if CACHE_SELECTED_VALUE
                 view.StoreProperty(recordKey, itemValue, suggestedSelectorName);
                 #endif
 

@@ -100,9 +100,9 @@ namespace UnityEditor.Search
         private event Action nextFrame;
         private event Action<Vector2, Vector2> resized;
 
-        public Action<SearchItem, bool> selectCallback { get => m_ViewState.selectHandler; set => m_ViewState.selectHandler = value; }
-        public Func<SearchItem, bool> filterCallback { get => m_ViewState.filterHandler; set => m_ViewState.filterHandler = value; }
-        public Action<SearchItem> trackingCallback { get => m_ViewState.trackingHandler; set => m_ViewState.trackingHandler = value; }
+        public Action<SearchItem, bool> selectCallback { get => (item, canceled) => m_ViewState.selectHandler?.Invoke(item, canceled); set => m_ViewState.selectHandler = value; }
+        public Func<SearchItem, bool> filterCallback { get => (item) => m_ViewState.filterHandler?.Invoke(item) ?? true; set => m_ViewState.filterHandler = value; }
+        public Action<SearchItem> trackingCallback { get => (item) => m_ViewState.trackingHandler?.Invoke(item); set => m_ViewState.trackingHandler = value; }
 
         internal bool searchInProgress => (context?.searchInProgress ?? false) || nextFrame != null || m_DebounceOff != null || m_WaitAsyncResults != null;
         internal string currentGroup => m_FilteredItems.currentGroup;
@@ -1042,6 +1042,10 @@ namespace UnityEditor.Search
                 return;
             SearchSettings.queryBuilder = viewState.queryBuilderEnabled = !viewState.queryBuilderEnabled;
             SearchSettings.Save();
+            var evt = CreateEvent(SearchAnalytics.GenericEventType.QuickSearchToggleBuilder, viewState.queryBuilderEnabled.ToString());
+            evt.intPayload1 = viewState.queryBuilderEnabled ? 1 : 0;
+            SearchAnalytics.SendEvent(evt);
+
             RefreshBuilder();
         }
 
@@ -1049,7 +1053,7 @@ namespace UnityEditor.Search
         {
             m_QueryBuilder = viewState.queryBuilderEnabled ? CreateBuilder(context, m_SearchField) : null;
             SelectSearch();
-            SetTextEditorState(m_QueryBuilder?.wordText ?? context.searchText, te => UpdateFocusState(te), true);
+            SetTextEditorState(m_QueryBuilder?.wordText ?? context.searchText, te => UpdateFocusState(te), m_QueryBuilder != null);
             ClearQueryHelper();
         }
 
@@ -1117,6 +1121,10 @@ namespace UnityEditor.Search
                 searchEventStatus = SearchEventStatus.EventSent;
             }
             evt.searchText = context.searchText;
+
+            #if USE_QUERY_BUILDER
+            evt.useQueryBuilder = m_QueryBuilder != null;
+            #endif
             SearchAnalytics.SendSearchEvent(evt, context);
         }
 
@@ -1565,6 +1573,7 @@ namespace UnityEditor.Search
 
         void OnQueryHelperExecute(ISearchQuery query)
         {
+            SendEvent(SearchAnalytics.GenericEventType.QuickSearchHelperWidgetExecuted, viewState.queryBuilderEnabled ? "queryBuilder" : "text");
             ClearQueryHelper();
         }
 
@@ -1579,7 +1588,6 @@ namespace UnityEditor.Search
             queryHelper.Draw(Event.current, m_QueryHelperRect);
             GUILayout.EndVertical();
         }
-
         #endif
 
         private void DrawTips(float availableSpace)
@@ -1652,7 +1660,7 @@ namespace UnityEditor.Search
 
         public IEnumerable<IGroup> EnumerateGroups()
         {
-            return m_FilteredItems.EnumerateGroups();
+            return m_FilteredItems.EnumerateGroups(!viewState.hideAllGroup);
         }
 
         private void DrawTabs(Event evt, float availableSpace)
@@ -1891,6 +1899,7 @@ namespace UnityEditor.Search
             evt.intPayload1 = m_FilteredItems.GetGroupById(groupId)?.count ?? 0;
             SearchAnalytics.SendEvent(evt);
 
+            viewState.groupChanged?.Invoke(context, groupId, m_FilteredItems.currentGroup);
             m_ResultView?.OnGroupChanged(m_FilteredItems.currentGroup, groupId);
 
             m_FilteredItems.currentGroup = groupId;

@@ -78,7 +78,8 @@ namespace UnityEditor.Search
                 var documents = subset != null ? subset.Select(r => GetDocument(r.index)) : GetDocuments(ignoreNulls: true);
                 foreach (var r in FindProvider.SearchWord(false, word, options, documents))
                 {
-                    yield return new SearchResult(r.id, m_IndexByDocuments[r.id], baseScore + r.score + 5);
+                    if (m_IndexByDocuments.TryGetValue(r.id, out var documentIndex))
+                        yield return new SearchResult(r.id, documentIndex, baseScore + r.score + 5);
                 }
             }
         }
@@ -174,7 +175,7 @@ namespace UnityEditor.Search
             int scoreModifier = 0;
             foreach (var c in GetEntryComponents(value, documentIndex))
                 AddProperty(name, c, settings.baseScore + scoreModifier++, documentIndex, saveKeyword: false, exact: false);
-            AddProperty(name, value.ToLowerInvariant(), settings.baseScore-5, documentIndex, saveKeyword: false, exact: true);
+            AddProperty(name, value.ToLowerInvariant(), settings.baseScore - 5, documentIndex, saveKeyword: false, exact: true);
         }
 
         /// <summary>

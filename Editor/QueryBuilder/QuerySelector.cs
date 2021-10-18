@@ -7,6 +7,107 @@ using UnityEngine;
 
 namespace UnityEditor.Search
 {
+    class QuerySelectorItemGUI : AdvancedDropdownGUI
+    {
+        class Styles
+        {
+            public static GUIStyle itemStyle = new GUIStyle("DD LargeItemStyle")
+            {
+                fixedHeight = 22
+            };
+
+            // public static GUIStyle textStyle = new GUIStyle("DD LargeItemStyle")
+            public static GUIStyle textStyle = new GUIStyle(Search.Styles.QueryBuilder.label)
+            {
+                padding = new RectOffset(0, 0, 0, 0),
+                alignment = TextAnchor.MiddleCenter
+            };
+
+            public static GUIStyle propositionIcon = new GUIStyle("label")
+            {
+                fixedWidth = 18f,
+                fixedHeight = 18f,
+                padding = new RectOffset(0, 0, 0, 0),
+                margin = new RectOffset(0, 0, 0, 0)
+            };
+
+            public static Vector4 borderWidth4 = new Vector4(1, 1, 1, 1);
+            public static Vector4 borderRadius4 = new Vector4(8f, 8f, 8f, 8f);
+        }
+
+        internal override GUIStyle lineStyle => Styles.itemStyle;
+        internal override Vector2 iconSize => new Vector2(Styles.propositionIcon.fixedWidth, Styles.propositionIcon.fixedHeight);
+
+        public QuerySelectorItemGUI(AdvancedDropdownDataSource dataSource)
+            : base(dataSource)
+        {
+        }
+
+        internal override Rect GetItemRect(GUIContent content)
+        {
+            return base.GetItemRect(content);
+        }
+
+        internal override float CalcItemHeight(GUIContent content, float width)
+        {
+            return SearchField.minSinglelineTextHeight + 2;
+        }
+
+        internal override Vector2 CalcItemSize(GUIContent content)
+        {
+            return base.CalcItemSize(content);
+        }
+
+        internal override void DrawItemContent(AdvancedDropdownItem item, Rect rect, GUIContent content, bool isHover, bool isActive, bool on, bool hasKeyboardFocus)
+        {
+            if (item.children.Any())
+            {
+                base.DrawItemContent(item, rect, content, isHover, isActive, on, hasKeyboardFocus);
+                return;
+            }
+
+            var bgColor = ((SearchProposition)item.userData).color;
+            if (bgColor == Color.clear)
+                bgColor = QueryColors.filter;
+
+            // Add spacing between items
+            rect.y += 3;
+            rect.yMax -= 3;
+
+            // Left margin
+            rect.x += 2;
+
+            if (content.image != null)
+            {
+                // Draw icon if needed. If no icon, rect is already offsetted.
+                var iconRect = new Rect(rect.x, rect.y, iconSize.x, iconSize.y);
+                Styles.propositionIcon.Draw(iconRect, GUIContent.Temp("", content.image), false, false, false, false);
+                rect.xMin += iconSize.x + 2;
+            }
+
+            var textContent = GUIContent.Temp(content.text);
+            var backgroundRect = rect;
+            var size = CalcItemSize(textContent);
+            if (backgroundRect.width > size.x + iconSize.x)
+                backgroundRect.width = size.x + iconSize.x;
+
+            var selected = isHover || on;
+            var color = selected ? bgColor * QueryColors.selectedTint : bgColor;
+
+            // Draw blockbackground
+            GUI.DrawTexture(backgroundRect, EditorGUIUtility.whiteTexture, ScaleMode.StretchToFill, false, 0f, color, Vector4.zero, Styles.borderRadius4);
+
+            // Draw Text
+            Styles.textStyle.Draw(backgroundRect, textContent, false, false, false, false);
+
+            if (selected)
+            {
+                // Draw border
+                GUI.DrawTexture(backgroundRect, EditorGUIUtility.whiteTexture, ScaleMode.StretchToFill, false, 0f, QueryColors.selectedBorderColor, Styles.borderWidth4, Styles.borderRadius4);
+            }
+        }
+    }
+
     class QuerySelector : AdvancedDropdown, IBlockEditor
     {
         private readonly string m_Title;
@@ -16,20 +117,23 @@ namespace UnityEditor.Search
         public SearchContext context => m_BlockSource.context;
         public EditorWindow window => m_WindowInstance;
 
-        public QuerySelector(Rect rect, IBlockSource dataSource)
+        public QuerySelector(Rect rect, IBlockSource dataSource, string title = null)
             : base(new AdvancedDropdownState())
         {
             m_BlockSource = dataSource;
-            m_Title = m_BlockSource.name ?? string.Empty;
+            m_Title = title ?? m_BlockSource.editorTitle ?? m_BlockSource.name ?? string.Empty;
             m_Propositions = m_BlockSource.FetchPropositions().Where(p => p.valid);
 
             minimumSize = new Vector2(Mathf.Max(rect.width, 300f), 350f);
             maximumSize = new Vector2(Mathf.Max(rect.width, 400f), 450f);
+
+            m_DataSource = new CallbackDataSource(BuildRoot);
+            m_Gui = new QuerySelectorItemGUI(m_DataSource);
         }
 
-        public static QuerySelector Open(Rect r, IBlockSource source)
+        public static QuerySelector Open(Rect r, IBlockSource source, string title = null)
         {
-            var w = new QuerySelector(r, source);
+            var w = new QuerySelector(r, source, title);
             w.Show(r);
             w.Bind();
             return w;

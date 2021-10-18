@@ -1,5 +1,15 @@
 # Changelog
 
+## [3.0.0-preview.20] - 2021-10-18
+- Add support to drag sub asset results to ObjectField (case 1374002)
+- Add support to filter by static states (i.e. `h: static=[navigationstatic, batchingstatis]`)
+- Fix New table view columns should be based on the selected search group (case 1371705)
+- Fix NullReferenceException after switching Description column format to Performance metric (case 1364701)
+- Fix search picker fails to filter sprite assets (case 1371778)
+- Fix searching sub asset by asset container path.
+- Fix sub asset type resolution (i.e. `select{p: t:sprite, @name, @type}`)
+- Fix Utils.GetAssetPreviewFromPath when used with invalid paths.
+
 ## [3.0.0-preview.19] - 2021-10-04
 - Add debug search preference dropdown to disable specific custom indexers.
 - Fix indexation of removed properties (case 1370415)

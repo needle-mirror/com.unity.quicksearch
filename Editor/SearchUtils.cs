@@ -503,15 +503,15 @@ namespace UnityEditor.Search
                     icon: EditorGUIUtility.FindTexture("FilterByType"));
 
                 yield return new SearchProposition(category: category, label: "Prefabs", replacement: "t:prefab",
-                    icon: GetTypeIcon(typeof(GameObject)), data: typeof(GameObject), type: blockType, priority: priority);
+                    icon: GetTypeIcon(typeof(GameObject)), data: typeof(GameObject), type: blockType, priority: priority, color: QueryColors.type);
             }
 
             if (string.Equals(category, "Types", StringComparison.Ordinal))
             {
                 yield return new SearchProposition(category: "Types", label: "Scripts", replacement: "t:script",
-                    icon: GetTypeIcon(typeof(MonoScript)), data: typeof(MonoScript), type: blockType, priority: priority);
+                    icon: GetTypeIcon(typeof(MonoScript)), data: typeof(MonoScript), type: blockType, priority: priority, color: QueryColors.type);
                 yield return new SearchProposition(category: "Types", label: "Scenes", replacement: "t:scene",
-                    icon: GetTypeIcon(typeof(SceneAsset)), data: typeof(SceneAsset), type: blockType, priority: priority);
+                    icon: GetTypeIcon(typeof(SceneAsset)), data: typeof(SceneAsset), type: blockType, priority: priority, color: QueryColors.type);
             }
 
             if (!s_BaseTypes.TryGetValue(typeof(T), out var types))
@@ -539,7 +539,8 @@ namespace UnityEditor.Search
                     replacement: $"t:{t.Name}",
                     data: t,
                     type: blockType,
-                    icon: GetTypeIcon(t));
+                    icon: GetTypeIcon(t),
+                    color: QueryColors.type);
             }
         }
 
@@ -564,6 +565,7 @@ namespace UnityEditor.Search
                 label: $"{tokens[1]} ({blockType?.Name ?? valueType})",
                 replacement: replacement,
                 help: tokens[2],
+                color: replacement.StartsWith("#") ? QueryColors.property : QueryColors.filter,
                 icon:
                     #if USE_SEARCH_MODULE
                     AssetPreview.GetMiniTypeThumbnailFromType(blockType) ??

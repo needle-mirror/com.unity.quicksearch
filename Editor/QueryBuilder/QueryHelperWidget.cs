@@ -244,6 +244,10 @@ namespace UnityEditor.Search
                 m_Areas.AddBlock(new QueryAreaBlock(m_Areas, p));
             }
             m_Areas.@readonly = true;
+            foreach(var b in m_Areas.blocks)
+            {
+                b.tooltip = $"Double click to search in: {b.value}";
+            }
 
             if (string.IsNullOrEmpty(m_CurrentAreaFilterId))
             {
@@ -482,6 +486,7 @@ namespace UnityEditor.Search
 
             if (isDoubleClick)
             {
+                SearchAnalytics.SendEvent(null, SearchAnalytics.GenericEventType.QuickSearchHelperWidgetExecuted, m_BlockMode ? "queryBuilder" : "text", "doubleClick");
                 var query = CreateQuery(block.ToString());
                 ExecuteQuery(query);
                 return true;

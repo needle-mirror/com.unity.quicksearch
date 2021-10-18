@@ -117,7 +117,7 @@ namespace UnityEditor.Search.Providers
 
                     IEnumerable<SearchDocument> results = Enumerable.Empty<SearchDocument>();
                     if (args.name == null && args.value is string word && word.Length > 0)
-                        results = SearchWord(args.exclude, word, options, subset/*.ToList()*/);
+                        results = SearchWord(args.exclude, word, options, subset);
 
                     if (args.orSet != null)
                         results = results.Concat(args.orSet);
@@ -189,7 +189,6 @@ namespace UnityEditor.Search.Providers
 
                         if (scanFileTask.IsFaulted || scanFileTask.IsCanceled)
                             yield break;
-
                     }
                     s_RootFilePaths.TryAdd(root, foundFiles);
                 }
@@ -210,7 +209,8 @@ namespace UnityEditor.Search.Providers
             {
                 try
                 {
-                    var match = SearchFile(doc.name, word, options, rxm, globRx, out var score);
+                    var match = SearchFile(doc.name, word, options, rxm, globRx, out var score) ||
+                        (!string.IsNullOrEmpty(doc.m_Source) && SearchFile(doc.m_Source, word, options, rxm, globRx, out score));
                     if (!exclude && match)
                         results.Add(new SearchDocument(doc, ComputeResultScore(score, doc.name)));
                     else if (exclude && !match)
@@ -370,8 +370,8 @@ namespace UnityEditor.Search.Providers
 
         private static IEnumerable<SearchProposition> FetchQueryBuilderPropositions()
         {
-            yield return new SearchProposition(category: "Find", "File with Spaces", @"\s+");
-            yield return new SearchProposition(category: "Find", "Numeric Files", @"\d+\.\w+$");
+            yield return new SearchProposition(category: "Find", "File with Spaces", @"\s+", color: QueryColors.word);
+            yield return new SearchProposition(category: "Find", "Numeric Files", @"\d+\.\w+$", color: QueryColors.word);
         }
 
         [SearchItemProvider]

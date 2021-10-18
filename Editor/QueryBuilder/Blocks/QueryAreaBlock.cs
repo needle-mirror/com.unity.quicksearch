@@ -8,6 +8,7 @@ namespace UnityEditor.Search
 {
     class QueryAreaBlock : QueryBlock
     {
+        public const string title = "Select Search Area";
         public string filterId { get; private set; }
 
         public override bool canExclude => false;
@@ -16,6 +17,7 @@ namespace UnityEditor.Search
         public QueryAreaBlock(IQuerySource source, in SearchProvider provider)
             : this(source, provider.name, provider.filterId)
         {
+            editorTitle = title;
         }
 
         public QueryAreaBlock(in IQuerySource source, in string providerName, in string filterId)
@@ -50,7 +52,7 @@ namespace UnityEditor.Search
             {
                 if (ExcludeProviderProposition(p.id))
                     continue;
-                yield return new SearchProposition($"{p.name} ({p.filterId})", p.filterId, p.id, p.priority, Icons.quicksearch, p);
+                yield return new SearchProposition($"{p.name} ({p.filterId})", p.filterId, p.id, p.priority, Icons.quicksearch, p, color: QueryColors.area);
             }
         }
 
