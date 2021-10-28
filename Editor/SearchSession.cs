@@ -230,6 +230,7 @@ namespace UnityEditor.Search
     /// </summary>
     class MultiProviderAsyncSearchSession
     {
+        private System.Threading.CancellationTokenSource m_CancelSource;
         private ConcurrentDictionary<string, SearchSession> m_SearchSessions = new ConcurrentDictionary<string, SearchSession>();
 
         /// <summary>
@@ -251,6 +252,8 @@ namespace UnityEditor.Search
         /// Checks if any of the providers' async search are active.
         /// </summary>
         public bool searchInProgress => m_SearchSessions.Any(session => session.Value.searchInProgress);
+
+        internal System.Threading.CancellationToken cancelToken => m_CancelSource?.Token ?? default(System.Threading.CancellationToken);
 
         /// <summary>
         /// Returns the specified provider's async search session.
@@ -290,11 +293,22 @@ namespace UnityEditor.Search
             asyncItemReceived?.Invoke(context, items);
         }
 
+        public void StartSessions()
+        {
+            if (m_CancelSource != null)
+            {
+                m_CancelSource.Dispose();
+                m_CancelSource = null;
+            }
+            m_CancelSource = new System.Threading.CancellationTokenSource();
+        }
+
         /// <summary>
         /// Stops all active async search sessions held by this MultiProviderAsyncSearchSession.
         /// </summary>
         public void StopAllAsyncSearchSessions()
         {
+            m_CancelSource?.Cancel();
             foreach (var searchSession in m_SearchSessions)
             {
                 searchSession.Value.Stop();
@@ -306,6 +320,9 @@ namespace UnityEditor.Search
         /// </summary>
         public void Clear()
         {
+            m_CancelSource?.Dispose();
+            m_CancelSource = null;
+
             foreach (var searchSession in m_SearchSessions)
             {
                 searchSession.Value.asyncItemReceived -= OnProviderAsyncItemReceived;

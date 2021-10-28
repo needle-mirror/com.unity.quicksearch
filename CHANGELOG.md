@@ -1,5 +1,11 @@
 # Changelog
 
+## [3.0.0-preview.21] - 2021-10-28
+- Add support to cancel search providers with threading capabilities.
+- Fix search table serialization with user search queries.
+- Fix select{} selector resolution with more than 100 elements.
+- Optimize scene provider `ref=` using global object id.
+
 ## [3.0.0-preview.20] - 2021-10-18
 - Add support to drag sub asset results to ObjectField (case 1374002)
 - Add support to filter by static states (i.e. `h: static=[navigationstatic, batchingstatis]`)

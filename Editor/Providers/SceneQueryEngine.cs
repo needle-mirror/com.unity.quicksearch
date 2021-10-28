@@ -230,8 +230,8 @@ namespace UnityEditor.Search.Providers
                 #if CACHE_SERIALIZED_PROPERTY
                 var documentKey = SearchUtils.GetDocumentKey(go);
                 var recordKey = PropertyDatabase.CreateRecordKey(documentKey, PropertyDatabase.CreatePropertyHash(propertyName));
-                if (view.TryLoadProperty(recordKey, out object data))
-                    return (SearchValue)data;
+                if (view.TryLoadProperty(recordKey, out object data) && data is SearchValue sv)
+                    return sv;
                 #endif
 
                 foreach (var c in EnumerateSubObjects(go))

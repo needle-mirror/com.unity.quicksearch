@@ -37,7 +37,7 @@ namespace UnityEditor.Search
     }
 
     [Serializable]
-    class SearchQuery : ISearchQuery
+    class SearchQuery : ISearchQuery, ISerializationCallbackReceiver
     {
         public static string userSearchSettingsFolder => Utils.CleanPath(Path.Combine(InternalEditorUtility.unityPreferencesFolder, "Search"));
         public string searchText
@@ -173,7 +173,7 @@ namespace UnityEditor.Search
         public SearchQuery(SearchContext context, SearchTable table = null)
             : this()
         {
-            viewState = new SearchViewState(context);
+            viewState = new SearchViewState(context, table);
             tableConfig = table;
         }
 
@@ -319,6 +319,16 @@ namespace UnityEditor.Search
                 return query.thumbnail;
             var displayMode = QuickSearch.GetDisplayModeFromItemSize(query.GetResultViewState().itemSize);
             return QuickSearch.GetIconFromDisplayMode(displayMode);
+        }
+
+        public void OnBeforeSerialize()
+        {
+        }
+
+        public void OnAfterDeserialize()
+        {
+            if (viewState.tableConfig == null && tableConfig != null)
+                viewState.tableConfig = tableConfig;
         }
     }
 }

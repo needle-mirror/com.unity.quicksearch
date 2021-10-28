@@ -269,7 +269,16 @@ namespace UnityEditor.Search
                     }
                 }
 
-                var rootExpression = SearchExpression.Parse(searchText);
+                SearchExpression rootExpression = null;
+                try
+                {
+                    rootExpression = SearchExpression.Parse(searchText);
+                }
+                catch(SearchExpressionParseException)
+                {
+
+                }
+
                 if (rootExpression != null && rootExpression.types.HasAny(SearchExpressionType.Function))
                 {
                     newBlocks.Add(new QueryExpressionBlock(this, rootExpression));
@@ -389,6 +398,8 @@ namespace UnityEditor.Search
 
         public QueryBlock AddProposition(in SearchProposition searchProposition)
         {
+            SetSelection(-1);
+
             if (searchProposition.data is SearchProvider provider)
                 return AddBlock(new QueryAreaBlock(this, provider));
             if (searchProposition.data is QueryBlock block)
@@ -439,10 +450,8 @@ namespace UnityEditor.Search
         {
             var currentIndex = currentBlock == block ? GetBlockIndex(block) : -1;
             blocks.Remove(block);
-            if (currentIndex != -1)
+            if (currentIndex != -1 && currentIndex < blocks.Count())
             {
-                if (currentIndex == blocks.Count())
-                    currentIndex--;
                 SetSelection(currentIndex);
             }
             Apply();
@@ -471,6 +480,9 @@ namespace UnityEditor.Search
         public bool HandleKeyEvent(in Event evt)
         {
             if (@readonly || context == null || evt.type != EventType.KeyDown)
+                return false;
+
+            if (Utils.IsEditingTextField() && GUIUtility.keyboardControl != m_TextBlock?.GetSearchField().controlID)
                 return false;
 
             if (evt.keyCode == KeyCode.Home)
@@ -550,7 +562,7 @@ namespace UnityEditor.Search
             else if (evt.keyCode == KeyCode.Backspace)
             {
                 QueryBlock toRemoveBlock = currentBlock;
-                if (toRemoveBlock != null)
+                if (toRemoveBlock != null && !toRemoveBlock.@readonly)
                 {
                     RemoveBlock(toRemoveBlock);
                     evt.Use();
@@ -560,7 +572,7 @@ namespace UnityEditor.Search
             else if (evt.keyCode == KeyCode.Delete)
             {
                 var cb = currentBlock;
-                if (cb != null)
+                if (cb != null && !cb.@readonly)
                 {
                     RemoveBlock(cb);
                     evt.Use();
@@ -584,35 +596,8 @@ namespace UnityEditor.Search
                     }
                 }
             }
-            else if (m_TextBlock != null && !IsModifiersKeyCode(evt.keyCode))
-            {
-                // Assume that if a key is down and not handled, we want to put focus in the textfield and remove selection
-                m_TextBlock.GetSearchField()?.Focus();
-                SetSelection(-1);
-            }
-            return false;
-        }
 
-        private bool IsModifiersKeyCode(KeyCode keyCode)
-        {
-            switch (keyCode)
-            {
-                case KeyCode.AltGr:
-                case KeyCode.LeftAlt:
-                case KeyCode.LeftCommand:
-                case KeyCode.LeftControl:
-                case KeyCode.LeftShift:
-                case KeyCode.LeftWindows:
-                case KeyCode.Menu:
-                case KeyCode.RightAlt:
-                case KeyCode.RightCommand:
-                case KeyCode.RightControl:
-                case KeyCode.RightShift:
-                case KeyCode.RightWindows:
-                    return true;
-                default:
-                    return false;
-            }
+            return false;
         }
     }
 }

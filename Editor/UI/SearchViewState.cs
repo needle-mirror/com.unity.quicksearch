@@ -46,6 +46,7 @@ namespace UnityEditor.Search
         [SerializeField] internal SearchTable tableConfig;
         [SerializeField] internal bool ignoreSaveSearches;
         [SerializeField] internal bool hideAllGroup;
+        [SerializeField] internal GUIContent windowTitle;
 
         #if USE_QUERY_BUILDER
         [SerializeField] internal bool queryBuilderEnabled;

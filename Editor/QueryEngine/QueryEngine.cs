@@ -1350,7 +1350,9 @@ namespace UnityEditor.Search
                 if (type != typeParser.type)
                     continue;
 
-                return typeParser.Parse(filterValue);
+                var result = typeParser.Parse(filterValue);
+                if (result.success)
+                    return result;
             }
 
             return GenerateParseResultForType(filterValue, type);

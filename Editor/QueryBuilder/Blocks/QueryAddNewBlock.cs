@@ -48,12 +48,13 @@ namespace UnityEditor.Search
             if (source.context.empty)
             {
                 return QueryAreaBlock.FetchPropositions(context)
-                    .Concat(SearchProposition.Fetch(context, options));
+                    .Concat(new[] { SearchProposition.CreateSeparator() })
+                    .Concat(SearchProposition.Fetch(context, options).OrderBy(p => p));
             }
             else
             {
                 return SearchProposition.Fetch(context, options)
-                    .Concat(QueryAndOrBlock.BuiltInQueryBuilderPropositions());
+                    .Concat(QueryAndOrBlock.BuiltInQueryBuilderPropositions()).OrderBy(p => p);
             }
         }
     }

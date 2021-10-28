@@ -122,14 +122,32 @@ namespace UnityEditor.Search
             this.color = color;
         }
 
+        const string kSeparator = "-------------------------";
+
+        internal static SearchProposition CreateSeparator(string category = null)
+        {
+            var s = new SearchProposition(category: category, label: kSeparator);
+            return s;
+        }
+
+        internal bool isSeparator => label == kSeparator;
+
         public int CompareTo(SearchProposition other)
         {
+            if (category == null && other.category != null)
+                return 1;
+
+            if (category != null && other.category == null)
+                return -1;
+
             var c = priority.CompareTo(other.priority);
             if (c != 0)
                 return c;
+
             c = string.CompareOrdinal(path, other.path);
             if (c != 0)
                 return c;
+
             return string.CompareOrdinal(help, other.help);
         }
 
@@ -181,7 +199,7 @@ namespace UnityEditor.Search
             {
                 if (queryEmpty && !options.HasAny(SearchPropositionFlags.ForceAllProviders))
                 {
-                    propositions.Add(new SearchProposition($"{p.filterId}", $"{p.filterId} ", p.name, p.priority));
+                    propositions.Add(new SearchProposition(p.filterId, $"{p.filterId} ", p.name, p.priority));
                 }
                 else
                 {

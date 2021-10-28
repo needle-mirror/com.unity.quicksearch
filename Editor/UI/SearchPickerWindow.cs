@@ -86,16 +86,6 @@ namespace UnityEditor.Search
         }
 
         #if USE_QUERY_BUILDER
-        protected override void ProcessNewBuilder(QueryBuilder builder)
-        {
-            if (builder == null)
-                return;
-            foreach (var queryBlock in builder.blocks)
-            {
-                queryBlock.@readonly = !HasMarker(queryBlock);
-            }
-        }
-
         static bool HasMarker(QueryBlock block)
         {
             if (block is QueryListMarkerBlock)

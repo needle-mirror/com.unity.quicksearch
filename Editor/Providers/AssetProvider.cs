@@ -68,7 +68,7 @@ namespace UnityEditor.Search.Providers
                         else if (flags.HasAll(SearchDocumentFlags.Nested | SearchDocumentFlags.Asset))
                         {
                             #if USE_SEARCH_MODULE
-                            m_Type = AssetDatabase.GetTypeFromGUIDAndLocalFileIdentifier(gid.assetGUID, (long)gid.targetObjectId);
+                            m_Type = AssetDatabase.GetTypeFromVisibleGUIDAndLocalFileIdentifier(gid.assetGUID, (long)gid.targetObjectId);
                             #endif
                             if (m_Type == null)
                                 m_Type = obj?.GetType();

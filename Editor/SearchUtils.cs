@@ -565,7 +565,7 @@ namespace UnityEditor.Search
                 label: $"{tokens[1]} ({blockType?.Name ?? valueType})",
                 replacement: replacement,
                 help: tokens[2],
-                color: replacement.StartsWith("#") ? QueryColors.property : QueryColors.filter,
+                color: replacement.StartsWith("#", StringComparison.Ordinal) ? QueryColors.property : QueryColors.filter,
                 icon:
                     #if USE_SEARCH_MODULE
                     AssetPreview.GetMiniTypeThumbnailFromType(blockType) ??
@@ -580,15 +580,21 @@ namespace UnityEditor.Search
                 return t;
             if (!type.IsAbstract && typeof(MonoBehaviour) != type && typeof(MonoBehaviour).IsAssignableFrom(type))
             {
-                var go = new GameObject();
-                go.SetActive(false);
-                var c = go.AddComponent(type);
-                var p = AssetPreview.GetMiniThumbnail(c);
-                UnityEngine.Object.DestroyImmediate(go, true);
-                if (p)
+                var go = new GameObject { hideFlags = HideFlags.HideAndDontSave };
+                try
                 {
-                    s_TypeIcons[type] = p;
-                    return p;
+                    go.SetActive(false);
+                    var c = go.AddComponent(type);
+                    var p = AssetPreview.GetMiniThumbnail(c);
+                    if (p)
+                        return s_TypeIcons[type] = p;
+                }
+                catch
+                {
+                }
+                finally
+                {
+                    UnityEngine.Object.DestroyImmediate(go);
                 }
             }
             return s_TypeIcons[type] = AssetPreview.GetMiniTypeThumbnail(type) ?? AssetPreview.GetMiniTypeThumbnail(typeof(MonoScript));

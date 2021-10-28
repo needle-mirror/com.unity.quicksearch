@@ -565,9 +565,9 @@ namespace UnityEditor.Search
             hideFlags |= HideFlags.DontSaveInEditor;
             m_LastFocusedWindow = m_LastFocusedWindow ?? s_FocusedWindow;
             wantsLessLayoutEvents = true;
-            titleContent = EditorGUIUtility.TrTextContent("Search", Icons.quickSearchWindow);
 
             m_ViewState = s_GlobalViewState ?? m_ViewState ?? SearchViewState.LoadDefaults();
+            titleContent = HasCustomTitle() ? m_ViewState.windowTitle : EditorGUIUtility.TrTextContent("Search", Icons.quickSearchWindow);
 
             #if USE_PROPERTY_DATABASE
             m_SearchMonitorView = SearchMonitor.GetView();
@@ -604,6 +604,11 @@ namespace UnityEditor.Search
         {
             m_QueryTreeViewState = m_QueryTreeViewState ?? new TreeViewState() { expandedIDs = SearchSettings.expandedQueries.ToList() };
             m_QueryTreeView = new SearchQueryTreeView(m_QueryTreeViewState, this);
+        }
+
+        private bool HasCustomTitle()
+        {
+            return viewState.windowTitle != null && !string.IsNullOrEmpty(viewState.windowTitle.text);
         }
 
         private void InitializeSplitters()
@@ -1130,18 +1135,23 @@ namespace UnityEditor.Search
 
         protected virtual void UpdateWindowTitle()
         {
-            titleContent.image = activeQuery?.thumbnail ?? Icons.quickSearchWindow;
-
-            if (!titleContent.image)
-                titleContent.image = Icons.quickSearchWindow;
-
-            if (context == null)
-                return;
-
-            if (m_FilteredItems.Count == 0)
-                titleContent.text = L10n.Tr("Search");
+            if (HasCustomTitle())
+                titleContent = viewState.windowTitle;
             else
-                titleContent.text = $"Search ({m_FilteredItems.Count - (selectCallback != null ? 1 : 0)})";
+            {
+                titleContent.image = activeQuery?.thumbnail ?? Icons.quickSearchWindow;
+
+                if (!titleContent.image)
+                    titleContent.image = Icons.quickSearchWindow;
+
+                if (context == null)
+                    return;
+
+                if (m_FilteredItems.Count == 0)
+                    titleContent.text = L10n.Tr("Search");
+                else
+                    titleContent.text = $"Search ({m_FilteredItems.Count - (selectCallback != null ? 1 : 0)})";
+            }
         }
 
         private static string FormatStatusMessage(SearchContext context, int totalCount)
@@ -1410,7 +1420,7 @@ namespace UnityEditor.Search
             if (HandleDefaultPressEnter(evt))
                 return;
 
-            if (m_SearchField.HandleKeyEvent(evt))
+            if (m_SearchField?.HandleKeyEvent(evt) ?? false)
                 return;
 
             if (evt.type == EventType.KeyDown
@@ -1994,12 +2004,18 @@ namespace UnityEditor.Search
 
         private void DrawSearchField(in Event evt, in Rect toolbarRect, Rect searchTextRect)
         {
-            var searchClearButtonRect = Styles.searchFieldBtn.margin.Remove(searchTextRect);
-            searchClearButtonRect.xMin = searchClearButtonRect.xMax - SearchField.cancelButtonWidth;
-            searchClearButtonRect.y -= 1f;
+            var showClearButton = IsPicker() ? context.searchText != viewState.searchText : !string.IsNullOrEmpty(context.searchText);
+            var searchClearButtonRect = new Rect(0, 0, 1, 1);
+
+            if (showClearButton)
+            {
+                searchClearButtonRect = Styles.searchFieldBtn.margin.Remove(searchTextRect);
+                searchClearButtonRect.xMin = searchClearButtonRect.xMax - SearchField.cancelButtonWidth;
+                searchClearButtonRect.y -= 1f;
+            }
 
             var previousSearchText = context.searchText;
-            if (evt.type == EventType.MouseUp && searchClearButtonRect.Contains(evt.mousePosition))
+            if (showClearButton && evt.type == EventType.MouseUp && searchClearButtonRect.Contains(evt.mousePosition))
             {
                 ClearSearch();
                 evt.Use();
@@ -2029,7 +2045,7 @@ namespace UnityEditor.Search
                 }
             }
 
-            if (string.IsNullOrEmpty(context.searchText))
+            if (!showClearButton)
             {
                 #if USE_QUERY_BUILDER
                 if (m_QueryBuilder == null)
