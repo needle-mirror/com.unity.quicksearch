@@ -537,7 +537,11 @@ namespace UnityEditor.Search
             if (v.type == ValueType.Enum)
                 return comparer(v.text, s);
             if (v.type == ValueType.Object)
+            {
+                if (string.Equals(s, "none", StringComparison.Ordinal) && string.Equals(v.text, string.Empty, StringComparison.Ordinal))
+                    return comparer(s, "none");
                 return !string.IsNullOrEmpty(v.text) && comparer(v.text, s);
+            }
             if (v.type == ValueType.Bool)
             {
                 if (v.boolean && string.Equals(s, "on", StringComparison.OrdinalIgnoreCase))
@@ -590,7 +594,6 @@ namespace UnityEditor.Search
                 case ValueType.Enum:
                     stringSymbol = args.stringTableView.ToSymbol(gop.text);
                     return new PropertyDatabaseRecordValue((byte)PropertyDatabaseType.GameObjectProperty, (byte)gop.type, (int)stringSymbol, (int)gop.number);
-
             }
 
             return PropertyDatabaseRecordValue.invalid;
@@ -630,7 +633,6 @@ namespace UnityEditor.Search
                     symbol = args.value.int32_1;
                     str = args.stringTableView.GetString(symbol);
                     return new SearchValue(args.value.int32_2, str);
-
             }
 
             throw new Exception("Failed to deserialize game object property");

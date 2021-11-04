@@ -1446,6 +1446,14 @@ namespace UnityEditor.Search
                         evt.Use();
                     }
                 }
+                #if !USE_QUERY_BUILDER
+                else if (evt.keyCode == KeyCode.F1)
+                {
+                    SetSearchText("?");
+                    SendEvent(SearchAnalytics.GenericEventType.QuickSearchToggleHelpProviderF1);
+                    evt.Use();
+                }
+                #endif
                 else if (evt.keyCode == KeyCode.F5)
                 {
                     Refresh();
@@ -2229,6 +2237,14 @@ namespace UnityEditor.Search
             EditorGUIUtility.systemCopyBuffer = Utils.TrimText(trimmedQuery);
         }
 
+        internal SearchViewState SaveViewState(string name)
+        {
+            var viewState = m_ResultView.SaveViewState(name);
+            viewState.Assign(m_ViewState);
+            m_ViewState.group = m_FilteredItems.currentGroup;
+            return viewState;
+        }
+
         internal void SaveActiveSearchQuery()
         {
             if (activeQuery is SearchQueryAsset sqa)
@@ -2241,7 +2257,8 @@ namespace UnityEditor.Search
             }
             else if (activeQuery is SearchQuery sq)
             {
-                sq.Set(m_ViewState, m_ResultView.SaveViewState(context.searchText).tableConfig);
+                var vs = SaveViewState(context.searchText);
+                sq.Set(vs, vs.tableConfig);
                 SearchQuery.SaveSearchQuery(sq);
                 SaveItemCountToPropertyDatabase(true);
             }
@@ -2249,10 +2266,8 @@ namespace UnityEditor.Search
 
         internal void SaveUserSearchQuery()
         {
-            m_ViewState.group = m_FilteredItems.currentGroup;
-            var query = SearchQuery.AddUserQuery(m_ViewState,
-                m_ResultView.SaveViewState(context.searchText).tableConfig
-            );
+            var vs = SaveViewState(context.searchText);
+            var query = SearchQuery.AddUserQuery(vs, vs.tableConfig);
             AddNewQuery(query);
         }
 
@@ -2287,11 +2302,7 @@ namespace UnityEditor.Search
 
                 var folder = Utils.CleanPath(Path.GetDirectoryName(searchQueryPath));
                 var queryName = Path.GetFileNameWithoutExtension(searchQueryPath);
-                searchQuery.viewState = m_ResultView.SaveViewState(queryName);
-                searchQuery.viewState.group = m_FilteredItems.currentGroup;
-                #if USE_QUERY_BUILDER
-                searchQuery.viewState.queryBuilderEnabled = viewState.queryBuilderEnabled;
-                #endif
+                searchQuery.viewState = SaveViewState(queryName);
 
                 if (SearchQueryAsset.SaveQuery(searchQuery, context, folder, queryName) && newQuery)
                 {

@@ -18,7 +18,7 @@ namespace UnityEditor.Search
 
         public IQuerySource source { get; private set; }
         public SearchContext context => source.context; // TODO: Can this be removed from here?
-        public IBlockEditor editor { get; private set; }
+        public IBlockEditor editor { get; protected set; }
 
         public string name { get; protected set; }
         public string value { get; set; }
@@ -114,6 +114,7 @@ namespace UnityEditor.Search
             disabled = !disabled;
             source.Apply();
         }
+
 
         protected virtual void AddContextualMenuItems(GenericMenu menu) {}
 

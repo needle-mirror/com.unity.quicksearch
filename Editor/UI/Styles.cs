@@ -403,6 +403,9 @@ namespace UnityEditor.Search
         public static readonly GUIContent syncSearchAllGroupTabContent = EditorGUIUtility.TrTextContentWithIcon(string.Empty, "Choose a specific search tab (eg. Project) to enable synchronization.", EditorGUIUtility.LoadIcon("QuickSearch/SyncSearch"));
         public static readonly GUIContent syncSearchProviderNotSupportedContent = EditorGUIUtility.TrTextContentWithIcon(string.Empty, "Search provider doesn't support synchronization", EditorGUIUtility.LoadIcon("QuickSearch/SyncSearch"));
         public static readonly GUIContent syncSearchViewNotEnabledContent = EditorGUIUtility.TrTextContentWithIcon(string.Empty, "Search provider uses a search engine\nthat cannot be synchronized.\nSee Preferences -> Search.", EditorGUIUtility.LoadIcon("QuickSearch/SyncSearch"));
+		#if !USE_QUERY_BUILDER
+        public static readonly GUIContent searchTipsHelp = EditorGUIUtility.TrTextContentWithIcon("Type '?' for help", EditorGUIUtility.LoadIcon("QuickSearch/Help"));
+		#endif
         public static readonly GUIContent searchTipsDrag = EditorGUIUtility.TrTextContentWithIcon("Drag from search results to Scene, Hierarchy or Inspector", EditorGUIUtility.LoadIcon("QuickSearch/DragArrow"));
         public static readonly GUIContent searchTipsSaveSearches = EditorGUIUtility.TrTextContentWithIcon("Save Searches you use often", EditorGUIUtility.FindTexture("SaveAs"));
         public static readonly GUIContent searchTipsPreviewInspector = EditorGUIUtility.TrTextContentWithIcon("Enable the Preview Inspector to edit search results in place", EditorGUIUtility.LoadIcon("UnityEditor.InspectorWindow"));
@@ -411,6 +414,9 @@ namespace UnityEditor.Search
         public static readonly GUIContent openSaveSearchesIconContent = EditorGUIUtility.TrTextContentWithIcon(string.Empty, "Open Saved Searches Panel (F3)", Utils.LoadIcon("UnityEditor/Search/SearchQueryAsset Icon"));
         public static readonly GUIContent queryBuilderIconContent = EditorGUIUtility.TrTextContentWithIcon(string.Empty, "Toggle Query Builder Mode (F1)", Utils.LoadIcon("Assembly Icon"));
         #else
+		#if !USE_QUERY_BUILDER
+        public static readonly GUIContent searchTipsHelp = EditorGUIUtility.TrTextContent("Type '?' for help");
+		#endif
         public static readonly GUIContent searchTipsDrag = EditorGUIUtility.TrTextContent("Drag from search results to Scene, Hierarchy or Inspector");
         public static readonly GUIContent searchTipsSaveSearches = EditorGUIUtility.TrTextContent("Save Searches you use often");
         public static readonly GUIContent searchTipsPreviewInspector = EditorGUIUtility.TrTextContent("Enable the Preview Inspector to edit search results in place");
@@ -436,6 +442,9 @@ namespace UnityEditor.Search
 
         public static readonly GUIContent[] searchTipLabels =
         {
+			#if !USE_QUERY_BUILDER
+            new GUIContent(L10n.Tr("Type '?' for help")),
+			#endif
             new GUIContent(L10n.Tr("Drag from search results to Scene, Hierarchy or Inspector")),
             new GUIContent(L10n.Tr("Save Searches you use often")),
             new GUIContent(L10n.Tr("Enable the Preview Inspector to edit search results in place")),

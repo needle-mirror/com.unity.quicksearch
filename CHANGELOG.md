@@ -1,5 +1,10 @@
 # Changelog
 
+## [3.0.0-preview.22] - 2021-11-04
+- Add scene provider support for property matching =none
+- Enable Show Package Results for the find provider (find:)
+- Fix user search query table config initialization on save.
+
 ## [3.0.0-preview.21] - 2021-10-28
 - Add support to cancel search providers with threading capabilities.
 - Fix search table serialization with user search queries.
@@ -31,33 +36,29 @@
 - Add `ref=<global object id>` asset reference indexing to have nested queries work with `h: ref={p: t:material}`
 - Add new prefab asset selectors, (i.e. `select{t:prefab, @label, @prefabbase, @prefabtype}`
 - Add scene object name indexing if no asset path resolves.
+- Add search action Properties for the asset provider
+- Add support for the dependency manager
 - Add support for Vector4 filtering (i.e. `h: position<(,0,)` to find objects below the ground at 0)
+- Add table view support for 2020.3
+- Do not stall asset provider request when done through a search expression if the indexes are not ready.
 - Fix `prefab:` variants indexing
+- Fix {t:prefab} not being evaluated as an union expression
+- Fix asset store provider display in compact view.
+- Fix asset type selector for GameObject/Prefabs, @type will report Prefab for GameObject assets (i.e. .prefab files)
 - Fix integer property filter using an floating number (i.e. `h: vertices>900.1`)
 - Fix long error string display in search view status bar.
+- Fix performance issue with DateTime.Now and GetDocumentKey with scene objects (~10x)
+- Fix Quick Search package 3.0 can not open prefab/scene on alt+enter (case 1362526)
+- Fix saving query doesn't save customized column layout (case 1365672)
 - Fix scene provider GameObject serialized property filtering (i.e. `#m_Layer=0`)
+- Fix scene provider item display in compact view.
+- Fix search column serialization using path info instead of selector.
+- Fix search file checkout when using SCM (i.e. perforce)
 - Fix search table construction alias initialization using a select{} statement
 - Fix single search index entry less than or equal number comparison.
 - Fix sort{} with duplicate values
 - Fix threaded evaluation of search expression handle leaks
 - Fix where{} search expression error logging.
-- Improve search view undo manager (i.e. CTRL+Z and CTRL+Y)
-- Optimize search proposition enumeration
-
-## [3.0.0-preview.17] - 2021-09-20
-- Add search action Properties for the asset provider
-- Add support for the dependency manager
-- Add table view support for 2020.3
-- Do not stall asset provider request when done through a search expression if the indexes are not ready.
-- Fix {t:prefab} not being evaluated as an union expression
-- Fix asset store provider display in compact view.
-- Fix asset type selector for GameObject/Prefabs, @type will report Prefab for GameObject assets (i.e. .prefab files)
-- Fix performance issue with DateTime.Now and GetDocumentKey with scene objects (~10x)
-- Fix Quick Search package 3.0 can not open prefab/scene on alt+enter (case 1362526)
-- Fix saving query doesn't save customized column layout (case 1365672)
-- Fix scene provider item display in compact view.
-- Fix search column serialization using path info instead of selector.
-- Fix search file checkout when using SCM (i.e. perforce)
 - Guard API attributes from user code exceptions
 - Improve material and shader asset indexing. 
 - Improve search auto-completion when query includes commas (,)
@@ -65,7 +66,9 @@
 - Improve search proposition for upcoming Query Builder.
 - Improve Search UI localization
 - Improve Search UI responsiveness.
+- Improve search view undo manager (i.e. CTRL+Z and CTRL+Y)
 - Optimize scene ref: search queries, ~10% faster.
+- Optimize search proposition enumeration
 - Process search task dispatcher when running background search expressions (fix some query stalling when using SearchService.Request)
 - Reduce index size by 10-20% by removing unused filters, name: and id:
 - Search expression can now be nested in a filtered query, i.e. `h: ref=select{p: t:texture icons, @path}`

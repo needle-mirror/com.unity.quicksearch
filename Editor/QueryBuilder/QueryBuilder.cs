@@ -485,7 +485,11 @@ namespace UnityEditor.Search
             if (Utils.IsEditingTextField() && GUIUtility.keyboardControl != m_TextBlock?.GetSearchField().controlID)
                 return false;
 
-            if (evt.keyCode == KeyCode.Home)
+            var te = m_TextBlock?.GetSearchField().GetTextEditor();
+            var cursorAtBeginning = te?.cursorIndex == 0;
+            var cursorAtEnd = te?.cursorIndex == te?.text?.Length;
+
+            if (evt.keyCode == KeyCode.Home && cursorAtBeginning)
             {
                 var cb = currentBlock;
                 if (cb != null)
@@ -502,7 +506,6 @@ namespace UnityEditor.Search
                 if (m_TextBlock != null && currentIndex == -1)
                 {
                     // Focus is in the textfield:
-                    var te = m_TextBlock.GetSearchField()?.GetTextEditor();
                     if (m_TextBlock.value == "" ||
                         (te != null && (te.cursorIndex == 0 || te.text[te.cursorIndex - 1] == ' ')))
                     {
@@ -519,14 +522,13 @@ namespace UnityEditor.Search
                     return true;
                 }
             }
-            else if (evt.keyCode == KeyCode.LeftArrow)
+            else if (evt.keyCode == KeyCode.LeftArrow && cursorAtBeginning)
             {
                 var currentIndex = GetBlockIndex(currentBlock);
                 var toSelectIndex = -1;
                 if (m_TextBlock != null && currentIndex == -1)
                 {
                     // Focus is in the textfield:
-                    var te = m_TextBlock.GetSearchField()?.GetTextEditor();
                     if (te != null && te.cursorIndex == 0)
                     {
                         toSelectIndex = blocks.Count() - 1;
@@ -544,7 +546,7 @@ namespace UnityEditor.Search
                     return true;
                 }
             }
-            else if (evt.keyCode == KeyCode.RightArrow)
+            else if (evt.keyCode == KeyCode.RightArrow && cursorAtBeginning)
             {
                 var currentIndex = GetBlockIndex(currentBlock);
                 if (currentIndex != -1)
@@ -559,7 +561,7 @@ namespace UnityEditor.Search
                     return true;
                 }
             }
-            else if (evt.keyCode == KeyCode.Backspace)
+            else if (evt.keyCode == KeyCode.Backspace && cursorAtBeginning)
             {
                 QueryBlock toRemoveBlock = currentBlock;
                 if (toRemoveBlock != null && !toRemoveBlock.@readonly)
@@ -569,7 +571,7 @@ namespace UnityEditor.Search
                     return true;
                 }
             }
-            else if (evt.keyCode == KeyCode.Delete)
+            else if (evt.keyCode == KeyCode.Delete && (cursorAtBeginning || cursorAtEnd))
             {
                 var cb = currentBlock;
                 if (cb != null && !cb.@readonly)
@@ -596,6 +598,8 @@ namespace UnityEditor.Search
                     }
                 }
             }
+            else
+                SetSelection(-1);
 
             return false;
         }
