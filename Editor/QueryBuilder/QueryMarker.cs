@@ -20,6 +20,14 @@ namespace UnityEditor.Search
                 return new[] { value };
             return expression.Execute(context).Where(item => item != null).Select(item => item.value);
         }
+
+        public IEnumerable<object> Evaluate(bool reevaluateLiterals = false)
+        {
+            using (var context = SearchService.CreateContext(""))
+            {
+                return Evaluate(context, reevaluateLiterals).ToList();
+            }
+        }
     }
 
     // <$CONTROL_TYPE:[VALUE,]EXPRESSION_ARGS$>.
@@ -48,7 +56,7 @@ namespace UnityEditor.Search
             if (!IsQueryMarker(text))
                 return false;
 
-            var innerText = text.Substring(k_StartToken.Length, text.Length - k_StartToken.Length - k_EndToken.Length);
+            var innerText = text.Substring(k_StartToken.Length, text.length - k_StartToken.Length - k_EndToken.Length);
 
             var indexOfColon = innerText.IndexOf(':');
             if (indexOfColon < 0)
@@ -58,7 +66,7 @@ namespace UnityEditor.Search
             var args = new List<StringView>();
             var level = 0;
             var currentArgStart = indexOfColon + 1;
-            for (var i = currentArgStart; i < innerText.Length; ++i)
+            for (var i = currentArgStart; i < innerText.length; ++i)
             {
                 if (ParserUtils.IsOpener(innerText[i]))
                     ++level;
@@ -66,18 +74,18 @@ namespace UnityEditor.Search
                     --level;
                 if (innerText[i] != ',' || level != 0)
                     continue;
-                if (i+1 == innerText.Length)
+                if (i+1 == innerText.length)
                     return false;
 
                 args.Add(innerText.Substring(currentArgStart, i - currentArgStart).Trim());
                 currentArgStart = i + 1;
             }
 
-            if (currentArgStart == innerText.Length)
+            if (currentArgStart == innerText.length)
                 return false; // No arguments
 
             // Extract the final argument, since there is no comma after the last argument
-            args.Add(innerText.Substring(currentArgStart, innerText.Length - currentArgStart).Trim());
+            args.Add(innerText.Substring(currentArgStart, innerText.length - currentArgStart).Trim());
 
             var queryMarkerArguments = new List<QueryMarkerArgument>();
             using (var context = SearchService.CreateContext(""))
@@ -121,7 +129,7 @@ namespace UnityEditor.Search
 
         public static QueryMarker[] ParseAllMarkers(StringView text)
         {
-            if (text.Length <= k_StartToken.Length + k_EndToken.Length)
+            if (text.length <= k_StartToken.Length + k_EndToken.Length)
                 return null;
 
             List<QueryMarker> markers = new List<QueryMarker>();
@@ -129,9 +137,9 @@ namespace UnityEditor.Search
             var endIndex = -1;
             var nestedLevel = 0;
             bool inQuotes = false;
-            for (var i = 0; i < text.Length; ++i)
+            for (var i = 0; i < text.length; ++i)
             {
-                if (i + k_StartToken.Length > text.Length || i + k_EndToken.Length > text.Length)
+                if (i + k_StartToken.Length > text.length || i + k_EndToken.Length > text.length)
                     break;
 
                 if (ParserUtils.IsOpener(text[i]) && !inQuotes)
@@ -208,9 +216,9 @@ namespace UnityEditor.Search
                     continue;
 
                 var valueStr = value.ToString();
-                modifiedText = modifiedText.Remove(queryMarker.text.startIndex + offset, queryMarker.text.Length);
+                modifiedText = modifiedText.Remove(queryMarker.text.startIndex + offset, queryMarker.text.length);
                 modifiedText = modifiedText.Insert(queryMarker.text.startIndex + offset, valueStr);
-                offset += valueStr.Length - queryMarker.text.Length;
+                offset += valueStr.Length - queryMarker.text.length;
             }
 
             return modifiedText;
@@ -233,6 +241,19 @@ namespace UnityEditor.Search
         public IEnumerable<object> EvaluateArgs(SearchContext context, bool reevaluateLiterals = false)
         {
             return args.SelectMany(qma => qma.Evaluate(context, reevaluateLiterals));
+        }
+
+        public IEnumerable<object> EvaluateArgsNoSpread(bool reevaluateLiterals = false)
+        {
+            using (var context = SearchService.CreateContext(""))
+            {
+                return EvaluateArgsNoSpread(context, reevaluateLiterals).ToList(); // Calling ToList to force evaluation so context is not used after disposal.
+            }
+        }
+
+        public IEnumerable<object> EvaluateArgsNoSpread(SearchContext context, bool reevaluateLiterals = false)
+        {
+            return args.Select(qma => qma.Evaluate(context, reevaluateLiterals));
         }
 
         public override string ToString()

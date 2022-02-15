@@ -55,7 +55,7 @@ namespace UnityEditor.Search
             }
         }
 
-        public static IEnumerable<SearchItem> Evaluate(SearchExpressionContext c, SearchExpression expression)
+        internal static IEnumerable<SearchItem> Evaluate(SearchExpressionContext c, SearchExpression expression)
         {
             var concurrentList = new ConcurrentBag<SearchItem>();
             var yieldSignal = new EventWaitHandle(false, EventResetMode.AutoReset);

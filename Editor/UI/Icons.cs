@@ -1,12 +1,13 @@
-using System;
-using System.IO;
-using UnityEditor;
-using UnityEditor.Experimental;
 using UnityEngine;
+
+#if !USE_SEARCH_MODULE
+using System.IO;
+using UnityEditor.Experimental;
+#endif
 
 namespace UnityEditor.Search
 {
-    internal static class Icons
+    static class Icons
     {
         #if USE_SEARCH_MODULE
         public static string iconFolder = $"Icons/QuickSearch";
@@ -26,6 +27,7 @@ namespace UnityEditor.Search
         public static Texture2D packageInstalled = EditorGUIUtility.LoadIcon($"{iconFolder}/package_installed.png");
         public static Texture2D packageUpdate = EditorGUIUtility.LoadIcon($"{iconFolder}/package_update.png");
         public static Texture2D dependencies = EditorGUIUtility.LoadIcon("UnityEditor.FindDependencies");
+        public static Texture2D toggles = EditorGUIUtility.FindTexture("MoreOptions");
         #else
         public static string iconFolder = $"{Utils.packageFolderName}/Editor/Icons";
         public static Texture2D shortcut = LoadIcon($"{iconFolder}/shortcut.png");
@@ -81,7 +83,7 @@ namespace UnityEditor.Search
 
         private static Texture2D LoadIcon(string resourcePath, bool autoScale = false)
         {
-            if (String.IsNullOrEmpty(resourcePath))
+            if (string.IsNullOrEmpty(resourcePath))
                 return null;
 
             float systemScale = EditorGUIUtility.pixelsPerPoint;

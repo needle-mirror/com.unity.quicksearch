@@ -30,12 +30,19 @@ namespace UnityEditor.Search
         IEnumerable<ISearchQuery> CreateQuery()
         {
             var queries = multiEntryHandler();
-            foreach(var query in queries)
+            foreach (var query in queries)
             {
                 var q = new SearchQuery();
-                q.searchText = query;
-                q.displayName = query;
-                q.viewState.providerIds = new[] { providerId };
+                var provider = SearchService.GetProvider(providerId);
+                var searchText = query;
+                if (provider != null && !query.StartsWith(provider.filterId))
+                {
+                    searchText = $"{provider.filterId} {query}";
+                }
+                q.searchText = searchText;
+                q.displayName = searchText;
+                if (!string.IsNullOrEmpty(providerId))
+                    q.viewState.providerIds = new[] { providerId };
                 q.description = description;
                 q.viewState.SetSearchViewFlags(viewFlags);
                 yield return q;

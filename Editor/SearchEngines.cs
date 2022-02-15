@@ -149,7 +149,8 @@ namespace UnityEditor.Search
 
             #if USE_SEARCH_MODULE
             var adbProvider = SearchService.GetProvider(AdbProvider.type);
-            searchSessions.Add(context.guid, new SearchApiSession(adbProvider, engineProvider));
+            var searchSession = new SearchApiSession(adbProvider, engineProvider);
+            searchSessions.Add(context.guid, searchSession);
             #else
             searchSessions.Add(context.guid, new SearchApiSession(engineProvider));
             #endif
@@ -161,6 +162,7 @@ namespace UnityEditor.Search
                 return new string[] {};
 
             var searchSession = searchSessions[context.guid];
+            var projectSearchContext = (ProjectSearchContext)context;
 
             if (asyncItemsReceived != null)
             {
@@ -175,8 +177,29 @@ namespace UnityEditor.Search
             {
                 searchSession.context.filterType = null;
             }
+
             searchSession.context.searchText = query;
-            searchSession.context.options |= SearchFlags.Packages;
+            searchSession.context.options &= ~SearchFlags.Packages;
+            #if USE_SEARCH_MODULE
+            if (projectSearchContext.searchFilter != null)
+            {
+                searchSession.context.userData = projectSearchContext.searchFilter;
+                if (projectSearchContext.searchFilter.searchArea == SearchFilter.SearchArea.InAssetsOnly)
+                {
+                    searchSession.context.searchText = $"a:assets {query}";
+                }
+                else if (projectSearchContext.searchFilter.searchArea == SearchFilter.SearchArea.InPackagesOnly)
+                {
+                    searchSession.context.options |= SearchFlags.Packages;
+                    searchSession.context.searchText = $"a:packages {query}";
+                }
+                else if (projectSearchContext.searchFilter.searchArea == SearchFilter.SearchArea.AllAssets)
+                {
+                    searchSession.context.options |= SearchFlags.Packages;
+                }
+            }
+            #endif
+
             var items = SearchService.GetItems(searchSession.context);
             return items.Select(item => ToPath(item));
         }
@@ -295,7 +318,10 @@ namespace UnityEditor.Search
             bool allowSceneObjects = (context.visibleObjects & VisibleObjects.Scene) == VisibleObjects.Scene;
 
             if (allowAssetObjects)
+            {
+                yield return SearchService.GetProvider(AdbProvider.type);
                 yield return SearchService.GetProvider(AssetProvider.type);
+            }
             if (allowSceneObjects)
                 yield return SearchService.GetProvider(BuiltInSceneObjectsProvider.type);
         }

@@ -51,6 +51,13 @@ namespace UnityEditor.Search
             margin = new RectOffset(0, 0, 0, 0)
         };
 
+        public static readonly GUIStyle topBorder = new GUIStyle("grey_border")
+        {
+            name = "quick-search-top-border",
+            padding = new RectOffset(0, 0, 0, 0),
+            margin = new RectOffset(0, 0, 0, 0)
+        };
+
         public static readonly GUIStyle autoCompleteBackground = new GUIStyle("grey_border")
         {
             name = "quick-search-auto-complete-background",
@@ -94,7 +101,7 @@ namespace UnityEditor.Search
             padding = new RectOffset(2, 1, 1, 1)
         };
 
-        public static readonly GUIStyle itemGridBackground1 = new GUIStyle(itemBackground1) { fixedHeight = 0, };
+        public static readonly GUIStyle itemGridBackground1 = new GUIStyle(itemBackground1) { fixedHeight = 0 };
         public static readonly GUIStyle itemGridBackground2 = new GUIStyle(itemBackground2) { fixedHeight = 0 };
 
         public static readonly GUIStyle preview = new GUIStyle
@@ -336,8 +343,9 @@ namespace UnityEditor.Search
         {
             name = "quick-search-search-field-placeholder",
             fontSize = k_SearchFieldFontSize,
-            padding = new RectOffset(0, 0, 0, 0),
-            alignment = TextAnchor.MiddleCenter,
+            fontStyle = FontStyle.Italic,
+            padding = new RectOffset(14, 0, 0, 0),
+            alignment = TextAnchor.MiddleLeft,
             normal = clear,
             focused = clear,
             hover = clear,
@@ -403,9 +411,9 @@ namespace UnityEditor.Search
         public static readonly GUIContent syncSearchAllGroupTabContent = EditorGUIUtility.TrTextContentWithIcon(string.Empty, "Choose a specific search tab (eg. Project) to enable synchronization.", EditorGUIUtility.LoadIcon("QuickSearch/SyncSearch"));
         public static readonly GUIContent syncSearchProviderNotSupportedContent = EditorGUIUtility.TrTextContentWithIcon(string.Empty, "Search provider doesn't support synchronization", EditorGUIUtility.LoadIcon("QuickSearch/SyncSearch"));
         public static readonly GUIContent syncSearchViewNotEnabledContent = EditorGUIUtility.TrTextContentWithIcon(string.Empty, "Search provider uses a search engine\nthat cannot be synchronized.\nSee Preferences -> Search.", EditorGUIUtility.LoadIcon("QuickSearch/SyncSearch"));
-		#if !USE_QUERY_BUILDER
+        #if !USE_QUERY_BUILDER
         public static readonly GUIContent searchTipsHelp = EditorGUIUtility.TrTextContentWithIcon("Type '?' for help", EditorGUIUtility.LoadIcon("QuickSearch/Help"));
-		#endif
+        #endif
         public static readonly GUIContent searchTipsDrag = EditorGUIUtility.TrTextContentWithIcon("Drag from search results to Scene, Hierarchy or Inspector", EditorGUIUtility.LoadIcon("QuickSearch/DragArrow"));
         public static readonly GUIContent searchTipsSaveSearches = EditorGUIUtility.TrTextContentWithIcon("Save Searches you use often", EditorGUIUtility.FindTexture("SaveAs"));
         public static readonly GUIContent searchTipsPreviewInspector = EditorGUIUtility.TrTextContentWithIcon("Enable the Preview Inspector to edit search results in place", EditorGUIUtility.LoadIcon("UnityEditor.InspectorWindow"));
@@ -414,9 +422,9 @@ namespace UnityEditor.Search
         public static readonly GUIContent openSaveSearchesIconContent = EditorGUIUtility.TrTextContentWithIcon(string.Empty, "Open Saved Searches Panel (F3)", Utils.LoadIcon("UnityEditor/Search/SearchQueryAsset Icon"));
         public static readonly GUIContent queryBuilderIconContent = EditorGUIUtility.TrTextContentWithIcon(string.Empty, "Toggle Query Builder Mode (F1)", Utils.LoadIcon("Assembly Icon"));
         #else
-		#if !USE_QUERY_BUILDER
+        #if !USE_QUERY_BUILDER
         public static readonly GUIContent searchTipsHelp = EditorGUIUtility.TrTextContent("Type '?' for help");
-		#endif
+        #endif
         public static readonly GUIContent searchTipsDrag = EditorGUIUtility.TrTextContent("Drag from search results to Scene, Hierarchy or Inspector");
         public static readonly GUIContent searchTipsSaveSearches = EditorGUIUtility.TrTextContent("Save Searches you use often");
         public static readonly GUIContent searchTipsPreviewInspector = EditorGUIUtility.TrTextContent("Enable the Preview Inspector to edit search results in place");
@@ -442,9 +450,9 @@ namespace UnityEditor.Search
 
         public static readonly GUIContent[] searchTipLabels =
         {
-			#if !USE_QUERY_BUILDER
+            #if !USE_QUERY_BUILDER
             new GUIContent(L10n.Tr("Type '?' for help")),
-			#endif
+            #endif
             new GUIContent(L10n.Tr("Drag from search results to Scene, Hierarchy or Inspector")),
             new GUIContent(L10n.Tr("Save Searches you use often")),
             new GUIContent(L10n.Tr("Enable the Preview Inspector to edit search results in place")),
@@ -472,7 +480,7 @@ namespace UnityEditor.Search
 
         public static readonly GUIStyle toolbarButton = new GUIStyle("IconButton")
         {
-            margin = new RectOffset(4, 4, (int)SearchField.textTopBottomPadding, (int)SearchField.textTopBottomPadding),
+            margin = new RectOffset(4, 4, (int)UI.SearchField.textTopBottomPadding, (int)UI.SearchField.textTopBottomPadding),
             padding = new RectOffset(0, 0, 0, 0),
             fixedWidth = 24f,
             fixedHeight = 24f,
@@ -769,6 +777,7 @@ namespace UnityEditor.Search
         public static readonly Color type;
         public static readonly Color typeIcon;
         public static readonly Color word;
+        public static readonly Color toggle;
         public static readonly Color combine;
         public static readonly Color expression;
         public static readonly Color textureBackgroundColor = new Color(0.2f, 0.2f, 0.25f, 0.95f);
@@ -782,6 +791,7 @@ namespace UnityEditor.Search
             ColorUtility.TryParseHtmlString("#74CBEE", out area);
             ColorUtility.TryParseHtmlString("#78CAB6", out filter);
             ColorUtility.TryParseHtmlString("#A38CD0", out property);
+            ColorUtility.TryParseHtmlString("#FF6A00", out toggle);
             ColorUtility.TryParseHtmlString("#EBD05F", out type);
             ColorUtility.TryParseHtmlString("#EBD05F", out typeIcon);
             ColorUtility.TryParseHtmlString("#739CEB", out word);

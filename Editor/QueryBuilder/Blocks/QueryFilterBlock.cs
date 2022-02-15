@@ -41,9 +41,13 @@ namespace UnityEditor.Search
         public bool property { get; set; }
 
         public QueryBuilder builder => formatValue as QueryBuilder;
-        public override bool formatNames => true;
-        public override bool wantsEvents => HasInPlaceEditor();
-        public override bool canOpenEditorOnValueClicked => !HasInPlaceEditor();
+        internal override bool formatNames => true;
+        internal override bool wantsEvents => HasInPlaceEditor();
+        internal override bool canOpenEditorOnValueClicked => !HasInPlaceEditor();
+
+        QueryBuilder IQueryExpressionBlock.builder => builder;
+        IQuerySource IQueryExpressionBlock.source => source;
+        IBlockEditor IQueryExpressionBlock.editor => editor;
 
         protected QueryFilterBlock(IQuerySource source, in string id, in string op, in string value)
             : base(source)
@@ -121,7 +125,7 @@ namespace UnityEditor.Search
             return id;
         }
 
-        public override IBlockEditor OpenEditor(in Rect rect)
+        internal override IBlockEditor OpenEditor(in Rect rect)
         {
             var screenRect = new Rect(rect.position + context.searchView.position.position, rect.size);
             switch (format)
@@ -148,7 +152,7 @@ namespace UnityEditor.Search
             return null;
         }
 
-        public override IEnumerable<SearchProposition> FetchPropositions()
+        internal override IEnumerable<SearchProposition> FetchPropositions()
         {
             if (format == QueryBlockFormat.Enum)
             {
@@ -182,7 +186,7 @@ namespace UnityEditor.Search
             }
         }
 
-        public override Rect Layout(in Vector2 at, in float availableSpace)
+        internal override Rect Layout(in Vector2 at, in float availableSpace)
         {
             if (!HasInPlaceEditor())
                 return base.Layout(at, availableSpace);
@@ -194,7 +198,7 @@ namespace UnityEditor.Search
             return GetRect(at, blockWidth, blockHeight);
         }
 
-        protected override void Draw(in Rect blockRect, in Vector2 mousePosition)
+        internal override void Draw(in Rect blockRect, in Vector2 mousePosition)
         {
             if (!HasInPlaceEditor())
             {
@@ -218,7 +222,7 @@ namespace UnityEditor.Search
                 DrawBorders(blockRect, mousePosition);
         }
 
-        protected override Rect DrawSeparator(in Rect at)
+        internal override Rect DrawSeparator(in Rect at)
         {
             var sepRect = new Rect(at.xMax, at.yMin + 1f, 1f, Mathf.Ceil(at.height - 1f));
             var opRect = new Rect(at.xMax - 6f, at.yMin - 1f, 11f, Mathf.Ceil(at.height - 1f));
@@ -236,12 +240,12 @@ namespace UnityEditor.Search
             return sepRect;
         }
 
-        protected override Color GetBackgroundColor()
+        internal override Color GetBackgroundColor()
         {
             return (property ? QueryColors.property : QueryColors.filter);
         }
 
-        protected override void AddContextualMenuItems(GenericMenu menu)
+        internal override void AddContextualMenuItems(GenericMenu menu)
         {
             foreach (var _e in Enum.GetValues(typeof(QueryBlockFormat)))
             {
@@ -611,6 +615,21 @@ namespace UnityEditor.Search
                 this.value = formatValue?.ToString() ?? string.Empty;
             }
             source.Apply();
+        }
+
+        void IQueryExpressionBlock.CloseEditor()
+        {
+            throw new NotImplementedException();
+        }
+
+        void IQueryExpressionBlock.ApplyExpression(string searchText)
+        {
+            throw new NotImplementedException();
+        }
+
+        void IQueryExpressionBlock.DrawArrow(in Rect blockRect, in Vector2 mousePosition, QueryContent arrayContent)
+        {
+            throw new NotImplementedException();
         }
     }
 }

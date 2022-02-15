@@ -6,7 +6,6 @@ using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using UnityEditor.Profiling;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 
@@ -16,7 +15,7 @@ using UnityEditor.Experimental.SceneManagement;
 
 namespace UnityEditor.Search
 {
-    readonly struct AssetIndexChangeSet
+    public readonly struct AssetIndexChangeSet
     {
         public readonly string[] updated;
         public readonly string[] removed;
@@ -28,19 +27,18 @@ namespace UnityEditor.Search
         }
 
         public AssetIndexChangeSet(IEnumerable<string> updated, IEnumerable<string> removed, IEnumerable<string> moved, Func<string, bool> predicate)
+            : this(updated.Concat(moved).Distinct(), removed, predicate)
         {
-            this.updated = updated.Concat(moved).Distinct().Where(predicate).ToArray();
-            this.removed = removed.Distinct().Where(predicate).ToArray();
         }
 
         public AssetIndexChangeSet(IEnumerable<string> updated, IEnumerable<string> removed, Func<string, bool> predicate)
         {
-            this.updated = updated.Where(predicate).ToArray();
+            this.updated = updated.Except(removed).Where(predicate).ToArray();
             this.removed = removed.Distinct().Where(predicate).ToArray();
         }
 
         public bool empty => updated?.Length == 0 && removed?.Length == 0;
-        public IEnumerable<string> all => updated.Concat(removed).Distinct();
+        public IEnumerable<string> all => updated?.Concat(removed ?? new string[0]).Distinct() ?? Enumerable.Empty<string>();
     }
 
     class AssetChangedListener : AssetPostprocessor
@@ -55,11 +53,11 @@ namespace UnityEditor.Search
     }
 
     #if USE_PROPERTY_DATABASE
-    struct SearchMonitorView : IDisposable
+    public struct SearchMonitorView : IDisposable
     {
         static ConcurrentDictionary<int, SearchMonitorView> s_PropertyDatabaseViews = new ConcurrentDictionary<int, SearchMonitorView>();
-        internal PropertyDatabaseView propertyDatabaseView { get; }
-        internal PropertyDatabaseView propertyAliasesView { get; }
+        internal IPropertyDatabaseView propertyDatabaseView { get; }
+        internal IPropertyDatabaseView propertyAliasesView { get; }
 
         bool m_Disposed;
         bool m_NeedsDispose;
@@ -183,7 +181,7 @@ namespace UnityEditor.Search
     #endif
 
     [InitializeOnLoad]
-    static class SearchMonitor
+    public static class SearchMonitor
     {
         static volatile bool s_Initialize = false;
         static bool s_ContentRefreshedEnabled;
@@ -319,14 +317,14 @@ namespace UnityEditor.Search
         }
 
         #if USE_PROPERTY_DATABASE
-        public static Task TriggerPropertyDatabaseBackgroundUpdate()
+        internal static Task TriggerPropertyDatabaseBackgroundUpdate()
         {
-            return Task.WhenAll(propertyDatabase.TriggerPropertyDatabaseBackgroundUpdate(), propertyAliases.TriggerPropertyDatabaseBackgroundUpdate());
+            return Task.WhenAll(propertyDatabase.TriggerBackgroundUpdate(), propertyAliases.TriggerBackgroundUpdate());
         }
 
         #endif
 
-        public static void PrintInfo()
+        internal static void PrintInfo()
         {
             var sb = new StringBuilder();
             #if USE_PROPERTY_DATABASE
@@ -534,7 +532,7 @@ namespace UnityEditor.Search
 
         #if USE_PROPERTY_DATABASE
         [System.Diagnostics.Conditional("DEBUG_SEARCH_MONITOR")]
-        public static void Log(string message, PropertyDatabaseRecordKey recordKey, object value = null)
+        internal static void Log(string message, PropertyDatabaseRecordKey recordKey, object value = null)
         {
             Debug.LogFormat(LogType.Log, LogOption.NoStacktrace, null, $"{message}: <b>{recordKey.documentKey}</b>, {recordKey.propertyKey}={value}");
         }

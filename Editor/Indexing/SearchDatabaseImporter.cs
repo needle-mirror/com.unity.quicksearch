@@ -15,7 +15,7 @@ namespace UnityEditor.Search
     ""excludes"": [""Temp/"", ""External/""],
     ""options"": {
         ""types"": true,
-        ""properties"": false,
+        ""properties"": true,
         ""extended"": false,
         ""dependencies"": false
     },
@@ -29,7 +29,7 @@ namespace UnityEditor.Search
     ""excludes"": [""Temp/"", ""External/""],
     ""options"": {
         ""types"": true,
-        ""properties"": false,
+        ""properties"": true,
         ""extended"": false,
         ""dependencies"": false
     },

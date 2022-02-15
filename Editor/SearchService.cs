@@ -571,7 +571,8 @@ namespace UnityEditor.Search
         /// <returns></returns>
         public static ISearchView ShowWindow(SearchViewState viewState)
         {
-            return QuickSearch.Create(viewState).ShowWindow();
+            return QuickSearch.Create(viewState).ShowWindow(viewState.windowSize.x, viewState.windowSize.y,
+                SearchFlags.OpenDefault | (viewState.context?.options ?? SearchFlags.None));
         }
 
         /// <summary>
@@ -643,7 +644,7 @@ namespace UnityEditor.Search
             return SearchPickerWindow.ShowPicker(viewState);
         }
 
-        internal static IEnumerable<SearchProvider> GetActiveProviders()
+        public static IEnumerable<SearchProvider> GetActiveProviders()
         {
             return Providers.Where(p => p.active);
         }
@@ -723,6 +724,12 @@ namespace UnityEditor.Search
 
             var db = SearchDatabase.ImportAsset(indexPath);
             TrackCreateIndex(db, options, indexName, indexPath, onIndexReady, 1d);
+        }
+
+        public static IEnumerable<ISearchDatabase> EnumerateDatabases()
+        {
+            foreach (var db in SearchDatabase.EnumerateAll())
+                yield return db;
         }
 
         /// <summary>
@@ -824,7 +831,7 @@ namespace UnityEditor.Search
             }
             catch (SearchExpressionEvaluatorException ex)
             {
-                var queryError = new SearchQueryError(ex.errorView.startIndex, ex.errorView.Length, ex.Message,
+                var queryError = new SearchQueryError(ex.errorView.startIndex, ex.errorView.length, ex.Message,
                     context, s_SearchServiceProvider, fromSearchQuery: false, SearchQueryErrorType.Error);
                 context.AddSearchQueryError(queryError);
                 return false;

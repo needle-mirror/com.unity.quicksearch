@@ -149,7 +149,7 @@ namespace UnityEditor.Search
 
         private static BaseFilterOperation<T> GenerateFilterOperation<T>(FilterNode node, QueryEngine<T> engine, ICollection<QueryError> errors)
         {
-            var operatorIndex = node.token.position + node.filter.token.Length + (node.paramValueStringView.IsNullOrEmpty() ? 0 : node.paramValueStringView.Length);
+            var operatorIndex = node.token.position + node.filter.token.Length + (node.paramValueStringView.IsNullOrEmpty() ? 0 : node.paramValueStringView.length);
             var filterValueIndex = operatorIndex + node.op.token.Length;
 
             Type filterValueType;
@@ -158,7 +158,7 @@ namespace UnityEditor.Search
             {
                 if (node.filter?.nestedQueryHandlerTransformer == null)
                 {
-                    errors.Add(new QueryError(filterValueIndex, node.filterValueStringView.Length, $"No nested query handler transformer set on filter \"{node.filter.token}\"."));
+                    errors.Add(new QueryError(filterValueIndex, node.filterValueStringView.length, $"No nested query handler transformer set on filter \"{node.filter.token}\"."));
                     return null;
                 }
                 filterValueType = node.filter.nestedQueryHandlerTransformer.rightHandSideType;
@@ -168,7 +168,7 @@ namespace UnityEditor.Search
                 parseResult = engine.ParseFilterValue(node.filterValue, node.filter, in node.op, out filterValueType);
                 if (!parseResult.success)
                 {
-                    errors.Add(new QueryError(filterValueIndex, node.filterValueStringView.Length, $"The value \"{node.filterValue}\" could not be converted to any of the supported handler types."));
+                    errors.Add(new QueryError(filterValueIndex, node.filterValueStringView.length, $"The value \"{node.filterValue}\" could not be converted to any of the supported handler types."));
                     return null;
                 }
             }
@@ -176,7 +176,7 @@ namespace UnityEditor.Search
             IFilterOperationGenerator generator = engine.GetGeneratorForType(filterValueType);
             if (generator == null)
             {
-                errors.Add(new QueryError(filterValueIndex, node.filterValueStringView.Length, $"Unknown type \"{filterValueType}\". Did you set an operator handler for this type?"));
+                errors.Add(new QueryError(filterValueIndex, node.filterValueStringView.length, $"Unknown type \"{filterValueType}\". Did you set an operator handler for this type?"));
                 return null;
             }
 

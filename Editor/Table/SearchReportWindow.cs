@@ -19,7 +19,7 @@ namespace UnityEditor.Search
         private List<SearchItem> m_Items;
         private QueryEngine<int> m_QueryEngine = null;
         private static readonly QueryValidationOptions k_QueryEngineOptions = new QueryValidationOptions { validateFilters = true, skipNestedQueries = true };
-        private SearchField m_SearchField;
+        private UI.SearchField m_SearchField;
 
         [MenuItem("Window/Search/Open Report...", priority = 13000)]
         static void OpenWindow()
@@ -27,10 +27,7 @@ namespace UnityEditor.Search
             OpenWindow(SearchReport.Import());
         }
 
-        public bool IsReadOnly()
-        {
-            return true;
-        }
+        public bool readOnly => true;
 
         internal static void OpenWindow(string reportPath)
         {
@@ -117,7 +114,7 @@ namespace UnityEditor.Search
 
         internal void OnEnable()
         {
-            m_SearchField = new SearchField();
+            m_SearchField = new UI.SearchField();
             if (!string.IsNullOrEmpty(m_ReportPath))
                 InitializeReport(m_ReportPath);
         }
@@ -337,7 +334,7 @@ namespace UnityEditor.Search
             // Selection not handled
         }
 
-        public void DoubleClick(SearchItem item)
+        public void OnItemExecuted(SearchItem item)
         {
         }
 

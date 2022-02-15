@@ -14,7 +14,7 @@ namespace UnityEditor.Search.Providers
             public string[] words;
         }
 
-        private const string type = "menu";
+        internal const string type = "menu";
         private const string displayName = "Menus";
         private const string disabledMenuExecutionWarning = "The menu you are trying to execute is disabled. It will not be executed.";
 
@@ -37,7 +37,8 @@ namespace UnityEditor.Search.Providers
             System.Threading.Tasks.Task.Run(() => BuildMenus(itemNames));
 
             queryEngine = new QueryEngine<MenuData>(k_QueryEngineOptions);
-            queryEngine.AddFilter("id", m => m.path);
+            queryEngine.SetFilter("id", m => m.path)
+                .AddOrUpdatePropositionData(label: "Menu Path", replacement: "id:create/", help: "Filter by menu path.", priority: 9999);
             queryEngine.SetSearchDataCallback(m => m.words, s => Utils.FastToLower(s), StringComparison.Ordinal);
 
             #if USE_SEARCH_MODULE
@@ -163,7 +164,8 @@ namespace UnityEditor.Search.Providers
             if (!options.flags.HasAny(SearchPropositionFlags.QueryBuilder))
                 yield break;
 
-            yield return new SearchProposition(category: null, "Menu Path", "id:create/", "Filter by menu path.", priority: 9999);
+            foreach (var proposition in queryEngine.GetPropositions())
+                yield return proposition;
         }
 
         [SearchActionsProvider]

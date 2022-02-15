@@ -3,7 +3,6 @@ using UnityEngine;
 
 namespace UnityEditor.Search
 {
-    [Serializable]
     class SplitterInfo
     {
         public enum Side

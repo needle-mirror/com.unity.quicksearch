@@ -58,7 +58,11 @@ namespace UnityEditor.Search
             {
                 try
                 {
+                    #if USE_SEARCH_MODULE
+                    return UnityEngine.ExpressionEvaluator.Evaluate(expression, out result);
+                    #else
                     return UnityEditor.ExpressionEvaluator.Evaluate(expression, out result);
+                    #endif
                 }
                 catch (Exception)
                 {

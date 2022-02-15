@@ -240,7 +240,7 @@ namespace UnityEditor.Search
             #endif
         }
 
-        internal static Texture2D GetAssetThumbnailFromPath(string path)
+        public static Texture2D GetAssetThumbnailFromPath(string path)
         {
             var thumbnail = GetAssetPreviewFromGUID(AssetDatabase.AssetPathToGUID(path));
             if (thumbnail)
@@ -258,12 +258,12 @@ namespace UnityEditor.Search
             #endif
         }
 
-        internal static Texture2D GetAssetPreviewFromPath(string path, FetchPreviewOptions previewOptions)
+        public static Texture2D GetAssetPreviewFromPath(string path, FetchPreviewOptions previewOptions)
         {
             return GetAssetPreviewFromPath(path, new Vector2(128, 128), previewOptions);
         }
 
-        internal static Texture2D GetAssetPreviewFromPath(string path, Vector2 previewSize, FetchPreviewOptions previewOptions)
+        public static Texture2D GetAssetPreviewFromPath(string path, Vector2 previewSize, FetchPreviewOptions previewOptions)
         {
             var assetType = AssetDatabase.GetMainAssetTypeAtPath(path);
             if (assetType == typeof(SceneAsset))
@@ -275,7 +275,7 @@ namespace UnityEditor.Search
                     return GetAssetThumbnailFromPath(path);
 
                 try
-                { 
+                {
                     var fi = new FileInfo(path);
                     if (!fi.Exists)
                         return null;
@@ -327,7 +327,7 @@ namespace UnityEditor.Search
             #endif
         }
 
-        internal static int GetMainAssetInstanceID(string assetPath)
+        public static int GetMainAssetInstanceID(string assetPath)
         {
             #if USE_SEARCH_MODULE
             return AssetDatabase.GetMainAssetInstanceID(assetPath);
@@ -469,7 +469,7 @@ namespace UnityEditor.Search
             #endif
         }
 
-        internal static void FrameAssetFromPath(string path)
+        public static void FrameAssetFromPath(string path)
         {
             var asset = SelectAssetFromPath(path);
             if (asset != null)
@@ -524,7 +524,7 @@ namespace UnityEditor.Search
             }));
         }
 
-        internal static string FormatBytes(long byteCount)
+        public static string FormatBytes(long byteCount)
         {
             string[] suf = { "B", "KB", "MB", "GB", "TB", "PB", "EB" };
             if (byteCount == 0)
@@ -621,7 +621,7 @@ namespace UnityEditor.Search
             #endif
         }
 
-        internal static Rect GetMainWindowCenteredPosition(Vector2 size)
+        public static Rect GetMainWindowCenteredPosition(Vector2 size)
         {
             var mainWindowRect = GetEditorMainWindowPos();
             return GetCenteredWindowPosition(mainWindowRect, size);
@@ -818,7 +818,7 @@ namespace UnityEditor.Search
             #endif
         }
 
-        internal static void PingAsset(string assetPath)
+        public static void PingAsset(string assetPath)
         {
             #if USE_SEARCH_MODULE
             EditorGUIUtility.PingObject(AssetDatabase.GetMainAssetInstanceID(assetPath));
@@ -862,7 +862,7 @@ namespace UnityEditor.Search
             }
         }
 
-        internal static void StartDrag(UnityEngine.Object[] objects, string label = null)
+        public static void StartDrag(UnityEngine.Object[] objects, string label = null)
         {
             s_LastDraggedObjects = objects;
             if (s_LastDraggedObjects == null)
@@ -872,7 +872,7 @@ namespace UnityEditor.Search
             DragAndDrop.StartDrag(label);
         }
 
-        internal static void StartDrag(UnityEngine.Object[] objects, string[] paths, string label = null)
+        public static void StartDrag(UnityEngine.Object[] objects, string[] paths, string label = null)
         {
             s_LastDraggedObjects = objects;
             if (paths == null || paths.Length == 0)
@@ -1051,7 +1051,7 @@ namespace UnityEditor.Search
             }
         }
 
-        internal static Action CallDelayed(EditorApplication.CallbackFunction callback, double seconds = 0)
+        public static Action CallDelayed(EditorApplication.CallbackFunction callback, double seconds = 0)
         {
             #if USE_SEARCH_MODULE
             return EditorApplication.CallDelayed(callback, seconds);
@@ -1078,7 +1078,7 @@ namespace UnityEditor.Search
             #endif
         }
 
-        internal static GUIStyle FromUSS(string name)
+        public static GUIStyle FromUSS(string name)
         {
             #if USE_SEARCH_MODULE
             return GUIStyleExtensions.FromUSS(GUIStyle.none, name);
@@ -1087,7 +1087,7 @@ namespace UnityEditor.Search
             #endif
         }
 
-        internal static GUIStyle FromUSS(GUIStyle @base, string name)
+        public static GUIStyle FromUSS(GUIStyle @base, string name)
         {
             #if USE_SEARCH_MODULE
             return GUIStyleExtensions.FromUSS(@base, name);
@@ -1235,7 +1235,7 @@ namespace UnityEditor.Search
             return new string(chars);
         }
 
-        internal static string FormatCount(ulong count)
+        public static string FormatCount(ulong count)
         {
             if (count < 1000U)
                 return count.ToString(CultureInfo.InvariantCulture.NumberFormat);
@@ -1677,6 +1677,26 @@ namespace UnityEditor.Search
             }
             return (Texture2D)s_LoadIconMethod.Invoke(null, new object[] {name});
             #endif
+        }
+
+        public static string GetIconSkinAgnosticName(Texture2D icon)
+        {
+            if (icon == null)
+                return null;
+            return GetIconSkinAgnosticName(icon.name);
+        }
+
+        public static string GetIconSkinAgnosticName(string name)
+        {
+            if (string.IsNullOrEmpty(name))
+                return name;
+
+            var oldName = Path.GetFileName(name);
+            var dirName = Path.GetDirectoryName(name);
+            var newName = oldName.StartsWith("d_") ? oldName.Substring(2) : oldName;
+            if (!string.IsNullOrEmpty(dirName))
+                newName = $"{dirName}/{newName}";
+            return newName;
         }
 
         public static ulong GetFileIDHint(in UnityEngine.Object obj)

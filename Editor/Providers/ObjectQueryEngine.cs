@@ -18,6 +18,11 @@ namespace UnityEditor.Search.Providers
         protected readonly QueryEngine<T> m_QueryEngine = new QueryEngine<T>(k_QueryEngineOptions);
         protected HashSet<SearchProposition> m_TypePropositions;
 
+        [ThreadStatic] protected bool m_DoFuzzyMatch;
+        [ThreadStatic] List<int> m_FuzzyMatches = new List<int>();
+
+        public QueryEngine<T> engine => m_QueryEngine;
+
         private static readonly char[] s_EntrySeparators = { '/', ' ', '_', '-', '.' };
         private static readonly SearchProposition[] s_FixedPropositions = new SearchProposition[]
         {
@@ -111,8 +116,12 @@ namespace UnityEditor.Search.Providers
             m_QueryEngine.AddOperatorHandler(">=", (float? ev, float fv) => ev.HasValue && ev >= fv);
             m_QueryEngine.AddOperatorHandler(">", (float? ev, float fv) => ev.HasValue && ev > fv);
 
+            m_QueryEngine.SetSearchWordMatcher(OnSearchData);
             m_QueryEngine.SetSearchDataCallback(OnSearchData, s => s.ToLowerInvariant(), StringComparison.Ordinal);
         }
+
+        public virtual void SetupQueryEnginePropositions()
+        {}
 
         public virtual IEnumerable<SearchProposition> FindPropositions(SearchContext context, SearchPropositionOptions options)
         {
@@ -167,6 +176,7 @@ namespace UnityEditor.Search.Providers
                 return Enumerable.Empty<T>();
             }
 
+            m_DoFuzzyMatch = query.HasToggle("fuzzy");
             IEnumerable<T> gameObjects = subset ?? m_Objects;
             return query.Apply(gameObjects, false);
         }
@@ -272,7 +282,7 @@ namespace UnityEditor.Search.Providers
                         types.Add("prefab");
 
                     var gocs = go.GetComponents<Component>();
-                    for (int componentIndex = 1; componentIndex < gocs.Length; ++componentIndex)
+                    for (int componentIndex = 0; componentIndex < gocs.Length; ++componentIndex)
                     {
                         var c = gocs[componentIndex];
                         if (!c || (c.hideFlags & HideFlags.HideInInspector) == HideFlags.HideInInspector)
@@ -292,15 +302,22 @@ namespace UnityEditor.Search.Providers
         {
             if (!obj)
                 return;
-            using (var so = new SerializedObject(obj))
+            try
             {
-                var p = so.GetIterator();
-                var next = p.NextVisible(true);
-                while (next)
+                using (var so = new SerializedObject(obj))
                 {
-                    AddPropertyReferences(obj, p, refs);
-                    next = p.NextVisible(p.hasVisibleChildren);
+                    var p = so.GetIterator();
+                    var next = p.NextVisible(true);
+                    while (next)
+                    {
+                        AddPropertyReferences(obj, p, refs);
+                        next = p.NextVisible(p.hasVisibleChildren);
+                    }
                 }
+            }
+            catch
+            {
+                // Do not add any references if an exception occurs because of user code.
             }
         }
 
@@ -396,10 +413,24 @@ namespace UnityEditor.Search.Providers
             {
                 god.words = SplitName(go.name, s_EntrySeparators)
                     .Select(w => w.ToLowerInvariant())
+                    .Where(w => w.Length > 1)
                     .ToArray();
             }
 
             return god.words;
+        }
+
+        bool OnSearchData(string term, bool exactMatch, StringComparison sc, string word)
+        {
+            if (!exactMatch && m_DoFuzzyMatch)
+            {
+                m_FuzzyMatches.Clear();
+                return FuzzySearch.FuzzyMatch(term, word, m_FuzzyMatches);
+            }
+
+            if (exactMatch)
+                return string.Equals(term, word, sc);
+            return word.IndexOf(term, sc) != -1;
         }
 
         private static IEnumerable<string> SplitName(string entry, char[] entrySeparators)

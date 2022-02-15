@@ -107,7 +107,7 @@ namespace UnityEditor.Search
             });
             menu.AddSeparator("");
             menu.AddItem(new GUIContent("Rename"), false, () => treeView.BeginRename(this, 0f));
-            menu.AddItem(new GUIContent("Set Icon..."), false, () => SearchQuery.ShowQueryIconPicker((newIcon, canceled) =>
+            menu.AddItem(new GUIContent("Set Icon..."), false, () => SearchUtils.ShowIconPicker((newIcon, canceled) =>
             {
                 if (canceled)
                     return;
@@ -176,7 +176,7 @@ namespace UnityEditor.Search
             });
             menu.AddSeparator("");
             menu.AddItem(new GUIContent("Rename"), false, () => treeView.BeginRename(this, 0f));
-            menu.AddItem(new GUIContent("Set Icon..."), false, () => SearchQuery.ShowQueryIconPicker((newIcon, canceled) =>
+            menu.AddItem(new GUIContent("Set Icon..."), false, () => SearchUtils.ShowIconPicker((newIcon, canceled) =>
             {
                 if (canceled)
                     return;

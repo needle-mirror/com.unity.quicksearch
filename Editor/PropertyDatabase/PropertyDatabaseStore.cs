@@ -17,12 +17,12 @@ namespace UnityEditor.Search
 
     interface IPropertyDatabaseStore : IPropertyLockable
     {
-        bool Store(PropertyDatabaseRecord record);
-        bool TryLoad(PropertyDatabaseRecordKey recordKey, out PropertyDatabaseRecordValue data);
-        bool TryLoad(PropertyDatabaseRecordKey recordKey, out IPropertyDatabaseRecordValue data);
+        bool Store(in PropertyDatabaseRecord record);
+        bool TryLoad(in PropertyDatabaseRecordKey recordKey, out PropertyDatabaseRecordValue data);
+        bool TryLoad(in PropertyDatabaseRecordKey recordKey, out IPropertyDatabaseRecordValue data);
         bool TryLoad(ulong documentKey, out IEnumerable<IPropertyDatabaseRecord> records);
         void Invalidate(ulong documentKey);
-        void Invalidate(PropertyDatabaseRecordKey recordKey);
+        void Invalidate(in PropertyDatabaseRecordKey recordKey);
         void Invalidate(uint documentKeyHiWord);
         void InvalidateMask(ulong documentKeyMask);
         void InvalidateMask(uint documentKeyHiWordMask);
@@ -33,8 +33,8 @@ namespace UnityEditor.Search
 
     interface IPropertyDatabaseVolatileStore : IPropertyDatabaseStore
     {
-        bool Store(PropertyDatabaseRecordKey recordKey, object value);
-        bool TryLoad(PropertyDatabaseRecordKey recordKey, out object data);
+        bool Store(in PropertyDatabaseRecordKey recordKey, object value);
+        bool TryLoad(in PropertyDatabaseRecordKey recordKey, out object data);
     }
 
     interface IPropertyDatabaseStoreView : IDisposable, IPropertyLockable
@@ -44,25 +44,25 @@ namespace UnityEditor.Search
 
         PropertyDatabaseRecord this[long index] { get; }
 
-        bool Store(PropertyDatabaseRecord record, bool sync);
-        bool TryLoad(PropertyDatabaseRecordKey recordKey, out PropertyDatabaseRecordValue data);
-        bool TryLoad(PropertyDatabaseRecordKey recordKey, out IPropertyDatabaseRecordValue data);
+        bool Store(in PropertyDatabaseRecord record, bool sync);
+        bool TryLoad(in PropertyDatabaseRecordKey recordKey, out PropertyDatabaseRecordValue data);
+        bool TryLoad(in PropertyDatabaseRecordKey recordKey, out IPropertyDatabaseRecordValue data);
         bool TryLoad(ulong documentKey, out IEnumerable<IPropertyDatabaseRecord> records);
         void Invalidate(ulong documentKey, bool sync);
-        void Invalidate(PropertyDatabaseRecordKey recordKey, bool sync);
+        void Invalidate(in PropertyDatabaseRecordKey recordKey, bool sync);
         void Invalidate(uint documentKeyHiWord, bool sync);
         void InvalidateMask(ulong documentKeyMask, bool sync);
         void InvalidateMask(uint documentKeyHiWordMask, bool sync);
         IEnumerable<IPropertyDatabaseRecord> EnumerateAll();
         void Clear();
         void Sync();
-        bool Find(PropertyDatabaseRecordKey recordKey, out long index);
+        bool Find(in PropertyDatabaseRecordKey recordKey, out long index);
     }
 
     interface IPropertyDatabaseVolatileStoreView : IPropertyDatabaseStoreView
     {
-        bool Store(PropertyDatabaseRecordKey recordKey, object value, bool sync);
-        bool TryLoad(PropertyDatabaseRecordKey recordKey, out object data);
+        bool Store(in PropertyDatabaseRecordKey recordKey, object value, bool sync);
+        bool TryLoad(in PropertyDatabaseRecordKey recordKey, out object data);
     }
 
     readonly struct PropertyDatabaseDocumentKeyRange : IBinarySearchRange<PropertyDatabaseRecordKey>
@@ -139,7 +139,7 @@ namespace UnityEditor.Search
 
     static class PropertyDatabaseRecordFinder
     {
-        public static bool Find(IBinarySearchRangeData<PropertyDatabaseRecordKey> store, PropertyDatabaseRecordKey recordKey, out long index)
+        public static bool Find(IBinarySearchRangeData<PropertyDatabaseRecordKey> store, in PropertyDatabaseRecordKey recordKey, out long index)
         {
             if (store.length == 0)
             {
@@ -273,19 +273,19 @@ namespace UnityEditor.Search
     {
         ReaderWriterLockSlim m_Lock = new ReaderWriterLockSlim(LockRecursionPolicy.SupportsRecursion);
 
-        public bool Store(PropertyDatabaseRecord record)
+        public bool Store(in PropertyDatabaseRecord record)
         {
             using (var view = GetView())
                 return view.Store(record, true);
         }
 
-        public bool TryLoad(PropertyDatabaseRecordKey recordKey, out PropertyDatabaseRecordValue data)
+        public bool TryLoad(in PropertyDatabaseRecordKey recordKey, out PropertyDatabaseRecordValue data)
         {
             using (var view = GetView())
                 return view.TryLoad(recordKey, out data);
         }
 
-        public bool TryLoad(PropertyDatabaseRecordKey recordKey, out IPropertyDatabaseRecordValue data)
+        public bool TryLoad(in PropertyDatabaseRecordKey recordKey, out IPropertyDatabaseRecordValue data)
         {
             using (var view = GetView())
                 return view.TryLoad(recordKey, out data);
@@ -303,7 +303,7 @@ namespace UnityEditor.Search
                 view.Invalidate(documentKey, true);
         }
 
-        public void Invalidate(PropertyDatabaseRecordKey recordKey)
+        public void Invalidate(in PropertyDatabaseRecordKey recordKey)
         {
             using (var view = GetView())
                 view.Invalidate(recordKey, true);
@@ -412,7 +412,7 @@ namespace UnityEditor.Search
             m_Disposed = true;
         }
 
-        public bool Store(PropertyDatabaseRecord record, bool sync)
+        public bool Store(in PropertyDatabaseRecord record, bool sync)
         {
             using (LockUpgradeableRead())
             {
@@ -430,7 +430,7 @@ namespace UnityEditor.Search
             }
         }
 
-        public bool TryLoad(PropertyDatabaseRecordKey recordKey, out PropertyDatabaseRecordValue data)
+        public bool TryLoad(in PropertyDatabaseRecordKey recordKey, out PropertyDatabaseRecordValue data)
         {
             data = PropertyDatabaseRecordValue.invalid;
             using (LockRead())
@@ -448,7 +448,7 @@ namespace UnityEditor.Search
             }
         }
 
-        public bool TryLoad(PropertyDatabaseRecordKey recordKey, out IPropertyDatabaseRecordValue data)
+        public bool TryLoad(in PropertyDatabaseRecordKey recordKey, out IPropertyDatabaseRecordValue data)
         {
             var success = TryLoad(recordKey, out PropertyDatabaseRecordValue record);
             data = record;
@@ -481,7 +481,7 @@ namespace UnityEditor.Search
         public void Sync()
         {}
 
-        public bool Find(PropertyDatabaseRecordKey recordKey, out long index)
+        public bool Find(in PropertyDatabaseRecordKey recordKey, out long index)
         {
             using (LockRead())
                 return PropertyDatabaseRecordFinder.Find(this, recordKey, out index);
@@ -514,7 +514,7 @@ namespace UnityEditor.Search
             }
         }
 
-        public void Invalidate(PropertyDatabaseRecordKey recordKey, bool sync)
+        public void Invalidate(in PropertyDatabaseRecordKey recordKey, bool sync)
         {
             using (LockUpgradeableRead())
             {
@@ -793,13 +793,13 @@ namespace UnityEditor.Search
             }
         }
 
-        public bool Store(PropertyDatabaseRecord record, bool sync)
+        public bool Store(in PropertyDatabaseRecord record, bool sync)
         {
             // Cannot add anything in this store
             throw new NotSupportedException();
         }
 
-        public bool TryLoad(PropertyDatabaseRecordKey recordKey, out PropertyDatabaseRecordValue data)
+        public bool TryLoad(in PropertyDatabaseRecordKey recordKey, out PropertyDatabaseRecordValue data)
         {
             data = PropertyDatabaseRecordValue.invalid;
             using (LockRead())
@@ -817,7 +817,7 @@ namespace UnityEditor.Search
             }
         }
 
-        public bool TryLoad(PropertyDatabaseRecordKey recordKey, out IPropertyDatabaseRecordValue data)
+        public bool TryLoad(in PropertyDatabaseRecordKey recordKey, out IPropertyDatabaseRecordValue data)
         {
             var success = TryLoad(recordKey, out PropertyDatabaseRecordValue record);
             data = record;
@@ -862,7 +862,7 @@ namespace UnityEditor.Search
             }
         }
 
-        public void Invalidate(PropertyDatabaseRecordKey recordKey, bool sync)
+        public void Invalidate(in PropertyDatabaseRecordKey recordKey, bool sync)
         {
             using (LockUpgradeableRead())
             {
@@ -958,7 +958,7 @@ namespace UnityEditor.Search
             }
         }
 
-        public bool Find(PropertyDatabaseRecordKey recordKey, out long index)
+        public bool Find(in PropertyDatabaseRecordKey recordKey, out long index)
         {
             using (LockRead())
                 return PropertyDatabaseRecordFinder.Find(this, recordKey, out index);
@@ -1057,7 +1057,7 @@ namespace UnityEditor.Search
             return PropertyDatabaseRecordKey.FromBinary(m_Br);
         }
 
-        void WriteRecord(PropertyDatabaseRecord record, long index, bool flush = true)
+        void WriteRecord(in PropertyDatabaseRecord record, long index, bool flush = true)
         {
             if (m_Fs == null)
                 return;
@@ -1136,14 +1136,14 @@ namespace UnityEditor.Search
 
         public static int size => PropertyDatabaseRecordKey.size + sizeof(bool) + PropertyDatabaseVolatileRecordValue.size;
 
-        public PropertyDatabaseVolatileRecord(PropertyDatabaseRecordKey key, object value)
+        public PropertyDatabaseVolatileRecord(in PropertyDatabaseRecordKey key, object value)
         {
             this.recordKey = key;
             this.recordValue = new PropertyDatabaseVolatileRecordValue(value);
             valid = true;
         }
 
-        public PropertyDatabaseVolatileRecord(PropertyDatabaseRecordKey key, object value, bool valid)
+        public PropertyDatabaseVolatileRecord(in PropertyDatabaseRecordKey key, object value, bool valid)
         {
             this.recordKey = key;
             this.recordValue = new PropertyDatabaseVolatileRecordValue(value);
@@ -1158,13 +1158,13 @@ namespace UnityEditor.Search
             return new PropertyDatabaseVolatileMemoryStoreView(this, m_Store);
         }
 
-        public bool Store(PropertyDatabaseRecordKey recordKey, object value)
+        public bool Store(in PropertyDatabaseRecordKey recordKey, object value)
         {
             using (var view = (PropertyDatabaseVolatileMemoryStoreView)GetView())
                 return view.Store(recordKey, value, true);
         }
 
-        public bool TryLoad(PropertyDatabaseRecordKey recordKey, out object data)
+        public bool TryLoad(in PropertyDatabaseRecordKey recordKey, out object data)
         {
             using (var view = (PropertyDatabaseVolatileMemoryStoreView)GetView())
                 return view.TryLoad(recordKey, out data);
@@ -1217,17 +1217,17 @@ namespace UnityEditor.Search
 
         public PropertyDatabaseRecord this[long index] => throw new NotSupportedException();
 
-        public bool Store(PropertyDatabaseRecord record, bool sync)
+        public bool Store(in PropertyDatabaseRecord record, bool sync)
         {
             throw new NotSupportedException();
         }
 
-        public bool TryLoad(PropertyDatabaseRecordKey recordKey, out PropertyDatabaseRecordValue data)
+        public bool TryLoad(in PropertyDatabaseRecordKey recordKey, out PropertyDatabaseRecordValue data)
         {
             throw new NotSupportedException();
         }
 
-        public bool TryLoad(PropertyDatabaseRecordKey recordKey, out IPropertyDatabaseRecordValue data)
+        public bool TryLoad(in PropertyDatabaseRecordKey recordKey, out IPropertyDatabaseRecordValue data)
         {
             var success = TryLoad(recordKey, out PropertyDatabaseVolatileRecordValue record);
             data = record;
@@ -1268,7 +1268,7 @@ namespace UnityEditor.Search
             }
         }
 
-        public void Invalidate(PropertyDatabaseRecordKey recordKey, bool sync)
+        public void Invalidate(in PropertyDatabaseRecordKey recordKey, bool sync)
         {
             using (LockUpgradeableRead())
             {
@@ -1332,13 +1332,13 @@ namespace UnityEditor.Search
         public void Sync()
         {}
 
-        public bool Find(PropertyDatabaseRecordKey recordKey, out long index)
+        public bool Find(in PropertyDatabaseRecordKey recordKey, out long index)
         {
             using (LockRead())
                 return PropertyDatabaseRecordFinder.Find(this, recordKey, out index);
         }
 
-        public bool Store(PropertyDatabaseRecordKey recordKey, object value, bool sync)
+        public bool Store(in PropertyDatabaseRecordKey recordKey, object value, bool sync)
         {
             using (LockUpgradeableRead())
             {
@@ -1357,14 +1357,14 @@ namespace UnityEditor.Search
             }
         }
 
-        public bool TryLoad(PropertyDatabaseRecordKey recordKey, out object data)
+        public bool TryLoad(in PropertyDatabaseRecordKey recordKey, out object data)
         {
             var success = TryLoad(recordKey, out PropertyDatabaseVolatileRecordValue record);
             data = record.value;
             return success;
         }
 
-        bool TryLoad(PropertyDatabaseRecordKey recordKey, out PropertyDatabaseVolatileRecordValue data)
+        bool TryLoad(in PropertyDatabaseRecordKey recordKey, out PropertyDatabaseVolatileRecordValue data)
         {
             data = new PropertyDatabaseVolatileRecordValue();
             using (LockRead())

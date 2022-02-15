@@ -47,7 +47,7 @@ namespace UnityEditor.Search
             }
         }
 
-        public static bool Show(SearchContext context, Rect parentRect, SearchField searchField)
+        public static bool Show(SearchContext context, Rect parentRect, UI.SearchField searchField)
         {
             var te = searchField.GetTextEditor();
             if (te.controlID != GUIUtility.keyboardControl)
@@ -66,7 +66,7 @@ namespace UnityEditor.Search
             return true;
         }
 
-        public static string Draw(SearchField searchField)
+        public static string Draw(UI.SearchField searchField)
         {
             if (!enabled)
                 return null;
@@ -411,7 +411,7 @@ namespace UnityEditor.Search
             var itemHeight = Styles.autoCompleteItemLabel.fixedHeight;
             if (setMinMax)
                 popupSize = new Vector2(popupSize.x, Mathf.Max(115f, Mathf.Min(propositions.Count * itemHeight, popupSize.y)));
-            var popupOffset = new Vector2(te.position.xMin, SearchField.searchFieldSingleLineHeight);
+            var popupOffset = new Vector2(te.position.xMin, UI.SearchField.searchFieldSingleLineHeight);
             return new Rect(te.graphicalCursorPos + popupOffset, popupSize);
         }
     }

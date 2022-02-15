@@ -129,6 +129,11 @@ namespace UnityEditor.Search
         string paramValue { get; }
 
         /// <summary>
+        /// Indicates if the filter uses a parameter.
+        /// </summary>
+        bool usesParameter { get; }
+
+        /// <summary>
         /// The operator identifier. This can be null or empty if the operator has not been written yet.
         /// </summary>
         string operatorId { get; }
@@ -183,6 +188,7 @@ namespace UnityEditor.Search
         public virtual List<IQueryNode> children => null;
         public virtual bool leaf => true;
         public virtual bool skipped { get; set; }
+        public bool usesParameter => filter?.usesParameter ?? false;
 
         string m_Identifier;
         public string identifier => m_Identifier ??= filterStringView.ToString();

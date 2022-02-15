@@ -1,5 +1,22 @@
 # Changelog
 
+## [3.0.0-preview.23] - 2022-02-15
+- Add new Search APIs
+- Add +fuzzy switch for the scene and asset providers.
+- Add InitTestScene as default exclude pattern.
+- Add missing adb provider for advanced object selector search engine (case 1398289)
+- Add search result refresh when executing CTRL+Z to undo last block modifications (case 1394732)
+- Add support to hide the search group tabs.
+- Fix minor project saved search query UX issues.
+- Fix moved file not being re-indexed with the proper file path.
+- Fix scene provider incremental reference indexing exception.
+- Fix search indexer lock threading issue.
+- Improve how the search table is reset.
+- Index properties by default.
+- Minor UI style updates.
+- Update package documention to point to official 2022.1 documentation.
+- Use SearchViewState.group to initialize initial results tab when creating a new search window (case 1400665)
+
 ## [3.0.0-preview.22] - 2021-11-04
 - Add scene provider support for property matching =none
 - Enable Show Package Results for the find provider (find:)

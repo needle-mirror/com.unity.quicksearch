@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Internal;
 
@@ -193,5 +194,10 @@ namespace UnityEditor.Search
         /// Focus the search text field control.
         /// </summary>
         void FocusSearch();
+        
+        /// <summary>
+        /// Set table view columns.
+        /// </summary>
+        void SetColumns(IEnumerable<SearchColumn> columns);
     }
 }
