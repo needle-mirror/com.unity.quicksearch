@@ -386,6 +386,15 @@ namespace UnityEditor.Search
             return currentDb;
         }
 
+        public static void Unload(SearchDatabase db)
+        {
+            s_DBs?.Remove(db);
+            if (EditorUtility.IsPersistent(db))
+                Resources.UnloadAsset(db);
+            else
+                DestroyImmediate(db);
+        }
+
         internal void OnEnable()
         {
             if (settings == null)
@@ -473,7 +482,7 @@ namespace UnityEditor.Search
 
         private void IncrementalLoad(string indexPath)
         {
-            var loadTask = new Task("Read", $"Loading {name.ToLowerInvariant()} search index", (task, data) => Setup(), this);
+            var loadTask = new Task("Read", $"Loading {name.ToLowerInvariant()} search index", (task, data) => Setup(task, data), this);
             loadTask.RunThread(() =>
             {
                 loadTask.Report($"Loading {indexPath}...", -1);
@@ -749,6 +758,17 @@ namespace UnityEditor.Search
             #if DEBUG_RESOLVING
             Debug.Log($"{task.title} took {task.elapsedTime} ms");
             #endif
+        }
+
+        private void Setup(Task task, TaskData data)
+        {
+            if (task.error != null)
+            {
+                Debug.LogException(task.error);
+                return;
+            }
+
+            Setup();
         }
 
         private void Setup()

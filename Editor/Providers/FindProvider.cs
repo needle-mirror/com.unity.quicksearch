@@ -92,8 +92,7 @@ namespace UnityEditor.Search.Providers
 
         public static IEnumerable<SearchDocument> Search(string searchQuery, IEnumerable<string> roots, SearchContext context, SearchProvider provider, FindOptions options)
         {
-            Query<SearchDocument, object> query = null;
-            query = s_QueryEngine.Parse(searchQuery, new FindFilesQueryFactory(args =>
+            var query = s_QueryEngine.ParseQuery(searchQuery, new FindFilesQueryFactory(args =>
             {
                 #if DEBUG_FIND_PROVIDER
                 using (new DebugTimer($"Find Eval {searchQuery}, {options}"))

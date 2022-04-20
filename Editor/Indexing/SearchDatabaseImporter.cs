@@ -12,7 +12,7 @@ namespace UnityEditor.Search
     ""name"": ""Assets"",
     ""roots"": [""Assets""],
     ""includes"": [],
-    ""excludes"": [""Temp/"", ""External/""],
+    ""excludes"": [],
     ""options"": {
         ""types"": true,
         ""properties"": true,
@@ -26,7 +26,7 @@ namespace UnityEditor.Search
 @"{
     ""roots"": [],
     ""includes"": [],
-    ""excludes"": [""Temp/"", ""External/""],
+    ""excludes"": [""Assets/Temp/"", ""Assets/External/""],
     ""options"": {
         ""types"": true,
         ""properties"": true,

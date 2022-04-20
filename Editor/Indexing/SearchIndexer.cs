@@ -397,7 +397,7 @@ namespace UnityEditor.Search
 
         private static readonly QueryValidationOptions k_QueryEngineOptions = new QueryValidationOptions {validateFilters = true, skipNestedQueries = true};
         private QueryEngine<SearchResult> m_QueryEngine;
-        private ConcurrentDictionary<string, Query<SearchResult, object>> m_QueryPool;
+        private ConcurrentDictionary<string, ParsedQuery<SearchResult, object>> m_QueryPool;
 
         private readonly Dictionary<RangeSet, IndexRange> m_FixedRanges;
         private SearchResultCollection m_AllDocumentIndexes;
@@ -408,12 +408,12 @@ namespace UnityEditor.Search
 
         // Final documents and entries when the index is ready.
         private ConcurrentDictionary<int, SearchDocument> m_Documents;
-        private Stack<int> m_UnusedDocumentIndexes;
+        private ConcurrentStack<int> m_UnusedDocumentIndexes;
         private SearchIndexEntry[] m_Indexes;
         private HashSet<string> m_Keywords;
         private Dictionary<string, Hash128> m_SourceDocuments;
         private Dictionary<string, string> m_MetaInfo;
-        internal Dictionary<string, int> m_IndexByDocuments;
+        internal ConcurrentDictionary<string, int> m_IndexByDocuments;
 
         /// <summary>
         /// Create a new default SearchIndexer.
@@ -435,8 +435,8 @@ namespace UnityEditor.Search
 
             m_Keywords = new HashSet<string>();
             m_Documents = new ConcurrentDictionary<int, SearchDocument>();
-            m_UnusedDocumentIndexes = new Stack<int>();
-            m_IndexByDocuments = new Dictionary<string, int>();
+            m_UnusedDocumentIndexes = new ConcurrentStack<int>();
+            m_IndexByDocuments = new ConcurrentDictionary<string, int>();
             m_Indexes = new SearchIndexEntry[0];
             m_BatchIndexes = new List<SearchIndexEntry>();
             m_PatternMatchCount = new Dictionary<int, int>();
@@ -445,7 +445,7 @@ namespace UnityEditor.Search
             m_MetaInfo = new Dictionary<string, string>();
         }
 
-        private Query<SearchResult, object> BuildQuery(string searchQuery)
+        private ParsedQuery<SearchResult, object> BuildQuery(string searchQuery)
         {
             lock (this)
             {
@@ -453,7 +453,7 @@ namespace UnityEditor.Search
                 {
                     m_QueryEngine = new QueryEngine<SearchResult>(k_QueryEngineOptions);
                     m_QueryEngine.SetSearchDataCallback(e => null, s => s.Length < minWordIndexationLength ? null : s, StringComparison.Ordinal);
-                    m_QueryPool = new ConcurrentDictionary<string, Query<SearchResult, object>>();
+                    m_QueryPool = new ConcurrentDictionary<string, ParsedQuery<SearchResult, object>>();
                 }
 
                 if (m_RebuildFilters)
@@ -463,14 +463,14 @@ namespace UnityEditor.Search
                 }
             }
 
-            Query<SearchResult, object> query;
+            ParsedQuery<SearchResult, object> query;
             if (m_QueryPool.TryGetValue(searchQuery, out query) && query.valid)
                 return query;
 
             if (m_QueryPool.Count > 50)
                 m_QueryPool.Clear();
 
-            query = m_QueryEngine.Parse(searchQuery, new SearchIndexerQueryFactory(EvaluateSearchNode));
+            query = m_QueryEngine.ParseQuery(searchQuery, new SearchIndexerQueryFactory(EvaluateSearchNode));
             if (query.valid)
                 m_QueryPool[searchQuery] = query;
             return query;
@@ -1156,9 +1156,13 @@ namespace UnityEditor.Search
                 {
                     foreach (var idi in removeDocIndexes.Except(updatedDocIndexes))
                     {
-                        m_UnusedDocumentIndexes.Push(idi);
-                        m_IndexByDocuments.Remove(m_Documents[idi].id);
-                        m_Documents[idi] = default;
+                        if (m_IndexByDocuments.TryRemove(m_Documents[idi].id, out _))
+                        {
+                            m_UnusedDocumentIndexes.Push(idi);
+                            m_Documents[idi] = default;
+                        }
+                        else
+                            Debug.LogWarning($"Failed to remove search document {m_Documents[idi].id} at {idi}");
                     }
 
                     indexes = new List<SearchIndexEntry>(m_Indexes.Where(i =>
@@ -1227,11 +1231,10 @@ namespace UnityEditor.Search
             m_UnusedDocumentIndexes.Clear();
             for (int docIndex = 0; docIndex < m_Documents.Count; ++docIndex)
             {
-                var doc = m_Documents[docIndex];
-                if (!doc.valid)
-                    m_UnusedDocumentIndexes.Push(docIndex);
-                else
+                if (m_Documents.TryGetValue(docIndex, out var doc) && doc.valid)
                     m_IndexByDocuments[doc.id] = docIndex;
+                else
+                    m_UnusedDocumentIndexes.Push(docIndex);
             }
         }
 
@@ -1341,8 +1344,8 @@ namespace UnityEditor.Search
                 var newDocument = new SearchDocument(document, name, source, 0, flags);
                 if (m_UnusedDocumentIndexes.Count > 0)
                 {
-                    newIndex = m_UnusedDocumentIndexes.Pop();
-                    m_Documents[newIndex] = newDocument;
+                    if (m_UnusedDocumentIndexes.TryPop(out newIndex))
+                        m_Documents[newIndex] = newDocument;
                 }
                 else
                 {

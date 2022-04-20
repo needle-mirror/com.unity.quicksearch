@@ -376,11 +376,19 @@ namespace UnityEditor.Search
         {
             s_ContentRefreshedEnabled = false;
             s_TransactionManager?.Shutdown();
+            #if USE_PROPERTY_DATABASE
+            propertyDatabase?.Dispose();
+            propertyAliases?.Dispose();
+            #endif
         }
 
         static void OnBeforeAssemblyReload()
         {
             s_TransactionManager?.Shutdown();
+            #if USE_PROPERTY_DATABASE
+            propertyDatabase?.Dispose();
+            propertyAliases?.Dispose();
+            #endif
         }
 
         static void RaiseContentRefreshed()

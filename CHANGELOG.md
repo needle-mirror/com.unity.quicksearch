@@ -1,5 +1,18 @@
 # Changelog
 
+## [3.0.0-preview.24] - 2022-04-20
+- Add error reporting when a search index fails to load.
+- Fix auto-complete text overlapping.
+- Fix how the global search window is reused in different context.
+- Fix nested search expression constants evaluation (i.e. constant{...})
+- Fix property database concurrency under certain conditions.
+- Fix query string expression parsing.
+- Fix scene search proposition enumeration for large scenes.
+- Fix search indexer concurrent issue when asset are deleted and the index is being updated at the same time.
+- Fix search picker persisted search flags.
+- Improve asset provider preview generation.
+- Update default Temp* pattern exclusion of folders.
+
 ## [3.0.0-preview.23] - 2022-02-15
 - Add new Search APIs
 - Add +fuzzy switch for the scene and asset providers.

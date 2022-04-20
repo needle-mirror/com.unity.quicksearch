@@ -4,53 +4,7 @@ using System.Linq;
 
 namespace UnityEditor.Search
 {
-    /// <summary>
-    /// Interface for query handlers.
-    /// </summary>
-    /// <typeparam name="TData">The filtered data type.</typeparam>
-    /// <typeparam name="TPayload">The payload type.</typeparam>
-    public interface IQueryHandler<TData, in TPayload>
-        where TPayload : class
-    {
-        /// <summary>
-        /// Implement this function to evaluate the query on a payload.
-        /// </summary>
-        /// <param name="payload">The input data of the query.</param>
-        /// <returns>An enumerable of type TData.</returns>
-        IEnumerable<TData> Eval(TPayload payload);
-
-        /// <summary>
-        /// Implement this function to evaluate the query on a single element.
-        /// </summary>
-        /// <param name="element">A single object to be tested.</param>
-        /// <returns>True if the object passes the query, false otherwise.</returns>
-        bool Eval(TData element);
-    }
-
-    /// <summary>
-    /// Interface for query handler factories.
-    /// </summary>
-    /// <typeparam name="TData">The filtered data type.</typeparam>
-    /// <typeparam name="TQueryHandler">The query handler type.</typeparam>
-    /// <typeparam name="TPayload">The payload type.</typeparam>
-    public interface IQueryHandlerFactory<TData, out TQueryHandler, TPayload>
-        where TQueryHandler : IQueryHandler<TData, TPayload>
-        where TPayload : class
-    {
-        /// <summary>
-        /// Implement this function to create a new query handler for a specific query graph.
-        /// </summary>
-        /// <param name="graph">A graph representing a query.</param>
-        /// <param name="errors">A collection of errors. Use this to report errors when needed.</param>
-        /// <returns>An object of type TQueryHandler.</returns>
-        TQueryHandler Create(QueryGraph graph, ICollection<QueryError> errors);
-    }
-
-    /// <summary>
-    /// A Query defines an operation that can be used to filter a data set.
-    /// </summary>
-    /// <typeparam name="TData">The filtered data type.</typeparam>
-    /// <typeparam name="TPayload">The payload type.</typeparam>
+    [Obsolete("Query has been deprecated. Use ParsedQuery instead (UnityUpgradable) -> ParsedQuery<TData, TPayload>", false)]
     public class Query<TData, TPayload>
         where TPayload : class
     {
@@ -173,10 +127,7 @@ namespace UnityEditor.Search
         }
     }
 
-    /// <summary>
-    /// A Query defines an operation that can be used to filter a data set.
-    /// </summary>
-    /// <typeparam name="T">The filtered data type.</typeparam>
+    [Obsolete("Query has been deprecated. Use ParsedQuery instead (UnityUpgradable) -> ParsedQuery<T>", false)]
     public class Query<T> : Query<T, IEnumerable<T>>
     {
         /// <summary>
