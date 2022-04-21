@@ -109,7 +109,11 @@ namespace UnityEditor.Search
             int indexToSelect = AddSearchDatabases(SearchSettings.showPackageIndexes);
 
             m_ListViewIndexSettings = new ListViewIndexSettings(m_IndexSettings, MakeIndexItem, BindIndexItem, CreateNewIndexSettingMenu, DeleteIndexSetting, this, false, 40) { name = "IndexListView" };
+            #if USE_SEARCH_MODULE
+            m_ListViewIndexSettings.ListView.selectionChanged += OnSelectedIndexChanged;
+            #else
             m_ListViewIndexSettings.ListView.onSelectionChange += OnSelectedIndexChanged;
+            #endif
 
             m_IndexDetailsElement = new VisualElement() { name = "Details" };
             SearchDatabase.indexLoaded += OnIndexLoaded;
@@ -231,14 +235,25 @@ namespace UnityEditor.Search
 
         internal void OnDisable()
         {
+            #if USE_SEARCH_MODULE
+            m_ListViewIndexSettings.ListView.selectionChanged -= OnSelectedIndexChanged;
+            #else
             m_ListViewIndexSettings.ListView.onSelectionChange -= OnSelectedIndexChanged;
+            #endif
 
             SearchDatabase.indexLoaded -= OnIndexLoaded;
 
+            #if USE_SEARCH_MODULE
+            if (m_DocumentsListView != null)
+                m_DocumentsListView.selectionChanged -= PingAsset;
+            if (m_DependenciesListView != null)
+                m_DependenciesListView.selectionChanged -= PingAsset;
+            #else
             if (m_DocumentsListView != null)
                 m_DocumentsListView.onSelectionChange -= PingAsset;
             if (m_DependenciesListView != null)
                 m_DependenciesListView.onSelectionChange -= PingAsset;
+            #endif
         }
 
         private void OnSizeChange(GeometryChangedEvent evt)
@@ -376,20 +391,23 @@ namespace UnityEditor.Search
 
             #if !USE_SEARCH_MODULE
             m_DependenciesListView = new UIToolkitListView() { itemHeight = 20, makeItem = () => { return new Label(); }, bindItem = (e, i) => { e.Q<Label>().text = (string)(m_DependenciesListView.itemsSource[i]); } };
+            m_DependenciesListView.onSelectionChange += PingAsset;
             #else
             m_DependenciesListView = new UIToolkitListView() { fixedItemHeight = 20, makeItem = () => { return new Label(); }, bindItem = (e, i) => { e.Q<Label>().text = (string)(m_DependenciesListView.itemsSource[i]); } };
+            m_DependenciesListView.selectionChanged += PingAsset;
             #endif
             m_DependenciesListView.AddToClassList("PreviewListView");
-            m_DependenciesListView.onSelectionChange += PingAsset;
+
             m_SavedIndexData.Add(m_DependenciesListView);
 
             #if !USE_SEARCH_MODULE
             m_DocumentsListView = new UIToolkitListView() { itemHeight = 20, makeItem = () => { return new Label(); }, bindItem = (e, i) => { e.Q<Label>().text = (string)(m_DocumentsListView.itemsSource[i]); } };
+            m_DocumentsListView.onSelectionChange += PingAsset;
             #else
             m_DocumentsListView = new UIToolkitListView() { fixedItemHeight = 20, makeItem = () => { return new Label(); }, bindItem = (e, i) => { e.Q<Label>().text = (string)(m_DocumentsListView.itemsSource[i]); } };
+            m_DocumentsListView.selectionChanged += PingAsset;
             #endif
             m_DocumentsListView.AddToClassList("PreviewListView");
-            m_DocumentsListView.onSelectionChange += PingAsset;
             m_SavedIndexData.Add(m_DocumentsListView);
 
             #if !USE_SEARCH_MODULE
@@ -1051,10 +1069,17 @@ namespace UnityEditor.Search
         {
             if (selectedIndex != m_PreviousSelectedIndex)
             {
+                #if USE_SEARCH_MODULE
+                if (m_DependenciesListView != null)
+                    m_DependenciesListView.selectionChanged -= PingAsset;
+                if (m_DocumentsListView != null)
+                    m_DocumentsListView.selectionChanged -= PingAsset;
+                #else
                 if (m_DependenciesListView != null)
                     m_DependenciesListView.onSelectionChange -= PingAsset;
                 if (m_DocumentsListView != null)
                     m_DocumentsListView.onSelectionChange -= PingAsset;
+                #endif
                 m_IndexDetailsElement.Clear();
 
                 if (obj.Any())

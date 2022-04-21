@@ -1,7 +1,7 @@
 {
   "name": "com.unity.quicksearch",
   "displayName": "Quick Search",
-  "version": "3.0.0-preview.24",
+  "version": "3.0.0-preview.25",
   "unity": "2020.3",
   "description": "Search multiple areas of Unity: assets, scene hierarchy, menu items, packages, APIs, settings, etc.\n\nLook in the shortcut manager to set your favorite Search All... shortcut.",
   "keywords": [
@@ -20,14 +20,14 @@
     "anything"
   ],
   "upm": {
-    "changelog": "- Add error reporting when a search index fails to load.\n- Fix auto-complete text overlapping.\n- Fix how the global search window is reused in different context.\n- Fix nested search expression constants evaluation (i.e. constant{...})\n- Fix property database concurrency under certain conditions.\n- Fix query string expression parsing.\n- Fix scene search proposition enumeration for large scenes.\n- Fix search indexer concurrent issue when asset are deleted and the index is being updated at the same time.\n- Fix search picker persisted search flags.\n- Improve asset provider preview generation.\n- Update default Temp* pattern exclusion of folders."
+    "changelog": "- Fix search indexer concurrent issue when asset are deleted and the index is being updated at the same time."
   },
   "upmCi": {
-    "footprint": "c67d592b8e5a7d5875a0af14caa2c2cbdad442c8"
+    "footprint": "170b28873f078ce1eaf61666228f8ff4d3d94156"
   },
   "repository": {
     "url": "https://github.cds.internal.unity3d.com/unity/com.unity.quicksearch.git",
     "type": "git",
-    "revision": "caa3a912cfb03d3dff69962fa2aab1833b3e6ba5"
+    "revision": "91a0d7bbfc2bc9c730b9bf40a7664b6e73157e43"
   }
 }

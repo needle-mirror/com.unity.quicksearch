@@ -30,7 +30,7 @@ namespace UnityEditor.Search
         }
 
         public Transaction(string guid, int state)
-            : this(guid, state, DateTime.Now.ToBinary())
+            : this(guid, state, DateTime.UtcNow.ToBinary())
         {
         }
 
@@ -58,7 +58,7 @@ namespace UnityEditor.Search
 
         public override string ToString()
         {
-            return $"[{DateTime.FromBinary(timestamp):u}] ({state}) {guid}";
+            return $"[{DateTime.FromBinary(timestamp).ToUniversalTime():u}] ({state}) {guid}";
         }
 
         public AssetModification GetState()

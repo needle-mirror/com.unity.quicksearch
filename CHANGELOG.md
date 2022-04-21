@@ -1,5 +1,8 @@
 # Changelog
 
+## [3.0.0-preview.25] - 2022-04-21
+- Fix search indexer concurrent issue when asset are deleted and the index is being updated at the same time.
+
 ## [3.0.0-preview.24] - 2022-04-20
 - Add error reporting when a search index fails to load.
 - Fix auto-complete text overlapping.
@@ -8,7 +11,6 @@
 - Fix property database concurrency under certain conditions.
 - Fix query string expression parsing.
 - Fix scene search proposition enumeration for large scenes.
-- Fix search indexer concurrent issue when asset are deleted and the index is being updated at the same time.
 - Fix search picker persisted search flags.
 - Improve asset provider preview generation.
 - Update default Temp* pattern exclusion of folders.

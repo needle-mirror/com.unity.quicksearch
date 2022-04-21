@@ -36,6 +36,7 @@ namespace UnityEditor.Search
     public static class SearchService
     {
         private const int k_MaxFetchTimeMs = 50;
+        private const int k_MaxSessionTimeMs = 60000;
         static SearchProvider s_SearchServiceProvider;
 
         /// <summary>
@@ -298,11 +299,11 @@ namespace UnityEditor.Search
         {
             // Stop all search sessions every time there is a new search.
             context.sessions.StopAllAsyncSearchSessions();
-            context.searchFinishTime = context.searchStartTime = DateTime.Now.Ticks;
+            context.searchFinishTime = context.searchStartTime = DateTime.UtcNow.Ticks;
             context.sessionEnded -= OnSearchEnded;
             context.sessionEnded += OnSearchEnded;
 
-            context.sessions.StartSessions();
+            context.sessions.StartSessions(context);
 
             if (options.HasAny(SearchFlags.WantsMore))
                 context.wantsMore = true;
@@ -316,7 +317,7 @@ namespace UnityEditor.Search
             if (TryParseExpression(context, out var expression))
             {
                 var iterator = EvaluateExpression(expression, context);
-                HandleItemsIteratorSession(iterator, allItems, s_SearchServiceProvider.id, context, options);
+                HandleItemsIteratorSession(iterator, allItems, s_SearchServiceProvider, context, options);
                 fetchProviderCount++;
             }
             else
@@ -329,7 +330,7 @@ namespace UnityEditor.Search
                         watch.Start();
                         fetchProviderCount++;
                         var iterator = provider.fetchItems(context, allItems, provider);
-                        HandleItemsIteratorSession(iterator, allItems, provider.id, context, options);
+                        HandleItemsIteratorSession(iterator, allItems, provider, context, options);
                         provider.RecordFetchTime(watch.Elapsed.TotalMilliseconds);
                     }
                     catch (Exception ex)
@@ -355,7 +356,7 @@ namespace UnityEditor.Search
             return allItems.GroupBy(i => i.id).Select(i => i.First()).ToList();
         }
 
-        static void HandleItemsIteratorSession(object iterator, List<SearchItem> allItems,  string id, SearchContext context, SearchFlags options)
+        static void HandleItemsIteratorSession(object iterator, List<SearchItem> allItems, SearchProvider provider, SearchContext context, SearchFlags options)
         {
             if (iterator != null && options.HasAny(SearchFlags.Synchronous))
             {
@@ -370,8 +371,8 @@ namespace UnityEditor.Search
             }
             else
             {
-                var session = context.sessions.GetProviderSession(context, id);
-                session.Reset(context, iterator, k_MaxFetchTimeMs);
+                var session = context.sessions.GetProviderSession(provider);
+                session.Reset(context.sessions.currentSessionContext, iterator, k_MaxFetchTimeMs, k_MaxSessionTimeMs);
                 session.Start();
                 var sessionEnded = !session.FetchSome(allItems, k_MaxFetchTimeMs);
                 if (options.HasAny(SearchFlags.FirstBatchAsync))
@@ -539,7 +540,7 @@ namespace UnityEditor.Search
 
         private static void OnSearchEnded(SearchContext context)
         {
-            context.searchFinishTime = DateTime.Now.Ticks;
+            context.searchFinishTime = DateTime.UtcNow.Ticks;
         }
 
         private static int SortItemComparer(SearchItem item1, SearchItem item2)
@@ -843,7 +844,7 @@ namespace UnityEditor.Search
                                 System.IO.File.Delete(indexPath);
                             else
                             #endif
-                            { 
+                            {
                                 AssetDatabase.DeleteAsset(indexPath);
                             }
                         }
@@ -902,9 +903,9 @@ namespace UnityEditor.Search
 
         static IEnumerable<SearchItem> EvaluateExpression(SearchExpression expression, SearchContext context)
         {
-#if USE_PROPERTY_DATABASE
+            #if USE_PROPERTY_DATABASE
             using (SearchMonitor.GetView())
-#endif
+            #endif
             {
                 var evaluationFlags = SearchExpressionExecutionFlags.ThreadedEvaluation;
                 var it = expression.Execute(context, evaluationFlags).GetEnumerator();

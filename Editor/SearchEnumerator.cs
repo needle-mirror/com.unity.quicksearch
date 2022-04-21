@@ -24,6 +24,8 @@ namespace UnityEditor.Search
 
         public int Count => m_ItemsEnumerator.Count;
 
+        public Stack<IEnumerator> enumeratorStack => m_ItemsEnumerator;
+
         public SearchEnumerator()
         {}
 
