@@ -4,7 +4,11 @@ using System.Linq;
 
 namespace UnityEditor.Search
 {
+#if USE_SEARCH_MODULE
     [Obsolete("Query has been deprecated. Use ParsedQuery instead (UnityUpgradable) -> ParsedQuery<TData, TPayload>", false)]
+#else
+    [Obsolete("Query has been deprecated. Use ParsedQuery instead.", false)]
+#endif
     public class Query<TData, TPayload>
         where TPayload : class
     {
@@ -127,7 +131,11 @@ namespace UnityEditor.Search
         }
     }
 
+#if USE_SEARCH_MODULE
     [Obsolete("Query has been deprecated. Use ParsedQuery instead (UnityUpgradable) -> ParsedQuery<T>", false)]
+#else
+    [Obsolete("Query has been deprecated. Use ParsedQuery instead.", false)]
+#endif
     public class Query<T> : Query<T, IEnumerable<T>>
     {
         /// <summary>

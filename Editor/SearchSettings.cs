@@ -437,6 +437,17 @@ namespace UnityEditor.Search
             }
         }
 
+        static List<UnityEditor.SearchService.ISearchEngineBase> OrderSearchEngines(IEnumerable<UnityEditor.SearchService.ISearchEngineBase> engines)
+        {
+            var defaultEngine = engines.First(engine => engine is UnityEditor.SearchService.LegacySearchEngineBase);
+            var overrides = engines.Where(engine => !(engine is UnityEditor.SearchService.LegacySearchEngineBase));
+            var orderedSearchEngines = new List<UnityEditor.SearchService.ISearchEngineBase> { defaultEngine };
+            orderedSearchEngines.AddRange(overrides);
+            return orderedSearchEngines;
+        }
+
+        #endif
+
         #if USE_SEARCH_ENGINE_API
         static void DrawAdvancedObjectSelectorsSettings()
         {
@@ -557,23 +568,12 @@ namespace UnityEditor.Search
                 break;
             }
         }
-        #endif
-
-        static List<UnityEditor.SearchService.ISearchEngineBase> OrderSearchEngines(IEnumerable<UnityEditor.SearchService.ISearchEngineBase> engines)
-        {
-            var defaultEngine = engines.First(engine => engine is UnityEditor.SearchService.LegacySearchEngineBase);
-            var overrides = engines.Where(engine => !(engine is UnityEditor.SearchService.LegacySearchEngineBase));
-            var orderedSearchEngines = new List<UnityEditor.SearchService.ISearchEngineBase> { defaultEngine };
-            orderedSearchEngines.AddRange(overrides);
-            return orderedSearchEngines;
-        }
-
-        #endif
 
         internal static bool TryGetObjectSelectorSettings(string selectorId, out ObjectSelectorsSettings settings)
         {
             return objectSelectors.TryGetValue(selectorId, out settings);
         }
+        #endif
 
         private static void DrawSearchSettings(string searchContext)
         {

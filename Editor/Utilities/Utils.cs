@@ -1978,14 +1978,43 @@ namespace UnityEditor.Search
         static PropertyInfo s_Property_u64_0;
         static PropertyInfo s_Property_u64_1;
 
+        static FieldInfo s_Field_u64_0;
+        static FieldInfo s_Field_u64_1;
+
         static Hash128Ex()
         {
-            s_Property_u64_0 = typeof(Hash128).GetProperty("u64_0", BindingFlags.NonPublic | BindingFlags.Instance);
-            s_Property_u64_1 = typeof(Hash128).GetProperty("u64_1", BindingFlags.NonPublic | BindingFlags.Instance);
+            FetchGetters();
         }
 
-        public static ulong Getu64_0(this Hash128 h) => (ulong)s_Property_u64_0.GetValue(h);
-        public static ulong Getu64_1(this Hash128 h) => (ulong)s_Property_u64_1.GetValue(h);
+        static void FetchGetters()
+        {
+            s_Property_u64_0 = typeof(Hash128).GetProperty("u64_0", BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Instance);
+            s_Property_u64_1 = typeof(Hash128).GetProperty("u64_1", BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Instance);
+
+            if (s_Property_u64_0 == null)
+                s_Field_u64_0= typeof(Hash128).GetField("u64_0", BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Instance);
+            if (s_Property_u64_1 == null)
+                s_Field_u64_1 = typeof(Hash128).GetField("u64_1", BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Instance);
+        }
+
+        static ulong GetValue(Hash128 h, PropertyInfo propertyInfo, FieldInfo fieldInfo)
+        {
+            if (propertyInfo != null)
+                return (ulong)propertyInfo.GetValue(h);
+            if (fieldInfo != null)
+                return (ulong)fieldInfo.GetValue(h);
+            throw new NullReferenceException("Hash128 does not have a field or property called u64_X");
+        }
+
+        public static ulong Getu64_0(this Hash128 h)
+        {
+            return GetValue(h, s_Property_u64_0, s_Field_u64_0);
+        }
+
+        public static ulong Getu64_1(this Hash128 h)
+        {
+            return GetValue(h, s_Property_u64_1, s_Field_u64_1);
+        }
     }
     #endif
 }

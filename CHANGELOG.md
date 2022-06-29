@@ -1,5 +1,11 @@
 # Changelog
 
+## [3.0.0-preview.26] - 2022-06-29
+- Add .buginfo.
+- Fix exception with Transactions.
+- Fix SearchSettings fetching Search Engines.
+- Remove ParsedQuery api upgrade.
+
 ## [3.0.0-preview.25] - 2022-04-21
 - Fix search indexer concurrent issue when asset are deleted and the index is being updated at the same time.
 
